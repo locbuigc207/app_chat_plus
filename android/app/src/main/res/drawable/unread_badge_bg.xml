@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Shadow -->
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="#60000000" />
+        </shape>
+    </item>
+
+    <!-- Badge -->
+    <item
+        android:bottom="1dp"
+        android:right="1dp">
+        <shape android:shape="oval">
+            <gradient
+                android:angle="135"
+                android:startColor="#FF5252"
+                android:endColor="#D32F2F"
+                android:type="linear" />
+            <stroke
+                android:width="2dp"
+                android:color="@android:color/white" />
+        </shape>
+    </item>
+</layer-list>

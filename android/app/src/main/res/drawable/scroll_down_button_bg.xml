@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Background cho nút "new message" -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Shadow -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#40000000" />
+            <corners android:radius="20dp" />
+        </shape>
+    </item>
+
+    <!-- Main button -->
+    <item
+        android:bottom="2dp"
+        android:right="2dp">
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="135"
+                android:startColor="#2196F3"
+                android:endColor="#1976D2"
+                android:type="linear" />
+            <corners android:radius="20dp" />
+        </shape>
+    </item>
+</layer-list>

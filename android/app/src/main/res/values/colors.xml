@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="notification_accent">#2196F3</color>
+    <color name="notification_background">#FFFFFF</color>
+    <color name="bubble_background">#F5F5F5</color>
+</resources>

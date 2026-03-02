@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App Name (existing) -->
+    <string name="app_name">flutter_chat</string>
+
+    <!-- ===================================== -->
+    <!-- MINI CHAT STRINGS -->
+    <!-- ===================================== -->
+    <string name="user_avatar">User Avatar</string>
+    <string name="user_name_placeholder">User Name</string>
+    <string name="minimize">Minimize</string>
+    <string name="close">Close</string>
+    <string name="attach">Attach File</string>
+    <string name="send">Send Message</string>
+    <string name="type_message">Type a message…</string>
+    <string name="typing">Typing</string>
+
+    <!-- Empty State -->
+    <string name="no_messages">No Messages</string>
+    <string name="no_messages_yet">No messages yet.\nStart a conversation!</string>
+
+    <!-- Error State -->
+    <string name="error">Error</string>
+    <string name="failed_to_load_messages">Failed to load messages</string>
+    <string name="retry">Retry</string>
+    <string name="connection_error">Connection error. Please check your internet.</string>
+
+    <!-- Bubble Chat -->
+    <string name="new_message">New message</string>
+    <string name="unread_messages">%1$d unread messages</string>
+    <string name="chat_bubble_notification">Chat bubble active</string>
+
+    <!-- Actions -->
+    <string name="mark_as_read">Mark as Read</string>
+    <string name="delete_conversation">Delete Conversation</string>
+    <string name="message_sent">Message sent</string>
+    <string name="message_failed">Failed to send message</string>
+
+    <!-- Permissions -->
+    <string name="overlay_permission_required">Overlay permission is required for chat bubbles</string>
+    <string name="grant_permission">Grant Permission</string>
+
+    <!-- Notifications -->
+    <string name="message_from">Message from %1$s</string>
+    <string name="tap_to_open">Tap to open</string>
+    <string name="notification_channel_name">Chat Messages</string>
+    <string name="notification_channel_desc">Notifications for chat messages with bubble support</string>
+    <string name="notification_title">New message</string>
+    <string name="notification_tap_to_reply">Tap to reply</string>
+    <string name="bubble_reply">Reply</string>
+    <string name="bubble_dismiss">Dismiss</string>
+    <string name="bubble_open">Open conversation</string>
+</resources>

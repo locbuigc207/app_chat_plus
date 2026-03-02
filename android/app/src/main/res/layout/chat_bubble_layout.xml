@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ✅ ENHANCED: Chat Bubble Layout with Gradient & Ripple -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="64dp"
+    android:layout_height="64dp"
+    android:clickable="true"
+    android:focusable="true">
+
+    <!-- Background with Gradient & Shadow -->
+    <RelativeLayout
+        android:id="@+id/bubble_container"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:layout_gravity="center"
+        android:background="@drawable/bubble_gradient_bg"
+        android:elevation="8dp"
+        android:foreground="@drawable/bubble_ripple">
+
+        <!-- Avatar Image -->
+        <ImageView
+            android:id="@+id/bubble_avatar"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:contentDescription="@string/user_avatar" />
+
+        <!-- Online Indicator (Bottom Right) -->
+        <View
+            android:id="@+id/bubble_online_indicator"
+            android:layout_width="14dp"
+            android:layout_height="14dp"
+            android:layout_alignParentBottom="true"
+            android:layout_alignParentEnd="true"
+            android:layout_marginEnd="0dp"
+            android:layout_marginBottom="0dp"
+            android:background="@drawable/online_indicator"
+            android:elevation="10dp"
+            android:visibility="visible" />
+
+        <!-- Unread Badge (Top Right) -->
+        <TextView
+            android:id="@+id/bubble_unread_badge"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:layout_alignParentEnd="true"
+            android:layout_alignParentTop="true"
+            android:layout_marginEnd="-8dp"
+            android:layout_marginTop="-8dp"
+            android:background="@drawable/unread_badge_bg"
+            android:gravity="center"
+            android:textColor="@android:color/white"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:elevation="12dp"
+            android:visibility="gone"
+            android:maxLength="3" />
+    </RelativeLayout>
+
+    <!-- Delete Zone Indicator (shown during drag) -->
+    <ImageView
+        android:id="@+id/delete_indicator"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:layout_gravity="center"
+        android:src="@drawable/ic_delete"
+        android:tint="#FF6B6B"
+        android:alpha="0"
+        android:elevation="14dp"
+        android:contentDescription="@string/delete_conversation" />
+</FrameLayout>
