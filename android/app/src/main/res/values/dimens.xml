@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Bubble dimensions -->
+    <dimen name="bubble_height">600dp</dimen>
+    <dimen name="bubble_width">400dp</dimen>
+
+    <!-- Notification icon size -->
+    <dimen name="notification_icon_size">24dp</dimen>
+
+    <!-- Avatar sizes -->
+    <dimen name="avatar_small">40dp</dimen>
+    <dimen name="avatar_medium">60dp</dimen>
+    <dimen name="avatar_large">100dp</dimen>
+</resources>

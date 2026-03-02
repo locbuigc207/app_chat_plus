@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ripple effect cho nút send -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#402196F3">
+    <item android:id="@android:id/mask">
+        <shape android:shape="oval">
+            <solid android:color="@android:color/white" />
+        </shape>
+    </item>
+</ripple>
