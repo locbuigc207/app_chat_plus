@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart'; // ✅ Imported for kDebugMode
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
@@ -35,7 +35,8 @@ class ChatPage extends StatefulWidget {
   ChatPageState createState() => ChatPageState();
 }
 
-class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
+class ChatPageState extends State<ChatPage>
+    with WidgetsBindingObserver, ResourceManagerMixin {
   late final String _currentUserId;
   UserPresenceProvider? _presenceProvider;
 
@@ -48,7 +49,6 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const MethodChannel _bubbleChannel =
       MethodChannel('bubble_chat_channel'); // ✅ NEW
 
-  Timer? _typingTimer;
   bool _isTyping = false;
 
   List<QueryDocumentSnapshot> _listMessage = [];
@@ -61,10 +61,9 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _isShowSticker = false;
   String _imageUrl = "";
 
-  late TextEditingController _chatInputController;
-  late ScrollController _listScrollController;
-  late FocusNode _focusNode;
-  bool _isDisposed = false;
+  late final TextEditingController _chatInputController;
+  late final ScrollController _listScrollController;
+  late final FocusNode _focusNode;
 
   late ChatProvider _chatProvider;
   late AuthProvider _authProvider;
@@ -80,17 +79,12 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   TranslationProvider? _translationProvider;
 
   List<DocumentSnapshot> _pinnedMessages = [];
-  StreamSubscription<QuerySnapshot>? _pinnedSub;
 
   List<SmartReply> _smartReplies = [];
   String _lastReceivedMessage = '';
 
   MessageChat? _replyingTo;
   bool _conversationLockedChecked = false;
-
-  StreamSubscription<QuerySnapshot>? _unreadMessagesSubscription;
-  StreamSubscription<QuerySnapshot>? _incomingMessagesSubscription;
-  StreamSubscription? _miniChatSubscription;
 
   // ✅ FIX 14: Add deduplication for message listener
   final Set<String> _processedMessageIds = {};
@@ -116,11 +110,18 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _focusNode = FocusNode();
 
     WidgetsBinding.instance.addObserver(this);
+
+    // ✅ FIX: Add listeners with resource manager
     _focusNode.addListener(_onFocusChange);
+    resourceManager
+        .addDisposer(() => _focusNode.removeListener(_onFocusChange));
+
     _listScrollController.addListener(_scrollListener);
+    resourceManager.addDisposer(
+        () => _listScrollController.removeListener(_scrollListener));
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_isDisposed) {
+      if (!resourceManager.isDisposed && mounted) {
         _initializeProviders(context);
       }
     });
@@ -129,6 +130,9 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
+
+    if (resourceManager.isDisposed) return;
+
     if (state == AppLifecycleState.paused) {
       _presenceProvider?.setUserOffline(_currentUserId);
     } else if (state == AppLifecycleState.resumed) {
@@ -137,7 +141,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _initializeProviders(BuildContext context) {
-    if (_isDisposed) return;
+    if (resourceManager.isDisposed) return;
 
     _chatProvider = context.read<ChatProvider>();
     _authProvider = context.read<AuthProvider>();
@@ -153,13 +157,13 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     // ✅ GIAI ĐOẠN 4: Use UnifiedBubbleService
     _unifiedBubbleService = context.read<UnifiedBubbleService>();
 
-    // Setup mini chat message listener (Gộp từ cả 2 phần, dùng bubbleClickStream)
-    _miniChatSubscription = _unifiedBubbleService?.bubbleClickStream.listen(
+    // Setup mini chat message listener (bubbleClickStream)
+    final miniChatSub = _unifiedBubbleService?.bubbleClickStream.listen(
       (event) {
         if (event.userId == widget.arguments.peerId) {
           print('💬 Bubble clicked for: ${event.userName}');
 
-          // Show notification (Logic từ phần 1)
+          // Show notification
           Fluttertoast.showToast(
             msg: '📨 ${widget.arguments.peerNickname}: ${event.message}',
             backgroundColor: Colors.green,
@@ -171,6 +175,9 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         print('❌ Mini chat stream error: $error');
       },
     );
+    if (miniChatSub != null) {
+      resourceManager.addSubscription(miniChatSub);
+    }
 
     try {
       _voiceProvider = VoiceMessageProvider(
@@ -202,7 +209,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _scrollListener() {
-    if (_isDisposed || !_listScrollController.hasClients) return;
+    if (resourceManager.isDisposed || !_listScrollController.hasClients) return;
     final pos = _listScrollController.position;
     if (pos.pixels >= pos.maxScrollExtent - 100 &&
         !_listScrollController.position.outOfRange &&
@@ -218,10 +225,8 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   // ✅ ADD: Better keyboard handling for mini chat
   void _ensureKeyboardVisibility() {
     if (widget.isMiniChat) {
-      // In mini chat, ensure keyboard is shown when focus is on input
       Future.delayed(Duration(milliseconds: 100), () {
-        if (mounted && _focusNode.hasFocus) {
-          // Force keyboard to show
+        if (mounted && _focusNode.hasFocus && !resourceManager.isDisposed) {
           _focusNode.requestFocus();
         }
       });
@@ -230,7 +235,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   // ✅ MODIFY: _onFocusChange to handle mini chat
   void _onFocusChange() {
-    if (_isDisposed || !mounted) return;
+    if (resourceManager.isDisposed || !mounted) return;
 
     if (_focusNode.hasFocus) {
       setState(() {
@@ -273,17 +278,19 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
 
     Future.delayed(Duration(milliseconds: 500), () {
-      if (!_isDisposed) {
+      if (!resourceManager.isDisposed && mounted) {
         _markMessagesAsRead();
       }
     });
   }
 
   void _loadPinnedMessages() {
-    _pinnedSub?.cancel();
-    _pinnedSub = _messageProvider.getPinnedMessages(_groupChatId).listen(
+    if (resourceManager.isDisposed) return;
+
+    final subscription =
+        _messageProvider.getPinnedMessages(_groupChatId).listen(
       (snapshot) {
-        if (!mounted || _isDisposed) return;
+        if (!mounted || resourceManager.isDisposed) return;
         setState(() {
           _pinnedMessages = snapshot.docs;
         });
@@ -292,6 +299,8 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         ErrorLogger.logError(err, null, context: 'Load Pinned Messages');
       },
     );
+
+    resourceManager.addSubscription(subscription);
   }
 
   Future<bool> _pickImage() async {
@@ -303,7 +312,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
       if (pickedXFile != null) {
         final imageFile = File(pickedXFile.path);
-        if (!mounted || _isDisposed) return false;
+        if (!mounted || resourceManager.isDisposed) return false;
         setState(() {
           _imageFile = imageFile;
           _isLoading = true;
@@ -319,7 +328,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _getSticker() {
-    if (_isDisposed) return;
+    if (resourceManager.isDisposed) return;
     _focusNode.unfocus();
     setState(() {
       _isShowSticker = !_isShowSticker;
@@ -328,7 +337,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _handleTyping(String text) {
-    if (_presenceProvider == null || _isDisposed) return;
+    if (_presenceProvider == null || resourceManager.isDisposed) return;
 
     if (text.isEmpty) {
       if (_isTyping) {
@@ -351,9 +360,8 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
     }
 
-    _typingTimer?.cancel();
-    _typingTimer = Timer(const Duration(seconds: 3), () {
-      if (!_isDisposed) {
+    resourceManager.addTimer(Timer(const Duration(seconds: 3), () {
+      if (!resourceManager.isDisposed) {
         _isTyping = false;
         _presenceProvider?.setTypingStatus(
           conversationId: _groupChatId,
@@ -361,7 +369,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           isTyping: false,
         );
       }
-    });
+    }));
   }
 
   // ========================================
@@ -369,14 +377,14 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   // ========================================
 
   void _setupIncomingMessageListener() {
-    _incomingMessagesSubscription?.cancel();
+    if (resourceManager.isDisposed) return;
 
     if (_groupChatId.isEmpty || _currentUserId.isEmpty) {
       print('⚠️ Cannot setup listener: groupChatId or currentUserId is empty');
       return;
     }
 
-    _incomingMessagesSubscription = FirebaseFirestore.instance
+    final subscription = FirebaseFirestore.instance
         .collection(FirestoreConstants.pathMessageCollection)
         .doc(_groupChatId)
         .collection(_groupChatId)
@@ -385,6 +393,8 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         .snapshots()
         .listen(
       (snapshot) async {
+        if (resourceManager.isDisposed) return;
+
         // ✅ FIX 14: Prevent concurrent processing
         if (_isProcessingMessage) {
           print('⚠️ Already processing messages, skipping...');
@@ -395,6 +405,8 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
         try {
           for (var change in snapshot.docChanges) {
+            if (resourceManager.isDisposed) break;
+
             if (change.type == DocumentChangeType.added) {
               final docId = change.doc.id;
 
@@ -444,6 +456,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       },
     );
 
+    resourceManager.addSubscription(subscription);
     print('✅ Incoming message listener setup with deduplication');
   }
 
@@ -455,8 +468,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       if (await canLaunchUrl(uri)) {
         await launchUrl(
           uri,
-          mode:
-              LaunchMode.externalApplication, // Mở bằng app Google Maps nếu có
+          mode: LaunchMode.externalApplication,
         );
         print('✅ Opened Maps: $mapsUrl');
       } else {
@@ -477,6 +489,8 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   // ✅ GIAI ĐOẠN 4: Update _showChatBubbleIfNeeded
   Future<void> _showChatBubbleIfNeeded() async {
+    if (resourceManager.isDisposed) return;
+
     final lifecycleState = WidgetsBinding.instance.lifecycleState;
 
     if (lifecycleState != AppLifecycleState.resumed) {
@@ -507,8 +521,9 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _setupAutoReadMarking() {
-    _unreadMessagesSubscription?.cancel();
-    _unreadMessagesSubscription = FirebaseFirestore.instance
+    if (resourceManager.isDisposed) return;
+
+    final subscription = FirebaseFirestore.instance
         .collection(FirestoreConstants.pathMessageCollection)
         .doc(_groupChatId)
         .collection(_groupChatId)
@@ -517,7 +532,8 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         .snapshots()
         .listen(
       (snapshot) {
-        if (snapshot.docs.isNotEmpty && !_isDisposed) {
+        if (resourceManager.isDisposed) return;
+        if (snapshot.docs.isNotEmpty && mounted) {
           _markMessagesAsRead();
         }
       },
@@ -525,6 +541,8 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         ErrorLogger.logError(error, null, context: 'Setup Auto Read');
       },
     );
+
+    resourceManager.addSubscription(subscription);
   }
 
   Future<void> _uploadFile() async {
@@ -536,7 +554,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       final snapshot = await uploadTask;
       _imageUrl = await snapshot.ref.getDownloadURL();
 
-      if (!mounted || _isDisposed) return;
+      if (!mounted || resourceManager.isDisposed) return;
       setState(() {
         _isLoading = false;
       });
@@ -545,7 +563,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     } catch (e) {
       ErrorLogger.logError(e, null, context: 'Upload File');
 
-      if (mounted && !_isDisposed) {
+      if (mounted && !resourceManager.isDisposed) {
         setState(() {
           _isLoading = false;
         });
@@ -559,7 +577,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   // ========================================
 
   Future<void> _onSendMessageWithAutoDelete(String content, int type) async {
-    if (_isDisposed) return;
+    if (resourceManager.isDisposed) return;
 
     if (content.trim().isEmpty) {
       Fluttertoast.showToast(
@@ -574,11 +592,11 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       finalContent = '↪ ${_replyingTo!.content}\n$finalContent';
     }
 
-    if (!_isDisposed && _chatInputController.hasListeners) {
+    if (!resourceManager.isDisposed && _chatInputController.hasListeners) {
       _chatInputController.clear();
     }
 
-    if (mounted && !_isDisposed) {
+    if (mounted && !resourceManager.isDisposed) {
       setState(() {
         _replyingTo = null;
         _smartReplies = [];
@@ -618,11 +636,11 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       ErrorLogger.logError(e, null, context: 'Schedule Auto Delete');
     }
 
-    if (!_isDisposed) {
+    if (!resourceManager.isDisposed) {
       await _loadSmartReplies();
     }
 
-    if (_listScrollController.hasClients && !_isDisposed) {
+    if (_listScrollController.hasClients && !resourceManager.isDisposed) {
       _listScrollController.animateTo(
         0,
         duration: Duration(milliseconds: 300),
@@ -638,7 +656,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   /// ✅ GIAI ĐOẠN 7: Update bubble notification with message
   Future<void> _updateBubbleWithMessage(String content, int type,
       {required bool isFromUser}) async {
-    if (_unifiedBubbleService == null) return;
+    if (_unifiedBubbleService == null || resourceManager.isDisposed) return;
 
     try {
       // Check if bubble exists for this conversation
@@ -689,7 +707,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _markMessagesAsRead() async {
-    if (_isDisposed) return;
+    if (resourceManager.isDisposed) return;
 
     try {
       final unreadMessages = await FirebaseFirestore.instance
@@ -720,7 +738,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _showAdvancedMessageOptions(MessageChat message, String messageId) {
-    if (_isDisposed) return;
+    if (resourceManager.isDisposed) return;
 
     showModalBottomSheet(
       context: context,
@@ -744,7 +762,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _editMessage(String messageId, String currentContent) async {
-    if (_isDisposed) return;
+    if (resourceManager.isDisposed) return;
 
     showDialog(
       context: context,
@@ -765,7 +783,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _deleteMessage(String messageId) async {
-    if (_isDisposed) return;
+    if (resourceManager.isDisposed) return;
 
     final confirm = await showDialog<bool>(
       context: context,
@@ -785,7 +803,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       ),
     );
 
-    if (confirm == true && !_isDisposed) {
+    if (confirm == true && !resourceManager.isDisposed) {
       final success = await _messageProvider.deleteMessage(
         _groupChatId,
         messageId,
@@ -797,7 +815,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _togglePinMessage(String messageId, bool currentStatus) async {
-    if (_isDisposed) return;
+    if (resourceManager.isDisposed) return;
 
     final success = await _messageProvider.togglePinMessage(
       _groupChatId,
@@ -817,7 +835,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _setReplyToMessage(MessageChat message) {
-    if (_isDisposed || !mounted) return;
+    if (resourceManager.isDisposed || !mounted) return;
     setState(() {
       _replyingTo = message;
     });
@@ -825,7 +843,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _showReactionPicker(String messageId) {
-    if (_isDisposed) return;
+    if (resourceManager.isDisposed) return;
 
     showDialog(
       context: context,
@@ -847,7 +865,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<DateTime?> _pickTimeWithWheel() async {
-    if (_isDisposed) return null;
+    if (resourceManager.isDisposed) return null;
 
     DateTime selectedTime = DateTime.now().add(Duration(hours: 1));
 
@@ -932,11 +950,11 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     MessageChat message,
     String messageId,
   ) async {
-    if (_isDisposed) return;
+    if (resourceManager.isDisposed) return;
 
     final reminderTime = await _pickTimeWithWheel();
 
-    if (reminderTime != null && !_isDisposed) {
+    if (reminderTime != null && !resourceManager.isDisposed) {
       final success = await _reminderProvider.scheduleReminder(
         userId: _currentUserId,
         messageId: messageId,
@@ -954,7 +972,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _translateMessage(String content) async {
-    if (_translationProvider == null || _isDisposed) return;
+    if (_translationProvider == null || resourceManager.isDisposed) return;
 
     showDialog(
       context: context,
@@ -966,14 +984,14 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _checkConversationLock() async {
-    if (_isDisposed) return;
+    if (resourceManager.isDisposed) return;
 
     final lockStatus = await _lockProvider.getConversationLockStatus(
       _groupChatId,
     );
 
     if (lockStatus != null && lockStatus['isLocked'] == true) {
-      if (!mounted || _isDisposed) return;
+      if (!mounted || resourceManager.isDisposed) return;
 
       final verified = await _showPINVerificationDialog();
 
@@ -982,7 +1000,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
     }
 
-    if (mounted && !_isDisposed) {
+    if (mounted && !resourceManager.isDisposed) {
       setState(() {
         _conversationLockedChecked = true;
       });
@@ -990,12 +1008,12 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<bool> _showPINVerificationDialog() async {
-    if (_isDisposed) return false;
+    if (resourceManager.isDisposed) return false;
 
     String? errorMessage;
     int remainingAttempts = 5;
 
-    while (remainingAttempts > 0 && !_isDisposed) {
+    while (remainingAttempts > 0 && !resourceManager.isDisposed) {
       final pin = await showDialog<String>(
         context: context,
         barrierDismissible: false,
@@ -1007,7 +1025,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         ),
       );
 
-      if (pin == null || _isDisposed) return false;
+      if (pin == null || resourceManager.isDisposed) return false;
 
       final result = await _lockProvider.verifyPIN(
         conversationId: _groupChatId,
@@ -1037,7 +1055,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _loadSmartReplies() async {
-    if (_listMessage.isEmpty || _isDisposed) return;
+    if (_listMessage.isEmpty || resourceManager.isDisposed) return;
 
     final lastMessage = _listMessage.first;
     final messageChat = MessageChat.fromDocument(lastMessage);
@@ -1048,7 +1066,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         messageChat.content,
       );
 
-      if (mounted && !_isDisposed) {
+      if (mounted && !resourceManager.isDisposed) {
         setState(() {
           _smartReplies = replies;
           _lastReceivedMessage = messageChat.content;
@@ -1058,7 +1076,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _showReminders() {
-    if (_isDisposed) return;
+    if (resourceManager.isDisposed) return;
 
     Navigator.push(
       context,
@@ -1112,7 +1130,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   // ✅ GIAI ĐOẠN 4: Update _createChatBubble to use UnifiedBubbleService
   Future<void> _createChatBubble() async {
-    if (_unifiedBubbleService == null || _isDisposed) {
+    if (_unifiedBubbleService == null || resourceManager.isDisposed) {
       Fluttertoast.showToast(msg: 'Bubble service not available');
       return;
     }
@@ -1256,7 +1274,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   // ========================================
 
   void _showChatOptionsMenu() {
-    if (_isDisposed) return;
+    if (resourceManager.isDisposed) return;
 
     showModalBottomSheet(
       context: context,
@@ -1451,7 +1469,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _showLockOptions() async {
-    if (_isDisposed) return;
+    if (resourceManager.isDisposed) return;
 
     final action = await showDialog<String>(
       context: context,
@@ -1475,16 +1493,16 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       ),
     );
 
-    if (action == 'set_pin' && !_isDisposed) {
+    if (action == 'set_pin' && !resourceManager.isDisposed) {
       _showSetPINDialog();
-    } else if (action == 'remove' && !_isDisposed) {
+    } else if (action == 'remove' && !resourceManager.isDisposed) {
       await _lockProvider.removeConversationLock(_groupChatId);
       Fluttertoast.showToast(msg: 'Lock removed');
     }
   }
 
   void _showSetPINDialog() async {
-    if (_isDisposed) return;
+    if (resourceManager.isDisposed) return;
 
     final pin = await showDialog<String>(
       context: context,
@@ -1494,13 +1512,13 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       ),
     );
 
-    if (pin != null && !_isDisposed) {
+    if (pin != null && !resourceManager.isDisposed) {
       _showConfirmPINDialog(pin);
     }
   }
 
   void _showConfirmPINDialog(String originalPin) async {
-    if (_isDisposed) return;
+    if (resourceManager.isDisposed) return;
 
     final confirmPin = await showDialog<String>(
       context: context,
@@ -1510,7 +1528,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       ),
     );
 
-    if (confirmPin == originalPin && !_isDisposed) {
+    if (confirmPin == originalPin && !resourceManager.isDisposed) {
       final success = await _lockProvider.setConversationPIN(
         conversationId: _groupChatId,
         pin: originalPin,
@@ -1525,7 +1543,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _toggleFeaturesMenu() {
-    if (_isDisposed || !mounted) return;
+    if (resourceManager.isDisposed || !mounted) return;
     setState(() {
       _showFeaturesMenu = !_showFeaturesMenu;
       _isShowSticker = false;
@@ -1627,12 +1645,12 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }) {
     return InkWell(
       onTap: () {
-        if (_isDisposed) return;
+        if (resourceManager.isDisposed) return;
         setState(() => _showFeaturesMenu = false);
         onTap();
       },
       child: Container(
-        width: 70, // ✅ FIX: Fixed width
+        width: 70,
         padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1642,7 +1660,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             Text(
               label,
               style: TextStyle(
-                fontSize: 11, // ✅ FIX: Smaller font
+                fontSize: 11,
                 color: ColorConstants.primaryColor,
               ),
               maxLines: 1,
@@ -1656,7 +1674,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _shareLocation() async {
-    if (_locationProvider == null || _isDisposed) return;
+    if (_locationProvider == null || resourceManager.isDisposed) return;
 
     if (mounted) setState(() => _isLoading = true);
 
@@ -1666,7 +1684,8 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           await _locationProvider!.requestLocationPermission();
 
       if (!hasPermission) {
-        if (mounted && !_isDisposed) setState(() => _isLoading = false);
+        if (mounted && !resourceManager.isDisposed)
+          setState(() => _isLoading = false);
         Fluttertoast.showToast(
           msg: '📍 Location permission required',
           backgroundColor: Colors.red,
@@ -1678,9 +1697,10 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       final locationData =
           await _locationProvider!.getCurrentLocationWithDetails();
 
-      if (mounted && !_isDisposed) setState(() => _isLoading = false);
+      if (mounted && !resourceManager.isDisposed)
+        setState(() => _isLoading = false);
 
-      if (locationData != null && !_isDisposed) {
+      if (locationData != null && !resourceManager.isDisposed) {
         // ✅ Format message with clickable link
         final message = _locationProvider!.formatLocationMessage(locationData);
 
@@ -1700,7 +1720,8 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
     } catch (e) {
       print('❌ Location share error: $e');
-      if (mounted && !_isDisposed) setState(() => _isLoading = false);
+      if (mounted && !resourceManager.isDisposed)
+        setState(() => _isLoading = false);
       Fluttertoast.showToast(
         msg: '❌ Failed to get location',
         backgroundColor: Colors.red,
@@ -1709,7 +1730,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _scheduleMessage() async {
-    if (_isDisposed) return;
+    if (resourceManager.isDisposed) return;
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -1717,7 +1738,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       builder: (context) => ScheduleMessageDialog(),
     );
 
-    if (result == null || _isDisposed || !mounted) return;
+    if (result == null || resourceManager.isDisposed || !mounted) return;
 
     final messageText = result['message'] as String;
     final scheduledTime = result['time'] as DateTime;
@@ -1736,7 +1757,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _scheduledMessageContents[scheduleKey] = messageText;
 
     final timer = Timer(delay, () {
-      if (!_isDisposed && mounted) {
+      if (!resourceManager.isDisposed && mounted) {
         final content = _scheduledMessageContents[scheduleKey];
         if (content != null) {
           _onSendMessageWithAutoDelete(content, TypeMessage.text);
@@ -1758,7 +1779,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _startRecording() async {
-    if (_voiceProvider == null || _isDisposed) {
+    if (_voiceProvider == null || resourceManager.isDisposed) {
       Fluttertoast.showToast(msg: 'Voice recording not available');
       return;
     }
@@ -1770,7 +1791,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
 
     final started = await _voiceProvider!.startRecording();
-    if (started && mounted && !_isDisposed) {
+    if (started && mounted && !resourceManager.isDisposed) {
       setState(() {
         _isRecording = true;
         _recordingSeconds = 0;
@@ -1778,7 +1799,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       });
 
       _recordingTimer = Timer.periodic(Duration(seconds: 1), (timer) {
-        if (!mounted || _isDisposed) {
+        if (!mounted || resourceManager.isDisposed) {
           timer.cancel();
           return;
         }
@@ -1793,18 +1814,19 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _stopRecording() async {
-    if (_voiceProvider == null || _isDisposed) return;
+    if (_voiceProvider == null || resourceManager.isDisposed) return;
 
     _recordingTimer?.cancel();
 
     final filePath = await _voiceProvider!.stopRecording();
     if (filePath == null) {
-      if (mounted && !_isDisposed) setState(() => _isRecording = false);
+      if (mounted && !resourceManager.isDisposed)
+        setState(() => _isRecording = false);
       Fluttertoast.showToast(msg: 'Recording failed');
       return;
     }
 
-    if (mounted && !_isDisposed) {
+    if (mounted && !resourceManager.isDisposed) {
       setState(() {
         _isRecording = false;
         _isLoading = true;
@@ -1814,9 +1836,10 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final fileName = 'voice_${DateTime.now().millisecondsSinceEpoch}.aac';
     final url = await _voiceProvider!.uploadVoiceMessage(filePath, fileName);
 
-    if (mounted && !_isDisposed) setState(() => _isLoading = false);
+    if (mounted && !resourceManager.isDisposed)
+      setState(() => _isLoading = false);
 
-    if (url != null && !_isDisposed) {
+    if (url != null && !resourceManager.isDisposed) {
       await _onSendMessageWithAutoDelete(url, 3);
       Fluttertoast.showToast(msg: '🎤 Voice message sent');
     } else {
@@ -1825,11 +1848,12 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _cancelRecording() async {
-    if (_voiceProvider == null || _isDisposed) return;
+    if (_voiceProvider == null || resourceManager.isDisposed) return;
 
     _recordingTimer?.cancel();
     await _voiceProvider!.cancelRecording();
-    if (mounted && !_isDisposed) setState(() => _isRecording = false);
+    if (mounted && !resourceManager.isDisposed)
+      setState(() => _isRecording = false);
   }
 
   Widget _buildPinnedMessages() {
@@ -1842,7 +1866,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         scrollDirection: Axis.horizontal,
         padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         itemCount: _pinnedMessages.length,
-        itemExtent: 180, // ✅ FIX: Fixed width for performance
+        itemExtent: 180,
         itemBuilder: (context, index) {
           final message = MessageChat.fromDocument(_pinnedMessages[index]);
           return GestureDetector(
@@ -1850,7 +1874,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               // TODO: Scroll to message
             },
             child: Container(
-              width: 170, // ✅ FIX: Explicit width
+              width: 170,
               margin: EdgeInsets.symmetric(horizontal: 4),
               padding: EdgeInsets.all(8),
               decoration: BoxDecoration(
@@ -2163,7 +2187,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 ],
               ],
             ),
-            // Reactions display (giữ nguyên)
+            // Reactions display
             StreamBuilder<QuerySnapshot>(
               stream: _reactionProvider.getReactions(_groupChatId, document.id),
               builder: (context, snapshot) {
@@ -2358,7 +2382,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     // ✅ Auto-focus in mini chat/bubble mode
     if ((widget.isMiniChat || widget.isBubbleMode) && !_focusNode.hasFocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && !_isDisposed) {
+        if (mounted && !resourceManager.isDisposed) {
           _focusNode.requestFocus();
         }
       });
@@ -2376,7 +2400,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               child: SmartReplyWidget(
                 replies: _smartReplies,
                 onReplySelected: (reply) {
-                  if (!_isDisposed) {
+                  if (!resourceManager.isDisposed) {
                     _chatInputController.text = reply;
                     setState(() => _smartReplies = []);
                     // ✅ Refocus after selecting reply
@@ -2407,7 +2431,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 IconButton(
                   icon: Icon(Icons.close, size: 18),
                   onPressed: () {
-                    if (mounted && !_isDisposed) {
+                    if (mounted && !resourceManager.isDisposed) {
                       setState(() => _replyingTo = null);
                       // ✅ Refocus after closing reply
                       _focusNode.requestFocus();
@@ -2540,7 +2564,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                             Utilities.closeKeyboard();
                           },
                     onSubmitted: (_) {
-                      if (!_isDisposed) {
+                      if (!resourceManager.isDisposed) {
                         _onSendMessageWithAutoDelete(
                           _chatInputController.text,
                           TypeMessage.text,
@@ -2558,7 +2582,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       if (text.isNotEmpty &&
                           _smartReplies.isNotEmpty &&
                           mounted &&
-                          !_isDisposed) {
+                          !resourceManager.isDisposed) {
                         setState(() => _smartReplies = []);
                       }
                     },
@@ -2569,7 +2593,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                     controller: _chatInputController,
                     decoration: InputDecoration.collapsed(
                       hintText: (widget.isBubbleMode || widget.isMiniChat)
-                          ? 'Type...' // ✅ Shorter hint for mini chat/bubble
+                          ? 'Type...'
                           : 'Type your message...',
                       hintStyle: TextStyle(color: ColorConstants.greyColor),
                     ),
@@ -2602,7 +2626,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 child: IconButton(
                   icon: Icon(Icons.send, size: 24),
                   onPressed: () {
-                    if (!_isDisposed) {
+                    if (!resourceManager.isDisposed) {
                       _onSendMessageWithAutoDelete(
                         _chatInputController.text,
                         TypeMessage.text,
@@ -2629,7 +2653,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   void _onBackPress() {
     if (_isShowSticker || _showFeaturesMenu) {
-      if (mounted && !_isDisposed) {
+      if (mounted && !resourceManager.isDisposed) {
         setState(() {
           _isShowSticker = false;
           _showFeaturesMenu = false;
@@ -2760,7 +2784,6 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: ColorConstants.primaryColor,
-        // Dùng Radius 16 để match với MiniChatOverlayWidget
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       child: Row(
@@ -2901,13 +2924,13 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       appBar: AppBar(
         title: InkWell(
           onTap: () async {
-            if (_isDisposed) return;
+            if (resourceManager.isDisposed) return;
             final userDoc = await FirebaseFirestore.instance
                 .collection(FirestoreConstants.pathUserCollection)
                 .doc(widget.arguments.peerId)
                 .get();
 
-            if (userDoc.exists && mounted && !_isDisposed) {
+            if (userDoc.exists && mounted && !resourceManager.isDisposed) {
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -2959,7 +2982,7 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             if (didPop) return;
             _onBackPress();
           },
-          child: _buildChatContent(), // ✅ Use refactored content
+          child: _buildChatContent(),
         ),
       ),
     );
@@ -2967,9 +2990,9 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    _isDisposed = true;
+    // ✅ FIX: ResourceManager handles subscriptions and listener cleanup
 
-    // ✅ FIX 4: Cancel scheduled messages safely
+    // Cancel scheduled messages
     _scheduledMessages.forEach((key, timer) {
       try {
         timer.cancel();
@@ -2980,19 +3003,10 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _scheduledMessages.clear();
     _scheduledMessageContents.clear();
 
-    // ✅ FIX 4: Cancel subscriptions safely
-    try {
-      _unreadMessagesSubscription?.cancel();
-      _incomingMessagesSubscription?.cancel();
-      _pinnedSub?.cancel();
-      _typingTimer?.cancel();
-      _recordingTimer?.cancel();
-      _miniChatSubscription?.cancel();
-    } catch (e) {
-      print('⚠️ Error canceling subscriptions: $e');
-    }
+    // Cancel recording timer
+    _recordingTimer?.cancel();
 
-    // ✅ FIX 4: Set user offline safely
+    // Set user offline
     try {
       if (_presenceProvider != null && _currentUserId.isNotEmpty) {
         _presenceProvider!.setUserOffline(_currentUserId);
@@ -3006,41 +3020,23 @@ class ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       print('⚠️ Error updating presence: $e');
     }
 
-    // ✅ FIX 4: Dispose voice provider safely
+    // Dispose voice provider
     try {
       _voiceProvider?.dispose();
     } catch (e) {
       print('⚠️ Error disposing voice provider: $e');
     }
 
-    // ✅ FIX 4: Dispose controllers with existence checks
+    // Dispose controllers
     try {
-      if (_chatInputController.hasListeners) {
-        _chatInputController.dispose();
-      }
+      _chatInputController.dispose();
+      _listScrollController.dispose();
+      _focusNode.dispose();
     } catch (e) {
-      print('⚠️ Controller already disposed: $e');
+      print('⚠️ Controller disposal error: $e');
     }
 
-    try {
-      if (_listScrollController.hasClients) {
-        _listScrollController.removeListener(_scrollListener);
-        _listScrollController.dispose();
-      }
-    } catch (e) {
-      print('⚠️ ScrollController error: $e');
-    }
-
-    try {
-      if (_focusNode.hasFocus || _focusNode.canRequestFocus) {
-        _focusNode.removeListener(_onFocusChange);
-        _focusNode.dispose();
-      }
-    } catch (e) {
-      print('⚠️ FocusNode error: $e');
-    }
-
-    // ✅ FIX 4: Remove lifecycle observer safely
+    // Remove lifecycle observer
     try {
       WidgetsBinding.instance.removeObserver(this);
     } catch (e) {
