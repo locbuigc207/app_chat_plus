@@ -1,4 +1,5 @@
 name: flutter_chat_demo
+description: Flutter Firebase Chat Demo
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -13,6 +14,7 @@ dependencies:
 
   cupertino_icons: ^1.0.8
 
+  # Firebase
   firebase_core: ^4.1.0
   firebase_auth: ^6.0.0
   firebase_storage: ^13.0.4
@@ -33,40 +35,55 @@ dependencies:
   shimmer: ^3.0.0
   image_picker: ^1.2.0
 
-  # UI & UX
+  # UI / UX
   fluttertoast: ^9.0.0
   provider: ^6.1.0
   intl: ^0.20.0
 
+  # Storage
   shared_preferences: ^2.5.0
   path_provider: ^2.1.0
 
+  # QR
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.1.0
 
+  # Notifications
   flutter_local_notifications: ^19.5.0
   timezone: ^0.10.0
 
+  # Permissions
   permission_handler: ^12.0.0
 
+  # Network
   connectivity_plus: ^7.0.0
   http: ^1.5.0
 
+  # Audio
   flutter_sound: ^9.16.0
   audio_session: ^0.2.2
 
+  # Location
   geolocator: ^14.0.2
   geocoding: ^4.0.0
 
+  # Translation
   translator: ^1.0.0
 
+  # URL launcher
   url_launcher: ^6.3.0
 
+  # Encryption
   crypto: ^3.0.0
+
+  # Offline cache (needed for OfflineManager)
+  sqflite: ^2.3.2
+  path: ^1.9.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
   flutter_lints: ^6.0.0
 
 flutter:

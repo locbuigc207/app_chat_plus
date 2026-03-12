@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
 /// Quản lý lifecycle của resources để tránh memory leaks
 class ResourceManager {

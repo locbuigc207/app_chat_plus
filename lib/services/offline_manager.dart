@@ -7,224 +7,168 @@ import 'package:flutter_chat_demo/models/models.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
-/// Manager cho offline support
 class OfflineManager {
   static final OfflineManager _instance = OfflineManager._internal();
   factory OfflineManager() => _instance;
   OfflineManager._internal();
 
   Database? _database;
+
   final Connectivity _connectivity = Connectivity();
-  StreamSubscription<ConnectivityResult>? _connectivitySubscription;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
   final _onlineController = StreamController<bool>.broadcast();
+
   Stream<bool> get onlineStream => _onlineController.stream;
 
   bool _isOnline = true;
   bool get isOnline => _isOnline;
 
-  /// Initialize offline manager
+  // =========================================================
+  // INITIALIZE
+  // =========================================================
+
   Future<void> initialize() async {
-    try {
-      await _initDatabase();
-      await _setupConnectivityListener();
-      debugPrint('✅ OfflineManager initialized');
-    } catch (e) {
-      debugPrint('❌ OfflineManager initialization failed: $e');
-    }
+    await _initDatabase();
+    await _setupConnectivity();
+
+    debugPrint("✅ OfflineManager initialized");
   }
 
-  /// Initialize SQLite database
   Future<void> _initDatabase() async {
-    final databasePath = await getDatabasesPath();
-    final path = join(databasePath, 'offline_cache.db');
+    final dbPath = await getDatabasesPath();
+    final path = join(dbPath, "offline_cache.db");
 
     _database = await openDatabase(
       path,
       version: 1,
       onCreate: (db, version) async {
-        // Messages table
         await db.execute('''
-          CREATE TABLE messages (
-            id TEXT PRIMARY KEY,
-            conversationId TEXT NOT NULL,
-            content TEXT NOT NULL,
-            type INTEGER NOT NULL,
-            timestamp TEXT NOT NULL,
-            idFrom TEXT NOT NULL,
-            idTo TEXT NOT NULL,
-            isRead INTEGER NOT NULL,
-            isSynced INTEGER DEFAULT 0,
-            data TEXT NOT NULL
-          )
-        ''');
-
-        // Conversations table
-        await db.execute('''
-          CREATE TABLE conversations (
-            id TEXT PRIMARY KEY,
-            lastMessage TEXT,
-            lastMessageTime TEXT,
-            lastMessageType INTEGER,
-            isGroup INTEGER,
-            isPinned INTEGER,
-            isMuted INTEGER,
-            participants TEXT NOT NULL,
-            data TEXT NOT NULL
-          )
-        ''');
-
-        // Pending operations table
-        await db.execute('''
-          CREATE TABLE pending_operations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            type TEXT NOT NULL,
-            collection TEXT NOT NULL,
-            documentId TEXT,
-            data TEXT NOT NULL,
-            timestamp TEXT NOT NULL,
-            retryCount INTEGER DEFAULT 0
-          )
-        ''');
-
-        // Indexes
-        await db.execute('''
-          CREATE INDEX idx_messages_conversation 
-          ON messages(conversationId, timestamp DESC)
+        CREATE TABLE messages(
+          id TEXT PRIMARY KEY,
+          data TEXT,
+          isSynced INTEGER
+        )
         ''');
 
         await db.execute('''
-          CREATE INDEX idx_messages_sync 
-          ON messages(isSynced, timestamp)
+        CREATE TABLE conversations(
+          id TEXT PRIMARY KEY,
+          data TEXT
+        )
         ''');
 
-        debugPrint('✅ Database tables created');
+        await db.execute('''
+        CREATE TABLE pending_operations(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          type TEXT,
+          data TEXT,
+          retryCount INTEGER
+        )
+        ''');
+
+        debugPrint("✅ SQLite tables created");
       },
     );
   }
 
-  /// Setup connectivity listener
-  Future<void> _setupConnectivityListener() async {
-    // Check initial connectivity
+  Future<void> _setupConnectivity() async {
     final result = await _connectivity.checkConnectivity();
-    _isOnline = result != ConnectivityResult.none;
+
+    _isOnline = !result.contains(ConnectivityResult.none);
     _onlineController.add(_isOnline);
 
-    // Listen to connectivity changes
-    _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
-      (result) {
-        final wasOnline = _isOnline;
-        _isOnline = result != ConnectivityResult.none;
+    _connectivitySubscription =
+        _connectivity.onConnectivityChanged.listen((results) {
+      final wasOnline = _isOnline;
 
-        debugPrint('📡 Connectivity changed: $_isOnline');
-        _onlineController.add(_isOnline);
+      _isOnline = !results.contains(ConnectivityResult.none);
 
-        // Sync when coming back online
-        if (!wasOnline && _isOnline) {
-          debugPrint('🔄 Coming back online, syncing...');
-          syncPendingOperations();
-        }
-      },
-    );
+      debugPrint("📡 Connectivity changed: $_isOnline");
+
+      _onlineController.add(_isOnline);
+
+      if (!wasOnline && _isOnline) {
+        syncPendingOperations();
+      }
+    });
   }
 
-  // ========================================
-  // MESSAGE CACHING
-  // ========================================
+  // =========================================================
+  // MESSAGE CACHE
+  // =========================================================
 
-  /// Cache messages
+  String _generateMessageId(MessageChat message) {
+    return "${message.idFrom}_${message.timestamp}";
+  }
+
   Future<void> cacheMessages(List<MessageChat> messages) async {
     if (_database == null) return;
 
     final batch = _database!.batch();
 
-    for (final message in messages) {
+    for (final msg in messages) {
+      final id = _generateMessageId(msg);
+
       batch.insert(
-        'messages',
-        {
-          'id': message.id,
-          'conversationId': message.conversationId,
-          'content': message.content,
-          'type': message.type,
-          'timestamp': message.timestamp,
-          'idFrom': message.idFrom,
-          'idTo': message.idTo,
-          'isRead': message.isRead ? 1 : 0,
-          'isSynced': 1,
-          'data': jsonEncode(message.toJson()),
-        },
+        "messages",
+        {"id": id, "data": jsonEncode(msg.toJson()), "isSynced": 1},
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     }
 
     await batch.commit(noResult: true);
-    debugPrint('✅ Cached ${messages.length} messages');
+
+    debugPrint("💾 Cached ${messages.length} messages");
   }
 
-  /// Get cached messages
-  Future<List<MessageChat>> getCachedMessages({
-    required String conversationId,
-    int limit = 50,
-  }) async {
+  Future<List<MessageChat>> getCachedMessages() async {
     if (_database == null) return [];
 
-    try {
-      final result = await _database!.query(
-        'messages',
-        where: 'conversationId = ?',
-        whereArgs: [conversationId],
-        orderBy: 'timestamp DESC',
-        limit: limit,
-      );
+    final result = await _database!.query("messages");
 
-      return result
-          .map((json) =>
-              MessageChat.fromJson(jsonDecode(json['data'] as String)))
-          .toList();
-    } catch (e) {
-      debugPrint('❌ Error getting cached messages: $e');
-      return [];
-    }
+    return result.map((row) {
+      final json = jsonDecode(row["data"] as String);
+
+      return MessageChat(
+        idFrom: json["idFrom"],
+        idTo: json["idTo"],
+        timestamp: json["timestamp"],
+        content: json["content"],
+        type: json["type"],
+        isDeleted: json["isDeleted"] ?? false,
+        editedAt: json["editedAt"],
+        isPinned: json["isPinned"] ?? false,
+        isRead: json["isRead"] ?? false,
+        readAt: json["readAt"],
+      );
+    }).toList();
   }
 
-  /// Add pending message
   Future<void> addPendingMessage(MessageChat message) async {
     if (_database == null) return;
 
+    final id = _generateMessageId(message);
+
     await _database!.insert(
-      'messages',
-      {
-        'id': message.id,
-        'conversationId': message.conversationId,
-        'content': message.content,
-        'type': message.type,
-        'timestamp': message.timestamp,
-        'idFrom': message.idFrom,
-        'idTo': message.idTo,
-        'isRead': 0,
-        'isSynced': 0, // Not synced yet
-        'data': jsonEncode(message.toJson()),
-      },
+      "messages",
+      {"id": id, "data": jsonEncode(message.toJson()), "isSynced": 0},
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
 
-    // Add to pending operations
-    await _database!.insert('pending_operations', {
-      'type': 'message_send',
-      'collection': 'messages',
-      'documentId': message.id,
-      'data': jsonEncode(message.toJson()),
-      'timestamp': DateTime.now().toIso8601String(),
+    await _database!.insert("pending_operations", {
+      "type": "send_message",
+      "data": jsonEncode(message.toJson()),
+      "retryCount": 0
     });
 
-    debugPrint('✅ Added pending message: ${message.id}');
+    debugPrint("📝 Pending message stored");
   }
 
-  // ========================================
-  // CONVERSATION CACHING
-  // ========================================
+  // =========================================================
+  // CONVERSATION CACHE
+  // =========================================================
 
-  /// Cache conversations
   Future<void> cacheConversations(List<Conversation> conversations) async {
     if (_database == null) return;
 
@@ -232,183 +176,134 @@ class OfflineManager {
 
     for (final conv in conversations) {
       batch.insert(
-        'conversations',
-        {
-          'id': conv.id,
-          'lastMessage': conv.lastMessage,
-          'lastMessageTime': conv.lastMessageTime,
-          'lastMessageType': conv.lastMessageType,
-          'isGroup': conv.isGroup ? 1 : 0,
-          'isPinned': conv.isPinned ? 1 : 0,
-          'isMuted': conv.isMuted ? 1 : 0,
-          'participants': jsonEncode(conv.participants),
-          'data': jsonEncode(conv.toJson()),
-        },
+        "conversations",
+        {"id": conv.id, "data": jsonEncode(conv.toJson())},
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     }
 
     await batch.commit(noResult: true);
-    debugPrint('✅ Cached ${conversations.length} conversations');
+
+    debugPrint("💾 Cached ${conversations.length} conversations");
   }
 
-  /// Get cached conversations
   Future<List<Conversation>> getCachedConversations() async {
     if (_database == null) return [];
 
-    try {
-      final result = await _database!.query(
-        'conversations',
-        orderBy: 'lastMessageTime DESC',
-      );
+    final result = await _database!.query("conversations");
 
-      return result
-          .map((json) =>
-              Conversation.fromJson(jsonDecode(json['data'] as String)))
-          .toList();
-    } catch (e) {
-      debugPrint('❌ Error getting cached conversations: $e');
-      return [];
-    }
+    return result.map((row) {
+      final json = jsonDecode(row["data"] as String);
+
+      return Conversation(
+        id: row["id"] as String,
+        isGroup: json["isGroup"],
+        participants: List<String>.from(json["participants"]),
+        lastMessage: json["lastMessage"],
+        lastMessageTime: json["lastMessageTime"],
+        lastMessageType: json["lastMessageType"],
+        isPinned: json["isPinned"] ?? false,
+        pinnedAt: json["pinnedAt"],
+        isMuted: json["isMuted"] ?? false,
+      );
+    }).toList();
   }
 
-  // ========================================
-  // SYNC OPERATIONS
-  // ========================================
+  // =========================================================
+  // SYNC
+  // =========================================================
 
-  /// Sync pending operations when online
   Future<void> syncPendingOperations() async {
     if (_database == null || !_isOnline) return;
 
-    try {
-      final pending = await _database!.query(
-        'pending_operations',
-        orderBy: 'timestamp ASC',
-      );
+    final pending = await _database!.query("pending_operations");
 
-      debugPrint('🔄 Syncing ${pending.length} pending operations');
+    for (final op in pending) {
+      try {
+        final type = op["type"];
 
-      for (final op in pending) {
-        try {
-          final type = op['type'] as String;
-          final data = jsonDecode(op['data'] as String);
+        if (type == "send_message") {
+          await _syncMessage(op);
+        }
 
-          switch (type) {
-            case 'message_send':
-              await _syncPendingMessage(data);
-              break;
-            // Add other operation types as needed
-          }
+        await _database!.delete(
+          "pending_operations",
+          where: "id=?",
+          whereArgs: [op["id"]],
+        );
 
-          // Delete operation after successful sync
+        debugPrint("✅ Synced operation ${op["id"]}");
+      } catch (e) {
+        final retry = (op["retryCount"] as int) + 1;
+
+        if (retry > 3) {
           await _database!.delete(
-            'pending_operations',
-            where: 'id = ?',
-            whereArgs: [op['id']],
+            "pending_operations",
+            where: "id=?",
+            whereArgs: [op["id"]],
           );
 
-          debugPrint('✅ Synced operation: ${op['id']}');
-        } catch (e) {
-          debugPrint('❌ Failed to sync operation: $e');
-
-          // Increment retry count
-          final retryCount = (op['retryCount'] as int) + 1;
-
-          if (retryCount > 3) {
-            // Delete after 3 failed attempts
-            await _database!.delete(
-              'pending_operations',
-              where: 'id = ?',
-              whereArgs: [op['id']],
-            );
-            debugPrint('🗑️ Deleted failed operation after 3 retries');
-          } else {
-            await _database!.update(
-              'pending_operations',
-              {'retryCount': retryCount},
-              where: 'id = ?',
-              whereArgs: [op['id']],
-            );
-          }
+          debugPrint("🗑 Removed failed operation");
+        } else {
+          await _database!.update(
+            "pending_operations",
+            {"retryCount": retry},
+            where: "id=?",
+            whereArgs: [op["id"]],
+          );
         }
       }
-    } catch (e) {
-      debugPrint('❌ Sync failed: $e');
     }
   }
 
-  /// Sync pending message to Firestore
-  Future<void> _syncPendingMessage(Map<String, dynamic> data) async {
-    // Implementation depends on your Firestore structure
-    // This is a placeholder
-    debugPrint('📤 Syncing message to Firestore: ${data['id']}');
+  Future<void> _syncMessage(Map op) async {
+    final data = jsonDecode(op["data"]);
 
-    // Update message as synced
-    await _database!.update(
-      'messages',
-      {'isSynced': 1},
-      where: 'id = ?',
-      whereArgs: [data['id']],
-    );
+    debugPrint("📤 Sync message ${data["content"]}");
+
+    // TODO: Firestore send here
   }
 
-  // ========================================
-  // CLEANUP
-  // ========================================
+  // =========================================================
+  // CACHE CLEANUP
+  // =========================================================
 
-  /// Clear old cached data
-  Future<void> clearOldCache({
-    Duration maxAge = const Duration(days: 7),
-  }) async {
+  Future<void> clearCache() async {
     if (_database == null) return;
 
-    final cutoffTime =
-        DateTime.now().subtract(maxAge).millisecondsSinceEpoch.toString();
+    await _database!.delete("messages");
+    await _database!.delete("conversations");
 
-    try {
-      // Delete old messages
-      final deletedMessages = await _database!.delete(
-        'messages',
-        where: 'timestamp < ? AND isSynced = 1',
-        whereArgs: [cutoffTime],
-      );
-
-      debugPrint('🗑️ Deleted $deletedMessages old cached messages');
-    } catch (e) {
-      debugPrint('❌ Error clearing old cache: $e');
-    }
+    debugPrint("🗑 Cache cleared");
   }
 
-  /// Get cache stats
   Future<Map<String, int>> getCacheStats() async {
     if (_database == null) return {};
 
-    try {
-      final messages = await _database!.query('messages');
-      final conversations = await _database!.query('conversations');
-      final pending = await _database!.query('pending_operations');
-      final unsynced = await _database!.query(
-        'messages',
-        where: 'isSynced = 0',
-      );
+    final msg = Sqflite.firstIntValue(
+            await _database!.rawQuery("SELECT COUNT(*) FROM messages")) ??
+        0;
 
-      return {
-        'messages': messages.length,
-        'conversations': conversations.length,
-        'pending': pending.length,
-        'unsynced': unsynced.length,
-      };
-    } catch (e) {
-      debugPrint('❌ Error getting cache stats: $e');
-      return {};
-    }
+    final conv = Sqflite.firstIntValue(
+            await _database!.rawQuery("SELECT COUNT(*) FROM conversations")) ??
+        0;
+
+    final pending = Sqflite.firstIntValue(await _database!
+            .rawQuery("SELECT COUNT(*) FROM pending_operations")) ??
+        0;
+
+    return {"messages": msg, "conversations": conv, "pending": pending};
   }
 
-  /// Dispose
+  // =========================================================
+  // DISPOSE
+  // =========================================================
+
   Future<void> dispose() async {
     await _connectivitySubscription?.cancel();
     await _onlineController.close();
     await _database?.close();
-    debugPrint('✅ OfflineManager disposed');
+
+    debugPrint("✅ OfflineManager disposed");
   }
 }
