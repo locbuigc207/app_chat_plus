@@ -10,6 +10,7 @@ export 'loading_view.dart';
 export 'message_options_dialog.dart';
 export 'message_reactions_display.dart';
 export 'mini_chat_overlay.dart';
+export 'offline_indicator.dart';
 export 'online_friends_bar.dart';
 export 'pin_input_dialog.dart';
 export 'reaction_picker.dart';
