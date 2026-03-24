@@ -1,3 +1,5 @@
+export 'call_history_page.dart';
+export 'call_page.dart';
 export 'chat_page.dart';
 export 'create_group_page.dart';
 export 'enhanced_photo_viewer.dart';
@@ -5,9 +7,11 @@ export 'friends_page.dart';
 export 'full_photo_page.dart';
 export 'group_chat_page.dart';
 export 'home_page.dart';
+export 'incoming_call_page.dart';
 export 'login_page.dart';
 export 'my_qr_code_page.dart';
 export 'notifications_page.dart';
+export 'outgoing_call_page.dart';
 export 'phone_login_page.dart';
 export 'qr_scanner_page.dart';
 export 'search_messages_page.dart';
