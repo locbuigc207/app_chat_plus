@@ -260,6 +260,13 @@ class MyApp extends StatelessWidget {
           ),
         ),
 
+        ChangeNotifierProvider<StoryProvider>(
+          create: (_) => StoryProvider(
+            firebaseFirestore: firebaseFirestore,
+            firebaseStorage: firebaseStorage,
+          ),
+        ),
+
         // Data providers
         Provider<SettingProvider>(
           create: (_) => SettingProvider(
