@@ -80,6 +80,9 @@ dependencies:
   sqflite: ^2.3.2
   path: ^1.9.0
 
+  agora_rtc_engine: ^6.3.2   # WebRTC engine
+  wakelock_plus: ^1.2.8       # Keep screen on during call
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

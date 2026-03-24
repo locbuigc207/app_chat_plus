@@ -1,4 +1,5 @@
 export 'bubble_models.dart';
+export 'call_model.dart';
 export 'conversation.dart';
 export 'friendship.dart';
 export 'group.dart';

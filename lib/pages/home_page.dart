@@ -167,6 +167,14 @@ class HomePageState extends State<HomePage> {
         Navigator.push(context,
             MaterialPageRoute(builder: (_) => const ThemeSettingsPage()));
         break;
+      case 'Call History':
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => CallHistoryPage(
+                      currentUserId: _currentUserId,
+                    )));
+        break;
       default:
         Navigator.push(
             context, MaterialPageRoute(builder: (_) => const SettingsPage()));

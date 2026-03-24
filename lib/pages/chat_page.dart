@@ -18,18 +18,17 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-// ✅ GIAI ĐOẠN 5: ADD isBubbleMode PARAMETER & ADAPTATIONS
 class ChatPage extends StatefulWidget {
   const ChatPage({
     super.key,
     required this.arguments,
     this.isMiniChat = false,
-    this.isBubbleMode = false, // ✅ NEW: Bubble mode flag
+    this.isBubbleMode = false,
   });
 
   final ChatPageArguments arguments;
   final bool isMiniChat;
-  final bool isBubbleMode; // ✅ NEW
+  final bool isBubbleMode;
 
   @override
   ChatPageState createState() => ChatPageState();
@@ -40,14 +39,12 @@ class ChatPageState extends State<ChatPage>
   late final String _currentUserId;
   UserPresenceProvider? _presenceProvider;
 
-  // ✅ GIAI ĐOẠN 4: Use UnifiedBubbleService instead of ChatBubbleService
   UnifiedBubbleService? _unifiedBubbleService;
 
-  // ✅ ADD: Channel cho giao tiếp Mini Chat và Bubble
   static const MethodChannel _miniChatChannel =
       MethodChannel('mini_chat_channel');
   static const MethodChannel _bubbleChannel =
-      MethodChannel('bubble_chat_channel'); // ✅ NEW
+      MethodChannel('bubble_chat_channel');
 
   bool _isTyping = false;
 
@@ -1236,28 +1233,15 @@ class ChatPageState extends State<ChatPage>
 
   List<Widget> _buildAppBarActions() {
     return [
-      // Video Call button
-      IconButton(
-        icon: Icon(Icons.videocam, color: ColorConstants.primaryColor),
-        onPressed: () {
-          Fluttertoast.showToast(
-            msg: '🎥 Video Call feature coming soon!',
-            backgroundColor: ColorConstants.primaryColor,
-          );
-        },
-        tooltip: 'Video Call',
+      VideoCallIconButton(
+        peerId: widget.arguments.peerId,
+        peerName: widget.arguments.peerNickname,
+        peerAvatar: widget.arguments.peerAvatar,
       ),
-
-      // Voice Call button
-      IconButton(
-        icon: Icon(Icons.phone, color: ColorConstants.primaryColor),
-        onPressed: () {
-          Fluttertoast.showToast(
-            msg: '📞 Voice Call feature coming soon!',
-            backgroundColor: ColorConstants.primaryColor,
-          );
-        },
-        tooltip: 'Voice Call',
+      VoiceCallIconButton(
+        peerId: widget.arguments.peerId,
+        peerName: widget.arguments.peerNickname,
+        peerAvatar: widget.arguments.peerAvatar,
       ),
 
       // More options menu

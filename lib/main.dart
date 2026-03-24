@@ -21,11 +21,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
-// Global notification plugin instance để khắc phục lỗi Null Context
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
-// ADD: Global navigator key để navigate từ bubble
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
@@ -38,26 +36,21 @@ Future<void> main() async {
     print('❌ Firebase initialization error: $e');
   }
 
-  // GIAI ĐOẠN 5: Setup Bubble Chat Channel
   setupBubbleChatChannel();
 
-  // Khởi tạo các dịch vụ cần thiết
   await ErrorLogger.initialize();
   tz.initializeTimeZones();
   tz.setLocalLocation(tz.getLocation('Asia/Ho_Chi_Minh'));
   final prefs = await SharedPreferences.getInstance();
 
-  // Khởi tạo notifications
   await _initializeNotifications(flutterLocalNotificationsPlugin);
 
-  // Initialize UnifiedBubbleService (Mới)
   final unifiedBubbleService = UnifiedBubbleService();
 
-  // Legacy services (Cũ)
   final chatBubbleService = ChatBubbleService();
   final notificationService = NotificationService();
 
-  print('✅ App initialized successfully');
+  print(' App initialized successfully');
 
   runApp(MyApp(
     prefs: prefs,
@@ -68,16 +61,11 @@ Future<void> main() async {
   ));
 }
 
-// ========================================
-// GIAI ĐOẠN 5: BUBBLE CHAT CHANNEL HANDLER (Phiên bản FIX #3)
-// ========================================
-
-/// Setup channel để nhận navigation commands từ BubbleActivity
 void setupBubbleChatChannel() {
   const channel = MethodChannel('bubble_chat_channel');
 
   channel.setMethodCallHandler((call) async {
-    print('📥 Bubble channel received: ${call.method}');
+    print(' Bubble channel received: ${call.method}');
 
     if (call.method == 'navigateToChat') {
       final peerId = call.arguments['peerId'] as String?;
@@ -86,54 +74,49 @@ void setupBubbleChatChannel() {
       final isBubbleMode = call.arguments['isBubbleMode'] as bool? ?? false;
 
       if (peerId == null || peerNickname == null) {
-        print('❌ Missing required arguments for navigation');
+        print(' Missing required arguments for navigation');
         return null;
       }
 
-      print('💬 Smart navigation to: $peerNickname (bubble: $isBubbleMode)');
+      print(' Smart navigation to: $peerNickname (bubble: $isBubbleMode)');
 
-      // ✅ FIX #3: Wait for navigator with exponential backoff
       int retries = 0;
       const maxRetries = 5;
 
       while (navigatorKey.currentState == null && retries < maxRetries) {
-        final delay = Duration(
-            milliseconds: 100 * (1 << retries)); // 100, 200, 400, 800, 1600ms
+        final delay = Duration(milliseconds: 100 * (1 << retries));
         print(
-            '⏳ Navigator not ready, retry $retries/$maxRetries (waiting ${delay.inMilliseconds}ms)');
+            ' Navigator not ready, retry $retries/$maxRetries (waiting ${delay.inMilliseconds}ms)');
         await Future.delayed(delay);
         retries++;
       }
 
       if (navigatorKey.currentState == null) {
-        print('❌ Navigator failed to initialize after $maxRetries retries');
+        print(' Navigator failed to initialize after $maxRetries retries');
         return null;
       }
 
-      // ✅ FIX #3: Check current route to avoid duplicate navigation
       try {
         final currentContext = navigatorKey.currentContext;
         if (currentContext != null) {
           final currentRoute = ModalRoute.of(currentContext);
           final routeName = currentRoute?.settings.name ?? '';
 
-          print('📍 Current route: $routeName');
+          print(' Current route: $routeName');
 
-          // Check if already on this specific chat
           if (routeName == '/chat') {
             final currentArgs = currentRoute?.settings.arguments;
             if (currentArgs is ChatPageArguments &&
                 currentArgs.peerId == peerId) {
-              print('ℹ️ Already on this chat, ignoring navigation');
+              print('ℹ Already on this chat, ignoring navigation');
               return null;
             }
           }
         }
       } catch (e) {
-        print('⚠️ Error checking current route: $e');
+        print(' Error checking current route: $e');
       }
 
-      // ✅ FIX #3: Navigate with proper route handling
       try {
         navigatorKey.currentState!.push(
           MaterialPageRoute(
@@ -155,12 +138,12 @@ void setupBubbleChatChannel() {
           ),
         );
 
-        print('✅ Navigation complete');
+        print(' Navigation complete');
       } catch (e) {
-        print('❌ Navigation failed: $e');
+        print(' Navigation failed: $e');
       }
     } else if (call.method == 'onBackPressed') {
-      print('⬅️ Back pressed in bubble');
+      print(' Back pressed in bubble');
 
       if (navigatorKey.currentState != null &&
           navigatorKey.currentState!.canPop()) {
@@ -171,7 +154,7 @@ void setupBubbleChatChannel() {
     return null;
   });
 
-  print('✅ Bubble chat channel setup complete');
+  print(' Bubble chat channel setup complete');
 }
 
 Future<void> _initializeNotifications(
@@ -192,11 +175,10 @@ Future<void> _initializeNotifications(
       iOS: initializationSettingsIOS,
     );
 
-    // Initialize with error handling
     await plugin.initialize(
       initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
-        print('📱 Notification clicked: ${response.payload}');
+        print(' Notification clicked: ${response.payload}');
       },
     );
 
@@ -205,7 +187,6 @@ Future<void> _initializeNotifications(
           AndroidFlutterLocalNotificationsPlugin>();
 
       if (androidPlugin != null) {
-        // Yêu cầu quyền thông báo và báo thức chính xác (cho reminder)
         await androidPlugin.requestNotificationsPermission();
         await androidPlugin.requestExactAlarmsPermission();
 
@@ -229,27 +210,26 @@ Future<void> _initializeNotifications(
             sound: true,
           );
     }
-    print('✅ Notifications initialized successfully');
+    print(' Notifications initialized successfully');
   } catch (e) {
-    print('❌ Notification initialization error: $e');
-    // Don't crash the app, just log the error
+    print(' Notification initialization error: $e');
   }
 }
 
 class MyApp extends StatelessWidget {
   final SharedPreferences prefs;
   final FlutterLocalNotificationsPlugin notificationsPlugin;
-  final ChatBubbleService chatBubbleService; // Legacy
+  final ChatBubbleService chatBubbleService;
   final NotificationService notificationService;
-  final UnifiedBubbleService unifiedBubbleService; // NEW
+  final UnifiedBubbleService unifiedBubbleService;
 
   const MyApp({
     super.key,
     required this.prefs,
     required this.notificationsPlugin,
-    required this.chatBubbleService, // Legacy
+    required this.chatBubbleService,
     required this.notificationService,
-    required this.unifiedBubbleService, // NEW
+    required this.unifiedBubbleService,
   });
 
   @override
@@ -264,7 +244,6 @@ class MyApp extends StatelessWidget {
 
     return MultiProvider(
       providers: [
-        // Auth providers
         ChangeNotifierProvider<AuthProvider>(
           create: (_) => AuthProvider(
             firebaseAuth: firebaseAuth,
@@ -350,12 +329,11 @@ class MyApp extends StatelessWidget {
           create: (_) => TranslationProvider(),
         ),
 
-        // Bubble services
         Provider<ChatBubbleService>(
-          create: (_) => chatBubbleService, // Legacy
+          create: (_) => chatBubbleService,
         ),
         Provider<UnifiedBubbleService>(
-          create: (_) => unifiedBubbleService, // NEW - Primary service
+          create: (_) => unifiedBubbleService,
         ),
         Provider<NotificationService>(
           create: (_) => notificationService,
@@ -366,18 +344,16 @@ class MyApp extends StatelessWidget {
           return MaterialApp(
             title: AppConstants.appTitle,
             debugShowCheckedModeBanner: false,
-
-            // CRITICAL: Add navigator key
             navigatorKey: navigatorKey,
-
             themeMode: themeProvider.getFlutterThemeMode(context),
             theme: AppThemes.lightTheme(themeProvider.getPrimaryColor()),
             darkTheme: AppThemes.darkTheme(themeProvider.getPrimaryColor()),
-            // Bọc MaterialApp bằng BubbleManager và MiniChatOverlayManager
-            home: BubbleManager(
-              child: MiniChatOverlayManager(
-                child: AppInitializer(
-                  notificationService: notificationService,
+            home: CallListener(
+              child: BubbleManager(
+                child: MiniChatOverlayManager(
+                  child: AppInitializer(
+                    notificationService: notificationService,
+                  ),
                 ),
               ),
             ),
@@ -407,27 +383,23 @@ class _AppInitializerState extends State<AppInitializer>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _startNotificationService();
-    // Log bubble implementation being used
     _logBubbleImplementation();
   }
 
-  // Log which bubble implementation is active
   Future<void> _logBubbleImplementation() async {
-    // Đảm bảo widget tree đã sẵn sàng cho context.read
     await Future.delayed(const Duration(milliseconds: 100));
     if (!mounted) return;
 
     final unifiedService = context.read<UnifiedBubbleService>();
 
-    // Wait for initialization to be safer
     await Future.delayed(const Duration(seconds: 1));
 
     final impl = unifiedService.getImplementationInfo();
-    print('🎈 Bubble Implementation: $impl');
+    print(' Bubble Implementation: $impl');
 
     if (unifiedService.currentImplementation ==
         BubbleImplementation.bubbleApi) {
-      print('✅ Using modern Bubble API (Android 11+)');
+      print(' Using modern Bubble API (Android 11+)');
     } else if (unifiedService.currentImplementation ==
         BubbleImplementation.windowManager) {
       print('⚠️ Using legacy WindowManager (Android < 11)');
@@ -437,12 +409,12 @@ class _AppInitializerState extends State<AppInitializer>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    print('📱 App lifecycle: $state');
+    print(' App lifecycle: $state');
 
     if (state == AppLifecycleState.paused) {
-      print('⏸️ App going to background');
+      print(' App going to background');
     } else if (state == AppLifecycleState.resumed) {
-      print('▶️ App resumed');
+      print(' App resumed');
     }
   }
 
@@ -452,10 +424,10 @@ class _AppInitializerState extends State<AppInitializer>
     final auth = firebase_auth.FirebaseAuth.instance;
     auth.authStateChanges().listen((user) {
       if (user != null) {
-        print('✅ User logged in, starting notification service');
+        print(' User logged in, starting notification service');
         widget.notificationService.listenForNewMessages(user.uid);
       } else {
-        print('❌ User logged out, stopping notification service');
+        print(' User logged out, stopping notification service');
         widget.notificationService.stopListening();
       }
     });
@@ -463,7 +435,6 @@ class _AppInitializerState extends State<AppInitializer>
 
   @override
   Widget build(BuildContext context) {
-    // Sẽ điều hướng đến MainPage sau khi SplashPage hoàn tất
     return SplashPage();
   }
 
@@ -474,11 +445,6 @@ class _AppInitializerState extends State<AppInitializer>
   }
 }
 
-// ===========================================
-// MINI CHAT OVERLAY IMPLEMENTATION
-// ===========================================
-
-/// Quản lý MethodChannel và OverlayEntry cho Mini Chat.
 class MiniChatOverlayManager extends StatefulWidget {
   final Widget child;
 
@@ -489,7 +455,6 @@ class MiniChatOverlayManager extends StatefulWidget {
 }
 
 class _MiniChatOverlayManagerState extends State<MiniChatOverlayManager> {
-  // Channel này nhận lệnh từ Native (MiniChatChannel trên Native)
   static const MethodChannel _miniChatChannel =
       MethodChannel('mini_chat_channel');
 
@@ -508,8 +473,8 @@ class _MiniChatOverlayManagerState extends State<MiniChatOverlayManager> {
     print('✅ Setting up MiniChat MethodChannel');
 
     _miniChatChannel.setMethodCallHandler((call) async {
-      print('📥 MiniChat Channel received: ${call.method}');
-      print('📥 Arguments: ${call.arguments}');
+      print(' MiniChat Channel received: ${call.method}');
+      print(' Arguments: ${call.arguments}');
 
       if (call.method == 'navigateToMiniChat') {
         final peerId = call.arguments['peerId'] as String?;
@@ -517,13 +482,12 @@ class _MiniChatOverlayManagerState extends State<MiniChatOverlayManager> {
         final peerAvatar = call.arguments['peerAvatar'] as String?;
 
         if (peerId == null || peerNickname == null) {
-          print('❌ Missing required arguments for navigation');
+          print(' Missing required arguments for navigation');
           return null;
         }
 
-        print('💬 Showing mini chat overlay for: $peerNickname');
+        print(' Showing mini chat overlay for: $peerNickname');
 
-        // CRITICAL FIX: Navigate IMMEDIATELY, không delay
         if (mounted) {
           _showMiniChatOverlay(peerId, peerNickname, peerAvatar ?? '');
         }
