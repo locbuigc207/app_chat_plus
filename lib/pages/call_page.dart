@@ -1,0 +1,634 @@
+// lib/pages/call_page.dart
+import 'dart:async';
+
+import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../models/call_model.dart';
+import '../services/agora_rtc_manager.dart';
+import '../services/call_service.dart';
+import '../widgets/call_control_bar.dart';
+import '../widgets/call_quality_indicator.dart';
+import '../widgets/call_timer_widget.dart';
+
+class CallPage extends StatefulWidget {
+  final CallModel call;
+  final bool isOutgoing;
+
+  const CallPage({
+    super.key,
+    required this.call,
+    required this.isOutgoing,
+  });
+
+  @override
+  State<CallPage> createState() => _CallPageState();
+}
+
+class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
+  final _callService = CallService();
+  late final AgoraRtcManager _rtcManager;
+
+  CallStatus _callStatus = CallStatus.calling;
+  StreamSubscription? _callStatusSub;
+  StreamSubscription? _remoteJoinedSub;
+  StreamSubscription? _remoteLeftSub;
+
+  DateTime? _callConnectedAt;
+  bool _callEnded = false;
+  bool _showControls = true;
+  Timer? _controlsHideTimer;
+  bool _localVideoIsLarge = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+    _rtcManager = AgoraRtcManager();
+    _callStatus = widget.call.status;
+
+    if (widget.call.status == CallStatus.connected) {
+      _callConnectedAt = DateTime.now();
+    }
+
+    _initCall();
+    _watchCallStatus();
+    _scheduleControlsHide();
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  Future<void> _initCall() async {
+    await _rtcManager.initialize();
+
+    _remoteJoinedSub = _rtcManager.remoteJoinedStream.listen((_) {
+      setState(() {
+        _callStatus = CallStatus.connected;
+        _callConnectedAt ??= DateTime.now();
+      });
+    });
+
+    _remoteLeftSub = _rtcManager.remoteLeftStream.listen((_) {
+      _endCall();
+    });
+
+    if (widget.call.channelName != null) {
+      await _rtcManager.joinChannel(
+        channelName: widget.call.channelName!,
+        isVideoCall: widget.call.isVideoCall,
+        token: widget.call.token,
+      );
+    }
+  }
+
+  void _watchCallStatus() {
+    _callStatusSub = _callService.watchCall(widget.call.callId).listen((call) {
+      if (call == null || _callEnded) return;
+
+      setState(() => _callStatus = call.status);
+
+      if (call.status == CallStatus.connected && _callConnectedAt == null) {
+        setState(() => _callConnectedAt = DateTime.now());
+      }
+
+      if (call.status == CallStatus.ended ||
+          call.status == CallStatus.declined ||
+          call.status == CallStatus.missed ||
+          call.status == CallStatus.failed) {
+        _endCall(remote: true);
+      }
+    });
+  }
+
+  Future<void> _endCall({bool remote = false}) async {
+    if (_callEnded) return;
+    _callEnded = true;
+
+    await _rtcManager.leaveChannel();
+
+    if (!remote) {
+      final duration = _callConnectedAt != null
+          ? DateTime.now().difference(_callConnectedAt!).inSeconds
+          : null;
+      await _callService.endCall(widget.call.callId, durationSeconds: duration);
+    }
+
+    if (mounted) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      Navigator.of(context).pop();
+    }
+  }
+
+  void _scheduleControlsHide() {
+    _controlsHideTimer?.cancel();
+    if (widget.call.isVideoCall) {
+      _controlsHideTimer = Timer(const Duration(seconds: 4), () {
+        if (mounted && _callStatus == CallStatus.connected) {
+          setState(() => _showControls = false);
+        }
+      });
+    }
+  }
+
+  void _onTapScreen() {
+    if (!widget.call.isVideoCall) return;
+    setState(() => _showControls = true);
+    _scheduleControlsHide();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      // Optionally mute camera when backgrounded
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _callStatusSub?.cancel();
+    _remoteJoinedSub?.cancel();
+    _remoteLeftSub?.cancel();
+    _controlsHideTimer?.cancel();
+    _rtcManager.dispose();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    super.dispose();
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  //  BUILD
+  // ─────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    return WillPopScope(
+      onWillPop: () async {
+        await _endCall();
+        return false;
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body:
+            widget.call.isVideoCall ? _buildVideoCallUI() : _buildVoiceCallUI(),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════
+  //  VIDEO CALL UI
+  // ═══════════════════════════════════════════
+
+  Widget _buildVideoCallUI() {
+    return GestureDetector(
+      onTap: _onTapScreen,
+      behavior: HitTestBehavior.opaque,
+      child: Stack(
+        children: [
+          // ── Remote video (full screen) ─────────────────
+          _buildRemoteVideoView(),
+
+          // ── Local video (Picture-in-Picture) ──────────
+          if (_callStatus == CallStatus.connected) _buildLocalVideoPip(),
+
+          // ── Gradient overlays ─────────────────────────
+          _buildGradientOverlay(),
+
+          // ── Top bar ───────────────────────────────────
+          if (_showControls) _buildVideoTopBar(),
+
+          // ── Quality indicator ─────────────────────────
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 56,
+            right: 16,
+            child: ListenableBuilder(
+              listenable: _rtcManager,
+              builder: (_, __) =>
+                  CallQualityIndicator(stats: _rtcManager.stats),
+            ),
+          ),
+
+          // ── Controls bar ──────────────────────────────
+          AnimatedOpacity(
+            opacity: _showControls ? 1 : 0,
+            duration: const Duration(milliseconds: 300),
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: _buildControlBar(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRemoteVideoView() {
+    return Positioned.fill(
+      child: ListenableBuilder(
+        listenable: _rtcManager,
+        builder: (_, __) {
+          final showVideo = _callStatus == CallStatus.connected &&
+              _rtcManager.hasRemoteUser &&
+              _rtcManager.remoteVideoOn &&
+              _rtcManager.engine != null &&
+              widget.call.channelName != null;
+
+          if (!showVideo) {
+            return _buildRemoteVideoPlaceholder(
+              connected: _callStatus == CallStatus.connected &&
+                  _rtcManager.hasRemoteUser,
+            );
+          }
+
+          return AgoraVideoView(
+            controller: VideoViewController.remote(
+              rtcEngine: _rtcManager.engine!,
+              canvas: VideoCanvas(uid: _rtcManager.remoteUid!),
+              connection: RtcConnection(channelId: widget.call.channelName!),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildRemoteVideoPlaceholder({bool connected = false}) {
+    return Container(
+      color: const Color(0xFF1a1a2e),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildAvatar(
+              widget.isOutgoing
+                  ? widget.call.calleeAvatar
+                  : widget.call.callerAvatar,
+              widget.isOutgoing
+                  ? widget.call.calleeName
+                  : widget.call.callerName,
+              size: 100,
+            ),
+            const SizedBox(height: 20),
+            Text(
+              widget.isOutgoing
+                  ? widget.call.calleeName
+                  : widget.call.callerName,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              connected ? 'Camera off' : _statusLabel(),
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.6),
+                fontSize: 15,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLocalVideoPip() {
+    return Positioned(
+      top: MediaQuery.of(context).padding.top + 16,
+      right: 16,
+      child: GestureDetector(
+        onTap: () => setState(() => _localVideoIsLarge = !_localVideoIsLarge),
+        child: Container(
+          width: 100,
+          height: 140,
+          decoration: BoxDecoration(
+            color: Colors.grey[800],
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white, width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.4),
+                blurRadius: 8,
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: ListenableBuilder(
+              listenable: _rtcManager,
+              builder: (_, __) {
+                if (_rtcManager.isCameraOff) {
+                  return Center(
+                    child: Icon(
+                      Icons.videocam_off,
+                      color: Colors.white.withOpacity(0.7),
+                      size: 32,
+                    ),
+                  );
+                }
+
+                if (_rtcManager.engine == null) {
+                  return Container(
+                    color: Colors.blueGrey[900],
+                    child: const Center(
+                      child:
+                          Icon(Icons.person, color: Colors.white54, size: 40),
+                    ),
+                  );
+                }
+
+                return AgoraVideoView(
+                  controller: VideoViewController(
+                    rtcEngine: _rtcManager.engine!,
+                    canvas: const VideoCanvas(uid: 0), // 0 = local user
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGradientOverlay() {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Column(
+          children: [
+            Container(
+              height: 120,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.6),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+            const Spacer(),
+            Container(
+              height: 200,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.7),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVideoTopBar() {
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              Text(
+                widget.isOutgoing
+                    ? widget.call.calleeName
+                    : widget.call.callerName,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(width: 12),
+              if (_callStatus == CallStatus.connected &&
+                  _callConnectedAt != null)
+                CallTimerWidget(startTime: _callConnectedAt!),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════
+  //  VOICE CALL UI
+  // ═══════════════════════════════════════════
+
+  Widget _buildVoiceCallUI() {
+    final peerName =
+        widget.isOutgoing ? widget.call.calleeName : widget.call.callerName;
+    final peerAvatar =
+        widget.isOutgoing ? widget.call.calleeAvatar : widget.call.callerAvatar;
+
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF0D47A1),
+            Color(0xFF1565C0),
+            Color(0xFF1976D2),
+          ],
+        ),
+      ),
+      child: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  ListenableBuilder(
+                    listenable: _rtcManager,
+                    builder: (_, __) =>
+                        CallQualityIndicator(stats: _rtcManager.stats),
+                  ),
+                ],
+              ),
+            ),
+            const Spacer(),
+            _buildAvatar(peerAvatar, peerName, size: 110),
+            const SizedBox(height: 28),
+            Text(
+              peerName,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 30,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (_callStatus == CallStatus.connected &&
+                _callConnectedAt != null) ...[
+              CallTimerWidget(
+                startTime: _callConnectedAt!,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 16,
+                ),
+              ),
+            ] else ...[
+              _buildStatusDots(),
+            ],
+            const Spacer(),
+            _buildControlBar(),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  //  SHARED CONTROL BAR
+  // ─────────────────────────────────────────────────────────────────
+
+  Widget _buildControlBar() {
+    return ListenableBuilder(
+      listenable: _rtcManager,
+      builder: (_, __) => CallControlBar(
+        isVideoCall: widget.call.isVideoCall,
+        isMuted: _rtcManager.isMuted,
+        isCameraOff: _rtcManager.isCameraOff,
+        isSpeakerOn: _rtcManager.isSpeakerOn,
+        isFrontCamera: _rtcManager.isFrontCamera,
+        onMuteTap: _rtcManager.toggleMute,
+        onCameraTap: widget.call.isVideoCall ? _rtcManager.toggleCamera : null,
+        onSpeakerTap: _rtcManager.toggleSpeaker,
+        onSwitchCameraTap:
+            widget.call.isVideoCall ? _rtcManager.switchCamera : null,
+        onEndCall: _endCall,
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  //  HELPERS
+  // ─────────────────────────────────────────────────────────────────
+
+  Widget _buildAvatar(String url, String name, {double size = 90}) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white.withOpacity(0.8), width: 2.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 16,
+          ),
+        ],
+      ),
+      child: ClipOval(
+        child: url.isNotEmpty
+            ? Image.network(
+                url,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _defaultAvatar(name, size),
+              )
+            : _defaultAvatar(name, size),
+      ),
+    );
+  }
+
+  Widget _defaultAvatar(String name, double size) {
+    return Container(
+      color: Colors.blueGrey[700],
+      child: Center(
+        child: Text(
+          name.isNotEmpty ? name[0].toUpperCase() : '?',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: size * 0.38,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusDots() {
+    return _StatusDotsWidget(label: _statusLabel());
+  }
+
+  String _statusLabel() {
+    switch (_callStatus) {
+      case CallStatus.calling:
+        return widget.isOutgoing ? 'Calling…' : 'Incoming call…';
+      case CallStatus.ringing:
+        return 'Ringing…';
+      case CallStatus.connected:
+        return 'Connected';
+      case CallStatus.ended:
+        return 'Call ended';
+      case CallStatus.declined:
+        return 'Call declined';
+      case CallStatus.missed:
+        return 'Missed call';
+      case CallStatus.failed:
+        return 'Call failed';
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Animated waiting dots
+// ─────────────────────────────────────────────────────────────────
+
+class _StatusDotsWidget extends StatefulWidget {
+  final String label;
+  const _StatusDotsWidget({required this.label});
+
+  @override
+  State<_StatusDotsWidget> createState() => _StatusDotsWidgetState();
+}
+
+class _StatusDotsWidgetState extends State<_StatusDotsWidget>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  int _dotCount = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this);
+    _timer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (mounted) setState(() => _dotCount = (_dotCount + 1) % 4);
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      '${widget.label}${'.' * _dotCount}',
+      style: TextStyle(
+        color: Colors.white.withOpacity(0.75),
+        fontSize: 16,
+        letterSpacing: 1,
+      ),
+    );
+  }
+}
