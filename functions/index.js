@@ -1,5 +1,3 @@
-// functions/index.js - COMPLETE CLOUD FUNCTIONS
-
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 admin.initializeApp();
@@ -289,6 +287,57 @@ exports.cleanupOldDeletedMessages = functions.pubsub
 
     } catch (error) {
       console.error('❌ Error cleaning old messages:', error);
+      return null;
+    }
+  });
+
+// =====================================================
+// 7. AUTO-DELETE EXPIRED STORIES (Runs every hour)
+// =====================================================
+exports.cleanupExpiredStories = functions.pubsub
+  .schedule('every 1 hours')
+  .onRun(async (context) => {
+    console.log('🧹 Starting story cleanup...');
+
+    try {
+      const db = admin.firestore();
+      const now = Date.now().toString();
+
+      const expiredStories = await db
+        .collection('stories')
+        .where('expiresAt', '<=', now)
+        .where('isDeleted', '==', false)
+        .get();
+
+      if (expiredStories.empty) {
+        console.log('No expired stories to clean');
+        return null;
+      }
+
+      // Batch update in chunks of 500
+      const docs = expiredStories.docs;
+      let totalUpdated = 0;
+
+      for (let i = 0; i < docs.length; i += 500) {
+        const batch = db.batch();
+        const chunk = docs.slice(i, i + 500);
+
+        chunk.forEach(doc => {
+          batch.update(doc.ref, {
+            isDeleted: true,
+            deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        });
+
+        await batch.commit();
+        totalUpdated += chunk.length;
+      }
+
+      console.log(`✅ Cleaned ${totalUpdated} expired stories`);
+      return null;
+
+    } catch (error) {
+      console.error('❌ Error cleaning expired stories:', error);
       return null;
     }
   });

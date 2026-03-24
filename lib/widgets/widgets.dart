@@ -22,6 +22,7 @@ export 'reaction_picker.dart';
 export 'read_receipt_widget.dart';
 export 'schedule_message_dialog.dart';
 export 'smart_reply.dart';
+export 'story_ring.dart';
 export 'translation_dialog.dart';
 export 'typing_indicator.dart';
 export 'user_status_indicator.dart';

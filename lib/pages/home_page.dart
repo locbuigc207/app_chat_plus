@@ -39,6 +39,10 @@ class HomePageState extends State<HomePage> {
   late final FriendProvider _friendProvider;
   late final ConversationProvider _conversationProvider;
 
+  // Story-related state
+  List<String> _myFriendIds = [];
+  StreamSubscription<QuerySnapshot>? _friendIdsSubscription;
+
   final _searchDebouncer = Debouncer(milliseconds: 300);
   final _btnClearController = StreamController<bool>();
   final _searchBarController = TextEditingController();
@@ -68,6 +72,7 @@ class HomePageState extends State<HomePage> {
 
     _menus = [
       const MenuSetting(title: 'Friends', icon: Icons.people),
+      const MenuSetting(title: 'My Status', icon: Icons.auto_stories), // STEP 6
       const MenuSetting(title: 'Settings', icon: Icons.settings),
       const MenuSetting(title: 'Theme', icon: Icons.palette),
       const MenuSetting(title: 'My QR Code', icon: Icons.qr_code),
@@ -78,6 +83,43 @@ class HomePageState extends State<HomePage> {
     _registerNotification();
     _configLocalNotification();
     _listScrollController.addListener(_scrollListener);
+    _listenToFriendIds(); // Start listening for friend IDs for Stories
+  }
+
+  // ─── STEP 5: Listen to friend IDs for stories stream ───────────────────────
+  void _listenToFriendIds() {
+    // Friendships store the pair as userId1 / userId2 — query both directions
+    final fs = _homeProvider.firebaseFirestore
+        .collection(FirestoreConstants.pathFriendshipCollection);
+
+    final asUser1 = fs
+        .where(FirestoreConstants.userId1, isEqualTo: _currentUserId)
+        .snapshots();
+    final asUser2 = fs
+        .where(FirestoreConstants.userId2, isEqualTo: _currentUserId)
+        .snapshots();
+
+    _friendIdsSubscription = asUser1.listen((snap1) {
+      final ids1 = snap1.docs
+          .map((d) => d[FirestoreConstants.userId2] as String)
+          .toList();
+
+      // Also pull the second direction once and merge
+      _homeProvider.firebaseFirestore
+          .collection(FirestoreConstants.pathFriendshipCollection)
+          .where(FirestoreConstants.userId2, isEqualTo: _currentUserId)
+          .get()
+          .then((snap2) {
+        final ids2 = snap2.docs
+            .map((d) => d[FirestoreConstants.userId1] as String)
+            .toList();
+        if (mounted) {
+          setState(() {
+            _myFriendIds = {...ids1, ...ids2}.toList();
+          });
+        }
+      });
+    });
   }
 
   void _registerNotification() {
@@ -145,6 +187,7 @@ class HomePageState extends State<HomePage> {
   }
 
   void _onItemMenuPress(MenuSetting choice) {
+    final prefs = _authProvider.prefs; // convenience alias
     switch (choice.title) {
       case 'Log out':
         _handleSignOut();
@@ -174,6 +217,19 @@ class HomePageState extends State<HomePage> {
                 builder: (_) => CallHistoryPage(
                       currentUserId: _currentUserId,
                     )));
+        break;
+      // ─── STEP 6: My Status menu item ──────────────────────────────────────
+      case 'My Status':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => MyStoriesPage(
+              userId: _currentUserId,
+              userName: prefs.getString(FirestoreConstants.nickname) ?? '',
+              userPhotoUrl: prefs.getString(FirestoreConstants.photoUrl) ?? '',
+            ),
+          ),
+        );
         break;
       default:
         Navigator.push(
@@ -217,6 +273,62 @@ class HomePageState extends State<HomePage> {
       }
     }
   }
+
+  // ─── STEP 5: Stories section ────────────────────────────────────────────────
+  Widget _buildStoriesSection() {
+    final provider = context.read<StoryProvider>();
+    return StreamBuilder<List<UserStories>>(
+      stream: provider.getStoriesStream(
+        currentUserId: _currentUserId,
+        friendIds: _myFriendIds,
+      ),
+      builder: (context, snapshot) {
+        final stories = snapshot.data ?? [];
+        return StoriesBar(
+          storiesList: stories,
+          currentUserId: _currentUserId,
+          onAddStory: _openStoryCreator,
+          onViewStories: (userStories, index) {
+            final allOthers =
+                stories.where((s) => s.userId != _currentUserId).toList();
+            final userIndex =
+                allOthers.indexWhere((s) => s.userId == userStories.userId);
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => StoryViewerPage(
+                  allUserStories: allOthers,
+                  initialUserIndex: userIndex < 0 ? 0 : userIndex,
+                  currentUserId: _currentUserId,
+                  currentUserName: _authProvider.prefs
+                          .getString(FirestoreConstants.nickname) ??
+                      '',
+                  currentUserPhotoUrl: _authProvider.prefs
+                          .getString(FirestoreConstants.photoUrl) ??
+                      '',
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _openStoryCreator() {
+    final prefs = _authProvider.prefs;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => StoryCreatorPage(
+          userId: _currentUserId,
+          userName: prefs.getString(FirestoreConstants.nickname) ?? '',
+          userPhotoUrl: prefs.getString(FirestoreConstants.photoUrl) ?? '',
+        ),
+      ),
+    );
+  }
+  // ─── End STEP 5 ─────────────────────────────────────────────────────────────
 
   // 🎯 NEW: Smart Search Bar with auto-detection
   Widget _buildSmartSearchBar() {
@@ -921,7 +1033,10 @@ class HomePageState extends State<HomePage> {
             Column(
               children: [
                 _buildSmartSearchBar(),
-                if (_textSearch.isEmpty) _buildOnlineFriendsSection(),
+                if (_textSearch.isEmpty) ...[
+                  _buildStoriesSection(), // STEP 5: Stories bar
+                  _buildOnlineFriendsSection(), // existing online friends
+                ],
                 Expanded(
                   child: _textSearch.isEmpty
                       ? StreamBuilder<List<QueryDocumentSnapshot>>(
@@ -992,6 +1107,7 @@ class HomePageState extends State<HomePage> {
   void dispose() {
     _conversationsSubscription?.cancel();
     _friendRequestsSubscription?.cancel();
+    _friendIdsSubscription?.cancel(); // STEP 5: cancel friend IDs listener
     _btnClearController.close();
     _searchBarController.dispose();
     _listScrollController

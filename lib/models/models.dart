@@ -6,4 +6,5 @@ export 'group.dart';
 export 'menu_setting.dart';
 export 'message_chat.dart';
 export 'message_reaction.dart';
+export 'story_model.dart';
 export 'user_chat.dart';
