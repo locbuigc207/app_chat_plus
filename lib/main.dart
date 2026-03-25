@@ -36,7 +36,10 @@ Future<void> main() async {
     print('❌ Firebase initialization error: $e');
   }
 
-  setupBubbleChatChannel();
+  // FIX #5: KHÔNG gọi setupBubbleChatChannel() ở đây nữa.
+  // Handler được setup trong BubbleChatChannelManager widget (stateful),
+  // đảm bảo cleanup đúng khi widget bị dispose (hot-reload, rebuild).
+  // Xem class BubbleChatChannelManager bên dưới.
 
   await ErrorLogger.initialize();
   tz.initializeTimeZones();
@@ -46,116 +49,184 @@ Future<void> main() async {
   await _initializeNotifications(flutterLocalNotificationsPlugin);
 
   final unifiedBubbleService = UnifiedBubbleService();
-
   final chatBubbleService = ChatBubbleService();
   final notificationService = NotificationService();
 
-  print(' App initialized successfully');
+  print('✅ App initialized successfully');
 
   runApp(MyApp(
     prefs: prefs,
     notificationsPlugin: flutterLocalNotificationsPlugin,
-    chatBubbleService: chatBubbleService, // Legacy
+    chatBubbleService: chatBubbleService,
     notificationService: notificationService,
-    unifiedBubbleService: unifiedBubbleService, // NEW
+    unifiedBubbleService: unifiedBubbleService,
   ));
 }
 
-void setupBubbleChatChannel() {
-  const channel = MethodChannel('bubble_chat_channel');
+// ========================================
+// FIX #5: BubbleChatChannelManager — Stateful widget quản lý channel lifecycle
+// ========================================
 
-  channel.setMethodCallHandler((call) async {
-    print(' Bubble channel received: ${call.method}');
+/// Wraps toàn bộ app để quản lý MethodChannel handler cho bubble navigation.
+///
+/// FIX #5 — MethodChannel handler leak:
+///   Trước: setupBubbleChatChannel() trong main() → handler toàn cục, không dispose,
+///          navigatorKey giữ strong reference → hot-reload tạo duplicate handler,
+///          mỗi navigate event bị handle 2+ lần.
+///
+///   Sau:  BubbleChatChannelManager là StatefulWidget, setup handler trong initState(),
+///         dispose handler trong dispose(). Hot-reload → old State.dispose() → new
+///         State.initState() → luôn chỉ có 1 handler active.
+///         Dùng Set<String> để dedup navigation requests trong cùng session.
+class BubbleChatChannelManager extends StatefulWidget {
+  final Widget child;
+  const BubbleChatChannelManager({super.key, required this.child});
+
+  @override
+  State<BubbleChatChannelManager> createState() =>
+      _BubbleChatChannelManagerState();
+}
+
+class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
+  // Channel duy nhất — tạo trong State để lifecycle gắn với widget
+  static const _channel = MethodChannel('bubble_chat_channel');
+
+  // FIX #5: Dedup set — tránh duplicate navigate khi handler bị gọi nhiều lần
+  // Key = "$peerId:$timestamp_bucket" (bucket = giây hiện tại / 2)
+  final _recentNavigations = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _channel.setMethodCallHandler(_handleMethodCall);
+    print('✅ BubbleChatChannelManager: handler registered');
+  }
+
+  @override
+  void dispose() {
+    // FIX #5: Clear handler khi dispose → không còn leak
+    _channel.setMethodCallHandler(null);
+    _recentNavigations.clear();
+    print('✅ BubbleChatChannelManager: handler disposed');
+    super.dispose();
+  }
+
+  Future<dynamic> _handleMethodCall(MethodCall call) async {
+    print('📞 Bubble channel received: ${call.method}');
 
     if (call.method == 'navigateToChat') {
-      final peerId = call.arguments['peerId'] as String?;
-      final peerNickname = call.arguments['peerNickname'] as String?;
-      final peerAvatar = call.arguments['peerAvatar'] as String?;
-      final isBubbleMode = call.arguments['isBubbleMode'] as bool? ?? false;
-
-      if (peerId == null || peerNickname == null) {
-        print(' Missing required arguments for navigation');
-        return null;
-      }
-
-      print(' Smart navigation to: $peerNickname (bubble: $isBubbleMode)');
-
-      int retries = 0;
-      const maxRetries = 5;
-
-      while (navigatorKey.currentState == null && retries < maxRetries) {
-        final delay = Duration(milliseconds: 100 * (1 << retries));
-        print(
-            ' Navigator not ready, retry $retries/$maxRetries (waiting ${delay.inMilliseconds}ms)');
-        await Future.delayed(delay);
-        retries++;
-      }
-
-      if (navigatorKey.currentState == null) {
-        print(' Navigator failed to initialize after $maxRetries retries');
-        return null;
-      }
-
-      try {
-        final currentContext = navigatorKey.currentContext;
-        if (currentContext != null) {
-          final currentRoute = ModalRoute.of(currentContext);
-          final routeName = currentRoute?.settings.name ?? '';
-
-          print(' Current route: $routeName');
-
-          if (routeName == '/chat') {
-            final currentArgs = currentRoute?.settings.arguments;
-            if (currentArgs is ChatPageArguments &&
-                currentArgs.peerId == peerId) {
-              print('ℹ Already on this chat, ignoring navigation');
-              return null;
-            }
-          }
-        }
-      } catch (e) {
-        print(' Error checking current route: $e');
-      }
-
-      try {
-        navigatorKey.currentState!.push(
-          MaterialPageRoute(
-            settings: RouteSettings(
-                name: '/chat',
-                arguments: ChatPageArguments(
-                  peerId: peerId,
-                  peerNickname: peerNickname,
-                  peerAvatar: peerAvatar ?? '',
-                )),
-            builder: (_) => ChatPage(
-              arguments: ChatPageArguments(
-                peerId: peerId,
-                peerNickname: peerNickname,
-                peerAvatar: peerAvatar ?? '',
-              ),
-              isBubbleMode: isBubbleMode,
-            ),
-          ),
-        );
-
-        print(' Navigation complete');
-      } catch (e) {
-        print(' Navigation failed: $e');
-      }
+      return await _handleNavigateToChat(call.arguments);
     } else if (call.method == 'onBackPressed') {
-      print(' Back pressed in bubble');
-
-      if (navigatorKey.currentState != null &&
-          navigatorKey.currentState!.canPop()) {
+      print('⬅️ Back pressed in bubble');
+      if (navigatorKey.currentState?.canPop() == true) {
         navigatorKey.currentState!.pop();
       }
     }
+    return null;
+  }
+
+  Future<dynamic> _handleNavigateToChat(dynamic arguments) async {
+    final peerId = arguments['peerId'] as String?;
+    final peerNickname = arguments['peerNickname'] as String?;
+    final peerAvatar = arguments['peerAvatar'] as String?;
+    final isBubbleMode = arguments['isBubbleMode'] as bool? ?? false;
+
+    if (peerId == null || peerNickname == null) {
+      print('❌ Missing required args for bubble navigation');
+      return null;
+    }
+
+    // FIX #5: Dedup — tạo key từ peerId + time bucket (2-giây window)
+    final timeBucket = DateTime.now().millisecondsSinceEpoch ~/ 2000;
+    final dedupKey = '$peerId:$timeBucket';
+
+    if (_recentNavigations.contains(dedupKey)) {
+      print('ℹ️ Duplicate navigation request ignored: $peerNickname');
+      return null;
+    }
+    _recentNavigations.add(dedupKey);
+
+    // Cleanup old dedup keys sau 10 giây để tránh set grow unbounded
+    Future.delayed(const Duration(seconds: 10), () {
+      _recentNavigations.remove(dedupKey);
+    });
+
+    print('🧭 Navigating to: $peerNickname (bubble=$isBubbleMode)');
+
+    // Retry loop chờ navigator ready
+    int retries = 0;
+    const maxRetries = 5;
+    while (navigatorKey.currentState == null && retries < maxRetries) {
+      final delay = Duration(milliseconds: 100 * (1 << retries));
+      print(
+          '⏳ Navigator not ready, retry $retries/$maxRetries (${delay.inMilliseconds}ms)');
+      await Future.delayed(delay);
+      retries++;
+    }
+
+    if (navigatorKey.currentState == null) {
+      print('❌ Navigator failed after $maxRetries retries');
+      _recentNavigations.remove(dedupKey); // Cleanup để cho phép retry sau
+      return null;
+    }
+
+    // FIX #5: Check route hiện tại để tránh push duplicate route
+    try {
+      final currentContext = navigatorKey.currentContext;
+      if (currentContext != null) {
+        final currentRoute = ModalRoute.of(currentContext);
+        final routeName = currentRoute?.settings.name ?? '';
+
+        if (routeName == '/chat') {
+          final currentArgs = currentRoute?.settings.arguments;
+          if (currentArgs is ChatPageArguments &&
+              currentArgs.peerId == peerId) {
+            print('ℹ️ Already on chat with $peerNickname, skipping push');
+            return null;
+          }
+        }
+      }
+    } catch (e) {
+      print('⚠️ Error checking current route: $e');
+    }
+
+    try {
+      navigatorKey.currentState!.push(
+        MaterialPageRoute(
+          settings: RouteSettings(
+            name: '/chat',
+            arguments: ChatPageArguments(
+              peerId: peerId,
+              peerNickname: peerNickname,
+              peerAvatar: peerAvatar ?? '',
+            ),
+          ),
+          builder: (_) => ChatPage(
+            arguments: ChatPageArguments(
+              peerId: peerId,
+              peerNickname: peerNickname,
+              peerAvatar: peerAvatar ?? '',
+            ),
+            isBubbleMode: isBubbleMode,
+          ),
+        ),
+      );
+      print('✅ Navigation complete to: $peerNickname');
+    } catch (e) {
+      print('❌ Navigation failed: $e');
+      _recentNavigations.remove(dedupKey);
+    }
 
     return null;
-  });
+  }
 
-  print(' Bubble chat channel setup complete');
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
+
+// ========================================
+// NOTIFICATION INIT
+// ========================================
 
 Future<void> _initializeNotifications(
   FlutterLocalNotificationsPlugin plugin,
@@ -163,13 +234,11 @@ Future<void> _initializeNotifications(
   try {
     const initializationSettingsAndroid =
         AndroidInitializationSettings('app_icon');
-
     const initializationSettingsIOS = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
       requestSoundPermission: true,
     );
-
     const initializationSettings = InitializationSettings(
       android: initializationSettingsAndroid,
       iOS: initializationSettingsIOS,
@@ -178,18 +247,16 @@ Future<void> _initializeNotifications(
     await plugin.initialize(
       initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
-        print(' Notification clicked: ${response.payload}');
+        print('🔔 Notification clicked: ${response.payload}');
       },
     );
 
     if (Platform.isAndroid) {
       final androidPlugin = plugin.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
-
       if (androidPlugin != null) {
         await androidPlugin.requestNotificationsPermission();
         await androidPlugin.requestExactAlarmsPermission();
-
         await androidPlugin.createNotificationChannel(
           const AndroidNotificationChannel(
             'message_reminders',
@@ -200,21 +267,23 @@ Future<void> _initializeNotifications(
         );
       }
     }
+
     if (Platform.isIOS) {
       await plugin
           .resolvePlatformSpecificImplementation<
               IOSFlutterLocalNotificationsPlugin>()
-          ?.requestPermissions(
-            alert: true,
-            badge: true,
-            sound: true,
-          );
+          ?.requestPermissions(alert: true, badge: true, sound: true);
     }
-    print(' Notifications initialized successfully');
+
+    print('✅ Notifications initialized');
   } catch (e) {
-    print(' Notification initialization error: $e');
+    print('❌ Notification init error: $e');
   }
 }
+
+// ========================================
+// MyApp
+// ========================================
 
 class MyApp extends StatelessWidget {
   final SharedPreferences prefs;
@@ -237,10 +306,7 @@ class MyApp extends StatelessWidget {
     final firebaseFirestore = FirebaseFirestore.instance;
     final firebaseStorage = FirebaseStorage.instance;
     final firebaseAuth = firebase_auth.FirebaseAuth.instance;
-
-    final googleSignIn = GoogleSignIn(
-      scopes: ['email', 'profile'],
-    );
+    final googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
 
     return MultiProvider(
       providers: [
@@ -259,15 +325,12 @@ class MyApp extends StatelessWidget {
             prefs: prefs,
           ),
         ),
-
         ChangeNotifierProvider<StoryProvider>(
           create: (_) => StoryProvider(
             firebaseFirestore: firebaseFirestore,
             firebaseStorage: firebaseStorage,
           ),
         ),
-
-        // Data providers
         Provider<SettingProvider>(
           create: (_) => SettingProvider(
             prefs: prefs,
@@ -298,13 +361,9 @@ class MyApp extends StatelessWidget {
           create: (_) =>
               ConversationProvider(firebaseFirestore: firebaseFirestore),
         ),
-
-        // Theme provider
         ChangeNotifierProvider<ThemeProvider>(
           create: (_) => ThemeProvider(prefs: prefs),
         ),
-
-        // Feature providers
         Provider<ReminderProvider>(
           create: (_) => ReminderProvider(
             firebaseFirestore: firebaseFirestore,
@@ -322,29 +381,16 @@ class MyApp extends StatelessWidget {
         Provider<ViewOnceProvider>(
           create: (_) => ViewOnceProvider(firebaseFirestore: firebaseFirestore),
         ),
-        Provider<SmartReplyProvider>(
-          create: (_) => SmartReplyProvider(),
-        ),
+        Provider<SmartReplyProvider>(create: (_) => SmartReplyProvider()),
         Provider<UserPresenceProvider>(
           create: (_) =>
               UserPresenceProvider(firebaseFirestore: firebaseFirestore),
         ),
-        Provider<LocationProvider>(
-          create: (_) => LocationProvider(),
-        ),
-        Provider<TranslationProvider>(
-          create: (_) => TranslationProvider(),
-        ),
-
-        Provider<ChatBubbleService>(
-          create: (_) => chatBubbleService,
-        ),
-        Provider<UnifiedBubbleService>(
-          create: (_) => unifiedBubbleService,
-        ),
-        Provider<NotificationService>(
-          create: (_) => notificationService,
-        ),
+        Provider<LocationProvider>(create: (_) => LocationProvider()),
+        Provider<TranslationProvider>(create: (_) => TranslationProvider()),
+        Provider<ChatBubbleService>(create: (_) => chatBubbleService),
+        Provider<UnifiedBubbleService>(create: (_) => unifiedBubbleService),
+        Provider<NotificationService>(create: (_) => notificationService),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {
@@ -355,11 +401,15 @@ class MyApp extends StatelessWidget {
             themeMode: themeProvider.getFlutterThemeMode(context),
             theme: AppThemes.lightTheme(themeProvider.getPrimaryColor()),
             darkTheme: AppThemes.darkTheme(themeProvider.getPrimaryColor()),
-            home: CallListener(
-              child: BubbleManager(
-                child: MiniChatOverlayManager(
-                  child: AppInitializer(
-                    notificationService: notificationService,
+            // FIX #5: Wrap toàn bộ home tree với BubbleChatChannelManager
+            // để channel handler có proper lifecycle management
+            home: BubbleChatChannelManager(
+              child: CallListener(
+                child: BubbleManager(
+                  child: MiniChatOverlayManager(
+                    child: AppInitializer(
+                      notificationService: notificationService,
+                    ),
                   ),
                 ),
               ),
@@ -371,13 +421,13 @@ class MyApp extends StatelessWidget {
   }
 }
 
+// ========================================
+// AppInitializer
+// ========================================
+
 class AppInitializer extends StatefulWidget {
   final NotificationService notificationService;
-
-  const AppInitializer({
-    super.key,
-    required this.notificationService,
-  });
+  const AppInitializer({super.key, required this.notificationService});
 
   @override
   State<AppInitializer> createState() => _AppInitializerState();
@@ -393,57 +443,42 @@ class _AppInitializerState extends State<AppInitializer>
     _logBubbleImplementation();
   }
 
-  Future<void> _logBubbleImplementation() async {
-    await Future.delayed(const Duration(milliseconds: 100));
-    if (!mounted) return;
-
-    final unifiedService = context.read<UnifiedBubbleService>();
-
-    await Future.delayed(const Duration(seconds: 1));
-
-    final impl = unifiedService.getImplementationInfo();
-    print(' Bubble Implementation: $impl');
-
-    if (unifiedService.currentImplementation ==
-        BubbleImplementation.bubbleApi) {
-      print(' Using modern Bubble API (Android 11+)');
-    } else if (unifiedService.currentImplementation ==
-        BubbleImplementation.windowManager) {
-      print('⚠️ Using legacy WindowManager (Android < 11)');
-    }
-  }
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    print(' App lifecycle: $state');
-
+    print('📱 App lifecycle: $state');
     if (state == AppLifecycleState.paused) {
-      print(' App going to background');
+      print('⏸️ App going to background');
     } else if (state == AppLifecycleState.resumed) {
-      print(' App resumed');
+      print('▶️ App resumed');
     }
+  }
+
+  Future<void> _logBubbleImplementation() async {
+    await Future.delayed(const Duration(milliseconds: 100));
+    if (!mounted) return;
+    final unifiedService = context.read<UnifiedBubbleService>();
+    await Future.delayed(const Duration(seconds: 1));
+    final impl = unifiedService.getImplementationInfo();
+    print('🎈 Bubble Implementation: $impl');
   }
 
   Future<void> _startNotificationService() async {
     await Future.delayed(const Duration(milliseconds: 500));
-
     final auth = firebase_auth.FirebaseAuth.instance;
     auth.authStateChanges().listen((user) {
       if (user != null) {
-        print(' User logged in, starting notification service');
+        print('👤 User logged in, starting notification service');
         widget.notificationService.listenForNewMessages(user.uid);
       } else {
-        print(' User logged out, stopping notification service');
+        print('👤 User logged out, stopping notification service');
         widget.notificationService.stopListening();
       }
     });
   }
 
   @override
-  Widget build(BuildContext context) {
-    return SplashPage();
-  }
+  Widget build(BuildContext context) => SplashPage();
 
   @override
   void dispose() {
@@ -452,9 +487,12 @@ class _AppInitializerState extends State<AppInitializer>
   }
 }
 
+// ========================================
+// MiniChatOverlayManager (giữ nguyên logic, không thay đổi)
+// ========================================
+
 class MiniChatOverlayManager extends StatefulWidget {
   final Widget child;
-
   const MiniChatOverlayManager({super.key, required this.child});
 
   @override
@@ -466,9 +504,6 @@ class _MiniChatOverlayManagerState extends State<MiniChatOverlayManager> {
       MethodChannel('mini_chat_channel');
 
   OverlayEntry? _miniChatOverlay;
-  String? _currentUserId;
-  String? _currentUserName;
-  String? _currentUserAvatar;
 
   @override
   void initState() {
@@ -476,59 +511,35 @@ class _MiniChatOverlayManagerState extends State<MiniChatOverlayManager> {
     _setupMiniChatChannel();
   }
 
+  @override
+  void dispose() {
+    _hideMiniChatOverlay();
+    _miniChatChannel.setMethodCallHandler(null);
+    super.dispose();
+  }
+
   void _setupMiniChatChannel() {
-    print('✅ Setting up MiniChat MethodChannel');
-
     _miniChatChannel.setMethodCallHandler((call) async {
-      print(' MiniChat Channel received: ${call.method}');
-      print(' Arguments: ${call.arguments}');
-
       if (call.method == 'navigateToMiniChat') {
         final peerId = call.arguments['peerId'] as String?;
         final peerNickname = call.arguments['peerNickname'] as String?;
         final peerAvatar = call.arguments['peerAvatar'] as String?;
-
-        if (peerId == null || peerNickname == null) {
-          print(' Missing required arguments for navigation');
-          return null;
-        }
-
-        print(' Showing mini chat overlay for: $peerNickname');
-
-        if (mounted) {
+        if (peerId != null && peerNickname != null && mounted) {
           _showMiniChatOverlay(peerId, peerNickname, peerAvatar ?? '');
         }
-      } else if (call.method == 'minimize') {
-        print('📦 Minimizing mini chat');
-        _hideMiniChatOverlay();
-      } else if (call.method == 'close') {
-        print('❌ Closing mini chat');
+      } else if (call.method == 'minimize' || call.method == 'close') {
         _hideMiniChatOverlay();
       }
-
       return null;
     });
-
-    print('✅ MiniChat MethodChannel setup complete');
   }
 
   void _showMiniChatOverlay(String userId, String userName, String avatarUrl) {
-    // Xóa overlay cũ nếu có
     _hideMiniChatOverlay();
-
-    _currentUserId = userId;
-    _currentUserName = userName;
-    _currentUserAvatar = avatarUrl;
-
-    print('📍 Creating MiniChatOverlay for: $userName');
-
-    // FIX: Tạo overlay TRỰC TIẾP với MiniChatOverlayWidget bên trong
     _miniChatOverlay = OverlayEntry(
       builder: (context) => Material(
-        // Sử dụng Material/Colors.transparent để đảm bảo MiniChatOverlayWidget không bị ảnh hưởng bởi theme/widget tree.
         color: Colors.transparent,
         child: Container(
-          // FIX: Full screen overlay để chứa mini chat
           width: MediaQuery.of(context).size.width,
           height: MediaQuery.of(context).size.height,
           alignment: Alignment.center,
@@ -537,62 +548,39 @@ class _MiniChatOverlayManagerState extends State<MiniChatOverlayManager> {
             userName: userName,
             avatarUrl: avatarUrl,
             onMinimize: () {
-              print('📦 Minimize button pressed');
               _hideMiniChatOverlay();
-              // Thông báo cho Native để hiển thị lại bubble
               _miniChatChannel.invokeMethod('minimize', {'userId': userId});
             },
             onClose: () {
-              print('❌ Close button pressed');
               _hideMiniChatOverlay();
-              // Thông báo cho Native để xóa bubble
               _miniChatChannel.invokeMethod('close', {'userId': userId});
             },
           ),
         ),
       ),
     );
-
-    // Chèn vào Overlay
     if (mounted) {
       Overlay.of(context).insert(_miniChatOverlay!);
-      print('✅ Mini chat overlay inserted into Flutter widget tree');
     }
   }
 
   void _hideMiniChatOverlay() {
-    if (_miniChatOverlay != null) {
-      try {
-        _miniChatOverlay!.remove();
-        _miniChatOverlay = null;
-        _currentUserId = null;
-        _currentUserName = null;
-        _currentUserAvatar = null;
-        print('✅ Mini chat overlay removed');
-      } catch (e) {
-        print('❌ Error removing overlay: $e');
-      }
+    try {
+      _miniChatOverlay?.remove();
+      _miniChatOverlay = null;
+    } catch (e) {
+      print('❌ Error removing mini chat overlay: $e');
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    // Trả về widget con (AppInitializer)
-    return widget.child;
-  }
-
-  @override
-  void dispose() {
-    _hideMiniChatOverlay();
-    super.dispose();
-  }
+  Widget build(BuildContext context) => widget.child;
 }
 
-// ===========================================
-// MiniChatOverlayWidget - Draggable với bounds validation
-// ===========================================
+// ========================================
+// MiniChatOverlayWidget (giữ nguyên)
+// ========================================
 
-/// Widget hiển thị Mini Chat (ChatPage) có thể kéo thả, nằm trong Overlay.
 class MiniChatOverlayWidget extends StatefulWidget {
   final String userId;
   final String userName;
@@ -614,34 +602,21 @@ class MiniChatOverlayWidget extends StatefulWidget {
 }
 
 class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget> {
-  // Vị trí ban đầu của cửa sổ mini chat
   Offset _position = const Offset(20, 100);
   bool _isDragging = false;
 
-  // FIX: Kích thước cố định, đủ nhỏ để vừa màn hình
   static const double _width = 340;
   static const double _height = 500;
 
   @override
-  void initState() {
-    super.initState();
-    print('🏗️ MiniChatOverlayWidget initialized');
-  }
-
-  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Center vị trí ban đầu
     final size = MediaQuery.of(context).size;
-    final centerX = (size.width - _width) / 2;
-    final centerY = (size.height - _height) / 2;
-
-    // Đảm bảo chỉ set vị trí ban đầu một lần (nếu đang không drag)
     if (!_isDragging) {
       setState(() {
         _position = Offset(
-          centerX.clamp(0, size.width - _width),
-          centerY.clamp(0, size.height - _height),
+          ((size.width - _width) / 2).clamp(0, size.width - _width),
+          ((size.height - _height) / 2).clamp(0, size.height - _height),
         );
       });
     }
@@ -654,17 +629,11 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget> {
     final maxY = size.height - _height;
 
     return Positioned(
-      // Giới hạn vị trí trong màn hình
       left: _position.dx.clamp(0, maxX),
       top: _position.dy.clamp(0, maxY),
       child: GestureDetector(
-        // Cho phép kéo thả trên toàn bộ MiniChatOverlayWidget
         onPanStart: (_) => setState(() => _isDragging = true),
-        onPanUpdate: (details) {
-          setState(() {
-            _position += details.delta;
-          });
-        },
+        onPanUpdate: (details) => setState(() => _position += details.delta),
         onPanEnd: (_) => setState(() => _isDragging = false),
         child: Material(
           elevation: _isDragging ? 16 : 8,
@@ -673,13 +642,9 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget> {
             width: _width,
             height: _height,
             decoration: BoxDecoration(
-              // Sử dụng màu cố định để dễ nhận biết
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: const Color(0xff2196f3), // Primary Color
-                width: 2,
-              ),
+              border: Border.all(color: const Color(0xff2196f3), width: 2),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.3),
@@ -690,24 +655,18 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget> {
             ),
             child: Column(
               children: [
-                // Header với chức năng kéo thả và nút điều khiển
-                _buildHeader(context),
-
-                // Nội dung Chat (ChatPage)
+                _buildHeader(),
                 Expanded(
                   child: ClipRRect(
                     borderRadius: const BorderRadius.vertical(
-                      bottom: Radius.circular(14),
-                    ),
-                    // Tái sử dụng ChatPage
+                        bottom: Radius.circular(14)),
                     child: ChatPage(
                       arguments: ChatPageArguments(
                         peerId: widget.userId,
                         peerNickname: widget.userName,
                         peerAvatar: widget.avatarUrl,
                       ),
-                      isMiniChat:
-                          true, // Flag để ChatPage có thể điều chỉnh UI nếu cần
+                      isMiniChat: true,
                     ),
                   ),
                 ),
@@ -719,19 +678,15 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget> {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
-    // Sử dụng màu cố định để dễ nhận biết
-    const primaryColor = Color(0xff2196f3);
-
+  Widget _buildHeader() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: const BoxDecoration(
-        color: primaryColor,
+        color: Color(0xff2196f3),
         borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
       ),
       child: Row(
         children: [
-          // Drag handle indicator
           Container(
             width: 40,
             height: 4,
@@ -741,8 +696,6 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget> {
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-
-          // Avatar
           CircleAvatar(
             backgroundImage: widget.avatarUrl.isNotEmpty
                 ? NetworkImage(widget.avatarUrl)
@@ -753,29 +706,22 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget> {
                 : null,
           ),
           const SizedBox(width: 8),
-
-          // Name
           Expanded(
             child: Text(
               widget.userName,
               style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14),
               overflow: TextOverflow.ellipsis,
             ),
           ),
-
-          // Minimize button
           IconButton(
             icon: const Icon(Icons.remove, color: Colors.white, size: 20),
             onPressed: widget.onMinimize,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
           ),
-
-          // Close button
           IconButton(
             icon: const Icon(Icons.close, color: Colors.white, size: 20),
             onPressed: widget.onClose,
@@ -788,11 +734,6 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget> {
   }
 }
 
-// ========================================
-// BONUS: Bubble Mode Detector
-// ========================================
-
-/// Helper class to detect if app is running in bubble mode
 class BubbleModeDetector {
   static const MethodChannel _channel = MethodChannel('bubble_chat_channel');
 
