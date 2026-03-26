@@ -6,6 +6,8 @@ export 'enhanced_photo_viewer.dart';
 export 'friends_page.dart';
 export 'full_photo_page.dart';
 export 'group_chat_page.dart';
+export 'group_info_page.dart';
+export 'group_media_page.dart';
 export 'home_page.dart';
 export 'incoming_call_page.dart';
 export 'login_page.dart';
