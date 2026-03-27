@@ -1,10 +1,21 @@
+// lib/models/story_model.dart
+// ignore_for_file: depend_on_referenced_packages
+
 import 'dart:ui' show Color;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-enum StoryType { image, text, video }
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
 
-enum StoryPrivacy { everyone, friends, custom }
+enum StoryType { image, text }
+
+enum StoryPrivacy { everyone, friends }
+
+// ─────────────────────────────────────────────────────────────
+// STORY VIEW  (who viewed this story)
+// ─────────────────────────────────────────────────────────────
 
 class StoryView {
   final String userId;
@@ -20,21 +31,25 @@ class StoryView {
   });
 
   Map<String, dynamic> toJson() => {
-        'userId': userId,
-        'userName': userName,
-        'photoUrl': photoUrl,
-        'viewedAt': viewedAt.millisecondsSinceEpoch.toString(),
-      };
+    'userId': userId,
+    'userName': userName,
+    'photoUrl': photoUrl,
+    'viewedAt': viewedAt.millisecondsSinceEpoch.toString(),
+  };
 
   factory StoryView.fromJson(Map<String, dynamic> json) => StoryView(
-        userId: json['userId'] ?? '',
-        userName: json['userName'] ?? '',
-        photoUrl: json['photoUrl'] ?? '',
-        viewedAt: DateTime.fromMillisecondsSinceEpoch(
-          int.tryParse(json['viewedAt']?.toString() ?? '0') ?? 0,
-        ),
-      );
+    userId: json['userId']?.toString() ?? '',
+    userName: json['userName']?.toString() ?? '',
+    photoUrl: json['photoUrl']?.toString() ?? '',
+    viewedAt: DateTime.fromMillisecondsSinceEpoch(
+      int.tryParse(json['viewedAt']?.toString() ?? '0') ?? 0,
+    ),
+  );
 }
+
+// ─────────────────────────────────────────────────────────────
+// STORY
+// ─────────────────────────────────────────────────────────────
 
 class Story {
   final String id;
@@ -42,22 +57,18 @@ class Story {
   final String userName;
   final String userPhotoUrl;
   final StoryType type;
-  final String? mediaUrl; // For image/video stories
-  final String? textContent; // For text stories
+  final String? mediaUrl;
+  final String? textContent;
   final String? caption;
-  final Color? backgroundColor; // For text stories
-  final Color? textColor; // For text stories
+  final Color? backgroundColor;
+  final Color? textColor;
   final String? fontFamily;
   final double fontSize;
   final DateTime createdAt;
-  final DateTime expiresAt; // createdAt + 24h
+  final DateTime expiresAt;
   final List<StoryView> views;
   final StoryPrivacy privacy;
   final bool isDeleted;
-  final String? musicUrl;
-  final String? musicTitle;
-  final List<String>? stickers;
-  final Map<String, dynamic>? textAlignment;
 
   const Story({
     required this.id,
@@ -71,98 +82,103 @@ class Story {
     this.backgroundColor,
     this.textColor,
     this.fontFamily,
-    this.fontSize = 24.0,
+    this.fontSize = 28.0,
     required this.createdAt,
     required this.expiresAt,
     this.views = const [],
     this.privacy = StoryPrivacy.friends,
     this.isDeleted = false,
-    this.musicUrl,
-    this.musicTitle,
-    this.stickers,
-    this.textAlignment,
   });
 
+  // ── Computed properties ──────────────────────────────────
+
   bool get isExpired => DateTime.now().isAfter(expiresAt);
-
   bool get isActive => !isExpired && !isDeleted;
-
   int get viewCount => views.length;
 
-  bool isViewedBy(String userId) => views.any((v) => v.userId == userId);
+  bool isViewedBy(String uid) => views.any((v) => v.userId == uid);
 
   Duration get remainingTime =>
       isExpired ? Duration.zero : expiresAt.difference(DateTime.now());
 
+  // ── Serialization ────────────────────────────────────────
+
   Map<String, dynamic> toJson() => {
-        'userId': userId,
-        'userName': userName,
-        'userPhotoUrl': userPhotoUrl,
-        'type': type.index,
-        'mediaUrl': mediaUrl,
-        'textContent': textContent,
-        'caption': caption,
-        'backgroundColor': backgroundColor?.value,
-        'textColor': textColor?.value,
-        'fontFamily': fontFamily,
-        'fontSize': fontSize,
-        'createdAt': createdAt.millisecondsSinceEpoch.toString(),
-        'expiresAt': expiresAt.millisecondsSinceEpoch.toString(),
-        'views': views.map((v) => v.toJson()).toList(),
-        'privacy': privacy.index,
-        'isDeleted': isDeleted,
-        'musicUrl': musicUrl,
-        'musicTitle': musicTitle,
-        'stickers': stickers,
-        'textAlignment': textAlignment,
-      };
+    'userId': userId,
+    'userName': userName,
+    'userPhotoUrl': userPhotoUrl,
+    'type': type.index,
+    'mediaUrl': mediaUrl,
+    'textContent': textContent,
+    'caption': caption,
+    'backgroundColor': backgroundColor?.value,
+    'textColor': textColor?.value,
+    'fontFamily': fontFamily,
+    'fontSize': fontSize,
+    'createdAt': createdAt.millisecondsSinceEpoch.toString(),
+    'expiresAt': expiresAt.millisecondsSinceEpoch.toString(),
+    'views': views.map((v) => v.toJson()).toList(),
+    'privacy': privacy.index,
+    'isDeleted': isDeleted,
+  };
 
   factory Story.fromDocument(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = doc.data() as Map<String, dynamic>? ?? {};
     return Story.fromJson(data, doc.id);
   }
 
   factory Story.fromJson(Map<String, dynamic> data, String id) {
-    int? bgColorValue =
-        data['backgroundColor'] is int ? data['backgroundColor'] as int : null;
-    int? textColorValue =
-        data['textColor'] is int ? data['textColor'] as int : null;
+    // Safe Color parsing
+    Color? _parseColor(dynamic raw) {
+      if (raw == null) return null;
+      if (raw is int) return Color(raw);
+      // Firestore sometimes returns as double
+      if (raw is double) return Color(raw.toInt());
+      return null;
+    }
 
-    List<StoryView> views = [];
-    if (data['views'] is List) {
-      views = (data['views'] as List)
-          .map((v) => StoryView.fromJson(v as Map<String, dynamic>))
-          .toList();
+    // Safe int parsing for timestamp strings
+    int _parseTs(dynamic raw) =>
+        int.tryParse(raw?.toString() ?? '0') ?? 0;
+
+    // Safe enum index
+    int _safeIdx(dynamic raw, int maxIdx) {
+      final i = raw is int ? raw : int.tryParse(raw?.toString() ?? '0') ?? 0;
+      return i.clamp(0, maxIdx);
+    }
+
+    // Parse views array
+    final List<StoryView> views = [];
+    final rawViews = data['views'];
+    if (rawViews is List) {
+      for (final v in rawViews) {
+        if (v is Map<String, dynamic>) {
+          try {
+            views.add(StoryView.fromJson(v));
+          } catch (_) {}
+        }
+      }
     }
 
     return Story(
       id: id,
-      userId: data['userId'] ?? '',
-      userName: data['userName'] ?? '',
-      userPhotoUrl: data['userPhotoUrl'] ?? '',
-      type: StoryType.values[data['type'] as int? ?? 0],
-      mediaUrl: data['mediaUrl'],
-      textContent: data['textContent'],
-      caption: data['caption'],
-      backgroundColor: bgColorValue != null ? Color(bgColorValue) : null,
-      textColor: textColorValue != null ? Color(textColorValue) : null,
-      fontFamily: data['fontFamily'],
-      fontSize: (data['fontSize'] as num?)?.toDouble() ?? 24.0,
-      createdAt: DateTime.fromMillisecondsSinceEpoch(
-        int.tryParse(data['createdAt']?.toString() ?? '0') ?? 0,
-      ),
-      expiresAt: DateTime.fromMillisecondsSinceEpoch(
-        int.tryParse(data['expiresAt']?.toString() ?? '0') ?? 0,
-      ),
+      userId: data['userId']?.toString() ?? '',
+      userName: data['userName']?.toString() ?? '',
+      userPhotoUrl: data['userPhotoUrl']?.toString() ?? '',
+      type: StoryType.values[_safeIdx(data['type'], StoryType.values.length - 1)],
+      mediaUrl: data['mediaUrl']?.toString(),
+      textContent: data['textContent']?.toString(),
+      caption: data['caption']?.toString(),
+      backgroundColor: _parseColor(data['backgroundColor']),
+      textColor: _parseColor(data['textColor']),
+      fontFamily: data['fontFamily']?.toString(),
+      fontSize: (data['fontSize'] as num?)?.toDouble() ?? 28.0,
+      createdAt: DateTime.fromMillisecondsSinceEpoch(_parseTs(data['createdAt'])),
+      expiresAt: DateTime.fromMillisecondsSinceEpoch(_parseTs(data['expiresAt'])),
       views: views,
-      privacy: StoryPrivacy.values[data['privacy'] as int? ?? 1],
-      isDeleted: data['isDeleted'] ?? false,
-      musicUrl: data['musicUrl'],
-      musicTitle: data['musicTitle'],
-      stickers: data['stickers'] != null
-          ? List<String>.from(data['stickers'] as List)
-          : null,
-      textAlignment: data['textAlignment'] as Map<String, dynamic>?,
+      privacy: StoryPrivacy.values[
+      _safeIdx(data['privacy'], StoryPrivacy.values.length - 1)],
+      isDeleted: data['isDeleted'] == true,
     );
   }
 
@@ -189,14 +205,13 @@ class Story {
         views: views ?? this.views,
         privacy: privacy,
         isDeleted: isDeleted ?? this.isDeleted,
-        musicUrl: musicUrl,
-        musicTitle: musicTitle,
-        stickers: stickers,
-        textAlignment: textAlignment,
       );
 }
 
-/// Groups stories by user
+// ─────────────────────────────────────────────────────────────
+// USER STORIES  (all stories for one user)
+// ─────────────────────────────────────────────────────────────
+
 class UserStories {
   final String userId;
   final String userName;
@@ -212,11 +227,11 @@ class UserStories {
     this.isCurrentUser = false,
   });
 
-  List<Story> get activeStories => stories.where((s) => s.isActive).toList()
-    ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-
-  bool get hasUnseenStories =>
-      activeStories.isNotEmpty; // Simplified; full impl checks viewer
+  List<Story> get activeStories {
+    final active = stories.where((s) => s.isActive).toList();
+    active.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return active;
+  }
 
   bool hasUnseenStoriesBy(String viewerId) =>
       activeStories.any((s) => !s.isViewedBy(viewerId));

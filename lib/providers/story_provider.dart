@@ -12,56 +12,75 @@ class StoryProvider extends ChangeNotifier {
   final FirebaseFirestore firebaseFirestore;
   final FirebaseStorage firebaseStorage;
 
-  static const String _storiesCollection = 'stories';
-  static const Duration _storyDuration = Duration(hours: 24);
+  static const String _col = 'stories';
+  static const Duration _ttl = Duration(hours: 24);
 
   StoryProvider({
     required this.firebaseFirestore,
     required this.firebaseStorage,
   });
 
-  // ─────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────
   // STREAMS
-  // ─────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────
 
-  /// All active stories from friends + current user, grouped by user
+  /// Stream of grouped stories (current user + friends).
+  /// [friendIds] must contain at most 9 entries (whereIn limit = 10).
   Stream<List<UserStories>> getStoriesStream({
     required String currentUserId,
     required List<String> friendIds,
   }) {
-    final allUserIds = [currentUserId, ...friendIds];
+    // Firestore whereIn supports max 10 values
+    final ids = [currentUserId, ...friendIds].take(10).toList();
 
+    if (ids.isEmpty) {
+      return Stream.value([]);
+    }
+
+    // NOTE: This query requires the composite index:
+    //   userId ASC + isDeleted ASC + createdAt DESC
+    // (see setup instructions)
     return firebaseFirestore
-        .collection(_storiesCollection)
-        .where('userId', whereIn: allUserIds.take(10).toList())
+        .collection(_col)
+        .where('userId', whereIn: ids)
         .where('isDeleted', isEqualTo: false)
-        .where('expiresAt',
-            isGreaterThan: DateTime.now().millisecondsSinceEpoch.toString())
-        .orderBy('expiresAt', descending: false)
+        .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snapshot) {
+        .map(_groupAndFilter(currentUserId));
+  }
+
+  List<UserStories> Function(QuerySnapshot) _groupAndFilter(
+      String currentUserId) {
+    return (QuerySnapshot snapshot) {
+      final now = DateTime.now();
       final Map<String, List<Story>> grouped = {};
+
       for (final doc in snapshot.docs) {
-        final story = Story.fromDocument(doc);
-        if (!story.isExpired) {
-          grouped.putIfAbsent(story.userId, () => []).add(story);
+        try {
+          final story = Story.fromDocument(doc);
+          // Client-side expiry filter (avoids extra compound index)
+          if (!story.isExpired && !story.isDeleted) {
+            grouped.putIfAbsent(story.userId, () => []).add(story);
+          }
+        } catch (e) {
+          debugPrint('⚠️ Error parsing story ${doc.id}: $e');
         }
       }
 
       final result = grouped.entries.map((entry) {
-        final stories = entry.value
+        final sorted = entry.value
           ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-        final first = stories.first;
+        final first = sorted.first;
         return UserStories(
           userId: entry.key,
           userName: first.userName,
           userPhotoUrl: first.userPhotoUrl,
-          stories: stories,
+          stories: sorted,
           isCurrentUser: entry.key == currentUserId,
         );
       }).toList();
 
-      // Current user first
+      // My stories first
       result.sort((a, b) {
         if (a.isCurrentUser) return -1;
         if (b.isCurrentUser) return 1;
@@ -69,28 +88,35 @@ class StoryProvider extends ChangeNotifier {
       });
 
       return result;
-    });
+    };
   }
 
-  /// Current user's own stories
+  /// Stream of the current user's own active stories (for My Status page).
   Stream<List<Story>> getMyStoriesStream(String userId) {
     return firebaseFirestore
-        .collection(_storiesCollection)
+        .collection(_col)
         .where('userId', isEqualTo: userId)
         .where('isDeleted', isEqualTo: false)
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => Story.fromDocument(doc))
+        .map((snap) => snap.docs
+            .map((doc) {
+              try {
+                return Story.fromDocument(doc);
+              } catch (e) {
+                debugPrint('⚠️ Error parsing story ${doc.id}: $e');
+                return null;
+              }
+            })
+            .whereType<Story>()
             .where((s) => !s.isExpired)
             .toList());
   }
 
-  // ─────────────────────────────────────────────
-  // CREATE STORIES
-  // ─────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────
+  // CREATE
+  // ─────────────────────────────────────────────────────────
 
-  /// Upload image and create image story
   Future<String?> createImageStory({
     required String userId,
     required String userName,
@@ -100,14 +126,13 @@ class StoryProvider extends ChangeNotifier {
     StoryPrivacy privacy = StoryPrivacy.friends,
   }) async {
     try {
-      // Upload image to Firebase Storage
       final fileName =
           'stories/${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final ref = firebaseStorage.ref().child(fileName);
       final task = await ref.putFile(imageFile);
       final mediaUrl = await task.ref.getDownloadURL();
 
-      return await _createStoryDocument(
+      return _saveDocument(
         userId: userId,
         userName: userName,
         userPhotoUrl: userPhotoUrl,
@@ -117,12 +142,11 @@ class StoryProvider extends ChangeNotifier {
         privacy: privacy,
       );
     } catch (e) {
-      debugPrint('❌ Error creating image story: $e');
+      debugPrint('❌ createImageStory: $e');
       return null;
     }
   }
 
-  /// Create text-only story
   Future<String?> createTextStory({
     required String userId,
     required String userName,
@@ -132,11 +156,10 @@ class StoryProvider extends ChangeNotifier {
     required Color textColor,
     String? fontFamily,
     double fontSize = 28.0,
-    String? caption,
     StoryPrivacy privacy = StoryPrivacy.friends,
   }) async {
     try {
-      return await _createStoryDocument(
+      return _saveDocument(
         userId: userId,
         userName: userName,
         userPhotoUrl: userPhotoUrl,
@@ -146,16 +169,15 @@ class StoryProvider extends ChangeNotifier {
         textColor: textColor,
         fontFamily: fontFamily,
         fontSize: fontSize,
-        caption: caption,
         privacy: privacy,
       );
     } catch (e) {
-      debugPrint('❌ Error creating text story: $e');
+      debugPrint('❌ createTextStory: $e');
       return null;
     }
   }
 
-  Future<String?> _createStoryDocument({
+  Future<String?> _saveDocument({
     required String userId,
     required String userName,
     required String userPhotoUrl,
@@ -166,13 +188,11 @@ class StoryProvider extends ChangeNotifier {
     Color? backgroundColor,
     Color? textColor,
     String? fontFamily,
-    double fontSize = 24.0,
+    double fontSize = 28.0,
     StoryPrivacy privacy = StoryPrivacy.friends,
   }) async {
     final now = DateTime.now();
-    final expiresAt = now.add(_storyDuration);
-
-    final data = {
+    final data = <String, dynamic>{
       'userId': userId,
       'userName': userName,
       'userPhotoUrl': userPhotoUrl,
@@ -185,23 +205,21 @@ class StoryProvider extends ChangeNotifier {
       'fontFamily': fontFamily,
       'fontSize': fontSize,
       'createdAt': now.millisecondsSinceEpoch.toString(),
-      'expiresAt': expiresAt.millisecondsSinceEpoch.toString(),
-      'views': [],
+      'expiresAt': now.add(_ttl).millisecondsSinceEpoch.toString(),
+      'views': <dynamic>[],
       'privacy': privacy.index,
       'isDeleted': false,
     };
 
-    final doc =
-        await firebaseFirestore.collection(_storiesCollection).add(data);
+    final doc = await firebaseFirestore.collection(_col).add(data);
     debugPrint('✅ Story created: ${doc.id}');
     return doc.id;
   }
 
-  // ─────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────
   // VIEW TRACKING
-  // ─────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────
 
-  /// Mark a story as viewed by user
   Future<void> markStoryViewed({
     required String storyId,
     required String viewerId,
@@ -209,18 +227,13 @@ class StoryProvider extends ChangeNotifier {
     required String viewerPhotoUrl,
   }) async {
     try {
-      final storyRef =
-          firebaseFirestore.collection(_storiesCollection).doc(storyId);
-      final snap = await storyRef.get();
+      final ref = firebaseFirestore.collection(_col).doc(storyId);
+      final snap = await ref.get();
       if (!snap.exists) return;
 
       final story = Story.fromDocument(snap);
-
-      // Don't track owner's own views
-      if (story.userId == viewerId) return;
-
-      // Don't re-add if already viewed
-      if (story.isViewedBy(viewerId)) return;
+      if (story.userId == viewerId) return; // owner
+      if (story.isViewedBy(viewerId)) return; // already viewed
 
       final viewData = StoryView(
         userId: viewerId,
@@ -229,66 +242,38 @@ class StoryProvider extends ChangeNotifier {
         viewedAt: DateTime.now(),
       ).toJson();
 
-      await storyRef.update({
+      await ref.update({
         'views': FieldValue.arrayUnion([viewData]),
       });
     } catch (e) {
-      debugPrint('❌ Error marking story viewed: $e');
+      debugPrint('❌ markStoryViewed: $e');
     }
   }
 
-  // ─────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────
   // DELETE
-  // ─────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────
 
   Future<bool> deleteStory(String storyId) async {
     try {
       await firebaseFirestore
-          .collection(_storiesCollection)
+          .collection(_col)
           .doc(storyId)
           .update({'isDeleted': true});
       return true;
     } catch (e) {
-      debugPrint('❌ Error deleting story: $e');
+      debugPrint('❌ deleteStory: $e');
       return false;
     }
   }
 
-  // ─────────────────────────────────────────────
-  // CLEANUP (called by Cloud Functions / manually)
-  // ─────────────────────────────────────────────
-
-  Future<void> cleanupExpiredStories() async {
-    try {
-      final now = DateTime.now().millisecondsSinceEpoch.toString();
-      final expired = await firebaseFirestore
-          .collection(_storiesCollection)
-          .where('expiresAt', isLessThanOrEqualTo: now)
-          .where('isDeleted', isEqualTo: false)
-          .get();
-
-      final batch = firebaseFirestore.batch();
-      for (final doc in expired.docs) {
-        batch.update(doc.reference, {'isDeleted': true});
-      }
-      await batch.commit();
-      debugPrint('🗑️ Cleaned ${expired.docs.length} expired stories');
-    } catch (e) {
-      debugPrint('❌ Error cleaning up stories: $e');
-    }
-  }
-
-  // ─────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────
   // HELPERS
-  // ─────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────
 
-  String formatTimeRemaining(Duration remaining) {
-    if (remaining.inHours > 0) {
-      return '${remaining.inHours}h remaining';
-    } else if (remaining.inMinutes > 0) {
-      return '${remaining.inMinutes}m remaining';
-    } else {
-      return 'Expiring soon';
-    }
+  String formatTimeRemaining(Duration d) {
+    if (d.inHours > 0) return '${d.inHours}h remaining';
+    if (d.inMinutes > 0) return '${d.inMinutes}m remaining';
+    return 'Expiring soon';
   }
 }

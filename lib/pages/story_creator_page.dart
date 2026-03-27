@@ -6,6 +6,10 @@ import 'package:flutter_chat_demo/providers/story_provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
+// ─────────────────────────────────────────────────────────────
+// STORY CREATOR PAGE
+// ─────────────────────────────────────────────────────────────
+
 class StoryCreatorPage extends StatefulWidget {
   final String userId;
   final String userName;
@@ -24,17 +28,21 @@ class StoryCreatorPage extends StatefulWidget {
 
 class _StoryCreatorPageState extends State<StoryCreatorPage>
     with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+  late TabController _tab;
+  int _tabIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tab = TabController(length: 2, vsync: this)
+      ..addListener(() {
+        if (_tab.indexIsChanging) setState(() => _tabIndex = _tab.index);
+      });
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _tab.dispose();
     super.dispose();
   }
 
@@ -44,9 +52,11 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
       backgroundColor: Colors.black,
       body: Column(
         children: [
+          // ── Top bar ──────────────────────────────────
           SafeArea(
+            bottom: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+              padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
               child: Row(
                 children: [
                   IconButton(
@@ -54,46 +64,55 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
                     onPressed: () => Navigator.pop(context),
                   ),
                   const Spacer(),
+
+                  // Tab selector
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.white12,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(22),
                     ),
-                    child: TabBar(
-                      controller: _tabController,
-                      indicator: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      labelColor: Colors.black,
-                      unselectedLabelColor: Colors.white70,
-                      labelStyle: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
-                      padding: const EdgeInsets.all(3),
-                      tabs: const [
-                        Tab(text: '  📸 Photo  '),
-                        Tab(text: '  ✍️ Text  '),
+                    padding: const EdgeInsets.all(3),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _TabBtn(
+                          label: '📸  Photo',
+                          selected: _tabIndex == 0,
+                          onTap: () {
+                            _tab.animateTo(0);
+                            setState(() => _tabIndex = 0);
+                          },
+                        ),
+                        _TabBtn(
+                          label: '✍️  Text',
+                          selected: _tabIndex == 1,
+                          onTap: () {
+                            _tab.animateTo(1);
+                            setState(() => _tabIndex = 1);
+                          },
+                        ),
                       ],
                     ),
                   ),
+
                   const Spacer(),
-                  const SizedBox(width: 48),
+                  const SizedBox(width: 48), // balance close button
                 ],
               ),
             ),
           ),
+
+          // ── Tab content ──────────────────────────────
           Expanded(
             child: TabBarView(
-              controller: _tabController,
+              controller: _tab,
               children: [
-                _ImageStoryCreator(
+                _PhotoCreator(
                   userId: widget.userId,
                   userName: widget.userName,
                   userPhotoUrl: widget.userPhotoUrl,
                 ),
-                _TextStoryCreator(
+                _TextCreator(
                   userId: widget.userId,
                   userName: widget.userName,
                   userPhotoUrl: widget.userPhotoUrl,
@@ -107,171 +126,195 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
   }
 }
 
-// ──────────────────────────────────────────────────────────
-// IMAGE STORY CREATOR
-// ──────────────────────────────────────────────────────────
-class _ImageStoryCreator extends StatefulWidget {
+// Small tab button
+class _TabBtn extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _TabBtn(
+      {required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? Colors.black : Colors.white70,
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// PHOTO CREATOR
+// ─────────────────────────────────────────────────────────────
+
+class _PhotoCreator extends StatefulWidget {
   final String userId;
   final String userName;
   final String userPhotoUrl;
 
-  const _ImageStoryCreator({
+  const _PhotoCreator({
     required this.userId,
     required this.userName,
     required this.userPhotoUrl,
   });
 
   @override
-  State<_ImageStoryCreator> createState() => _ImageStoryCreatorState();
+  State<_PhotoCreator> createState() => _PhotoCreatorState();
 }
 
-class _ImageStoryCreatorState extends State<_ImageStoryCreator> {
-  File? _selectedImage;
-  final _captionController = TextEditingController();
-  bool _isLoading = false;
+class _PhotoCreatorState extends State<_PhotoCreator> {
+  File? _image;
+  final _captionCtrl = TextEditingController();
+  bool _loading = false;
   StoryPrivacy _privacy = StoryPrivacy.friends;
 
-  Future<void> _pickImage(ImageSource source) async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(
-      source: source,
+  @override
+  void dispose() {
+    _captionCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pick(ImageSource src) async {
+    final picked = await ImagePicker().pickImage(
+      source: src,
       imageQuality: 85,
       maxWidth: 1080,
       maxHeight: 1920,
     );
-    if (picked != null) {
-      setState(() => _selectedImage = File(picked.path));
+    if (picked != null && mounted) {
+      setState(() => _image = File(picked.path));
     }
   }
 
-  Future<void> _publishStory() async {
-    if (_selectedImage == null) return;
-    setState(() => _isLoading = true);
-
+  Future<void> _publish() async {
+    if (_image == null) return;
+    setState(() => _loading = true);
     try {
       final id = await context.read<StoryProvider>().createImageStory(
             userId: widget.userId,
             userName: widget.userName,
             userPhotoUrl: widget.userPhotoUrl,
-            imageFile: _selectedImage!,
-            caption: _captionController.text.trim().isEmpty
+            imageFile: _image!,
+            caption: _captionCtrl.text.trim().isEmpty
                 ? null
-                : _captionController.text.trim(),
+                : _captionCtrl.text.trim(),
             privacy: _privacy,
           );
-
       if (id != null && mounted) {
         Navigator.of(context).pop(true);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✅ Story published!'),
+            content: Text('✅ Status published!'),
             backgroundColor: Colors.green,
           ),
         );
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   @override
-  void dispose() {
-    _captionController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    if (_image == null) {
+      return _PickerPrompt(onPick: _pick);
+    }
+
     return Stack(
       fit: StackFit.expand,
       children: [
-        // ── Preview ──
-        if (_selectedImage != null)
-          Image.file(_selectedImage!, fit: BoxFit.cover)
-        else
-          _EmptyImagePicker(onPick: _pickImage),
+        // Preview
+        Image.file(_image!, fit: BoxFit.cover),
 
-        // ── Controls ──
-        if (_selectedImage != null) ...[
-          // Top buttons
-          Positioned(
-            top: 16,
-            right: 16,
-            child: Column(
-              children: [
-                _CircleIconBtn(
+        // Side tools
+        Positioned(
+          top: 16,
+          right: 16,
+          child: Column(
+            children: [
+              _SideBtn(
                   icon: Icons.collections,
                   label: 'Gallery',
-                  onTap: () => _pickImage(ImageSource.gallery),
-                ),
-                const SizedBox(height: 12),
-                _CircleIconBtn(
+                  onTap: () => _pick(ImageSource.gallery)),
+              const SizedBox(height: 12),
+              _SideBtn(
                   icon: Icons.camera_alt,
                   label: 'Camera',
-                  onTap: () => _pickImage(ImageSource.camera),
-                ),
-                const SizedBox(height: 12),
-                _CircleIconBtn(
-                  icon: _privacy == StoryPrivacy.friends
-                      ? Icons.people
-                      : Icons.public,
-                  label:
-                      _privacy == StoryPrivacy.friends ? 'Friends' : 'Everyone',
-                  onTap: () => setState(() {
-                    _privacy = _privacy == StoryPrivacy.friends
-                        ? StoryPrivacy.everyone
-                        : StoryPrivacy.friends;
-                  }),
-                ),
-              ],
-            ),
-          ),
-
-          // Caption input
-          Positioned(
-            bottom: 100,
-            left: 16,
-            right: 16,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.black45,
-                borderRadius: BorderRadius.circular(24),
+                  onTap: () => _pick(ImageSource.camera)),
+              const SizedBox(height: 12),
+              _SideBtn(
+                icon: _privacy == StoryPrivacy.friends
+                    ? Icons.people
+                    : Icons.public,
+                label: _privacy == StoryPrivacy.friends ? 'Friends' : 'All',
+                onTap: () => setState(() {
+                  _privacy = _privacy == StoryPrivacy.friends
+                      ? StoryPrivacy.everyone
+                      : StoryPrivacy.friends;
+                }),
               ),
-              child: TextField(
-                controller: _captionController,
-                style: const TextStyle(color: Colors.white, fontSize: 14),
-                decoration: const InputDecoration(
-                  hintText: 'Add a caption…',
-                  hintStyle: TextStyle(color: Colors.white54),
-                  contentPadding:
-                      EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  border: InputBorder.none,
-                ),
-                maxLines: 3,
-                minLines: 1,
-              ),
-            ),
+            ],
           ),
+        ),
 
-          // Publish button
-          Positioned(
-            bottom: 32,
-            left: 16,
-            right: 16,
-            child: _PublishButton(
-              isLoading: _isLoading,
-              onPublish: _publishStory,
+        // Caption
+        Positioned(
+          bottom: 96,
+          left: 16,
+          right: 16,
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.black45,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: TextField(
+              controller: _captionCtrl,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                hintText: 'Add a caption…',
+                hintStyle: TextStyle(color: Colors.white54),
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                border: InputBorder.none,
+              ),
+              maxLines: 3,
+              minLines: 1,
             ),
           ),
-        ],
+        ),
+
+        // Publish
+        Positioned(
+          bottom: 32,
+          left: 16,
+          right: 16,
+          child: _PublishBtn(loading: _loading, onTap: _publish),
+        ),
       ],
     );
   }
 }
 
-class _EmptyImagePicker extends StatelessWidget {
+// Empty state prompt
+class _PickerPrompt extends StatelessWidget {
   final void Function(ImageSource) onPick;
-  const _EmptyImagePicker({required this.onPick});
+  const _PickerPrompt({required this.onPick});
 
   @override
   Widget build(BuildContext context) {
@@ -283,41 +326,34 @@ class _EmptyImagePicker extends StatelessWidget {
             width: 100,
             height: 100,
             decoration: BoxDecoration(
-              color: Colors.white12,
+              color: Colors.white10,
               borderRadius: BorderRadius.circular(50),
             ),
             child: const Icon(Icons.add_photo_alternate,
                 color: Colors.white54, size: 48),
           ),
           const SizedBox(height: 24),
-          const Text(
-            'Share a photo or video',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          const Text('Share a photo',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
-          const Text(
-            'Choose from your gallery or take a new one',
-            style: TextStyle(color: Colors.white54, fontSize: 14),
-          ),
+          const Text('Choose or take a photo to share as status',
+              style: TextStyle(color: Colors.white54, fontSize: 14)),
           const SizedBox(height: 40),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _PickerButton(
-                icon: Icons.collections,
-                label: 'Gallery',
-                onTap: () => onPick(ImageSource.gallery),
-              ),
+              _BigPickBtn(
+                  icon: Icons.collections,
+                  label: 'Gallery',
+                  onTap: () => onPick(ImageSource.gallery)),
               const SizedBox(width: 24),
-              _PickerButton(
-                icon: Icons.camera_alt,
-                label: 'Camera',
-                onTap: () => onPick(ImageSource.camera),
-              ),
+              _BigPickBtn(
+                  icon: Icons.camera_alt,
+                  label: 'Camera',
+                  onTap: () => onPick(ImageSource.camera)),
             ],
           ),
         ],
@@ -326,11 +362,11 @@ class _EmptyImagePicker extends StatelessWidget {
   }
 }
 
-class _PickerButton extends StatelessWidget {
+class _BigPickBtn extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  const _PickerButton(
+  const _BigPickBtn(
       {required this.icon, required this.label, required this.onTap});
 
   @override
@@ -347,7 +383,7 @@ class _PickerButton extends StatelessWidget {
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: Colors.white24),
             ),
-            child: Icon(icon, color: Colors.white, size: 32),
+            child: Icon(icon, color: Colors.white, size: 30),
           ),
           const SizedBox(height: 8),
           Text(label,
@@ -358,101 +394,94 @@ class _PickerButton extends StatelessWidget {
   }
 }
 
-// ──────────────────────────────────────────────────────────
-// TEXT STORY CREATOR
-// ──────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// TEXT CREATOR
+// ─────────────────────────────────────────────────────────────
 
-class _TextStoryCreator extends StatefulWidget {
+class _TextCreator extends StatefulWidget {
   final String userId;
   final String userName;
   final String userPhotoUrl;
 
-  const _TextStoryCreator({
+  const _TextCreator({
     required this.userId,
     required this.userName,
     required this.userPhotoUrl,
   });
 
   @override
-  State<_TextStoryCreator> createState() => _TextStoryCreatorState();
+  State<_TextCreator> createState() => _TextCreatorState();
 }
 
-class _TextStoryCreatorState extends State<_TextStoryCreator> {
-  final _textController = TextEditingController();
-  bool _isLoading = false;
+class _TextCreatorState extends State<_TextCreator> {
+  final _ctrl = TextEditingController();
+  bool _loading = false;
   StoryPrivacy _privacy = StoryPrivacy.friends;
 
-  int _bgIndex = 0;
-  int _fontIndex = 0;
+  int _bgIdx = 0;
+  int _fontIdx = 0;
+  int _colorIdx = 0;
   double _fontSize = 28.0;
 
-  static const List<List<Color>> _backgrounds = [
-    [Color(0xFF1A1A2E), Color(0xFF16213E)],
-    [Color(0xFF833AB4), Color(0xFFFD1D1D)],
-    [Color(0xFF0F2027), Color(0xFF203A43)],
-    [Color(0xFFf7971e), Color(0xFFffd200)],
-    [Color(0xFF11998e), Color(0xFF38ef7d)],
-    [Color(0xFF6a3093), Color(0xFFa044ff)],
-    [Color(0xFF1D976C), Color(0xFF93F9B9)],
-    [Color(0xFFFC5C7D), Color(0xFF6A82FB)],
+  static const _bgs = <List<int>>[
+    [0xFF1A1A2E, 0xFF16213E],
+    [0xFF833AB4, 0xFFFD1D1D],
+    [0xFF0F2027, 0xFF203A43],
+    [0xFFf7971e, 0xFFffd200],
+    [0xFF11998e, 0xFF38ef7d],
+    [0xFF6a3093, 0xFFa044ff],
+    [0xFF1D976C, 0xFF93F9B9],
+    [0xFFFC5C7D, 0xFF6A82FB],
   ];
 
-  static const List<String?> _fonts = [
-    null,
-    'Georgia',
-    'Courier New',
+  static const _fontFamilies = <String?>[null, 'Georgia', 'Courier New'];
+
+  static const _textColors = <int>[
+    0xFFFFFFFF,
+    0xFFFFFF00,
+    0xFFFFB347,
+    0xFF87CEEB,
+    0xFF90EE90,
   ];
 
-  static const List<Color> _textColors = [
-    Colors.white,
-    Colors.yellow,
-    Color(0xFFFFB347),
-    Color(0xFF87CEEB),
-    Colors.lightGreenAccent,
-  ];
+  Color get _bg1 => Color(_bgs[_bgIdx][0]);
+  Color get _bg2 => Color(_bgs[_bgIdx][1]);
+  Color get _tc => Color(_textColors[_colorIdx]);
 
-  int _textColorIndex = 0;
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
-  Color get _bgColor1 => _backgrounds[_bgIndex][0];
-  Color get _bgColor2 => _backgrounds[_bgIndex][1];
-  Color get _textColor => _textColors[_textColorIndex];
-
-  Future<void> _publishStory() async {
-    final text = _textController.text.trim();
+  Future<void> _publish() async {
+    final text = _ctrl.text.trim();
     if (text.isEmpty) return;
-
-    setState(() => _isLoading = true);
+    setState(() => _loading = true);
     try {
       final id = await context.read<StoryProvider>().createTextStory(
             userId: widget.userId,
             userName: widget.userName,
             userPhotoUrl: widget.userPhotoUrl,
             textContent: text,
-            backgroundColor: _bgColor1,
-            textColor: _textColor,
-            fontFamily: _fonts[_fontIndex],
+            backgroundColor: _bg1,
+            textColor: _tc,
+            fontFamily: _fontFamilies[_fontIdx],
             fontSize: _fontSize,
             privacy: _privacy,
           );
-
       if (id != null && mounted) {
         Navigator.of(context).pop(true);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✅ Story published!'),
+            content: Text('✅ Status published!'),
             backgroundColor: Colors.green,
           ),
         );
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _loading = false);
     }
-  }
-
-  @override
-  void dispose() {
-    _textController.dispose();
-    super.dispose();
   }
 
   @override
@@ -460,82 +489,74 @@ class _TextStoryCreatorState extends State<_TextStoryCreator> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // ── Background preview ──
+        // Background gradient
         AnimatedContainer(
           duration: const Duration(milliseconds: 300),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [_bgColor1, _bgColor2],
+              colors: [_bg1, _bg2],
             ),
           ),
         ),
 
-        // ── Text input overlay ──
+        // Text input (centered)
         Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: IntrinsicHeight(
-              child: TextField(
-                controller: _textController,
-                style: TextStyle(
-                  color: _textColor,
-                  fontSize: _fontSize,
-                  fontFamily: _fonts[_fontIndex],
-                  fontWeight: FontWeight.w700,
-                  height: 1.3,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Type something…',
-                  hintStyle: TextStyle(
-                    color: _textColor.withOpacity(0.5),
-                    fontSize: _fontSize,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  border: InputBorder.none,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: null,
-                autofocus: true,
-                onChanged: (_) => setState(() {}),
+            child: TextField(
+              controller: _ctrl,
+              autofocus: true,
+              maxLines: null,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: _tc,
+                fontSize: _fontSize,
+                fontFamily: _fontFamilies[_fontIdx],
+                fontWeight: FontWeight.w700,
+                height: 1.35,
               ),
+              decoration: InputDecoration(
+                hintText: 'Type something…',
+                hintStyle: TextStyle(
+                  color: _tc.withOpacity(0.4),
+                  fontSize: _fontSize,
+                  fontWeight: FontWeight.w700,
+                ),
+                border: InputBorder.none,
+              ),
+              onChanged: (_) => setState(() {}),
             ),
           ),
         ),
 
-        // ── Controls ──
+        // Side tools
         Positioned(
           top: 16,
           right: 16,
           child: Column(
             children: [
-              // Font toggle
-              _CircleIconBtn(
+              _SideBtn(
                 icon: Icons.text_fields,
                 label: 'Font',
-                onTap: () => setState(() {
-                  _fontIndex = (_fontIndex + 1) % _fonts.length;
-                }),
+                onTap: () => setState(
+                    () => _fontIdx = (_fontIdx + 1) % _fontFamilies.length),
               ),
               const SizedBox(height: 12),
-              // Text color
-              _CircleIconBtn(
+              _SideBtn(
                 icon: Icons.format_color_text,
                 label: 'Color',
-                onTap: () => setState(() {
-                  _textColorIndex = (_textColorIndex + 1) % _textColors.length;
-                }),
-                color: _textColor,
+                iconColor: _tc,
+                onTap: () => setState(
+                    () => _colorIdx = (_colorIdx + 1) % _textColors.length),
               ),
               const SizedBox(height: 12),
-              // Privacy
-              _CircleIconBtn(
+              _SideBtn(
                 icon: _privacy == StoryPrivacy.friends
                     ? Icons.people
                     : Icons.public,
-                label:
-                    _privacy == StoryPrivacy.friends ? 'Friends' : 'Everyone',
+                label: _privacy == StoryPrivacy.friends ? 'Friends' : 'All',
                 onTap: () => setState(() {
                   _privacy = _privacy == StoryPrivacy.friends
                       ? StoryPrivacy.everyone
@@ -546,9 +567,9 @@ class _TextStoryCreatorState extends State<_TextStoryCreator> {
           ),
         ),
 
-        // ── Background selector ──
+        // Bottom controls
         Positioned(
-          bottom: 100,
+          bottom: 96,
           left: 0,
           right: 0,
           child: Column(
@@ -556,19 +577,26 @@ class _TextStoryCreatorState extends State<_TextStoryCreator> {
             children: [
               // Font size slider
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
+                padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Row(
                   children: [
                     const Icon(Icons.text_decrease,
                         color: Colors.white54, size: 16),
                     Expanded(
-                      child: Slider(
-                        value: _fontSize,
-                        min: 16,
-                        max: 52,
-                        activeColor: Colors.white,
-                        inactiveColor: Colors.white30,
-                        onChanged: (v) => setState(() => _fontSize = v),
+                      child: SliderTheme(
+                        data: SliderThemeData(
+                          activeTrackColor: Colors.white,
+                          inactiveTrackColor: Colors.white30,
+                          thumbColor: Colors.white,
+                          overlayColor: Colors.white24,
+                          trackHeight: 2,
+                        ),
+                        child: Slider(
+                          value: _fontSize,
+                          min: 14,
+                          max: 54,
+                          onChanged: (v) => setState(() => _fontSize = v),
+                        ),
                       ),
                     ),
                     const Icon(Icons.text_increase,
@@ -576,7 +604,7 @@ class _TextStoryCreatorState extends State<_TextStoryCreator> {
                   ],
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
 
               // Background swatches
               SizedBox(
@@ -584,33 +612,25 @@ class _TextStoryCreatorState extends State<_TextStoryCreator> {
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: _backgrounds.length,
+                  itemCount: _bgs.length,
                   itemBuilder: (_, i) {
-                    final selected = i == _bgIndex;
+                    final sel = i == _bgIdx;
                     return GestureDetector(
-                      onTap: () => setState(() => _bgIndex = i),
+                      onTap: () => setState(() => _bgIdx = i),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
                         margin: const EdgeInsets.only(right: 10),
-                        width: selected ? 40 : 32,
-                        height: selected ? 40 : 32,
+                        width: sel ? 42 : 32,
+                        height: sel ? 42 : 32,
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
-                            colors: _backgrounds[i],
+                            colors: [Color(_bgs[i][0]), Color(_bgs[i][1])],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
                           shape: BoxShape.circle,
-                          border: selected
+                          border: sel
                               ? Border.all(color: Colors.white, width: 2.5)
-                              : null,
-                          boxShadow: selected
-                              ? [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.4),
-                                    blurRadius: 8,
-                                  )
-                                ]
                               : null,
                         ),
                       ),
@@ -622,15 +642,15 @@ class _TextStoryCreatorState extends State<_TextStoryCreator> {
           ),
         ),
 
-        // ── Publish button ──
+        // Publish button
         Positioned(
           bottom: 32,
           left: 16,
           right: 16,
-          child: _PublishButton(
-            isLoading: _isLoading,
-            onPublish: _publishStory,
-            enabled: _textController.text.trim().isNotEmpty,
+          child: _PublishBtn(
+            loading: _loading,
+            enabled: _ctrl.text.trim().isNotEmpty,
+            onTap: _publish,
           ),
         ),
       ],
@@ -638,21 +658,21 @@ class _TextStoryCreatorState extends State<_TextStoryCreator> {
   }
 }
 
-// ──────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
 // SHARED WIDGETS
-// ──────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
 
-class _CircleIconBtn extends StatelessWidget {
+class _SideBtn extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  final Color? color;
+  final Color? iconColor;
 
-  const _CircleIconBtn({
+  const _SideBtn({
     required this.icon,
     required this.label,
     required this.onTap,
-    this.color,
+    this.iconColor,
   });
 
   @override
@@ -662,14 +682,14 @@ class _CircleIconBtn extends StatelessWidget {
       child: Column(
         children: [
           Container(
-            width: 44,
-            height: 44,
+            width: 46,
+            height: 46,
             decoration: BoxDecoration(
-              color: Colors.black45,
+              color: Colors.black38,
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white24),
             ),
-            child: Icon(icon, color: color ?? Colors.white, size: 22),
+            child: Icon(icon, color: iconColor ?? Colors.white, size: 22),
           ),
           const SizedBox(height: 4),
           Text(label,
@@ -680,32 +700,34 @@ class _CircleIconBtn extends StatelessWidget {
   }
 }
 
-class _PublishButton extends StatelessWidget {
-  final bool isLoading;
-  final VoidCallback onPublish;
+class _PublishBtn extends StatelessWidget {
+  final bool loading;
+  final VoidCallback onTap;
   final bool enabled;
 
-  const _PublishButton({
-    required this.isLoading,
-    required this.onPublish,
+  const _PublishBtn({
+    required this.loading,
+    required this.onTap,
     this.enabled = true,
   });
 
   @override
   Widget build(BuildContext context) {
+    final active = enabled && !loading;
+
     return GestureDetector(
-      onTap: (isLoading || !enabled) ? null : onPublish,
+      onTap: active ? onTap : null,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         height: 52,
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: enabled && !isLoading
-                ? [const Color(0xFF2196F3), const Color(0xFF1976D2)]
-                : [Colors.grey.shade600, Colors.grey.shade700],
+            colors: active
+                ? [const Color(0xFF2196F3), const Color(0xFF1565C0)]
+                : [Colors.grey.shade700, Colors.grey.shade800],
           ),
           borderRadius: BorderRadius.circular(26),
-          boxShadow: enabled && !isLoading
+          boxShadow: active
               ? [
                   BoxShadow(
                     color: const Color(0xFF2196F3).withOpacity(0.4),
@@ -716,14 +738,12 @@ class _PublishButton extends StatelessWidget {
               : null,
         ),
         child: Center(
-          child: isLoading
+          child: loading
               ? const SizedBox(
                   width: 24,
                   height: 24,
                   child: CircularProgressIndicator(
-                    color: Colors.white,
-                    strokeWidth: 2.5,
-                  ),
+                      color: Colors.white, strokeWidth: 2.5),
                 )
               : const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -736,7 +756,7 @@ class _PublishButton extends StatelessWidget {
                         color: Colors.white,
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
-                        letterSpacing: 0.5,
+                        letterSpacing: 0.4,
                       ),
                     ),
                   ],

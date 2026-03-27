@@ -28,8 +28,7 @@ class HomePageState extends State<HomePage> {
   final _listScrollController = ScrollController();
 
   bool _isLoading = false;
-  bool _isSearching = false;
-  String _textSearch = "";
+  String _textSearch = '';
   int _limit = 20;
   final _limitIncrement = 20;
 
@@ -39,8 +38,9 @@ class HomePageState extends State<HomePage> {
   late final FriendProvider _friendProvider;
   late final ConversationProvider _conversationProvider;
 
-  // Story-related state
+  // ── Story state ──────────────────────────────────────────
   List<String> _myFriendIds = [];
+  List<UserStories> _allStories = []; // kept in sync with StreamBuilder
   StreamSubscription<QuerySnapshot>? _friendIdsSubscription;
 
   final _searchDebouncer = Debouncer(milliseconds: 300);
@@ -59,10 +59,14 @@ class HomePageState extends State<HomePage> {
     if (_authProvider.userFirebaseId?.isNotEmpty == true) {
       _currentUserId = _authProvider.userFirebaseId!;
     } else {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => LoginPage()),
-        (_) => false,
-      );
+      // Redirect to login if not authenticated
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => LoginPage()),
+          (_) => false,
+        );
+      });
+      return;
     }
 
     _friendProvider =
@@ -72,7 +76,7 @@ class HomePageState extends State<HomePage> {
 
     _menus = [
       const MenuSetting(title: 'Friends', icon: Icons.people),
-      const MenuSetting(title: 'My Status', icon: Icons.auto_stories), // STEP 6
+      const MenuSetting(title: 'My Status', icon: Icons.auto_stories),
       const MenuSetting(title: 'Settings', icon: Icons.settings),
       const MenuSetting(title: 'Theme', icon: Icons.palette),
       const MenuSetting(title: 'My QR Code', icon: Icons.qr_code),
@@ -83,44 +87,116 @@ class HomePageState extends State<HomePage> {
     _registerNotification();
     _configLocalNotification();
     _listScrollController.addListener(_scrollListener);
-    _listenToFriendIds(); // Start listening for friend IDs for Stories
+    _loadFriendIds();
   }
 
-  // ─── STEP 5: Listen to friend IDs for stories stream ───────────────────────
-  void _listenToFriendIds() {
-    // Friendships store the pair as userId1 / userId2 — query both directions
-    final fs = _homeProvider.firebaseFirestore
-        .collection(FirestoreConstants.pathFriendshipCollection);
+  // ── Friend IDs for Stories stream ───────────────────────
 
-    final asUser1 = fs
-        .where(FirestoreConstants.userId1, isEqualTo: _currentUserId)
-        .snapshots();
-    final asUser2 = fs
-        .where(FirestoreConstants.userId2, isEqualTo: _currentUserId)
-        .snapshots();
+  /// One-shot load of friend IDs (both directions of friendship).
+  /// Limit to 9 IDs because Firestore whereIn max = 10 (including self).
+  Future<void> _loadFriendIds() async {
+    try {
+      final fs = _homeProvider.firebaseFirestore
+          .collection(FirestoreConstants.pathFriendshipCollection);
 
-    _friendIdsSubscription = asUser1.listen((snap1) {
-      final ids1 = snap1.docs
-          .map((d) => d[FirestoreConstants.userId2] as String)
-          .toList();
-
-      // Also pull the second direction once and merge
-      _homeProvider.firebaseFirestore
-          .collection(FirestoreConstants.pathFriendshipCollection)
+      final snap1 = await fs
+          .where(FirestoreConstants.userId1, isEqualTo: _currentUserId)
+          .get();
+      final snap2 = await fs
           .where(FirestoreConstants.userId2, isEqualTo: _currentUserId)
-          .get()
-          .then((snap2) {
-        final ids2 = snap2.docs
-            .map((d) => d[FirestoreConstants.userId1] as String)
-            .toList();
-        if (mounted) {
-          setState(() {
-            _myFriendIds = {...ids1, ...ids2}.toList();
-          });
-        }
-      });
-    });
+          .get();
+
+      final ids = <String>{};
+      for (final d in snap1.docs) {
+        ids.add(d[FirestoreConstants.userId2] as String);
+      }
+      for (final d in snap2.docs) {
+        ids.add(d[FirestoreConstants.userId1] as String);
+      }
+
+      if (mounted) {
+        setState(() {
+          // Keep max 9 so total with self = 10 (whereIn limit)
+          _myFriendIds = ids.take(9).toList();
+        });
+      }
+    } catch (e) {
+      print('⚠️ Could not load friend IDs for stories: $e');
+    }
+
+    // Also subscribe to live updates so the bar refreshes when friendships change
+    _friendIdsSubscription = _homeProvider.firebaseFirestore
+        .collection(FirestoreConstants.pathFriendshipCollection)
+        .where(FirestoreConstants.userId1, isEqualTo: _currentUserId)
+        .snapshots()
+        .listen((_) => _loadFriendIds());
   }
+
+  // ── Stories section ──────────────────────────────────────
+
+  Widget _buildStoriesSection() {
+    return StreamBuilder<List<UserStories>>(
+      stream: context.read<StoryProvider>().getStoriesStream(
+            currentUserId: _currentUserId,
+            friendIds: _myFriendIds,
+          ),
+      builder: (context, snapshot) {
+        // Store latest list so _openStoryViewer can reference all users
+        if (snapshot.hasData) {
+          _allStories = snapshot.data!;
+        }
+
+        return StoriesBar(
+          storiesList: _allStories,
+          currentUserId: _currentUserId,
+          onAddStory: _openStoryCreator,
+          // StoriesBar passes the tapped UserStories directly
+          onViewStories: _openStoryViewer,
+        );
+      },
+    );
+  }
+
+  void _openStoryCreator() {
+    final prefs = _authProvider.prefs;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => StoryCreatorPage(
+          userId: _currentUserId,
+          userName: prefs.getString(FirestoreConstants.nickname) ?? '',
+          userPhotoUrl: prefs.getString(FirestoreConstants.photoUrl) ?? '',
+        ),
+      ),
+    );
+  }
+
+  /// Open the full-screen viewer, starting at the tapped user's stories.
+  /// Passes ALL stories so the user can swipe between different people.
+  void _openStoryViewer(UserStories tapped) {
+    if (_allStories.isEmpty) return;
+
+    final prefs = _authProvider.prefs;
+
+    // Find the index of the tapped user within _allStories
+    final idx = _allStories.indexWhere((s) => s.userId == tapped.userId);
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => StoryViewerPage(
+          allUserStories: _allStories,
+          initialUserIndex: idx < 0 ? 0 : idx,
+          currentUserId: _currentUserId,
+          currentUserName: prefs.getString(FirestoreConstants.nickname) ?? '',
+          currentUserPhotoUrl:
+              prefs.getString(FirestoreConstants.photoUrl) ?? '',
+        ),
+      ),
+    );
+  }
+
+  // ── Notification setup ───────────────────────────────────
 
   void _registerNotification() {
     _firebaseMessaging.requestPermission();
@@ -165,6 +241,8 @@ class HomePageState extends State<HomePage> {
     }
   }
 
+  // ── Popup menu ───────────────────────────────────────────
+
   Widget _buildPopupMenu() {
     return PopupMenuButton<MenuSetting>(
       onSelected: _onItemMenuPress,
@@ -187,7 +265,7 @@ class HomePageState extends State<HomePage> {
   }
 
   void _onItemMenuPress(MenuSetting choice) {
-    final prefs = _authProvider.prefs; // convenience alias
+    final prefs = _authProvider.prefs;
     switch (choice.title) {
       case 'Log out':
         _handleSignOut();
@@ -214,11 +292,9 @@ class HomePageState extends State<HomePage> {
         Navigator.push(
             context,
             MaterialPageRoute(
-                builder: (_) => CallHistoryPage(
-                      currentUserId: _currentUserId,
-                    )));
+                builder: (_) =>
+                    CallHistoryPage(currentUserId: _currentUserId)));
         break;
-      // ─── STEP 6: My Status menu item ──────────────────────────────────────
       case 'My Status':
         Navigator.push(
           context,
@@ -245,6 +321,8 @@ class HomePageState extends State<HomePage> {
     );
   }
 
+  // ── QR scan ──────────────────────────────────────────────
+
   void _scanQRCode() async {
     final result = await Navigator.push(
       context,
@@ -259,7 +337,7 @@ class HomePageState extends State<HomePage> {
       if (userDoc != null) {
         final userChat = UserChat.fromDocument(userDoc);
         if (userChat.id == _currentUserId) {
-          Fluttertoast.showToast(msg: "This is your QR code!");
+          Fluttertoast.showToast(msg: 'This is your QR code!');
         } else {
           Navigator.push(
             context,
@@ -269,68 +347,13 @@ class HomePageState extends State<HomePage> {
           );
         }
       } else {
-        Fluttertoast.showToast(msg: "User not found");
+        Fluttertoast.showToast(msg: 'User not found');
       }
     }
   }
 
-  // ─── STEP 5: Stories section ────────────────────────────────────────────────
-  Widget _buildStoriesSection() {
-    final provider = context.read<StoryProvider>();
-    return StreamBuilder<List<UserStories>>(
-      stream: provider.getStoriesStream(
-        currentUserId: _currentUserId,
-        friendIds: _myFriendIds,
-      ),
-      builder: (context, snapshot) {
-        final stories = snapshot.data ?? [];
-        return StoriesBar(
-          storiesList: stories,
-          currentUserId: _currentUserId,
-          onAddStory: _openStoryCreator,
-          onViewStories: (userStories, index) {
-            final allOthers =
-                stories.where((s) => s.userId != _currentUserId).toList();
-            final userIndex =
-                allOthers.indexWhere((s) => s.userId == userStories.userId);
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => StoryViewerPage(
-                  allUserStories: allOthers,
-                  initialUserIndex: userIndex < 0 ? 0 : userIndex,
-                  currentUserId: _currentUserId,
-                  currentUserName: _authProvider.prefs
-                          .getString(FirestoreConstants.nickname) ??
-                      '',
-                  currentUserPhotoUrl: _authProvider.prefs
-                          .getString(FirestoreConstants.photoUrl) ??
-                      '',
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
+  // ── Search bar ───────────────────────────────────────────
 
-  void _openStoryCreator() {
-    final prefs = _authProvider.prefs;
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => StoryCreatorPage(
-          userId: _currentUserId,
-          userName: prefs.getString(FirestoreConstants.nickname) ?? '',
-          userPhotoUrl: prefs.getString(FirestoreConstants.photoUrl) ?? '',
-        ),
-      ),
-    );
-  }
-  // ─── End STEP 5 ─────────────────────────────────────────────────────────────
-
-  // 🎯 NEW: Smart Search Bar with auto-detection
   Widget _buildSmartSearchBar() {
     return Container(
       height: 40,
@@ -355,7 +378,7 @@ class HomePageState extends State<HomePage> {
                     setState(() => _textSearch = value);
                   } else {
                     _btnClearController.add(false);
-                    setState(() => _textSearch = "");
+                    setState(() => _textSearch = '');
                   }
                 });
               },
@@ -375,7 +398,7 @@ class HomePageState extends State<HomePage> {
                       onTap: () {
                         _searchBarController.clear();
                         _btnClearController.add(false);
-                        setState(() => _textSearch = "");
+                        setState(() => _textSearch = '');
                       },
                       child: const Icon(Icons.clear,
                           color: ColorConstants.greyColor, size: 20),
@@ -389,6 +412,8 @@ class HomePageState extends State<HomePage> {
     );
   }
 
+  // ── Online friends ───────────────────────────────────────
+
   Widget _buildOnlineFriendsSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -397,13 +422,10 @@ class HomePageState extends State<HomePage> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             children: [
-              Icon(
-                Icons.people,
-                size: 20,
-                color: ColorConstants.primaryColor,
-              ),
+              const Icon(Icons.people,
+                  size: 20, color: ColorConstants.primaryColor),
               const SizedBox(width: 8),
-              Text(
+              const Text(
                 'Online Friends',
                 style: TextStyle(
                   fontSize: 16,
@@ -416,10 +438,12 @@ class HomePageState extends State<HomePage> {
         ),
         OnlineFriendsBar(currentUserId: _currentUserId),
         const SizedBox(height: 8),
-        Divider(height: 1, thickness: 1),
+        const Divider(height: 1, thickness: 1),
       ],
     );
   }
+
+  // ── Conversation helpers ─────────────────────────────────
 
   String _getLastMessagePreview(String message, int type) {
     if (type == TypeMessage.image) return '📷 Image';
@@ -433,16 +457,10 @@ class HomePageState extends State<HomePage> {
           DateTime.fromMillisecondsSinceEpoch(int.parse(timestamp));
       final now = DateTime.now();
       final diff = now.difference(messageTime);
-
-      if (diff.inDays > 0) {
-        return DateFormat('MMM dd').format(messageTime);
-      } else if (diff.inHours > 0) {
-        return '${diff.inHours}h ago';
-      } else if (diff.inMinutes > 0) {
-        return '${diff.inMinutes}m ago';
-      } else {
-        return 'Just now';
-      }
+      if (diff.inDays > 0) return DateFormat('MMM dd').format(messageTime);
+      if (diff.inHours > 0) return '${diff.inHours}h ago';
+      if (diff.inMinutes > 0) return '${diff.inMinutes}m ago';
+      return 'Just now';
     } catch (_) {
       return '';
     }
@@ -451,7 +469,7 @@ class HomePageState extends State<HomePage> {
   void _showConversationOptions(Conversation conversation) {
     showModalBottomSheet(
       context: context,
-      shape: RoundedRectangleBorder(
+      shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) => ConversationOptionsDialog(
@@ -469,9 +487,7 @@ class HomePageState extends State<HomePage> {
 
   Future<void> _togglePinConversation(Conversation conversation) async {
     final success = await _conversationProvider.togglePinConversation(
-      conversation.id,
-      conversation.isPinned,
-    );
+        conversation.id, conversation.isPinned);
     if (success) {
       Fluttertoast.showToast(
         msg: conversation.isPinned
@@ -483,9 +499,7 @@ class HomePageState extends State<HomePage> {
 
   Future<void> _toggleMuteConversation(Conversation conversation) async {
     final success = await _conversationProvider.toggleMuteConversation(
-      conversation.id,
-      conversation.isMuted,
-    );
+        conversation.id, conversation.isMuted);
     if (success) {
       Fluttertoast.showToast(
         msg: conversation.isMuted
@@ -499,21 +513,19 @@ class HomePageState extends State<HomePage> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Clear History'),
-        content: Text(
+        title: const Text('Clear History'),
+        content: const Text(
           'Are you sure you want to clear all messages in this conversation?\n\nThis will not affect your friendship status.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancel'),
+            child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.orange,
-            ),
-            child: Text('Clear'),
+            style: TextButton.styleFrom(foregroundColor: Colors.orange),
+            child: const Text('Clear'),
           ),
         ],
       ),
@@ -521,25 +533,20 @@ class HomePageState extends State<HomePage> {
 
     if (confirm == true) {
       setState(() => _isLoading = true);
-
       final success =
           await _conversationProvider.clearConversationHistory(conversationId);
-
       setState(() => _isLoading = false);
 
-      if (success) {
-        Fluttertoast.showToast(
-          msg: 'Conversation history cleared',
-          backgroundColor: Colors.orange,
-        );
-      } else {
-        Fluttertoast.showToast(
-          msg: 'Failed to clear history',
-          backgroundColor: Colors.red,
-        );
-      }
+      Fluttertoast.showToast(
+        msg: success
+            ? 'Conversation history cleared'
+            : 'Failed to clear history',
+        backgroundColor: success ? Colors.orange : Colors.red,
+      );
     }
   }
+
+  // ── Conversation list item ────────────────────────────────
 
   Widget _buildConversationItem(DocumentSnapshot? doc) {
     if (doc == null) return const SizedBox.shrink();
@@ -554,134 +561,7 @@ class HomePageState extends State<HomePage> {
         builder: (_, snapshot) {
           if (!snapshot.hasData) return const SizedBox.shrink();
           final group = Group.fromDocument(snapshot.data!);
-
-          return Container(
-            margin: const EdgeInsets.symmetric(vertical: 5, horizontal: 8),
-            decoration: BoxDecoration(
-              color: conversation.isPinned
-                  ? ColorConstants.primaryColor.withOpacity(0.05)
-                  : null,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => GroupChatPage(group: group),
-                    ),
-                  );
-                },
-                onLongPress: () => _showConversationOptions(conversation),
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    children: [
-                      Stack(
-                        children: [
-                          ClipOval(
-                            child: group.groupPhotoUrl.isNotEmpty
-                                ? Image.network(
-                                    group.groupPhotoUrl,
-                                    fit: BoxFit.cover,
-                                    width: 50,
-                                    height: 50,
-                                    errorBuilder: (_, __, ___) => const Icon(
-                                      Icons.group,
-                                      size: 50,
-                                      color: ColorConstants.primaryColor,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.group,
-                                    size: 50,
-                                    color: ColorConstants.primaryColor,
-                                  ),
-                          ),
-                          if (conversation.isMuted)
-                            Positioned(
-                              right: 0,
-                              bottom: 0,
-                              child: Container(
-                                padding: const EdgeInsets.all(2),
-                                decoration: const BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.volume_off,
-                                  size: 14,
-                                  color: ColorConstants.greyColor,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(width: 15),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                if (conversation.isPinned)
-                                  const Padding(
-                                    padding: EdgeInsets.only(right: 4),
-                                    child: Icon(
-                                      Icons.push_pin,
-                                      size: 14,
-                                      color: ColorConstants.primaryColor,
-                                    ),
-                                  ),
-                                Expanded(
-                                  child: Text(
-                                    group.groupName,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: ColorConstants.primaryColor,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _getLastMessagePreview(
-                                conversation.lastMessage,
-                                conversation.lastMessageType,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: conversation.isMuted
-                                    ? ColorConstants.greyColor
-                                    : ColorConstants.greyColor,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        _getTimeAgo(conversation.lastMessageTime),
-                        style: const TextStyle(
-                          color: ColorConstants.greyColor,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
+          return _buildGroupConversationTile(conversation, group);
         },
       );
     }
@@ -698,159 +578,261 @@ class HomePageState extends State<HomePage> {
       builder: (_, snapshot) {
         if (!snapshot.hasData) return const SizedBox.shrink();
         final userChat = UserChat.fromDocument(snapshot.data!);
-
-        return Container(
-          margin: const EdgeInsets.symmetric(vertical: 5, horizontal: 8),
-          decoration: BoxDecoration(
-            color: conversation.isPinned
-                ? ColorConstants.primaryColor.withOpacity(0.05)
-                : null,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ChatPage(
-                      arguments: ChatPageArguments(
-                        peerId: userChat.id,
-                        peerAvatar: userChat.photoUrl,
-                        peerNickname: userChat.nickname,
-                      ),
-                    ),
-                  ),
-                );
-              },
-              onLongPress: () => _showConversationOptions(conversation),
-              borderRadius: BorderRadius.circular(10),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    Stack(
-                      children: [
-                        ClipOval(
-                          child: userChat.photoUrl.isNotEmpty
-                              ? Image.network(
-                                  userChat.photoUrl,
-                                  fit: BoxFit.cover,
-                                  width: 50,
-                                  height: 50,
-                                  loadingBuilder: (_, child, loadingProgress) {
-                                    if (loadingProgress == null) return child;
-                                    return const SizedBox(
-                                      width: 50,
-                                      height: 50,
-                                      child: Center(
-                                        child: CircularProgressIndicator(
-                                          color: ColorConstants.themeColor,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                  errorBuilder: (_, __, ___) {
-                                    return const Icon(
-                                      Icons.account_circle,
-                                      size: 50,
-                                      color: ColorConstants.greyColor,
-                                    );
-                                  },
-                                )
-                              : const Icon(
-                                  Icons.account_circle,
-                                  size: 50,
-                                  color: ColorConstants.greyColor,
-                                ),
-                        ),
-                        if (conversation.isMuted)
-                          Positioned(
-                            right: 0,
-                            bottom: 0,
-                            child: Container(
-                              padding: const EdgeInsets.all(2),
-                              decoration: const BoxDecoration(
-                                color: Colors.white,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.volume_off,
-                                size: 14,
-                                color: ColorConstants.greyColor,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(width: 15),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              if (conversation.isPinned)
-                                const Padding(
-                                  padding: EdgeInsets.only(right: 4),
-                                  child: Icon(
-                                    Icons.push_pin,
-                                    size: 14,
-                                    color: ColorConstants.primaryColor,
-                                  ),
-                                ),
-                              Expanded(
-                                child: Text(
-                                  userChat.nickname,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: ColorConstants.primaryColor,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _getLastMessagePreview(
-                              conversation.lastMessage,
-                              conversation.lastMessageType,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: conversation.isMuted
-                                  ? ColorConstants.greyColor
-                                  : ColorConstants.greyColor,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _getTimeAgo(conversation.lastMessageTime),
-                      style: const TextStyle(
-                        color: ColorConstants.greyColor,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
+        return _buildDirectConversationTile(conversation, userChat);
       },
     );
   }
 
-  // 🎯 NEW: Smart search with auto-detection (nickname or phone)
+  Widget _buildGroupConversationTile(Conversation conversation, Group group) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 5, horizontal: 8),
+      decoration: BoxDecoration(
+        color: conversation.isPinned
+            ? ColorConstants.primaryColor.withOpacity(0.05)
+            : null,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => GroupChatPage(group: group)),
+          ),
+          onLongPress: () => _showConversationOptions(conversation),
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Stack(
+                  children: [
+                    ClipOval(
+                      child: group.groupPhotoUrl.isNotEmpty
+                          ? Image.network(
+                              group.groupPhotoUrl,
+                              fit: BoxFit.cover,
+                              width: 50,
+                              height: 50,
+                              errorBuilder: (_, __, ___) => const Icon(
+                                  Icons.group,
+                                  size: 50,
+                                  color: ColorConstants.primaryColor),
+                            )
+                          : const Icon(Icons.group,
+                              size: 50, color: ColorConstants.primaryColor),
+                    ),
+                    if (conversation.isMuted)
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.volume_off,
+                              size: 14, color: ColorConstants.greyColor),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(width: 15),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          if (conversation.isPinned)
+                            const Padding(
+                              padding: EdgeInsets.only(right: 4),
+                              child: Icon(Icons.push_pin,
+                                  size: 14, color: ColorConstants.primaryColor),
+                            ),
+                          Expanded(
+                            child: Text(
+                              group.groupName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: ColorConstants.primaryColor,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _getLastMessagePreview(
+                          conversation.lastMessage,
+                          conversation.lastMessageType,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: ColorConstants.greyColor,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _getTimeAgo(conversation.lastMessageTime),
+                  style: const TextStyle(
+                    color: ColorConstants.greyColor,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDirectConversationTile(
+      Conversation conversation, UserChat userChat) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 5, horizontal: 8),
+      decoration: BoxDecoration(
+        color: conversation.isPinned
+            ? ColorConstants.primaryColor.withOpacity(0.05)
+            : null,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ChatPage(
+                arguments: ChatPageArguments(
+                  peerId: userChat.id,
+                  peerAvatar: userChat.photoUrl,
+                  peerNickname: userChat.nickname,
+                ),
+              ),
+            ),
+          ),
+          onLongPress: () => _showConversationOptions(conversation),
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Stack(
+                  children: [
+                    ClipOval(
+                      child: userChat.photoUrl.isNotEmpty
+                          ? Image.network(
+                              userChat.photoUrl,
+                              fit: BoxFit.cover,
+                              width: 50,
+                              height: 50,
+                              loadingBuilder: (_, child, loadingProgress) {
+                                if (loadingProgress == null) return child;
+                                return const SizedBox(
+                                  width: 50,
+                                  height: 50,
+                                  child: Center(
+                                    child: CircularProgressIndicator(
+                                        color: ColorConstants.themeColor),
+                                  ),
+                                );
+                              },
+                              errorBuilder: (_, __, ___) => const Icon(
+                                  Icons.account_circle,
+                                  size: 50,
+                                  color: ColorConstants.greyColor),
+                            )
+                          : const Icon(Icons.account_circle,
+                              size: 50, color: ColorConstants.greyColor),
+                    ),
+                    if (conversation.isMuted)
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.volume_off,
+                              size: 14, color: ColorConstants.greyColor),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(width: 15),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          if (conversation.isPinned)
+                            const Padding(
+                              padding: EdgeInsets.only(right: 4),
+                              child: Icon(Icons.push_pin,
+                                  size: 14, color: ColorConstants.primaryColor),
+                            ),
+                          Expanded(
+                            child: Text(
+                              userChat.nickname,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: ColorConstants.primaryColor,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _getLastMessagePreview(
+                          conversation.lastMessage,
+                          conversation.lastMessageType,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: ColorConstants.greyColor,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _getTimeAgo(conversation.lastMessageTime),
+                  style: const TextStyle(
+                    color: ColorConstants.greyColor,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Search ───────────────────────────────────────────────
+
   Widget _buildSmartSearchResults() {
     return StreamBuilder<QuerySnapshot>(
       stream: _performSmartSearch(),
@@ -865,7 +847,7 @@ class HomePageState extends State<HomePage> {
                   _buildSearchResultItem(snapshot.data?.docs[i]),
             );
           } else {
-            return const Center(child: Text("No users found"));
+            return const Center(child: Text('No users found'));
           }
         } else {
           return const Center(
@@ -876,22 +858,17 @@ class HomePageState extends State<HomePage> {
     );
   }
 
-  // 🎯 NEW: Perform smart search
   Stream<QuerySnapshot> _performSmartSearch() {
     final query = _textSearch.trim();
-
-    // Check if it's a phone number pattern
     final isPhoneNumber = RegExp(r'^[+\d][\d\s-]*$').hasMatch(query);
 
     if (isPhoneNumber) {
-      // Search by phone number (exact match)
       return _homeProvider.firebaseFirestore
           .collection(FirestoreConstants.pathUserCollection)
           .where(FirestoreConstants.phoneNumber, isEqualTo: query)
           .limit(_limit)
           .snapshots();
     } else {
-      // Search by nickname (starts with match for auto-suggest)
       return _homeProvider.firebaseFirestore
           .collection(FirestoreConstants.pathUserCollection)
           .where(FirestoreConstants.nickname, isGreaterThanOrEqualTo: query)
@@ -910,14 +887,12 @@ class HomePageState extends State<HomePage> {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
       child: TextButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => UserProfilePage(userChat: userChat),
-            ),
-          );
-        },
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => UserProfilePage(userChat: userChat),
+          ),
+        ),
         style: ButtonStyle(
           backgroundColor: WidgetStateProperty.all(ColorConstants.greyColor2),
           shape: WidgetStateProperty.all(
@@ -963,6 +938,8 @@ class HomePageState extends State<HomePage> {
     );
   }
 
+  // ── Build ────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -973,6 +950,7 @@ class HomePageState extends State<HomePage> {
         ),
         centerTitle: true,
         actions: [
+          // Friend request badge
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
                 .collection(FirestoreConstants.pathFriendRequestCollection)
@@ -982,18 +960,15 @@ class HomePageState extends State<HomePage> {
             builder: (_, snapshot) {
               final pendingCount =
                   snapshot.hasData ? snapshot.data!.docs.length : 0;
-
               return Stack(
                 children: [
                   IconButton(
                     icon: const Icon(Icons.notifications),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const NotificationsPage()),
-                      );
-                    },
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const NotificationsPage()),
+                    ),
                   ),
                   if (pendingCount > 0)
                     Positioned(
@@ -1002,20 +977,15 @@ class HomePageState extends State<HomePage> {
                       child: Container(
                         padding: const EdgeInsets.all(4),
                         decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
-                        constraints: const BoxConstraints(
-                          minWidth: 18,
-                          minHeight: 18,
-                        ),
+                            color: Colors.red, shape: BoxShape.circle),
+                        constraints:
+                            const BoxConstraints(minWidth: 18, minHeight: 18),
                         child: Text(
                           pendingCount > 9 ? '9+' : '$pendingCount',
                           style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold),
                           textAlign: TextAlign.center,
                         ),
                       ),
@@ -1032,11 +1002,16 @@ class HomePageState extends State<HomePage> {
           children: [
             Column(
               children: [
+                // ── Search bar (always visible) ──
                 _buildSmartSearchBar(),
+
+                // ── Stories + Online friends (only when not searching) ──
                 if (_textSearch.isEmpty) ...[
-                  _buildStoriesSection(), // STEP 5: Stories bar
-                  _buildOnlineFriendsSection(), // existing online friends
+                  _buildStoriesSection(),
+                  _buildOnlineFriendsSection(),
                 ],
+
+                // ── Conversations / Search results ──
                 Expanded(
                   child: _textSearch.isEmpty
                       ? StreamBuilder<List<QueryDocumentSnapshot>>(
@@ -1053,38 +1028,36 @@ class HomePageState extends State<HomePage> {
                                   itemBuilder: (_, i) =>
                                       _buildConversationItem(conversations[i]),
                                 );
-                              } else {
-                                return const Center(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.chat_bubble_outline,
-                                          size: 80,
-                                          color: ColorConstants.greyColor),
-                                      SizedBox(height: 16),
-                                      Text(
-                                        "No conversations yet",
-                                        style: TextStyle(
-                                            color: ColorConstants.greyColor,
-                                            fontSize: 16),
-                                      ),
-                                      SizedBox(height: 8),
-                                      Text(
-                                        "Scan QR code to add friends",
-                                        style: TextStyle(
-                                            color: ColorConstants.greyColor,
-                                            fontSize: 14),
-                                      ),
-                                    ],
-                                  ),
-                                );
                               }
-                            } else {
                               return const Center(
-                                child: CircularProgressIndicator(
-                                    color: ColorConstants.themeColor),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.chat_bubble_outline,
+                                        size: 80,
+                                        color: ColorConstants.greyColor),
+                                    SizedBox(height: 16),
+                                    Text(
+                                      'No conversations yet',
+                                      style: TextStyle(
+                                          color: ColorConstants.greyColor,
+                                          fontSize: 16),
+                                    ),
+                                    SizedBox(height: 8),
+                                    Text(
+                                      'Scan QR code to add friends',
+                                      style: TextStyle(
+                                          color: ColorConstants.greyColor,
+                                          fontSize: 14),
+                                    ),
+                                  ],
+                                ),
                               );
                             }
+                            return const Center(
+                              child: CircularProgressIndicator(
+                                  color: ColorConstants.themeColor),
+                            );
                           },
                         )
                       : _buildSmartSearchResults(),
@@ -1103,11 +1076,13 @@ class HomePageState extends State<HomePage> {
     );
   }
 
+  // ── Dispose ──────────────────────────────────────────────
+
   @override
   void dispose() {
     _conversationsSubscription?.cancel();
     _friendRequestsSubscription?.cancel();
-    _friendIdsSubscription?.cancel(); // STEP 5: cancel friend IDs listener
+    _friendIdsSubscription?.cancel();
     _btnClearController.close();
     _searchBarController.dispose();
     _listScrollController
@@ -1115,6 +1090,8 @@ class HomePageState extends State<HomePage> {
       ..dispose();
     super.dispose();
   }
+
+  // ── Local notification helper ─────────────────────────────
 
   void _showNotification(RemoteNotification remoteNotification) async {
     final androidDetails = AndroidNotificationDetails(

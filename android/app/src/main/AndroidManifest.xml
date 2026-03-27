@@ -1,12 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  FIXES APPLIED:
-  - FlutterMiniChatActivity đã bị xóa khỏi Manifest để tránh tạo 2 Flutter
-    engine đồng thời trên Android 9-10 (gây OOM trên thiết bị RAM thấp).
-    BubbleOverlayService.kt đã dùng engine riêng "mini_chat_overlay_engine"
-    nên FlutterMiniChatActivity không còn cần thiết.
-  - Giữ BubbleActivity và BubbleOverlayService.
--->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="hust.appchat">
 
