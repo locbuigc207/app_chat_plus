@@ -1,13 +1,15 @@
 // lib/pages/story_viewer_page.dart
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_chat_demo/providers/story_provider.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-export 'package:flutter_chat_demo/models/story_model.dart';
+import 'package:flutter_chat_demo/models/story_model.dart';
+import 'package:flutter_chat_demo/providers/story_provider.dart';
+
+// ─────────────────────────────────────────────────────────────
+// STORY VIEWER PAGE
+// ─────────────────────────────────────────────────────────────
 
 class StoryViewerPage extends StatefulWidget {
   final List<UserStories> allUserStories;
@@ -32,168 +34,160 @@ class StoryViewerPage extends StatefulWidget {
 class _StoryViewerPageState extends State<StoryViewerPage>
     with TickerProviderStateMixin {
   late PageController _pageController;
-  late int _currentUserIndex;
-  late int _currentStoryIndex;
+  late AnimationController _progressCtrl;
 
-  late AnimationController _progressController;
-  Timer? _storyTimer;
-
+  late int _userIndex;
+  late int _storyIndex;
   bool _isPaused = false;
-  bool _isDragging = false;
-  bool _showViewers = false;
-
-  static const Duration _storyDuration = Duration(seconds: 5);
-  static const Duration _imageDuration = Duration(seconds: 5);
 
   @override
   void initState() {
     super.initState();
-    _currentUserIndex = widget.initialUserIndex;
-    _currentStoryIndex = 0;
+    _userIndex = widget.initialUserIndex;
+    _storyIndex = 0;
 
-    _pageController = PageController(initialPage: _currentUserIndex);
-    _progressController = AnimationController(vsync: this);
+    _pageController = PageController(initialPage: _userIndex);
+    _progressCtrl = AnimationController(vsync: this)
+      ..addStatusListener(_onProgressStatus);
 
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-    WidgetsBinding.instance.addPostFrameCallback((_) => _startStory());
+    // Start after first frame so context is ready
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _startCurrentStory();
+    });
   }
 
   @override
   void dispose() {
-    _storyTimer?.cancel();
-    _progressController.dispose();
+    _progressCtrl.removeStatusListener(_onProgressStatus);
+    _progressCtrl.dispose();
     _pageController.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
-  UserStories get _currentUserStories =>
-      widget.allUserStories[_currentUserIndex];
+  // ── Getters ────────────────────────────────────────────────
 
-  Story get _currentStory =>
-      _currentUserStories.activeStories[_currentStoryIndex];
+  UserStories get _currentUser => widget.allUserStories[_userIndex];
+  List<Story> get _stories => _currentUser.activeStories;
+  Story get _currentStory => _stories[_storyIndex.clamp(0, _stories.length - 1)];
 
-  int get _totalStories => _currentUserStories.activeStories.length;
+  // ── Progress listener (called once on completion) ──────────
 
-  void _startStory() {
-    _storyTimer?.cancel();
-    _progressController.stop();
-    _progressController.reset();
-
-    _markCurrentStoryViewed();
-
-    final duration = _imageDuration;
-    _progressController.duration = duration;
-    _progressController.forward();
-
-    _progressController.addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
-        _nextStory();
-      }
-    });
+  void _onProgressStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed) {
+      _advance();
+    }
   }
 
-  void _markCurrentStoryViewed() {
-    if (_currentStory.userId == widget.currentUserId) return;
+  // ── Story control ──────────────────────────────────────────
+
+  void _startCurrentStory() {
+    if (!mounted || _stories.isEmpty) return;
+
+    _progressCtrl.stop();
+    _progressCtrl.reset();
+    _progressCtrl.duration = const Duration(seconds: 5);
+    _progressCtrl.forward();
+
+    _trackView();
+  }
+
+  void _trackView() {
+    final story = _currentStory;
+    if (story.userId == widget.currentUserId) return;
     context.read<StoryProvider>().markStoryViewed(
-          storyId: _currentStory.id,
-          viewerId: widget.currentUserId,
-          viewerName: widget.currentUserName,
-          viewerPhotoUrl: widget.currentUserPhotoUrl,
-        );
+      storyId: story.id,
+      viewerId: widget.currentUserId,
+      viewerName: widget.currentUserName,
+      viewerPhotoUrl: widget.currentUserPhotoUrl,
+    );
   }
 
-  void _nextStory() {
-    if (_currentStoryIndex < _totalStories - 1) {
-      setState(() {
-        _currentStoryIndex++;
-      });
-      _startStory();
+  void _advance() {
+    if (!mounted) return;
+    if (_storyIndex < _stories.length - 1) {
+      setState(() => _storyIndex++);
+      _startCurrentStory();
     } else {
       _nextUser();
     }
   }
 
-  void _prevStory() {
-    if (_currentStoryIndex > 0) {
-      setState(() {
-        _currentStoryIndex--;
-      });
-      _startStory();
-    } else {
-      _prevUser();
+  void _goBack() {
+    if (!mounted) return;
+    if (_storyIndex > 0) {
+      setState(() => _storyIndex--);
+      _startCurrentStory();
+    } else if (_userIndex > 0) {
+      _pageController.previousPage(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
     }
   }
 
   void _nextUser() {
-    if (_currentUserIndex < widget.allUserStories.length - 1) {
+    if (_userIndex < widget.allUserStories.length - 1) {
       _pageController.nextPage(
-        duration: const Duration(milliseconds: 350),
-        curve: Curves.easeInOut,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
       );
     } else {
-      Navigator.of(context).pop();
-    }
-  }
-
-  void _prevUser() {
-    if (_currentUserIndex > 0) {
-      _pageController.previousPage(
-        duration: const Duration(milliseconds: 350),
-        curve: Curves.easeInOut,
-      );
+      if (mounted) Navigator.of(context).pop();
     }
   }
 
   void _pause() {
-    if (!_isPaused) {
-      _isPaused = true;
-      _progressController.stop();
-    }
+    if (_isPaused) return;
+    _isPaused = true;
+    _progressCtrl.stop();
   }
 
   void _resume() {
-    if (_isPaused) {
-      _isPaused = false;
-      _progressController.forward();
-    }
+    if (!_isPaused) return;
+    _isPaused = false;
+    _progressCtrl.forward();
   }
 
-  void _onUserPageChanged(int index) {
+  void _onPageChanged(int index) {
+    if (!mounted) return;
     setState(() {
-      _currentUserIndex = index;
-      _currentStoryIndex = 0;
+      _userIndex = index;
+      _storyIndex = 0;
     });
-    _startStory();
+    _startCurrentStory();
   }
 
-  Future<void> _deleteCurrentStory() async {
-    final confirmed = await showDialog<bool>(
+  Future<void> _deleteStory() async {
+    _pause();
+    final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Delete Story'),
-        content:
-            const Text('This story will be permanently deleted. Continue?'),
+        title: const Text('Delete Status'),
+        content: const Text('Delete this story permanently?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Delete')),
         ],
       ),
     );
-
-    if (confirmed == true && mounted) {
+    if (!mounted) return;
+    if (ok == true) {
       await context.read<StoryProvider>().deleteStory(_currentStory.id);
       if (mounted) Navigator.of(context).pop();
+    } else {
+      _resume();
     }
   }
+
+  // ── Build ──────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -201,24 +195,24 @@ class _StoryViewerPageState extends State<StoryViewerPage>
       backgroundColor: Colors.black,
       body: PageView.builder(
         controller: _pageController,
-        onPageChanged: _onUserPageChanged,
+        onPageChanged: _onPageChanged,
         itemCount: widget.allUserStories.length,
-        itemBuilder: (context, userIndex) {
-          final userStories = widget.allUserStories[userIndex];
-          final isActive = userIndex == _currentUserIndex;
+        itemBuilder: (_, userIdx) {
+          final us = widget.allUserStories[userIdx];
+          final isActive = userIdx == _userIndex;
+          final si = isActive ? _storyIndex.clamp(0, us.activeStories.length - 1) : 0;
 
-          return _StoryUserView(
-            userStories: userStories,
-            storyIndex: isActive ? _currentStoryIndex : 0,
-            progressController: isActive ? _progressController : null,
-            isCurrentUser: userStories.userId == widget.currentUserId,
-            onTapLeft: _prevStory,
-            onTapRight: _nextStory,
-            onLongPressStart: _pause,
-            onLongPressEnd: _resume,
+          return _UserStoryView(
+            userStories: us,
+            storyIndex: si,
+            progressCtrl: isActive ? _progressCtrl : null,
+            isCurrentUser: us.userId == widget.currentUserId,
+            onTapLeft: _goBack,
+            onTapRight: _advance,
+            onHoldStart: _pause,
+            onHoldEnd: _resume,
             onClose: () => Navigator.of(context).pop(),
-            onDelete: _deleteCurrentStory,
-            currentUserId: widget.currentUserId,
+            onDelete: _deleteStory,
           );
         },
       ),
@@ -226,68 +220,70 @@ class _StoryViewerPageState extends State<StoryViewerPage>
   }
 }
 
-// ──────────────────────────────────────────────────────────
-class _StoryUserView extends StatelessWidget {
+// ─────────────────────────────────────────────────────────────
+// _UserStoryView — one "card" in the PageView
+// ─────────────────────────────────────────────────────────────
+
+class _UserStoryView extends StatelessWidget {
   final UserStories userStories;
   final int storyIndex;
-  final AnimationController? progressController;
+  final AnimationController? progressCtrl;
   final bool isCurrentUser;
   final VoidCallback onTapLeft;
   final VoidCallback onTapRight;
-  final VoidCallback onLongPressStart;
-  final VoidCallback onLongPressEnd;
+  final VoidCallback onHoldStart;
+  final VoidCallback onHoldEnd;
   final VoidCallback onClose;
   final VoidCallback onDelete;
-  final String currentUserId;
 
-  const _StoryUserView({
+  const _UserStoryView({
     required this.userStories,
     required this.storyIndex,
-    required this.progressController,
+    required this.progressCtrl,
     required this.isCurrentUser,
     required this.onTapLeft,
     required this.onTapRight,
-    required this.onLongPressStart,
-    required this.onLongPressEnd,
+    required this.onHoldStart,
+    required this.onHoldEnd,
     required this.onClose,
     required this.onDelete,
-    required this.currentUserId,
   });
 
   @override
   Widget build(BuildContext context) {
     final stories = userStories.activeStories;
     if (stories.isEmpty) return const SizedBox.shrink();
-    final safeIndex = storyIndex.clamp(0, stories.length - 1);
-    final story = stories[safeIndex];
+
+    final si = storyIndex.clamp(0, stories.length - 1);
+    final story = stories[si];
 
     return Stack(
       fit: StackFit.expand,
       children: [
-        // ── Background / Content ──
+        // ── Content ──
         _StoryContent(story: story),
 
         // ── Gradient overlays ──
-        const _GradientOverlays(),
+        const _Gradients(),
 
         // ── Progress bars ──
         Positioned(
           top: MediaQuery.of(context).padding.top + 8,
-          left: 12,
-          right: 12,
+          left: 10,
+          right: 10,
           child: _ProgressBars(
             total: stories.length,
-            current: safeIndex,
-            controller: progressController,
+            current: si,
+            controller: progressCtrl,
           ),
         ),
 
         // ── Header ──
         Positioned(
-          top: MediaQuery.of(context).padding.top + 28,
-          left: 12,
-          right: 12,
-          child: _StoryHeader(
+          top: MediaQuery.of(context).padding.top + 26,
+          left: 10,
+          right: 10,
+          child: _Header(
             story: story,
             isCurrentUser: isCurrentUser,
             onClose: onClose,
@@ -295,181 +291,137 @@ class _StoryUserView extends StatelessWidget {
           ),
         ),
 
-        // ── Touch areas (left / right) ──
+        // ── Touch zones ──
         Row(
           children: [
             Expanded(
               child: GestureDetector(
-                onTap: onTapLeft,
-                onLongPressStart: (_) => onLongPressStart(),
-                onLongPressEnd: (_) => onLongPressEnd(),
                 behavior: HitTestBehavior.translucent,
+                onTap: onTapLeft,
+                onLongPressStart: (_) => onHoldStart(),
+                onLongPressEnd: (_) => onHoldEnd(),
               ),
             ),
             Expanded(
               child: GestureDetector(
-                onTap: onTapRight,
-                onLongPressStart: (_) => onLongPressStart(),
-                onLongPressEnd: (_) => onLongPressEnd(),
                 behavior: HitTestBehavior.translucent,
+                onTap: onTapRight,
+                onLongPressStart: (_) => onHoldStart(),
+                onLongPressEnd: (_) => onHoldEnd(),
               ),
             ),
           ],
         ),
 
-        // ── Caption + Footer ──
+        // ── Footer ──
         Positioned(
           bottom: 0,
           left: 0,
           right: 0,
-          child: _StoryFooter(
-            story: story,
-            isCurrentUser: isCurrentUser,
-          ),
+          child: _Footer(story: story, isCurrentUser: isCurrentUser),
         ),
       ],
     );
   }
 }
 
-// ── Story Content ───────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Content
+// ─────────────────────────────────────────────────────────────
+
 class _StoryContent extends StatelessWidget {
   final Story story;
   const _StoryContent({required this.story});
 
   @override
   Widget build(BuildContext context) {
-    switch (story.type) {
-      case StoryType.image:
-        return _ImageContent(story: story);
-      case StoryType.text:
-        return _TextContent(story: story);
-      default:
-        return Container(color: Colors.black);
-    }
-  }
-}
-
-class _ImageContent extends StatelessWidget {
-  final Story story;
-  const _ImageContent({required this.story});
-
-  @override
-  Widget build(BuildContext context) {
-    return Image.network(
-      story.mediaUrl ?? '',
-      fit: BoxFit.cover,
-      width: double.infinity,
-      height: double.infinity,
-      loadingBuilder: (_, child, progress) {
-        if (progress == null) return child;
-        return Container(
+    if (story.type == StoryType.image && story.mediaUrl != null) {
+      return Image.network(
+        story.mediaUrl!,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        loadingBuilder: (_, child, p) => p == null
+            ? child
+            : const ColoredBox(
           color: Colors.black87,
-          child: const Center(
-            child: CircularProgressIndicator(color: Colors.white),
-          ),
-        );
-      },
-      errorBuilder: (_, __, ___) => Container(
-        color: Colors.black87,
-        child: const Center(
-          child: Icon(Icons.broken_image, color: Colors.white54, size: 64),
+          child: Center(child: CircularProgressIndicator(color: Colors.white)),
         ),
-      ),
-    );
-  }
-}
+        errorBuilder: (_, __, ___) => const ColoredBox(
+          color: Colors.black87,
+          child: Center(
+            child: Icon(Icons.broken_image, color: Colors.white38, size: 64),
+          ),
+        ),
+      );
+    }
 
-class _TextContent extends StatelessWidget {
-  final Story story;
-  const _TextContent({required this.story});
-
-  @override
-  Widget build(BuildContext context) {
+    // Text story
     final bg = story.backgroundColor ?? const Color(0xFF1A1A2E);
-    final tc = story.textColor ?? Colors.white;
-
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            bg,
-            Color.lerp(bg, Colors.black, 0.4)!,
-          ],
+          colors: [bg, Color.lerp(bg, Colors.black, 0.4)!],
         ),
       ),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Text(
-            story.textContent ?? '',
-            style: TextStyle(
-              color: tc,
-              fontSize: story.fontSize,
-              fontFamily: story.fontFamily,
-              fontWeight: FontWeight.w700,
-              height: 1.3,
-              shadows: [
-                Shadow(
-                  color: Colors.black.withOpacity(0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            textAlign: TextAlign.center,
-          ),
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: Text(
+        story.textContent ?? '',
+        style: TextStyle(
+          color: story.textColor ?? Colors.white,
+          fontSize: story.fontSize,
+          fontFamily: story.fontFamily,
+          fontWeight: FontWeight.w700,
+          height: 1.35,
+          shadows: const [Shadow(color: Colors.black45, blurRadius: 10)],
         ),
+        textAlign: TextAlign.center,
       ),
     );
   }
 }
 
-// ── Gradient Overlays ───────────────────────────────────
-class _GradientOverlays extends StatelessWidget {
-  const _GradientOverlays();
+// ─────────────────────────────────────────────────────────────
+// Gradients overlay
+// ─────────────────────────────────────────────────────────────
 
+class _Gradients extends StatelessWidget {
+  const _Gradients();
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        // Top gradient (for readability of header)
-        Container(
-          height: 140,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.black.withOpacity(0.65),
-                Colors.transparent,
-              ],
-            ),
+  Widget build(BuildContext context) => Column(
+    children: [
+      Container(
+        height: 150,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.black.withOpacity(0.6), Colors.transparent],
           ),
         ),
-        const Spacer(),
-        // Bottom gradient (for caption)
-        Container(
-          height: 180,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.bottomCenter,
-              end: Alignment.topCenter,
-              colors: [
-                Colors.black.withOpacity(0.75),
-                Colors.transparent,
-              ],
-            ),
+      ),
+      const Spacer(),
+      Container(
+        height: 200,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: [Colors.black.withOpacity(0.7), Colors.transparent],
           ),
         ),
-      ],
-    );
-  }
+      ),
+    ],
+  );
 }
 
-// ── Progress Bars ───────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Progress bars
+// ─────────────────────────────────────────────────────────────
+
 class _ProgressBars extends StatelessWidget {
   final int total;
   final int current;
@@ -487,11 +439,31 @@ class _ProgressBars extends StatelessWidget {
       children: List.generate(total, (i) {
         return Expanded(
           child: Container(
+            height: 2.5,
             margin: EdgeInsets.only(right: i < total - 1 ? 3 : 0),
-            child: _SingleProgressBar(
-              isCurrent: i == current,
-              isCompleted: i < current,
-              controller: i == current ? controller : null,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.35),
+              borderRadius: BorderRadius.circular(2),
+            ),
+            child: AnimatedBuilder(
+              animation: controller ?? const AlwaysStoppedAnimation(0),
+              builder: (_, __) {
+                final val = i < current
+                    ? 1.0
+                    : i == current
+                    ? (controller?.value ?? 0.0)
+                    : 0.0;
+                return FractionallySizedBox(
+                  alignment: Alignment.centerLeft,
+                  widthFactor: val,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         );
@@ -500,57 +472,17 @@ class _ProgressBars extends StatelessWidget {
   }
 }
 
-class _SingleProgressBar extends StatelessWidget {
-  final bool isCurrent;
-  final bool isCompleted;
-  final AnimationController? controller;
+// ─────────────────────────────────────────────────────────────
+// Header
+// ─────────────────────────────────────────────────────────────
 
-  const _SingleProgressBar({
-    required this.isCurrent,
-    required this.isCompleted,
-    required this.controller,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 2.5,
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.35),
-        borderRadius: BorderRadius.circular(2),
-      ),
-      child: AnimatedBuilder(
-        animation: controller ?? const AlwaysStoppedAnimation(0),
-        builder: (context, _) {
-          final value = isCompleted
-              ? 1.0
-              : isCurrent
-                  ? (controller?.value ?? 0.0)
-                  : 0.0;
-          return FractionallySizedBox(
-            alignment: Alignment.centerLeft,
-            widthFactor: value,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-// ── Story Header ─────────────────────────────────────────
-class _StoryHeader extends StatelessWidget {
+class _Header extends StatelessWidget {
   final Story story;
   final bool isCurrentUser;
   final VoidCallback onClose;
   final VoidCallback onDelete;
 
-  const _StoryHeader({
+  const _Header({
     required this.story,
     required this.isCurrentUser,
     required this.onClose,
@@ -559,8 +491,6 @@ class _StoryHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final timeAgo = _formatTimeAgo(story.createdAt);
-
     return Row(
       children: [
         // Avatar
@@ -569,67 +499,58 @@ class _StoryHeader extends StatelessWidget {
           height: 38,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border:
-                Border.all(color: Colors.white.withOpacity(0.8), width: 1.5),
+            border: Border.all(color: Colors.white70, width: 1.5),
           ),
           child: ClipOval(
             child: story.userPhotoUrl.isNotEmpty
-                ? Image.network(story.userPhotoUrl, fit: BoxFit.cover)
-                : Container(
-                    color: Colors.grey,
-                    child: const Icon(Icons.person, color: Colors.white)),
+                ? Image.network(story.userPhotoUrl, fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _defaultAvatar())
+                : _defaultAvatar(),
           ),
         ),
         const SizedBox(width: 10),
 
-        // Name & time
+        // Name + time
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                story.userName,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                ),
-              ),
-              Text(
-                timeAgo,
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
-                  fontSize: 11,
-                ),
-              ),
+              Text(story.userName,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14)),
+              Text(_timeAgo(story.createdAt),
+                  style: TextStyle(
+                      color: Colors.white.withOpacity(0.7), fontSize: 11)),
             ],
           ),
         ),
 
-        // Options
         if (isCurrentUser)
-          GestureDetector(
-            onTap: onDelete,
-            child: Container(
-              padding: const EdgeInsets.all(6),
-              child: const Icon(Icons.delete_outline,
-                  color: Colors.white, size: 22),
-            ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.white, size: 22),
+            onPressed: onDelete,
+            tooltip: 'Delete',
+            padding: EdgeInsets.zero,
           ),
 
-        // Close
-        GestureDetector(
-          onTap: onClose,
-          child: Container(
-            padding: const EdgeInsets.all(6),
-            child: const Icon(Icons.close, color: Colors.white, size: 24),
-          ),
+        IconButton(
+          icon: const Icon(Icons.close, color: Colors.white, size: 24),
+          onPressed: onClose,
+          padding: EdgeInsets.zero,
         ),
       ],
     );
   }
 
-  String _formatTimeAgo(DateTime dt) {
+  Widget _defaultAvatar() => Container(
+    color: Colors.grey.shade700,
+    child: const Icon(Icons.person, color: Colors.white),
+  );
+
+  String _timeAgo(DateTime dt) {
     final diff = DateTime.now().difference(dt);
     if (diff.inMinutes < 1) return 'Just now';
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
@@ -638,12 +559,15 @@ class _StoryHeader extends StatelessWidget {
   }
 }
 
-// ── Story Footer ─────────────────────────────────────────
-class _StoryFooter extends StatelessWidget {
+// ─────────────────────────────────────────────────────────────
+// Footer
+// ─────────────────────────────────────────────────────────────
+
+class _Footer extends StatelessWidget {
   final Story story;
   final bool isCurrentUser;
 
-  const _StoryFooter({required this.story, required this.isCurrentUser});
+  const _Footer({required this.story, required this.isCurrentUser});
 
   @override
   Widget build(BuildContext context) {
@@ -654,63 +578,52 @@ class _StoryFooter extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Caption
-            if (story.caption?.isNotEmpty == true)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text(
-                  story.caption!,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    shadows: [
-                      Shadow(color: Colors.black54, blurRadius: 8),
-                    ],
-                  ),
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
+            if (story.caption?.isNotEmpty == true) ...[
+              Text(
+                story.caption!,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  shadows: [Shadow(color: Colors.black54, blurRadius: 8)],
                 ),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
               ),
-
-            // Viewers (for current user)
-            if (isCurrentUser && story.viewCount > 0) ...[
-              GestureDetector(
-                onTap: () => _showViewers(context),
-                child: Row(
-                  children: [
-                    const Icon(Icons.remove_red_eye_outlined,
-                        color: Colors.white70, size: 18),
-                    const SizedBox(width: 6),
-                    Text(
-                      '${story.viewCount} viewer${story.viewCount != 1 ? 's' : ''}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    const Icon(Icons.keyboard_arrow_up,
-                        color: Colors.white70, size: 18),
-                  ],
-                ),
-              ),
+              const SizedBox(height: 10),
             ],
 
-            // Remaining time
-            if (isCurrentUser)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  context
-                      .read<StoryProvider>()
-                      .formatTimeRemaining(story.remainingTime),
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.55),
-                    fontSize: 11,
+            if (isCurrentUser) ...[
+              if (story.viewCount > 0)
+                GestureDetector(
+                  onTap: () => _showViewers(context),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.remove_red_eye_outlined,
+                          color: Colors.white70, size: 18),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${story.viewCount} viewer${story.viewCount != 1 ? 's' : ''}',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.keyboard_arrow_up,
+                          color: Colors.white70, size: 18),
+                    ],
                   ),
                 ),
+              const SizedBox(height: 4),
+              Text(
+                context
+                    .read<StoryProvider>()
+                    .formatTimeRemaining(story.remainingTime),
+                style:
+                TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11),
               ),
+            ],
           ],
         ),
       ),
@@ -721,30 +634,35 @@ class _StoryFooter extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (_) => _ViewersSheet(views: story.views),
     );
   }
 }
 
-// ── Viewers Bottom Sheet ──────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Viewers bottom sheet
+// ─────────────────────────────────────────────────────────────
+
 class _ViewersSheet extends StatelessWidget {
   final List<StoryView> views;
-
   const _ViewersSheet({required this.views});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.55,
+      constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.55),
       decoration: const BoxDecoration(
         color: Color(0xFF1C1C1E),
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           // Handle
           Container(
-            margin: const EdgeInsets.only(top: 10, bottom: 16),
+            margin: const EdgeInsets.only(top: 10, bottom: 14),
             width: 36,
             height: 4,
             decoration: BoxDecoration(
@@ -763,57 +681,58 @@ class _ViewersSheet extends StatelessWidget {
                 Text(
                   '${views.length} Viewer${views.length != 1 ? 's' : ''}',
                   style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700),
                 ),
               ],
             ),
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           const Divider(color: Colors.white12, height: 1),
 
-          Expanded(
+          Flexible(
             child: views.isEmpty
-                ? const Center(
-                    child: Text('No viewers yet',
-                        style: TextStyle(color: Colors.white54)))
+                ? const Padding(
+              padding: EdgeInsets.all(32),
+              child: Text('No viewers yet',
+                  style: TextStyle(color: Colors.white54)),
+            )
                 : ListView.builder(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: views.length,
-                    itemBuilder: (_, i) {
-                      final v = views[i];
-                      return ListTile(
-                        leading: CircleAvatar(
-                          backgroundImage: v.photoUrl.isNotEmpty
-                              ? NetworkImage(v.photoUrl)
-                              : null,
-                          child: v.photoUrl.isEmpty
-                              ? const Icon(Icons.person)
-                              : null,
-                        ),
-                        title: Text(v.userName,
-                            style: const TextStyle(color: Colors.white)),
-                        subtitle: Text(
-                          _formatTime(v.viewedAt),
-                          style: const TextStyle(
-                              color: Colors.white54, fontSize: 12),
-                        ),
-                      );
-                    },
+              shrinkWrap: true,
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemCount: views.length,
+              itemBuilder: (_, i) {
+                final v = views[i];
+                return ListTile(
+                  leading: CircleAvatar(
+                    backgroundImage: v.photoUrl.isNotEmpty
+                        ? NetworkImage(v.photoUrl)
+                        : null,
+                    backgroundColor: Colors.grey.shade700,
+                    child: v.photoUrl.isEmpty
+                        ? const Icon(Icons.person, color: Colors.white)
+                        : null,
                   ),
+                  title: Text(v.userName,
+                      style: const TextStyle(color: Colors.white)),
+                  subtitle: Text(_fmt(v.viewedAt),
+                      style: const TextStyle(
+                          color: Colors.white54, fontSize: 12)),
+                );
+              },
+            ),
           ),
         ],
       ),
     );
   }
 
-  String _formatTime(DateTime dt) {
-    final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    return '${diff.inHours}h ago';
+  String _fmt(DateTime dt) {
+    final d = DateTime.now().difference(dt);
+    if (d.inMinutes < 1) return 'Just now';
+    if (d.inMinutes < 60) return '${d.inMinutes}m ago';
+    return '${d.inHours}h ago';
   }
 }
