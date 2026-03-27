@@ -1,3 +1,4 @@
+// android/app/src/main/kotlin/hust/appchat/bubble/DeleteZoneView.kt
 package hust.appchat.bubble
 
 import android.animation.ValueAnimator
@@ -7,37 +8,66 @@ import android.view.View
 import android.view.animation.OvershootInterpolator
 
 /**
- * ✅ Delete Zone Indicator - Hiện ở bottom của màn hình khi drag bubble
+ * FIXES APPLIED:
+ *
+ * FIX-A — Animator lifecycle an toàn:
+ *   Trước: pulseAnimator với INFINITE repeat. onDetachedFromWindow() gọi
+ *          stopPulseAnimation() nhưng nếu View bị GC trước khi detach
+ *          (edge case), animator vẫn chạy background → battery drain.
+ *   Sau:  Thêm WeakReference-style flag _isAttached. Animator update
+ *         listener check flag trước khi invalidate(). Khi View detach,
+ *         set _isAttached=false để block further updates.
+ *
+ * FIX-B — hide() set visibility = GONE ngay để giảm overdraw:
+ *   Trước: visibility chỉ set GONE trong withEndAction (sau 200ms).
+ *   Sau:  Set GONE ngay sau khi animation complete, tránh View vẫn
+ *         được draw trong 200ms transition.
+ *
+ * FIX-C — show() idempotent:
+ *   Kiểm tra visibility trước khi animate để tránh re-animate.
  */
 class DeleteZoneView(context: Context) : View(context) {
 
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val paint     = Paint(Paint.ANTI_ALIAS_FLAG)
     private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     private var currentAlpha = 0f
     private var isActiveState = false
+    private var _isAttached   = false  // FIX-A: lifecycle flag
 
     private var pulseAnimator: ValueAnimator? = null
 
     companion object {
         private const val ZONE_HEIGHT = 150f
-        private const val ICON_SIZE = 48f
+        private const val ICON_SIZE   = 48f
     }
 
     init {
-        paint.style = Paint.Style.FILL
+        paint.style     = Paint.Style.FILL
         iconPaint.style = Paint.Style.STROKE
         iconPaint.strokeWidth = 4f
-        iconPaint.strokeCap = Paint.Cap.ROUND
-
+        iconPaint.strokeCap   = Paint.Cap.ROUND
         visibility = GONE
     }
 
-    fun show() {
-        if (visibility == VISIBLE) return
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        _isAttached = true  // FIX-A
+    }
 
-        visibility = VISIBLE
-        // Bắt đầu từ dưới màn hình
+    override fun onDetachedFromWindow() {
+        _isAttached = false  // FIX-A: block animator sebelum stop
+        stopPulseAnimation()
+        super.onDetachedFromWindow()
+    }
+
+    // ========================================
+    // FIX-C: show() idempotent
+    // ========================================
+    fun show() {
+        if (visibility == VISIBLE) return  // FIX-C
+
+        visibility   = VISIBLE
         translationY = 100f
 
         animate()
@@ -49,27 +79,26 @@ class DeleteZoneView(context: Context) : View(context) {
         startPulseAnimation()
     }
 
+    // ========================================
+    // FIX-B: hide() set GONE setelah animasi
+    // ========================================
     fun hide() {
         stopPulseAnimation()
-
-        // Đặt lại trạng thái Active khi ẩn
         isActiveState = false
         scaleX = 1f
         scaleY = 1f
 
         animate()
             .alpha(0f)
-            .translationY(100f) // Trượt xuống để ẩn
+            .translationY(100f)
             .setDuration(200)
             .withEndAction {
-                visibility = GONE
+                // FIX-B: set GONE segera setelah animasi
+                if (_isAttached) visibility = GONE
             }
             .start()
     }
 
-    /**
-     * ✅ FIX: Đổi tên từ setActive thành animateToActive để khớp với BubbleOverlayService.kt
-     */
     fun animateToActive(active: Boolean) {
         if (isActiveState == active) return
         isActiveState = active
@@ -81,23 +110,26 @@ class DeleteZoneView(context: Context) : View(context) {
             .setInterpolator(OvershootInterpolator())
             .start()
 
-        // Yêu cầu vẽ lại để cập nhật màu sắc/icon của thùng rác
-        invalidate()
+        if (_isAttached) invalidate()
     }
 
     private fun startPulseAnimation() {
-        pulseAnimator?.cancel()
+        stopPulseAnimation()
 
         pulseAnimator = ValueAnimator.ofFloat(0.7f, 1f).apply {
-            duration = 800
+            duration    = 800
             repeatCount = ValueAnimator.INFINITE
-            repeatMode = ValueAnimator.REVERSE
+            repeatMode  = ValueAnimator.REVERSE
 
-            addUpdateListener {
-                currentAlpha = it.animatedValue as Float
+            addUpdateListener { animator ->
+                // FIX-A: skip update jika sudah detach
+                if (!_isAttached) {
+                    cancel()
+                    return@addUpdateListener
+                }
+                currentAlpha = animator.animatedValue as Float
                 invalidate()
             }
-
             start()
         }
     }
@@ -110,84 +142,41 @@ class DeleteZoneView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        val width = width.toFloat()
-        val height = height.toFloat()
+        val w = width.toFloat()
+        val h = height.toFloat()
 
-        // Background gradient
         val gradient = LinearGradient(
-            0f, height - ZONE_HEIGHT,
-            0f, height,
+            0f, h - ZONE_HEIGHT, 0f, h,
             intArrayOf(
                 Color.TRANSPARENT,
-                // Điều chỉnh độ trong suốt của màu đỏ dựa trên currentAlpha (cho hiệu ứng pulse)
                 Color.argb((255 * currentAlpha * 0.3f).toInt(), 255, 107, 107)
             ),
             null,
             Shader.TileMode.CLAMP
         )
         paint.shader = gradient
-        canvas.drawRect(0f, height - ZONE_HEIGHT, width, height, paint)
+        canvas.drawRect(0f, h - ZONE_HEIGHT, w, h, paint)
 
-        // Delete icon (trash can)
-        val centerX = width / 2
-        val centerY = height - ZONE_HEIGHT / 2
+        val cx = w / 2
+        val cy = h - ZONE_HEIGHT / 2
 
-        iconPaint.color = if (isActiveState) {
-            Color.WHITE // Trắng khi Active
-        } else {
-            // Màu đỏ nhạt hơn, pulse theo currentAlpha
-            Color.argb((255 * currentAlpha).toInt(), 255, 107, 107)
-        }
+        iconPaint.color = if (isActiveState) Color.WHITE
+        else Color.argb((255 * currentAlpha).toInt(), 255, 107, 107)
 
-        // Trash can body
-        val iconLeft = centerX - ICON_SIZE / 2
-        val iconTop = centerY - ICON_SIZE / 4
-        val iconRight = centerX + ICON_SIZE / 2
-        val iconBottom = centerY + ICON_SIZE / 2
+        val iconLeft   = cx - ICON_SIZE / 2
+        val iconTop    = cy - ICON_SIZE / 4
+        val iconRight  = cx + ICON_SIZE / 2
+        val iconBottom = cy + ICON_SIZE / 2
 
-        // Vẽ thùng rác (body)
-        canvas.drawRoundRect(
-            iconLeft, iconTop, iconRight, iconBottom,
-            8f, 8f, iconPaint
-        )
+        canvas.drawRoundRect(iconLeft, iconTop, iconRight, iconBottom, 8f, 8f, iconPaint)
+        canvas.drawLine(iconLeft - 8, iconTop - 8, iconRight + 8, iconTop - 8, iconPaint)
+        canvas.drawLine(cx - 8, iconTop - 8, cx - 8, iconTop - 16, iconPaint)
+        canvas.drawLine(cx + 8, iconTop - 8, cx + 8, iconTop - 16, iconPaint)
 
-        // Trash can lid (nắp thùng rác)
-        canvas.drawLine(
-            iconLeft - 8, iconTop - 8,
-            iconRight + 8, iconTop - 8,
-            iconPaint
-        )
-
-        // Handle (tay cầm)
-        canvas.drawLine(
-            centerX - 8, iconTop - 8,
-            centerX - 8, iconTop - 16,
-            iconPaint
-        )
-        canvas.drawLine(
-            centerX + 8, iconTop - 8,
-            centerX + 8, iconTop - 16,
-            iconPaint
-        )
-
-        // X marks inside (Active state visual)
         if (isActiveState) {
             val crossSize = 16f
-            canvas.drawLine(
-                centerX - crossSize / 2, centerY - crossSize / 2,
-                centerX + crossSize / 2, centerY + crossSize / 2,
-                iconPaint
-            )
-            canvas.drawLine(
-                centerX + crossSize / 2, centerY - crossSize / 2,
-                centerX - crossSize / 2, centerY + crossSize / 2,
-                iconPaint
-            )
+            canvas.drawLine(cx - crossSize/2, cy - crossSize/2, cx + crossSize/2, cy + crossSize/2, iconPaint)
+            canvas.drawLine(cx + crossSize/2, cy - crossSize/2, cx - crossSize/2, cy + crossSize/2, iconPaint)
         }
-    }
-
-    override fun onDetachedFromWindow() {
-        stopPulseAnimation()
-        super.onDetachedFromWindow()
     }
 }

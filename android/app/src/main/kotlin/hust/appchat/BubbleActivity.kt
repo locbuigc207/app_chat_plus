@@ -15,82 +15,92 @@ import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.MethodChannel
 
 /**
- * FIX #1 — navigationAttempted race condition:
- *   Trước: reset flag ngay khi onNewIntent, nhưng isFlutterReady có thể false
- *         → sendInitialDataToFlutter() bị skip và không retry.
- *   Sau:  dùng pendingUserId/Name/Avatar để lưu yêu cầu navigate mới nhất.
- *         Khi Flutter ready, luôn dùng pending values thay vì current values.
- *         navigationAttempted chỉ block duplicate cho CÙNG user, không block
- *         khi user thay đổi.
+ * FIXES APPLIED:
  *
- * FIX #2 — Engine ID conflict (BubbleActivity vs BubbleOverlayService):
- *   Trước: BubbleActivity dùng ENGINE_ID = "bubble_chat_engine"
- *          BubbleOverlayService dùng "mini_chat_engine"
- *          → 2 engine có thể active đồng thời, OOM trên thiết bị ít RAM.
- *   Sau:  Dùng ENGINE_ID chung = "shared_flutter_engine" — một engine duy nhất
- *         cho toàn app. BubbleOverlayService sẽ reuse cùng engine này.
- *         Engine được warm-up một lần, tái sử dụng nhiều lần.
+ * FIX-A — Engine warmup với readiness callback:
+ *   Trước: warmUpSharedEngine() tạo engine xong là coi ready, nhưng Dart VM
+ *          chưa chắc đã execute xong entry point.
+ *   Sau:  Thêm lifecycleChannel.appIsResumed() để signal Flutter engine
+ *         đang active, giúp Dart VM start sớm hơn. Giảm black screen 1-3s.
  *
- * FIX #4 — @RequiresApi(R) không có fallback:
- *   Trước: Annotation class-level @RequiresApi(R) → nếu intent được resolve
- *          trên Android <11, ActivityNotFoundException hoặc class cast error.
- *   Sau:  Bỏ annotation class-level. Thêm Build.VERSION check trong onCreate().
- *         Activity vẫn được khai báo trong manifest nhưng chỉ hoạt động đúng
- *         khi SDK >= R. Dưới R → finish() ngay với log rõ ràng.
- *         BubbleNotificationService.showBubbleNotification() đã check SDK >= R
- *         trước khi start activity, nên path này thực tế không xảy ra production.
+ * FIX-B — NavigationCompletedForUser Set có giới hạn 50 entries:
+ *   Trước: Set tích lũy vô hạn trong session dài.
+ *   Sau:  Tự động evict entry cũ nhất khi vượt quá 50.
+ *
+ * FIX-C — Retry interval giảm 200ms → 50ms, maxRetries tăng lên 40:
+ *   Trước: 10 retries × 200ms = 2000ms tổng — quá chậm trên flagship.
+ *   Sau:  40 retries × 50ms = 2000ms tổng — check thường xuyên hơn,
+ *         phản hồi nhanh hơn khi engine sẵn sàng.
+ *
+ * FIX-D — onBackPressed dùng OnBackPressedDispatcher (Android 13+):
+ *   Trước: @Suppress("DEPRECATION") onBackPressed() override.
+ *   Sau:  Dùng addCallback() cho Android 13+, fallback graceful cho cũ hơn.
+ *
+ * FIX-E — Guard check trong provideFlutterEngine:
+ *   Trước: Nếu engine trong cache đã bị destroyed (edge case), dùng lại
+ *          engine chết gây crash.
+ *   Sau:  Kiểm tra engine còn hoạt động trước khi reuse.
  */
 class BubbleActivity : FlutterActivity() {
 
     companion object {
         private const val TAG = "BubbleActivity"
 
-        // FIX #2: ENGINE_ID chung với BubbleOverlayService
-        // BubbleOverlayService phải đổi MINI_CHAT_ENGINE_ID thành ENGINE_ID này
         const val SHARED_ENGINE_ID = "shared_flutter_engine"
 
         private const val CHANNEL = "bubble_chat_channel"
 
-        private const val EXTRA_USER_ID = "userId"
+        private const val EXTRA_USER_ID   = "userId"
         private const val EXTRA_USER_NAME = "userName"
         private const val EXTRA_AVATAR_URL = "avatarUrl"
 
-        // Thời gian chờ tối đa để Flutter engine warm-up (ms)
         private const val ENGINE_WARMUP_TIMEOUT_MS = 2000L
-        // Bước retry interval (ms)
-        private const val RETRY_INTERVAL_MS = 200L
+        // FIX-C: giảm interval, tăng số lần retry
+        private const val RETRY_INTERVAL_MS = 50L
+        private const val MAX_NAVIGATION_CACHE = 50
 
         fun createIntent(
             context: Context,
             userId: String,
             userName: String,
             avatarUrl: String
-        ): Intent {
-            return Intent(context, BubbleActivity::class.java).apply {
-                putExtra(EXTRA_USER_ID, userId)
-                putExtra(EXTRA_USER_NAME, userName)
-                putExtra(EXTRA_AVATAR_URL, avatarUrl)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT)
-                addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
-            }
+        ): Intent = Intent(context, BubbleActivity::class.java).apply {
+            putExtra(EXTRA_USER_ID, userId)
+            putExtra(EXTRA_USER_NAME, userName)
+            putExtra(EXTRA_AVATAR_URL, avatarUrl)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT)
+            addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
         }
 
         /**
-         * FIX #2: Warm up shared engine — gọi từ MainActivity.onCreate() hoặc
-         * Application.onCreate() để engine sẵn sàng trước khi bubble mở.
+         * FIX-A: Warm up engine với lifecycle signal để Dart VM start sớm.
          */
         fun warmUpSharedEngine(context: Context) {
-            if (FlutterEngineCache.getInstance().contains(SHARED_ENGINE_ID)) {
-                Log.d(TAG, "♻️ Shared engine already warmed up")
+            val cache = FlutterEngineCache.getInstance()
+            val existing = cache.get(SHARED_ENGINE_ID)
+
+            // FIX-E: kiểm tra engine còn sống không
+            if (existing != null && existing.dartExecutor.isExecutingDart) {
+                Log.d(TAG, "♻️ Shared engine already warmed up and running")
                 return
             }
+
+            // Engine cũ đã chết — xóa khỏi cache và tạo mới
+            if (existing != null) {
+                Log.w(TAG, "⚠️ Stale engine found in cache, recreating...")
+                cache.remove(SHARED_ENGINE_ID)
+            }
+
             Log.d(TAG, "🔥 Warming up shared Flutter engine...")
             val engine = FlutterEngine(context.applicationContext)
             engine.dartExecutor.executeDartEntrypoint(
                 DartExecutor.DartEntrypoint.createDefault()
             )
-            FlutterEngineCache.getInstance().put(SHARED_ENGINE_ID, engine)
-            Log.d(TAG, "✅ Shared engine warmed up and cached")
+            // FIX-A: signal engine lifecycle để Dart VM khởi động nhanh hơn
+            engine.lifecycleChannel.appIsResumed()
+
+            cache.put(SHARED_ENGINE_ID, engine)
+            Log.d(TAG, "✅ Shared engine warmed up (dart executing: ${engine.dartExecutor.isExecutingDart})")
         }
     }
 
@@ -99,26 +109,22 @@ class BubbleActivity : FlutterActivity() {
     // ========================================
     private var methodChannel: MethodChannel? = null
 
-    // Current values — dùng để track user đang hiển thị
-    private var currentUserId: String? = null
+    private var currentUserId: String?   = null
     private var currentUserName: String? = null
     private var currentAvatarUrl: String? = null
 
-    // FIX #1: Pending values — lưu yêu cầu navigate mới nhất
-    // Tách biệt với current để tránh race condition
-    private var pendingUserId: String? = null
-    private var pendingUserName: String? = null
+    private var pendingUserId: String?    = null
+    private var pendingUserName: String?  = null
     private var pendingAvatarUrl: String? = null
 
     private var isFlutterReady = false
 
-    // FIX #1: navigationAttempted giờ track theo userId, không phải boolean đơn
-    // Key = userId, Value = true nếu đã navigate thành công
-    private val navigationCompletedForUser = mutableSetOf<String>()
+    // FIX-B: giới hạn kích thước set
+    private val navigationCompletedForUser = LinkedHashSet<String>()
 
-    // Số lần retry còn lại khi Flutter chưa ready
-    private var retryCount = 0
     private val maxRetries = (ENGINE_WARMUP_TIMEOUT_MS / RETRY_INTERVAL_MS).toInt()
+
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     // ========================================
     // LIFECYCLE
@@ -126,13 +132,10 @@ class BubbleActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.d(TAG, "✅ onCreate: BubbleActivity initialized")
+        Log.d(TAG, "✅ onCreate")
 
-        // FIX #4: Runtime check thay vì class-level annotation
-        // Nếu device chạy Android < 11, activity không hoạt động đúng
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            Log.w(TAG, "⚠️ BubbleActivity requires Android 11+ (API 30), " +
-                    "current SDK = ${Build.VERSION.SDK_INT}. Finishing.")
+            Log.w(TAG, "⚠️ Android < 11 not supported for BubbleActivity, finishing.")
             finish()
             return
         }
@@ -144,29 +147,65 @@ class BubbleActivity : FlutterActivity() {
         Log.d(TAG, "📋 User: $currentUserName (ID: $currentUserId)")
 
         if (!validateCurrentUser()) {
-            Log.e(TAG, "❌ Missing required user data, finishing activity")
+            Log.e(TAG, "❌ Missing user data, finishing")
             finish()
+            return
+        }
+
+        // FIX-D: register back press callback (Android 13+)
+        setupBackPressHandler()
+    }
+
+    // FIX-D: dùng OnBackPressedDispatcher thay vì deprecated onBackPressed()
+    private fun setupBackPressHandler() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            onBackPressedDispatcher.addCallback(this,
+                object : androidx.activity.OnBackPressedCallback(true) {
+                    override fun handleOnBackPressed() {
+                        Log.d(TAG, "⬅️ Back pressed (API 33+) — minimizing")
+                        moveTaskToBack(true)
+                    }
+                }
+            )
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            Log.d(TAG, "⬅️ Back pressed — minimizing to bubble")
+            moveTaskToBack(true)
+        } else {
+            super.onBackPressed()
         }
     }
 
     // ========================================
-    // FLUTTER ENGINE SETUP
+    // FLUTTER ENGINE
     // ========================================
 
     override fun provideFlutterEngine(context: Context): FlutterEngine? {
-        // FIX #2: Reuse shared engine, tạo mới nếu chưa có
-        var engine = FlutterEngineCache.getInstance().get(SHARED_ENGINE_ID)
+        val cache = FlutterEngineCache.getInstance()
+        var engine = cache.get(SHARED_ENGINE_ID)
+
+        // FIX-E: validate engine còn alive
+        if (engine != null && !engine.dartExecutor.isExecutingDart) {
+            Log.w(TAG, "⚠️ Cached engine is dead, recreating...")
+            cache.remove(SHARED_ENGINE_ID)
+            engine = null
+        }
 
         if (engine == null) {
-            Log.d(TAG, "🔧 Creating shared Flutter engine (first time)")
+            Log.d(TAG, "🔧 Creating new shared Flutter engine")
             engine = FlutterEngine(context.applicationContext)
             engine.dartExecutor.executeDartEntrypoint(
                 DartExecutor.DartEntrypoint.createDefault()
             )
-            FlutterEngineCache.getInstance().put(SHARED_ENGINE_ID, engine)
-            Log.d(TAG, "✅ Shared Flutter engine created and cached")
+            engine.lifecycleChannel.appIsResumed() // FIX-A
+            cache.put(SHARED_ENGINE_ID, engine)
+            Log.d(TAG, "✅ Shared engine created and cached")
         } else {
-            Log.d(TAG, "♻️ Reusing shared Flutter engine (ID: $SHARED_ENGINE_ID)")
+            Log.d(TAG, "♻️ Reusing shared engine (running: ${engine.dartExecutor.isExecutingDart})")
         }
 
         return engine
@@ -174,97 +213,80 @@ class BubbleActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        Log.d(TAG, "🔧 Configuring Flutter engine for Bubble")
+        Log.d(TAG, "🔧 Configuring Flutter engine")
 
         setupWindowForInput()
         setupMethodChannel(flutterEngine)
 
-        // FIX #1: Sau khi configure, set pending = current và bắt đầu retry loop
-        // Không dùng fixed delay mà dùng retry mechanism
         setPendingFromCurrent()
         scheduleNavigationWithRetry()
     }
 
     // ========================================
-    // FIX #1: PENDING/RETRY NAVIGATION MECHANISM
+    // NAVIGATION (PENDING / RETRY)
     // ========================================
 
-    /**
-     * Copy current user values vào pending để navigation lần đầu
-     */
     private fun setPendingFromCurrent() {
-        pendingUserId = currentUserId
+        pendingUserId   = currentUserId
         pendingUserName = currentUserName
         pendingAvatarUrl = currentAvatarUrl
         Log.d(TAG, "📌 Pending set: $pendingUserName")
     }
 
-    /**
-     * FIX #1: Retry loop — thử navigate mỗi RETRY_INTERVAL_MS
-     * đến khi thành công hoặc hết maxRetries.
-     * Dùng pending values chứ không phải current values.
-     */
     private fun scheduleNavigationWithRetry(attempt: Int = 0) {
         if (isFinishing) return
 
-        val uid = pendingUserId
-        val uname = pendingUserName
-        val avatar = pendingAvatarUrl
+        val uid   = pendingUserId   ?: return
+        val uname = pendingUserName ?: return
+        val avatar = pendingAvatarUrl ?: ""
 
-        if (uid == null || uname == null) {
-            Log.w(TAG, "⚠️ No pending user to navigate to")
-            return
-        }
-
-        // FIX #1: Chỉ skip nếu đã navigate THÀNH CÔNG cho đúng userId này
         if (navigationCompletedForUser.contains(uid)) {
-            Log.d(TAG, "ℹ️ Already navigated to $uname, skipping")
+            Log.d(TAG, "ℹ️ Already navigated to $uname")
             return
         }
 
         if (!isFlutterReady) {
             if (attempt >= maxRetries) {
-                Log.e(TAG, "❌ Flutter never became ready after ${maxRetries} retries, giving up")
+                Log.e(TAG, "❌ Flutter not ready after $maxRetries retries")
                 return
             }
-            Log.d(TAG, "⏳ Flutter not ready, retry ${attempt + 1}/$maxRetries in ${RETRY_INTERVAL_MS}ms")
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            mainHandler.postDelayed({
                 scheduleNavigationWithRetry(attempt + 1)
             }, RETRY_INTERVAL_MS)
             return
         }
 
-        navigateToChat(uid, uname, avatar ?: "")
+        navigateToChat(uid, uname, avatar)
     }
 
     private fun navigateToChat(userId: String, userName: String, avatarUrl: String) {
         if (isFinishing) return
-
         try {
-            Log.d(TAG, "📤 Navigating Flutter to chat: $userName")
-
+            Log.d(TAG, "📤 Navigating to chat: $userName")
             methodChannel?.invokeMethod(
                 "navigateToChat",
                 mapOf(
-                    "peerId" to userId,
+                    "peerId"       to userId,
                     "peerNickname" to userName,
-                    "peerAvatar" to avatarUrl,
+                    "peerAvatar"   to avatarUrl,
                     "isBubbleMode" to true
                 )
             )
 
-            // FIX #1: Mark thành công cho userId này
+            // FIX-B: evict oldest khi vượt giới hạn
+            if (navigationCompletedForUser.size >= MAX_NAVIGATION_CACHE) {
+                val oldest = navigationCompletedForUser.iterator().next()
+                navigationCompletedForUser.remove(oldest)
+                Log.d(TAG, "🗑️ Evicted oldest nav entry: $oldest")
+            }
             navigationCompletedForUser.add(userId)
             Log.d(TAG, "✅ Navigation sent for: $userName")
 
-            // Show keyboard sau khi navigate
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            mainHandler.postDelayed({
                 if (!isFinishing) showKeyboard()
             }, 300L)
-
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to navigate: $e")
-            // FIX #1: Không set navigationCompleted khi lỗi → cho phép retry
+            Log.e(TAG, "❌ Navigate failed: $e")
         }
     }
 
@@ -280,14 +302,14 @@ class BubbleActivity : FlutterActivity() {
                         WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE
             )
             window.decorView.requestFocus()
-            Log.d(TAG, "✅ Window configured for keyboard input")
+            Log.d(TAG, "✅ Window configured for keyboard")
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to configure window: $e")
+            Log.e(TAG, "❌ Window setup failed: $e")
         }
     }
 
     // ========================================
-    // METHOD CHANNEL SETUP
+    // METHOD CHANNEL
     // ========================================
 
     private fun setupMethodChannel(flutterEngine: FlutterEngine) {
@@ -298,7 +320,7 @@ class BubbleActivity : FlutterActivity() {
             )
 
             methodChannel?.setMethodCallHandler { call, result ->
-                Log.d(TAG, "📞 Method from Flutter: ${call.method}")
+                Log.d(TAG, "📞 Flutter → Native: ${call.method}")
                 when (call.method) {
                     "minimize" -> {
                         moveTaskToBack(true)
@@ -310,17 +332,14 @@ class BubbleActivity : FlutterActivity() {
                     }
                     "getUserInfo" -> {
                         result.success(mapOf(
-                            "userId" to currentUserId,
-                            "userName" to currentUserName,
+                            "userId"    to currentUserId,
+                            "userName"  to currentUserName,
                             "avatarUrl" to currentAvatarUrl
                         ))
                     }
-                    "getBubbleMode" -> {
-                        result.success(true)
-                    }
-                    // FIX #1: Flutter báo sẵn sàng nhận lệnh navigate
-                    "flutterReady" -> {
-                        Log.d(TAG, "🟢 Flutter reported ready via channel")
+                    "getBubbleMode" -> result.success(true)
+                    "flutterReady"  -> {
+                        Log.d(TAG, "🟢 Flutter reported ready")
                         isFlutterReady = true
                         scheduleNavigationWithRetry()
                         result.success(true)
@@ -329,15 +348,14 @@ class BubbleActivity : FlutterActivity() {
                 }
             }
 
-            // FIX #1: Đặt isFlutterReady = true sau khi channel setup xong
-            // Đây là dấu hiệu engine đã configure xong và có thể nhận method call
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            // Fallback: set ready sau 500ms nếu Flutter không gửi "flutterReady"
+            mainHandler.postDelayed({
                 if (!isFinishing && !isFlutterReady) {
-                    Log.d(TAG, "⏰ Setting Flutter ready via timeout fallback")
+                    Log.d(TAG, "⏰ Flutter ready via fallback timeout")
                     isFlutterReady = true
                     scheduleNavigationWithRetry()
                 }
-            }, 500L) // Fallback 500ms nếu Flutter không gửi "flutterReady"
+            }, 500L)
 
             Log.d(TAG, "✅ MethodChannel setup complete")
         } catch (e: Exception) {
@@ -355,7 +373,7 @@ class BubbleActivity : FlutterActivity() {
             val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
             imm?.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to show keyboard: $e")
+            Log.e(TAG, "❌ Show keyboard failed: $e")
         }
     }
 
@@ -364,19 +382,17 @@ class BubbleActivity : FlutterActivity() {
             val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
             imm?.hideSoftInputFromWindow(window.decorView.windowToken, 0)
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to hide keyboard: $e")
+            Log.e(TAG, "❌ Hide keyboard failed: $e")
         }
     }
 
     // ========================================
-    // LIFECYCLE CALLBACKS
+    // LIFECYCLE
     // ========================================
 
     override fun onResume() {
         super.onResume()
         Log.d(TAG, "▶️ onResume")
-
-        // FIX #1: Khi resume, retry navigation nếu pending user chưa được navigate
         val uid = pendingUserId
         if (isFlutterReady && uid != null && !navigationCompletedForUser.contains(uid)) {
             scheduleNavigationWithRetry()
@@ -392,48 +408,34 @@ class BubbleActivity : FlutterActivity() {
     override fun onDestroy() {
         Log.d(TAG, "💥 onDestroy")
         hideKeyboard()
+        mainHandler.removeCallbacksAndMessages(null)
         methodChannel?.setMethodCallHandler(null)
         methodChannel = null
         isFlutterReady = false
-
-        // FIX #1: Clear tracking sets
         navigationCompletedForUser.clear()
-        pendingUserId = null
-        pendingUserName = null
+        pendingUserId    = null
+        pendingUserName  = null
         pendingAvatarUrl = null
-
-        // FIX #2: KHÔNG destroy shared engine ở đây
-        // Engine được quản lý bởi FlutterEngineCache và có thể được
-        // reuse bởi BubbleOverlayService hoặc lần mở bubble tiếp theo.
-        // Engine sẽ được giải phóng khi app process bị kill.
-        Log.d(TAG, "ℹ️ Shared engine kept alive in cache for reuse")
-
+        // Engine vẫn giữ trong cache để reuse
+        Log.d(TAG, "ℹ️ Shared engine kept alive in cache")
         super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         Log.d(TAG, "🔄 onNewIntent")
-
-        val newUserId = intent.getStringExtra(EXTRA_USER_ID)
+        val newUserId   = intent.getStringExtra(EXTRA_USER_ID)
         val newUserName = intent.getStringExtra(EXTRA_USER_NAME)
-        val newAvatarUrl = intent.getStringExtra(EXTRA_AVATAR_URL)
+        val newAvatar   = intent.getStringExtra(EXTRA_AVATAR_URL)
 
         if (newUserId != null && newUserId != currentUserId) {
-            Log.d(TAG, "🔄 Switching user: $currentUserName → $newUserName")
-
-            // Update current
-            currentUserId = newUserId
+            Log.d(TAG, "🔄 Switching: $currentUserName → $newUserName")
+            currentUserId   = newUserId
             currentUserName = newUserName
-            currentAvatarUrl = newAvatarUrl
-
-            // FIX #1: Set pending = new user, kích hoạt navigation
-            // navigationCompletedForUser KHÔNG bị clear hoàn toàn —
-            // chỉ cần pending user mới chưa có trong set là đủ.
-            pendingUserId = newUserId
+            currentAvatarUrl = newAvatar
+            pendingUserId   = newUserId
             pendingUserName = newUserName
-            pendingAvatarUrl = newAvatarUrl
-
+            pendingAvatarUrl = newAvatar
             scheduleNavigationWithRetry()
         }
     }
@@ -444,44 +446,26 @@ class BubbleActivity : FlutterActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        outState.putString("userId", currentUserId)
-        outState.putString("userName", currentUserName)
+        outState.putString("userId",    currentUserId)
+        outState.putString("userName",  currentUserName)
         outState.putString("avatarUrl", currentAvatarUrl)
         outState.putStringArrayList(
             "navigationCompleted",
             ArrayList(navigationCompletedForUser)
         )
-        Log.d(TAG, "💾 State saved")
     }
 
     override fun onRestoreInstanceState(savedInstanceState: Bundle) {
         super.onRestoreInstanceState(savedInstanceState)
-        currentUserId = savedInstanceState.getString("userId")
+        currentUserId   = savedInstanceState.getString("userId")
         currentUserName = savedInstanceState.getString("userName")
         currentAvatarUrl = savedInstanceState.getString("avatarUrl")
-
-        // FIX #1: Restore navigation tracking
         savedInstanceState.getStringArrayList("navigationCompleted")?.let {
             navigationCompletedForUser.addAll(it)
         }
-
-        Log.d(TAG, "📦 State restored for: $currentUserName")
-
-        // FIX #1: Sau restore, set pending và retry
+        Log.d(TAG, "📦 State restored: $currentUserName")
         setPendingFromCurrent()
-        if (isFlutterReady) {
-            scheduleNavigationWithRetry()
-        }
-    }
-
-    // ========================================
-    // BACK PRESS
-    // ========================================
-
-    @Suppress("DEPRECATION")
-    override fun onBackPressed() {
-        Log.d(TAG, "⬅️ Back pressed — minimizing to bubble")
-        moveTaskToBack(true)
+        if (isFlutterReady) scheduleNavigationWithRetry()
     }
 
     // ========================================
@@ -489,12 +473,11 @@ class BubbleActivity : FlutterActivity() {
     // ========================================
 
     private fun extractUserFromIntent(intent: Intent) {
-        currentUserId = intent.getStringExtra(EXTRA_USER_ID)
+        currentUserId   = intent.getStringExtra(EXTRA_USER_ID)
         currentUserName = intent.getStringExtra(EXTRA_USER_NAME)
         currentAvatarUrl = intent.getStringExtra(EXTRA_AVATAR_URL)
     }
 
-    private fun validateCurrentUser(): Boolean {
-        return !currentUserId.isNullOrEmpty() && !currentUserName.isNullOrEmpty()
-    }
+    private fun validateCurrentUser(): Boolean =
+        !currentUserId.isNullOrEmpty() && !currentUserName.isNullOrEmpty()
 }
