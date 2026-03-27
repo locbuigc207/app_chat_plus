@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/call_model.dart';
+import '../pages/outgoing_call_page.dart';
 import '../services/call_service.dart';
 
 class CallHistoryPage extends StatelessWidget {
@@ -20,11 +21,9 @@ class CallHistoryPage extends StatelessWidget {
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text(
-          'Call History',
-          style: TextStyle(
-            color: Color(0xFF1976D2),
-            fontWeight: FontWeight.bold,
-          ),
+          'Lịch sử cuộc gọi',
+          style:
+              TextStyle(color: Color(0xFF1976D2), fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
         iconTheme: const IconThemeData(color: Color(0xFF1976D2)),
@@ -45,7 +44,11 @@ class CallHistoryPage extends StatelessWidget {
                 children: [
                   Icon(Icons.error_outline, size: 56, color: Colors.grey[400]),
                   const SizedBox(height: 12),
-                  const Text('Could not load call history'),
+                  Text('Không thể tải lịch sử cuộc gọi',
+                      style: TextStyle(color: Colors.grey[600])),
+                  const SizedBox(height: 8),
+                  Text('${snapshot.error}',
+                      style: TextStyle(color: Colors.grey[400], fontSize: 12)),
                 ],
               ),
             );
@@ -60,19 +63,14 @@ class CallHistoryPage extends StatelessWidget {
                 children: [
                   Icon(Icons.call_missed, size: 72, color: Colors.grey[300]),
                   const SizedBox(height: 16),
-                  Text(
-                    'No calls yet',
-                    style: TextStyle(
-                      color: Colors.grey[500],
-                      fontSize: 18,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
+                  Text('Chưa có cuộc gọi nào',
+                      style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 18,
+                          fontWeight: FontWeight.w500)),
                   const SizedBox(height: 8),
-                  Text(
-                    'Your call history will appear here',
-                    style: TextStyle(color: Colors.grey[400], fontSize: 14),
-                  ),
+                  Text('Lịch sử cuộc gọi sẽ xuất hiện ở đây',
+                      style: TextStyle(color: Colors.grey[400], fontSize: 14)),
                 ],
               ),
             );
@@ -81,24 +79,22 @@ class CallHistoryPage extends StatelessWidget {
           return ListView.separated(
             padding: const EdgeInsets.symmetric(vertical: 8),
             itemCount: calls.length,
-            separatorBuilder: (_, __) => Divider(
-              height: 1,
-              indent: 80,
-              color: Colors.grey[200],
-            ),
+            separatorBuilder: (_, __) =>
+                Divider(height: 1, indent: 80, color: Colors.grey[200]),
             itemBuilder: (context, i) {
               final call = calls[i];
               final isOutgoing = call.callerId == currentUserId;
               final peerName = isOutgoing ? call.calleeName : call.callerName;
               final peerAvatar =
                   isOutgoing ? call.calleeAvatar : call.callerAvatar;
+              final peerId = isOutgoing ? call.calleeId : call.callerId;
 
               return _CallHistoryTile(
                 call: call,
                 isOutgoing: isOutgoing,
                 peerName: peerName,
                 peerAvatar: peerAvatar,
-                currentUserId: currentUserId,
+                peerId: peerId,
               );
             },
           );
@@ -113,19 +109,19 @@ class _CallHistoryTile extends StatelessWidget {
   final bool isOutgoing;
   final String peerName;
   final String peerAvatar;
-  final String currentUserId;
+  final String peerId;
 
   const _CallHistoryTile({
     required this.call,
     required this.isOutgoing,
     required this.peerName,
     required this.peerAvatar,
-    required this.currentUserId,
+    required this.peerId,
   });
 
   @override
   Widget build(BuildContext context) {
-    final status = _statusInfo();
+    final statusInfo = _statusInfo();
     final timeLabel = _timeLabel();
 
     return ListTile(
@@ -134,24 +130,19 @@ class _CallHistoryTile extends StatelessWidget {
       title: Text(
         peerName,
         style: const TextStyle(
-          fontWeight: FontWeight.w600,
-          fontSize: 15,
-          color: Color(0xFF1A1A2E),
-        ),
+            fontWeight: FontWeight.w600,
+            fontSize: 15,
+            color: Color(0xFF1A1A2E)),
       ),
       subtitle: Row(
         children: [
-          Icon(status.icon, size: 14, color: status.color),
+          Icon(statusInfo.icon, size: 14, color: statusInfo.color),
           const SizedBox(width: 4),
-          Text(
-            status.label,
-            style: TextStyle(color: status.color, fontSize: 13),
-          ),
+          Text(statusInfo.label,
+              style: TextStyle(color: statusInfo.color, fontSize: 13)),
           if (call.durationSeconds != null && call.durationSeconds! > 0) ...[
-            Text(
-              ' · ${call.formattedDuration}',
-              style: TextStyle(color: Colors.grey[500], fontSize: 13),
-            ),
+            Text(' · ${call.formattedDuration}',
+                style: TextStyle(color: Colors.grey[500], fontSize: 13)),
           ],
         ],
       ),
@@ -159,10 +150,8 @@ class _CallHistoryTile extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Text(
-            timeLabel,
-            style: TextStyle(color: Colors.grey[500], fontSize: 12),
-          ),
+          Text(timeLabel,
+              style: TextStyle(color: Colors.grey[500], fontSize: 12)),
           const SizedBox(height: 4),
           Icon(
             call.isVideoCall ? Icons.videocam : Icons.phone,
@@ -179,10 +168,8 @@ class _CallHistoryTile extends StatelessWidget {
     return Container(
       width: 50,
       height: 50,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: Colors.grey[200],
-      ),
+      decoration:
+          BoxDecoration(shape: BoxShape.circle, color: Colors.grey[200]),
       child: ClipOval(
         child: peerAvatar.isNotEmpty
             ? Image.network(peerAvatar,
@@ -199,10 +186,9 @@ class _CallHistoryTile extends StatelessWidget {
         child: Text(
           peerName.isNotEmpty ? peerName[0].toUpperCase() : '?',
           style: const TextStyle(
-            color: Color(0xFF1976D2),
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-          ),
+              color: Color(0xFF1976D2),
+              fontWeight: FontWeight.bold,
+              fontSize: 20),
         ),
       ),
     );
@@ -212,17 +198,18 @@ class _CallHistoryTile extends StatelessWidget {
     switch (call.status) {
       case CallStatus.ended:
         return isOutgoing
-            ? _StatusInfo(Icons.call_made, Colors.blue[600]!, 'Outgoing')
-            : _StatusInfo(Icons.call_received, Colors.green[600]!, 'Incoming');
+            ? _StatusInfo(Icons.call_made, Colors.blue[600]!, 'Đã gọi')
+            : _StatusInfo(
+                Icons.call_received, Colors.green[600]!, 'Cuộc gọi đến');
       case CallStatus.missed:
-        return _StatusInfo(Icons.call_missed, Colors.red[600]!, 'Missed');
+        return _StatusInfo(Icons.call_missed, Colors.red[600]!, 'Cuộc gọi nhỡ');
       case CallStatus.declined:
         return _StatusInfo(
-            Icons.call_missed_outgoing, Colors.orange[700]!, 'Declined');
+            Icons.call_missed_outgoing, Colors.orange[700]!, 'Bị từ chối');
       case CallStatus.failed:
-        return _StatusInfo(Icons.error_outline, Colors.red[400]!, 'Failed');
+        return _StatusInfo(Icons.error_outline, Colors.red[400]!, 'Thất bại');
       default:
-        return _StatusInfo(Icons.phone, Colors.grey, 'Unknown');
+        return _StatusInfo(Icons.phone, Colors.grey, 'Không rõ');
     }
   }
 
@@ -230,12 +217,12 @@ class _CallHistoryTile extends StatelessWidget {
     final now = DateTime.now();
     final diff = now.difference(call.createdAt);
 
-    if (diff.inSeconds < 60) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    if (diff.inDays == 1) return 'Yesterday';
+    if (diff.inSeconds < 60) return 'Vừa xong';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}p trước';
+    if (diff.inHours < 24) return '${diff.inHours}g trước';
+    if (diff.inDays == 1) return 'Hôm qua';
     if (diff.inDays < 7) return DateFormat('EEE').format(call.createdAt);
-    return DateFormat('MMM d').format(call.createdAt);
+    return DateFormat('dd/MM').format(call.createdAt);
   }
 
   void _showCallOptions(BuildContext context) {
@@ -244,10 +231,10 @@ class _CallHistoryTile extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _CallOptionSheet(
+      builder: (_) => _CallbackSheet(
         peerName: peerName,
         peerAvatar: peerAvatar,
-        peerId: isOutgoing ? call.calleeId : call.callerId,
+        peerId: peerId,
       ),
     );
   }
@@ -260,13 +247,12 @@ class _StatusInfo {
   _StatusInfo(this.icon, this.color, this.label);
 }
 
-// ── Bottom sheet to call back ─────────────────────────────
-class _CallOptionSheet extends StatelessWidget {
+class _CallbackSheet extends StatelessWidget {
   final String peerName;
   final String peerAvatar;
   final String peerId;
 
-  const _CallOptionSheet({
+  const _CallbackSheet({
     required this.peerName,
     required this.peerAvatar,
     required this.peerId,
@@ -280,18 +266,15 @@ class _CallOptionSheet extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Handle
             Container(
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2)),
             ),
             const SizedBox(height: 20),
 
-            // Avatar + name
             Row(
               children: [
                 CircleAvatar(
@@ -301,18 +284,13 @@ class _CallOptionSheet extends StatelessWidget {
                   child: peerAvatar.isEmpty
                       ? Text(
                           peerName.isNotEmpty ? peerName[0].toUpperCase() : '?',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        )
+                          style: const TextStyle(fontWeight: FontWeight.bold))
                       : null,
                 ),
                 const SizedBox(width: 12),
-                Text(
-                  peerName,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                Text(peerName,
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold)),
               ],
             ),
 
@@ -320,31 +298,53 @@ class _CallOptionSheet extends StatelessWidget {
             const Divider(),
             const SizedBox(height: 8),
 
-            // Voice call
+            // Voice call back
             ListTile(
               leading: const CircleAvatar(
                 backgroundColor: Color(0xFF43A047),
                 child: Icon(Icons.phone, color: Colors.white),
               ),
-              title: const Text('Voice Call'),
-              onTap: () {
+              title: const Text('Gọi thoại lại'),
+              onTap: () async {
                 Navigator.pop(context);
-                // Trigger voice call – handled by calling widget
-                // context.read<CallProvider>().initiateCall(peerId, CallType.voice);
+                final service = CallService();
+                final call = await service.initiateCall(
+                  calleeId: peerId,
+                  calleeName: peerName,
+                  calleeAvatar: peerAvatar,
+                  callType: CallType.voice,
+                );
+                if (call != null && context.mounted) {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                        builder: (_) => OutgoingCallPage(call: call)),
+                  );
+                }
               },
             ),
 
-            // Video call
+            // Video call back
             ListTile(
               leading: const CircleAvatar(
                 backgroundColor: Color(0xFF1976D2),
                 child: Icon(Icons.videocam, color: Colors.white),
               ),
-              title: const Text('Video Call'),
-              onTap: () {
+              title: const Text('Gọi video lại'),
+              onTap: () async {
                 Navigator.pop(context);
-                // Trigger video call
-                // context.read<CallProvider>().initiateCall(peerId, CallType.video);
+                final service = CallService();
+                final call = await service.initiateCall(
+                  calleeId: peerId,
+                  calleeName: peerName,
+                  calleeAvatar: peerAvatar,
+                  callType: CallType.video,
+                );
+                if (call != null && context.mounted) {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                        builder: (_) => OutgoingCallPage(call: call)),
+                  );
+                }
               },
             ),
 

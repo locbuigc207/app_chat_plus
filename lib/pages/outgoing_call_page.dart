@@ -1,9 +1,4 @@
 // lib/pages/outgoing_call_page.dart
-//
-// This page is shown immediately after initiating a call,
-// while waiting for the remote party to answer.
-// It transitions to CallPage when connected.
-
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -26,6 +21,7 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
   final _callService = CallService();
   StreamSubscription? _callStatusSub;
   late AnimationController _waveController;
+  bool _dismissed = false;
 
   @override
   void initState() {
@@ -41,30 +37,28 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
 
   void _watchCallStatus() {
     _callStatusSub = _callService.watchCall(widget.call.callId).listen((call) {
-      if (call == null || !mounted) return;
+      if (call == null || _dismissed || !mounted) return;
 
       switch (call.status) {
         case CallStatus.connected:
           _callStatusSub?.cancel();
+          _dismissed = true;
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
-              builder: (_) => CallPage(
-                call: call,
-                isOutgoing: true,
-              ),
+              builder: (_) => CallPage(call: call, isOutgoing: true),
             ),
           );
           break;
         case CallStatus.declined:
           _showEndDialog(
-              'Call Declined', '${widget.call.calleeName} declined the call.');
+              'Bị từ chối', '${widget.call.calleeName} đã từ chối cuộc gọi.');
           break;
         case CallStatus.missed:
           _showEndDialog(
-              'No Answer', '${widget.call.calleeName} did not answer.');
+              'Không có phản hồi', '${widget.call.calleeName} không trả lời.');
           break;
         case CallStatus.failed:
-          _showEndDialog('Call Failed', 'Could not connect the call.');
+          _showEndDialog('Cuộc gọi thất bại', 'Không thể kết nối cuộc gọi.');
           break;
         default:
           break;
@@ -73,7 +67,9 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
   }
 
   void _showEndDialog(String title, String message) {
-    if (!mounted) return;
+    if (!mounted || _dismissed) return;
+    _dismissed = true;
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -94,12 +90,14 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
   }
 
   Future<void> _cancelCall() async {
+    _dismissed = true;
     await _callService.endCall(widget.call.callId);
     if (mounted) Navigator.of(context).pop();
   }
 
   @override
   void dispose() {
+    _dismissed = true;
     _waveController.dispose();
     _callStatusSub?.cancel();
     super.dispose();
@@ -111,114 +109,110 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
     final name = widget.call.calleeName;
     final avatar = widget.call.calleeAvatar;
 
-    return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: isVideo
-                ? [const Color(0xFF0f3460), const Color(0xFF16213e)]
-                : [const Color(0xFF0D47A1), const Color(0xFF1565C0)],
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _cancelCall();
+      },
+      child: Scaffold(
+        body: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: isVideo
+                  ? const [Color(0xFF0f3460), Color(0xFF16213e)]
+                  : const [Color(0xFF0D47A1), Color(0xFF1565C0)],
+            ),
           ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              const SizedBox(height: 24),
+          child: SafeArea(
+            child: Column(
+              children: [
+                const SizedBox(height: 24),
 
-              // ── Call type ────────────────────────────
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(20),
+                // Badge
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(isVideo ? Icons.videocam : Icons.phone,
+                          color: Colors.white, size: 15),
+                      const SizedBox(width: 6),
+                      Text(
+                        isVideo ? 'Đang gọi video…' : 'Đang gọi thoại…',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      isVideo ? Icons.videocam : Icons.phone,
-                      color: Colors.white,
-                      size: 15,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      isVideo ? 'Video Calling…' : 'Voice Calling…',
-                      style: const TextStyle(
+
+                const Spacer(),
+
+                // Animated avatar
+                _AnimatedCallingAvatar(
+                  controller: _waveController,
+                  avatarUrl: avatar,
+                  name: name,
+                ),
+                const SizedBox(height: 32),
+
+                // Name
+                Text(name,
+                    style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+                        fontSize: 30,
+                        fontWeight: FontWeight.bold)),
+                const SizedBox(height: 10),
 
-              const Spacer(),
+                // Status dots
+                _RingingDotsText(label: 'Đang đổ chuông'),
 
-              // ── Animated avatar ──────────────────────
-              _AnimatedAvatar(
-                controller: _waveController,
-                avatarUrl: avatar,
-                name: name,
-              ),
+                const Spacer(),
 
-              const SizedBox(height: 32),
-
-              // ── Name ─────────────────────────────────
-              Text(
-                name,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 30,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-
-              const SizedBox(height: 10),
-
-              // ── Status ───────────────────────────────
-              _RingingDotsText(label: 'Ringing'),
-
-              const Spacer(),
-
-              // ── Cancel button ────────────────────────
-              Padding(
-                padding: const EdgeInsets.only(bottom: 56),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    GestureDetector(
-                      onTap: _cancelCall,
-                      child: Container(
-                        width: 72,
-                        height: 72,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE53935),
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFFE53935).withOpacity(0.4),
-                              blurRadius: 16,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
+                // Cancel button
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 56),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        onTap: _cancelCall,
+                        child: Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE53935),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFFE53935).withOpacity(0.4),
+                                blurRadius: 16,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(Icons.call_end,
+                              color: Colors.white, size: 32),
                         ),
-                        child: const Icon(Icons.call_end,
-                            color: Colors.white, size: 32),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'Cancel',
-                      style: TextStyle(color: Colors.white70, fontSize: 14),
-                    ),
-                  ],
+                      const SizedBox(height: 10),
+                      const Text('Huỷ',
+                          style:
+                              TextStyle(color: Colors.white70, fontSize: 14)),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -226,13 +220,14 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
   }
 }
 
-// ── Animated avatar with wave rings ──────────────────────────
-class _AnimatedAvatar extends StatelessWidget {
+// ── Animated caller avatar ──────────────────────────────────────
+
+class _AnimatedCallingAvatar extends StatelessWidget {
   final Animation<double> controller;
   final String avatarUrl;
   final String name;
 
-  const _AnimatedAvatar({
+  const _AnimatedCallingAvatar({
     required this.controller,
     required this.avatarUrl,
     required this.name,
@@ -243,7 +238,6 @@ class _AnimatedAvatar extends StatelessWidget {
     return Stack(
       alignment: Alignment.center,
       children: [
-        // Wave rings
         ...List.generate(3, (i) {
           return AnimatedBuilder(
             animation: controller,
@@ -266,8 +260,6 @@ class _AnimatedAvatar extends StatelessWidget {
             },
           );
         }),
-
-        // Avatar
         Container(
           width: 108,
           height: 108,
@@ -294,17 +286,15 @@ class _AnimatedAvatar extends StatelessWidget {
         child: Text(
           name.isNotEmpty ? name[0].toUpperCase() : '?',
           style: const TextStyle(
-            color: Colors.white,
-            fontSize: 40,
-            fontWeight: FontWeight.bold,
-          ),
+              color: Colors.white, fontSize: 40, fontWeight: FontWeight.bold),
         ),
       ),
     );
   }
 }
 
-// ── Animated ringing dots ──────────────────────────────────
+// ── Ringing dots ────────────────────────────────────────────────
+
 class _RingingDotsText extends StatefulWidget {
   final String label;
   const _RingingDotsText({required this.label});
@@ -335,11 +325,7 @@ class _RingingDotsTextState extends State<_RingingDotsText> {
   Widget build(BuildContext context) {
     return Text(
       '${widget.label}${'.' * _dots}',
-      style: TextStyle(
-        color: Colors.white.withOpacity(0.7),
-        fontSize: 16,
-        letterSpacing: 1,
-      ),
+      style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 16),
     );
   }
 }
