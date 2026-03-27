@@ -1,17 +1,4 @@
 // lib/widgets/call_listener.dart
-//
-// Wrap your app's home widget (or MaterialApp) with this
-// to automatically handle incoming calls.
-//
-// Usage in main.dart:
-//   home: CallListener(
-//     child: BubbleManager(
-//       child: MiniChatOverlayManager(
-//         child: AppInitializer(...)
-//       ),
-//     ),
-//   ),
-
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -20,6 +7,14 @@ import '../models/call_model.dart';
 import '../pages/incoming_call_page.dart';
 import '../services/call_service.dart';
 
+/// Wrap app home để tự động bắt incoming calls
+///
+/// Dùng trong main.dart:
+///   home: CallListener(
+///     child: BubbleManager(
+///       child: AppInitializer(...),
+///     ),
+///   ),
 class CallListener extends StatefulWidget {
   final Widget child;
 
@@ -37,14 +32,16 @@ class _CallListenerState extends State<CallListener> {
   @override
   void initState() {
     super.initState();
-    // Small delay so Navigator is ready
-    Future.delayed(const Duration(milliseconds: 500), _startListening);
+    // Delay nhỏ để Navigator ready
+    Future.delayed(const Duration(milliseconds: 800), _startListening);
   }
 
   void _startListening() {
+    if (!mounted) return;
+
     _incomingCallSub = _callService.incomingCallStream.listen((call) {
       if (call == null) return;
-      if (call.callId == _activeIncomingCallId) return; // already showing
+      if (call.callId == _activeIncomingCallId) return; // Đã hiển thị
 
       _activeIncomingCallId = call.callId;
       _showIncomingCall(call);
@@ -52,6 +49,8 @@ class _CallListenerState extends State<CallListener> {
   }
 
   void _showIncomingCall(CallModel call) {
+    if (!mounted) return;
+
     final nav = Navigator.of(context, rootNavigator: true);
     nav
         .push(
@@ -63,9 +62,12 @@ class _CallListenerState extends State<CallListener> {
               position: Tween<Offset>(
                 begin: const Offset(0, 1),
                 end: Offset.zero,
-              ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOut)),
+              ).animate(
+                CurvedAnimation(parent: anim, curve: Curves.easeOutCubic),
+              ),
               child: child,
             ),
+            transitionDuration: const Duration(milliseconds: 400),
           ),
         )
         .then((_) => _activeIncomingCallId = null);

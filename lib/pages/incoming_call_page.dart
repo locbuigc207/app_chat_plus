@@ -23,21 +23,16 @@ class _IncomingCallPageState extends State<IncomingCallPage>
   late AnimationController _pulseController;
   late AnimationController _rippleController;
   late Animation<double> _pulseAnimation;
-  late Animation<double> _rippleAnimation;
 
   StreamSubscription? _callStatusSub;
   int _secondsRemaining = 30;
   Timer? _countdownTimer;
+  bool _dismissed = false;
 
   @override
   void initState() {
     super.initState();
-    _setupAnimations();
-    _watchCallStatus();
-    _startCountdown();
-  }
 
-  void _setupAnimations() {
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
@@ -52,38 +47,39 @@ class _IncomingCallPageState extends State<IncomingCallPage>
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
-    _rippleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _rippleController, curve: Curves.easeOut),
-    );
+    _watchCallStatus();
+    _startCountdown();
   }
 
   void _watchCallStatus() {
     _callStatusSub = _callService.watchCall(widget.call.callId).listen((call) {
-      if (call == null) {
-        _dismiss();
-        return;
-      }
+      if (call == null || _dismissed) return;
+
       if (call.status == CallStatus.ended ||
           call.status == CallStatus.missed ||
           call.status == CallStatus.declined) {
-        _dismiss();
+        _safeDismiss();
       }
     });
   }
 
   void _startCountdown() {
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-      setState(() {
-        _secondsRemaining--;
-      });
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() => _secondsRemaining--);
       if (_secondsRemaining <= 0) {
         t.cancel();
-        _dismiss();
+        _safeDismiss();
       }
     });
   }
 
-  void _dismiss() {
+  void _safeDismiss() {
+    if (_dismissed) return;
+    _dismissed = true;
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -91,6 +87,7 @@ class _IncomingCallPageState extends State<IncomingCallPage>
     _countdownTimer?.cancel();
     await _callService.answerCall(widget.call.callId);
     if (!mounted) return;
+
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (_) => CallPage(
@@ -104,11 +101,12 @@ class _IncomingCallPageState extends State<IncomingCallPage>
   Future<void> _declineCall() async {
     _countdownTimer?.cancel();
     await _callService.declineCall(widget.call.callId);
-    _dismiss();
+    _safeDismiss();
   }
 
   @override
   void dispose() {
+    _dismissed = true;
     _pulseController.dispose();
     _rippleController.dispose();
     _callStatusSub?.cancel();
@@ -130,16 +128,8 @@ class _IncomingCallPageState extends State<IncomingCallPage>
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: isVideo
-                ? [
-                    const Color(0xFF1a1a2e),
-                    const Color(0xFF16213e),
-                    const Color(0xFF0f3460),
-                  ]
-                : [
-                    const Color(0xFF1b5e20),
-                    const Color(0xFF2e7d32),
-                    const Color(0xFF1b5e20),
-                  ],
+                ? const [Color(0xFF1a1a2e), Color(0xFF16213e), Color(0xFF0f3460)]
+                : const [Color(0xFF1b5e20), Color(0xFF2e7d32), Color(0xFF1b5e20)],
           ),
         ),
         child: SafeArea(
@@ -147,10 +137,9 @@ class _IncomingCallPageState extends State<IncomingCallPage>
             children: [
               const SizedBox(height: 20),
 
-              // ── Call type label ──────────────────────
+              // Call type badge
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(20),
@@ -158,19 +147,13 @@ class _IncomingCallPageState extends State<IncomingCallPage>
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      isVideo ? Icons.videocam : Icons.phone,
-                      color: Colors.white,
-                      size: 16,
-                    ),
+                    Icon(isVideo ? Icons.videocam : Icons.phone,
+                        color: Colors.white, size: 16),
                     const SizedBox(width: 6),
                     Text(
-                      isVideo ? 'Incoming Video Call' : 'Incoming Voice Call',
+                      isVideo ? 'Cuộc gọi video đến' : 'Cuộc gọi thoại đến',
                       style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
+                          color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
                     ),
                   ],
                 ),
@@ -178,17 +161,16 @@ class _IncomingCallPageState extends State<IncomingCallPage>
 
               const Spacer(),
 
-              // ── Caller avatar with ripple ─────────────
+              // Avatar với ripple animation
               Stack(
                 alignment: Alignment.center,
                 children: [
                   // Ripple rings
                   ...List.generate(3, (i) {
                     return AnimatedBuilder(
-                      animation: _rippleAnimation,
+                      animation: _rippleController,
                       builder: (_, __) {
-                        final progress =
-                            (_rippleAnimation.value + (i * 0.33)) % 1.0;
+                        final progress = (_rippleController.value + (i * 0.33)) % 1.0;
                         return Opacity(
                           opacity: (1.0 - progress).clamp(0, 1),
                           child: Container(
@@ -207,7 +189,7 @@ class _IncomingCallPageState extends State<IncomingCallPage>
                     );
                   }),
 
-                  // Avatar
+                  // Avatar với pulse
                   AnimatedBuilder(
                     animation: _pulseAnimation,
                     builder: (_, child) => Transform.scale(
@@ -230,13 +212,9 @@ class _IncomingCallPageState extends State<IncomingCallPage>
                       ),
                       child: ClipOval(
                         child: callerAvatar.isNotEmpty
-                            ? Image.network(
-                                callerAvatar,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) =>
-                                    _buildDefaultAvatar(callerName),
-                              )
-                            : _buildDefaultAvatar(callerName),
+                            ? Image.network(callerAvatar, fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => _defaultAvatar(callerName))
+                            : _defaultAvatar(callerName),
                       ),
                     ),
                   ),
@@ -245,67 +223,52 @@ class _IncomingCallPageState extends State<IncomingCallPage>
 
               const SizedBox(height: 32),
 
-              // ── Caller name ──────────────────────────
+              // Caller name
               Text(
                 callerName,
                 style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
+                    color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
               ),
-
               const SizedBox(height: 8),
-
               Text(
-                isVideo ? 'Video Call' : 'Voice Call',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.75),
-                  fontSize: 16,
-                ),
+                isVideo ? 'Cuộc gọi Video' : 'Cuộc gọi Thoại',
+                style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 16),
               ),
-
               const SizedBox(height: 12),
 
-              // ── Countdown ───────────────────────────
+              // Countdown
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  'Auto-dismiss in ${_secondsRemaining}s',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.7),
-                    fontSize: 12,
-                  ),
+                  'Tự động bỏ qua sau ${_secondsRemaining}s',
+                  style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12),
                 ),
               ),
 
               const Spacer(),
 
-              // ── Action buttons ───────────────────────
+              // Action buttons
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 48, vertical: 40),
+                padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 40),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Decline
-                    _ActionButton(
+                    // Từ chối
+                    _CallActionButton(
                       icon: Icons.call_end,
-                      label: 'Decline',
+                      label: 'Từ chối',
                       backgroundColor: const Color(0xFFE53935),
                       onTap: _declineCall,
                     ),
 
-                    // Accept
-                    _ActionButton(
+                    // Chấp nhận
+                    _CallActionButton(
                       icon: isVideo ? Icons.videocam : Icons.call,
-                      label: 'Accept',
+                      label: 'Chấp nhận',
                       backgroundColor: const Color(0xFF43A047),
                       onTap: _acceptCall,
                     ),
@@ -319,31 +282,27 @@ class _IncomingCallPageState extends State<IncomingCallPage>
     );
   }
 
-  Widget _buildDefaultAvatar(String name) {
+  Widget _defaultAvatar(String name) {
     return Container(
       color: Colors.blueGrey[700],
       child: Center(
         child: Text(
           name.isNotEmpty ? name[0].toUpperCase() : '?',
           style: const TextStyle(
-            color: Colors.white,
-            fontSize: 42,
-            fontWeight: FontWeight.bold,
-          ),
+              color: Colors.white, fontSize: 42, fontWeight: FontWeight.bold),
         ),
       ),
     );
   }
 }
 
-// ── Reusable action button ──────────────────────────
-class _ActionButton extends StatelessWidget {
+class _CallActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color backgroundColor;
   final VoidCallback onTap;
 
-  const _ActionButton({
+  const _CallActionButton({
     required this.icon,
     required this.label,
     required this.backgroundColor,
@@ -375,14 +334,9 @@ class _ActionButton extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
+        Text(label,
+            style: const TextStyle(
+                color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500)),
       ],
     );
   }

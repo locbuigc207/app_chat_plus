@@ -1,7 +1,7 @@
 // lib/widgets/call_control_bar.dart
 import 'package:flutter/material.dart';
 
-/// Bottom control bar shown during an active call.
+/// Bottom control bar hiển thị trong cuộc gọi active.
 class CallControlBar extends StatelessWidget {
   final bool isVideoCall;
   final bool isMuted;
@@ -12,7 +12,8 @@ class CallControlBar extends StatelessWidget {
   final VoidCallback? onCameraTap;
   final VoidCallback onSpeakerTap;
   final VoidCallback? onSwitchCameraTap;
-  final Future<void> Function() onEndCall;
+  // FIX: Thay Future<void> Function() thành VoidCallback để tránh lỗi
+  final VoidCallback onEndCall;
 
   const CallControlBar({
     super.key,
@@ -35,58 +36,50 @@ class CallControlBar extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ── Top row of secondary controls ─────────────
+          // ── Hàng nút phụ ──────────────────────────────
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              // Mute microphone
+              // Micro
               _ControlButton(
                 icon: isMuted ? Icons.mic_off : Icons.mic,
-                label: isMuted ? 'Unmute' : 'Mute',
+                label: isMuted ? 'Bật mic' : 'Tắt mic',
                 active: isMuted,
-                activeColor: Colors.white,
                 activeBg: Colors.white.withOpacity(0.2),
-                inactiveColor: Colors.white,
                 inactiveBg: Colors.white.withOpacity(0.1),
                 onTap: onMuteTap,
               ),
 
-              // Speaker / earpiece
+              // Loa ngoài
               _ControlButton(
                 icon: isSpeakerOn ? Icons.volume_up : Icons.hearing,
-                label: isSpeakerOn ? 'Speaker' : 'Earpiece',
+                label: isSpeakerOn ? 'Loa ngoài' : 'Tai nghe',
                 active: isSpeakerOn,
-                activeColor: Colors.white,
                 activeBg: Colors.white.withOpacity(0.2),
-                inactiveColor: Colors.white,
                 inactiveBg: Colors.white.withOpacity(0.1),
                 onTap: onSpeakerTap,
               ),
 
-              // Camera toggle (video only)
+              // Camera (video only)
               if (isVideoCall && onCameraTap != null)
                 _ControlButton(
                   icon: isCameraOff ? Icons.videocam_off : Icons.videocam,
-                  label: isCameraOff ? 'Camera off' : 'Camera on',
+                  label: isCameraOff ? 'Bật cam' : 'Tắt cam',
                   active: isCameraOff,
-                  activeColor: Colors.white,
                   activeBg: Colors.white.withOpacity(0.2),
-                  inactiveColor: Colors.white,
                   inactiveBg: Colors.white.withOpacity(0.1),
                   onTap: onCameraTap!,
                 )
               else
                 const SizedBox(width: 64),
 
-              // Switch camera (video only)
+              // Đổi camera (video only)
               if (isVideoCall && onSwitchCameraTap != null)
                 _ControlButton(
                   icon: Icons.flip_camera_android,
-                  label: 'Flip',
+                  label: 'Đổi cam',
                   active: false,
-                  activeColor: Colors.white,
                   activeBg: Colors.white.withOpacity(0.1),
-                  inactiveColor: Colors.white,
                   inactiveBg: Colors.white.withOpacity(0.1),
                   onTap: onSwitchCameraTap!,
                 )
@@ -97,7 +90,7 @@ class CallControlBar extends StatelessWidget {
 
           const SizedBox(height: 28),
 
-          // ── End call button ────────────────────────────
+          // ── Nút kết thúc ──────────────────────────────
           _EndCallButton(onTap: onEndCall),
         ],
       ),
@@ -105,14 +98,11 @@ class CallControlBar extends StatelessWidget {
   }
 }
 
-// ── Individual control button ──────────────────────────────────
 class _ControlButton extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool active;
-  final Color activeColor;
   final Color activeBg;
-  final Color inactiveColor;
   final Color inactiveBg;
   final VoidCallback onTap;
 
@@ -120,9 +110,7 @@ class _ControlButton extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.active,
-    required this.activeColor,
     required this.activeBg,
-    required this.inactiveColor,
     required this.inactiveBg,
     required this.onTap,
   });
@@ -146,19 +134,13 @@ class _ControlButton extends StatelessWidget {
                 width: 1,
               ),
             ),
-            child: Icon(
-              icon,
-              color: active ? activeColor : inactiveColor,
-              size: 24,
-            ),
+            child: Icon(icon, color: Colors.white, size: 24),
           ),
           const SizedBox(height: 6),
           Text(
             label,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.8),
-              fontSize: 11,
-            ),
+            style:
+                TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11),
           ),
         ],
       ),
@@ -166,9 +148,8 @@ class _ControlButton extends StatelessWidget {
   }
 }
 
-// ── End call button ─────────────────────────────────────────
 class _EndCallButton extends StatefulWidget {
-  final Future<void> Function() onTap;
+  final VoidCallback onTap;
   const _EndCallButton({required this.onTap});
 
   @override
@@ -182,9 +163,11 @@ class _EndCallButtonState extends State<_EndCallButton> {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTapDown: (_) => setState(() => _pressing = true),
-      onTapUp: (_) => setState(() => _pressing = false),
+      onTapUp: (_) {
+        setState(() => _pressing = false);
+        widget.onTap();
+      },
       onTapCancel: () => setState(() => _pressing = false),
-      onTap: widget.onTap,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -203,21 +186,14 @@ class _EndCallButtonState extends State<_EndCallButton> {
                 ),
               ],
             ),
-            child: const Icon(
-              Icons.call_end,
-              color: Colors.white,
-              size: 32,
-            ),
+            child: const Icon(Icons.call_end, color: Colors.white, size: 32),
           ),
           const SizedBox(height: 6),
-          const Text(
-            'End',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
+          const Text('Kết thúc',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500)),
         ],
       ),
     );
