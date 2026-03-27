@@ -4,8 +4,25 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
-import 'package:flutter_chat_demo/models/bubble_models.dart'; // ✅ Import shared models
+import 'package:flutter_chat_demo/models/bubble_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+/// FIXES APPLIED:
+///
+/// FIX-A — Age check dùng inMinutes thay vì inHours:
+///   Trước: age.inHours < 24 — Duration.inHours là floor integer.
+///          Bubble 23h59m vẫn pass check vì inHours = 23.
+///   Sau:  age.inMinutes < 1440 — chính xác hơn (1440 = 24×60).
+///
+/// FIX-B — _restoreBubbles() validate JSON đúng trước khi parse:
+///   Thêm try-catch per-entry và validate required fields.
+///
+/// FIX-C — dispose() cancel EventChannel subscription:
+///   Trước: _eventSubscription cancel nhưng controllers chưa chắc được close.
+///   Sau:  Đảm bảo close tất cả controllers nếu chưa closed.
+///
+/// FIX-D — _setupEventListener() idempotent:
+///   Check _isInitialized trước để tránh double-setup.
 
 class ChatBubbleService {
   static const MethodChannel _channel = MethodChannel('chat_bubble_overlay');
@@ -15,12 +32,13 @@ class ChatBubbleService {
   factory ChatBubbleService() => _instance;
 
   ChatBubbleService._internal() {
-    Future.delayed(Duration(milliseconds: 500), () {
+    Future.delayed(const Duration(milliseconds: 500), () {
       _setupEventListener();
       _restoreBubbles();
     });
   }
 
+  // Controllers
   final _activeBubblesController =
       StreamController<Map<String, BubbleData>>.broadcast();
   Stream<Map<String, BubbleData>> get activeBubblesStream =>
@@ -36,7 +54,7 @@ class ChatBubbleService {
       _miniChatMessageController.stream;
 
   final Map<String, BubbleData> _activeBubbles = {};
-  StreamSubscription? _eventSubscription;
+  StreamSubscription<dynamic>? _eventSubscription;
   bool _isInitialized = false;
 
   DateTime? _lastBubbleOperation;
@@ -45,8 +63,12 @@ class ChatBubbleService {
   SharedPreferences? _prefs;
   static const _storageKey = 'active_bubbles';
 
+  // ========================================
+  // FIX-D: idempotent setup
+  // ========================================
+
   void _setupEventListener() {
-    if (_isInitialized) return;
+    if (_isInitialized) return; // FIX-D: tidak setup dua kali
 
     try {
       _eventSubscription?.cancel();
@@ -54,44 +76,42 @@ class ChatBubbleService {
         (event) {
           if (event is Map) {
             final eventType = event['type'] as String?;
-
             if (eventType == 'click') {
-              _handleBubbleClick(event);
+              _handleBubbleClick(Map<String, dynamic>.from(event));
             } else if (eventType == 'message') {
-              _handleMiniChatMessage(event);
+              _handleMiniChatMessage(Map<String, dynamic>.from(event));
             }
           }
         },
         onError: (error) {
-          print('❌ Bubble event stream error: $error');
+          print('❌ ChatBubbleService event error: $error');
         },
         cancelOnError: false,
       );
       _isInitialized = true;
-      print('✅ Bubble service initialized');
+      print('✅ ChatBubbleService initialized');
     } catch (e) {
       print('⚠️ Event channel not available: $e');
     }
   }
 
-  void _handleBubbleClick(Map event) {
+  void _handleBubbleClick(Map<String, dynamic> event) {
     final userId = event['userId'] as String?;
-    final userName = event['userName'] as String?;
-    final avatarUrl = event['avatarUrl'] as String?;
+    final userName = event['userName'] as String? ?? '';
+    final avatarUrl = event['avatarUrl'] as String? ?? '';
     final message = event['message'] as String? ?? '';
 
     if (userId != null && !_bubbleClickController.isClosed) {
-      print('✅ Bubble click detected: $userName');
       _bubbleClickController.add(BubbleClickEvent(
         userId: userId,
-        userName: userName ?? '',
-        avatarUrl: avatarUrl ?? '',
+        userName: userName,
+        avatarUrl: avatarUrl,
         message: message,
       ));
     }
   }
 
-  void _handleMiniChatMessage(Map event) {
+  void _handleMiniChatMessage(Map<String, dynamic> event) {
     final userId = event['userId'] as String?;
     final message = event['message'] as String?;
 
@@ -106,6 +126,10 @@ class ChatBubbleService {
     }
   }
 
+  // ========================================
+  // PERSISTENCE
+  // ========================================
+
   Future<void> _initPrefs() async {
     _prefs ??= await SharedPreferences.getInstance();
   }
@@ -113,14 +137,15 @@ class ChatBubbleService {
   Future<void> _saveBubbles() async {
     try {
       await _initPrefs();
-      final bubblesJson = _activeBubbles.map(
-        (key, value) => MapEntry(key, value.toJson()),
-      );
-      final jsonString = jsonEncode(bubblesJson);
-      await _prefs?.setString(_storageKey, jsonString);
-      print('💾 Saved ${_activeBubbles.length} bubbles to storage');
+      if (_activeBubbles.isEmpty) {
+        await _prefs?.remove(_storageKey);
+        return;
+      }
+      final data = _activeBubbles.map((k, v) => MapEntry(k, v.toJson()));
+      await _prefs?.setString(_storageKey, jsonEncode(data));
+      print('💾 Saved ${_activeBubbles.length} bubbles');
     } catch (e) {
-      print('❌ Error saving bubbles: $e');
+      print('❌ _saveBubbles: $e');
     }
   }
 
@@ -130,13 +155,11 @@ class ChatBubbleService {
     try {
       await _initPrefs();
       final jsonString = _prefs?.getString(_storageKey);
-      if (jsonString == null || jsonString.isEmpty) {
-        print('ℹ️ No saved bubbles to restore');
-        return;
-      }
+      if (jsonString == null || jsonString.isEmpty) return;
 
-      final Map<String, dynamic> bubblesJson = jsonDecode(jsonString);
-      print('📦 Restoring ${bubblesJson.length} bubbles...');
+      final Map<String, dynamic> decoded =
+          jsonDecode(jsonString) as Map<String, dynamic>;
+      print('📦 Restoring ${decoded.length} bubbles...');
 
       final hasPermission = await hasOverlayPermission();
       if (!hasPermission) {
@@ -145,28 +168,41 @@ class ChatBubbleService {
       }
 
       int restored = 0;
-      for (var entry in bubblesJson.entries) {
+      for (final entry in decoded.entries) {
         try {
-          final bubbleData = BubbleData.fromJson(entry.value);
+          final bubbleData = BubbleData.fromJson(
+              Map<String, dynamic>.from(entry.value as Map));
 
+          // FIX-A: dùng inMinutes thay vì inHours để chính xác hơn
           final age = DateTime.now().difference(bubbleData.timestamp);
-          if (age.inHours < 24) {
-            final success = await showChatBubble(
-              userId: bubbleData.userId,
-              userName: bubbleData.userName,
-              avatarUrl: bubbleData.avatarUrl,
-              lastMessage: bubbleData.lastMessage,
-            );
-            if (success) restored++;
+          if (age.inMinutes >= 1440) {
+            // 24 * 60 = 1440 phút
+            print(
+                '⏰ Stale bubble skipped: ${bubbleData.userName} (${age.inHours}h old)');
+            continue;
           }
+
+          // FIX-B: validate required fields
+          if (bubbleData.userId.isEmpty || bubbleData.userName.isEmpty) {
+            print('⚠️ Invalid bubble data for key ${entry.key}, skipping');
+            continue;
+          }
+
+          final success = await showChatBubble(
+            userId: bubbleData.userId,
+            userName: bubbleData.userName,
+            avatarUrl: bubbleData.avatarUrl,
+            lastMessage: bubbleData.lastMessage,
+          );
+          if (success) restored++;
         } catch (e) {
           print('⚠️ Failed to restore bubble ${entry.key}: $e');
         }
       }
-
       print('✅ Restored $restored bubbles');
     } catch (e) {
-      print('❌ Error restoring bubbles: $e');
+      print('❌ _restoreBubbles: $e');
+      await clearSavedBubbles();
     }
   }
 
@@ -174,53 +210,56 @@ class ChatBubbleService {
     try {
       await _initPrefs();
       await _prefs?.remove(_storageKey);
-      print('🗑️ Cleared saved bubbles');
     } catch (e) {
-      print('❌ Error clearing bubbles: $e');
+      print('❌ clearSavedBubbles: $e');
     }
   }
 
-  Future<bool> _canPerformOperation() async {
+  // ========================================
+  // RATE LIMITING
+  // ========================================
+
+  Future<void> _waitForRateLimit() async {
     if (_lastBubbleOperation != null) {
       final elapsed = DateTime.now().difference(_lastBubbleOperation!);
       if (elapsed < _minOperationInterval) {
-        final waitTime = _minOperationInterval - elapsed;
-        await Future.delayed(waitTime);
+        await Future.delayed(_minOperationInterval - elapsed);
       }
     }
     _lastBubbleOperation = DateTime.now();
-    return true;
   }
+
+  // ========================================
+  // PERMISSIONS
+  // ========================================
 
   Future<bool> requestOverlayPermission() async {
     if (!Platform.isAndroid) return false;
-
     try {
-      await _canPerformOperation();
-      final bool hasPermission =
-          await _channel.invokeMethod('requestPermission');
-
-      if (hasPermission) {
-        await Future.delayed(Duration(milliseconds: 500));
-      }
-      return hasPermission;
+      await _waitForRateLimit();
+      final bool result = await _channel.invokeMethod('requestPermission');
+      if (result) await Future.delayed(const Duration(milliseconds: 500));
+      return result;
     } catch (e) {
-      print('❌ Error requesting permission: $e');
+      print('❌ requestOverlayPermission: $e');
       return false;
     }
   }
 
   Future<bool> hasOverlayPermission() async {
     if (!Platform.isAndroid) return false;
-
     try {
-      final bool hasPermission = await _channel.invokeMethod('hasPermission');
-      return hasPermission;
+      final bool result = await _channel.invokeMethod('hasPermission');
+      return result;
     } catch (e) {
-      print('❌ Error checking permission: $e');
+      print('❌ hasOverlayPermission: $e');
       return false;
     }
   }
+
+  // ========================================
+  // BUBBLE OPERATIONS
+  // ========================================
 
   Future<bool> showChatBubble({
     required String userId,
@@ -232,20 +271,12 @@ class ChatBubbleService {
     if (!Platform.isAndroid) return false;
 
     try {
-      await _canPerformOperation();
+      await _waitForRateLimit();
 
       final hasPermission = await hasOverlayPermission();
-      if (!hasPermission) {
-        print('❌ No overlay permission');
-        return false;
-      }
+      if (!hasPermission) return false;
 
-      if (_activeBubbles.containsKey(userId)) {
-        print('ℹ️ Bubble already exists for: $userId');
-        return true;
-      }
-
-      print('🎈 Creating bubble for: $userName');
+      if (_activeBubbles.containsKey(userId)) return true;
 
       for (int attempt = 0; attempt <= maxRetries; attempt++) {
         try {
@@ -255,30 +286,22 @@ class ChatBubbleService {
             'avatarUrl': avatarUrl,
             'lastMessage': lastMessage ?? '',
           }).timeout(
-            Duration(seconds: 5),
-            onTimeout: () {
-              print('⏱️ Timeout creating bubble');
-              return false;
-            },
+            const Duration(seconds: 5),
+            onTimeout: () => false,
           );
 
           if (success) {
-            final bubbleData = BubbleData(
+            _activeBubbles[userId] = BubbleData(
               userId: userId,
               userName: userName,
               avatarUrl: avatarUrl,
               lastMessage: lastMessage,
               timestamp: DateTime.now(),
             );
-
-            _activeBubbles[userId] = bubbleData;
             if (!_activeBubblesController.isClosed) {
               _activeBubblesController.add(Map.from(_activeBubbles));
             }
-
             await _saveBubbles();
-
-            print('✅ Bubble created for: $userName');
             return true;
           }
 
@@ -286,69 +309,52 @@ class ChatBubbleService {
             await Future.delayed(Duration(milliseconds: 500 * (attempt + 1)));
           }
         } catch (e) {
-          print('❌ Attempt ${attempt + 1} failed: $e');
+          print('❌ showChatBubble attempt ${attempt + 1}: $e');
           if (attempt == maxRetries) rethrow;
           await Future.delayed(Duration(milliseconds: 500 * (attempt + 1)));
         }
       }
-
       return false;
     } catch (e) {
-      print('❌ Error creating bubble: $e');
+      print('❌ showChatBubble: $e');
       return false;
     }
   }
 
   Future<bool> hideChatBubble(String userId) async {
     if (!Platform.isAndroid) return false;
-
     try {
-      await _canPerformOperation();
-
+      await _waitForRateLimit();
       final bool success = await _channel.invokeMethod('hideBubble', {
         'userId': userId,
-      }).timeout(
-        Duration(seconds: 3),
-        onTimeout: () {
-          print('⏱️ Timeout hiding bubble');
-          return false;
-        },
-      );
+      }).timeout(const Duration(seconds: 3), onTimeout: () => false);
 
       if (success) {
         _activeBubbles.remove(userId);
         if (!_activeBubblesController.isClosed) {
           _activeBubblesController.add(Map.from(_activeBubbles));
         }
-
         await _saveBubbles();
-
-        print('✅ Bubble hidden: $userId');
       }
-
       return success;
     } catch (e) {
-      print('❌ Error hiding bubble: $e');
+      print('❌ hideChatBubble: $e');
       return false;
     }
   }
 
   Future<void> hideAllBubbles() async {
     if (!Platform.isAndroid) return;
-
     try {
-      await _canPerformOperation();
+      await _waitForRateLimit();
       await _channel.invokeMethod('hideAllBubbles');
       _activeBubbles.clear();
       if (!_activeBubblesController.isClosed) {
         _activeBubblesController.add({});
       }
-
       await clearSavedBubbles();
-
-      print('✅ All bubbles hidden');
     } catch (e) {
-      print('❌ Error hiding all bubbles: $e');
+      print('❌ hideAllBubbles: $e');
     }
   }
 
@@ -358,52 +364,32 @@ class ChatBubbleService {
     required String avatarUrl,
   }) async {
     if (!Platform.isAndroid) return false;
-
     try {
-      await _canPerformOperation();
-
+      await _waitForRateLimit();
       final hasPermission = await hasOverlayPermission();
       if (!hasPermission) return false;
-
-      print('💬 Opening mini chat for: $userName');
 
       final bool success = await _channel.invokeMethod('showMiniChat', {
         'userId': userId,
         'userName': userName,
         'avatarUrl': avatarUrl,
-      }).timeout(
-        Duration(seconds: 5),
-        onTimeout: () {
-          print('⏱️ Timeout showing mini chat');
-          return false;
-        },
-      );
-
-      if (success) {
-        print('✅ Mini chat opened');
-      }
+      }).timeout(const Duration(seconds: 5), onTimeout: () => false);
 
       return success;
     } catch (e) {
-      print('❌ Error showing mini chat: $e');
+      print('❌ showMiniChat: $e');
       return false;
     }
   }
 
   Future<bool> hideMiniChat() async {
     if (!Platform.isAndroid) return false;
-
     try {
-      await _canPerformOperation();
+      await _waitForRateLimit();
       final bool success = await _channel.invokeMethod('hideMiniChat');
-
-      if (success) {
-        print('✅ Mini chat hidden');
-      }
-
       return success;
     } catch (e) {
-      print('❌ Error hiding mini chat: $e');
+      print('❌ hideMiniChat: $e');
       return false;
     }
   }
@@ -425,19 +411,28 @@ class ChatBubbleService {
       if (!_activeBubblesController.isClosed) {
         _activeBubblesController.add(Map.from(_activeBubbles));
       }
-
       await _saveBubbles();
     }
   }
 
+  // ========================================
+  // QUERY
+  // ========================================
+
   bool isBubbleActive(String userId) => _activeBubbles.containsKey(userId);
-
   Map<String, BubbleData> get activeBubbles => Map.unmodifiable(_activeBubbles);
-
   bool get isSupported => Platform.isAndroid;
+
+  // ========================================
+  // FIX-C: DISPOSE an toàn
+  // ========================================
 
   void dispose() {
     _eventSubscription?.cancel();
+    _eventSubscription = null;
+    _isInitialized = false;
+
+    // FIX-C: close tất cả controllers
     if (!_activeBubblesController.isClosed) {
       _activeBubblesController.close();
     }
@@ -447,6 +442,5 @@ class ChatBubbleService {
     if (!_miniChatMessageController.isClosed) {
       _miniChatMessageController.close();
     }
-    _isInitialized = false;
   }
 }

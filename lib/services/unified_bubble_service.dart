@@ -3,7 +3,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
-import 'package:flutter_chat_demo/models/bubble_models.dart'; // ✅ Import shared models
+import 'package:flutter_chat_demo/models/bubble_models.dart';
 import 'package:flutter_chat_demo/services/bubble_service_v2.dart';
 import 'package:flutter_chat_demo/services/chat_bubble_service.dart';
 
@@ -24,106 +24,158 @@ class UnifiedBubbleService {
   // ========================================
   // STATE
   // ========================================
+
   bool _isInitialized = false;
+  Completer<void>? _initCompleter; // FIX-C: prevent concurrent inits
   BubbleImplementation _currentImplementation = BubbleImplementation.unknown;
 
-  // ✅ FIX 6: Operation queue to prevent race conditions
-  final List<Future<void> Function()> _operationQueue = [];
+  // FIX-A: Operation queue với proper completion tracking
+  final List<_QueuedOperation> _operationQueue = [];
   bool _isProcessingQueue = false;
 
-  // Forwarded streams
+  // FIX-B: Track subscriptions để cancel khi setup ulang
+  final List<StreamSubscription> _streamSubscriptions = [];
+
+  // FIX-B: Controllers riêng để có thể close và recreate
   StreamController<BubbleClickEvent>? _clickController;
   StreamController<Map<String, dynamic>>? _bubblesController;
 
   Stream<BubbleClickEvent> get bubbleClickStream {
-    return _clickController?.stream ?? Stream.empty();
+    _ensureControllers();
+    return _clickController!.stream;
   }
 
   Stream<Map<String, dynamic>> get activeBubblesStream {
-    return _bubblesController?.stream ?? Stream.empty();
+    _ensureControllers();
+    return _bubblesController!.stream;
   }
 
-  Future<void> _initialize() async {
-    if (_isInitialized) return;
+  void _ensureControllers() {
+    if (_clickController == null || _clickController!.isClosed) {
+      _clickController = StreamController<BubbleClickEvent>.broadcast();
+    }
+    if (_bubblesController == null || _bubblesController!.isClosed) {
+      _bubblesController = StreamController<Map<String, dynamic>>.broadcast();
+    }
+  }
 
+  // ========================================
+  // INITIALIZATION (FIX-C)
+  // ========================================
+
+  Future<void> _initialize() async {
+    // FIX-C: prevent concurrent initializations
+    if (_isInitialized) return;
+    if (_initCompleter != null) {
+      return _initCompleter!.future;
+    }
+
+    _initCompleter = Completer<void>();
     try {
       _currentImplementation = await _detectBestImplementation();
-
-      print('✅ Using implementation: ${_currentImplementation.name}');
-
+      debugPrint('✅ UnifiedBubble: using ${_currentImplementation.name}');
+      _ensureControllers();
       _setupStreamForwarding();
-
       _isInitialized = true;
-      print('✅ UnifiedBubbleService initialized');
+      _initCompleter!.complete();
     } catch (e) {
-      print('❌ UnifiedBubbleService initialization failed: $e');
+      debugPrint('❌ UnifiedBubble init failed: $e');
+      _initCompleter!.completeError(e);
+    } finally {
+      _initCompleter = null;
     }
   }
 
   Future<BubbleImplementation> _detectBestImplementation() async {
-    if (!Platform.isAndroid) {
-      return BubbleImplementation.none;
-    }
-
+    if (!Platform.isAndroid) return BubbleImplementation.none;
     final supportsBubbleApi = await _bubbleApiService.checkBubbleApiSupport();
-
-    if (supportsBubbleApi) {
-      print('✅ Device supports Bubble API');
-      return BubbleImplementation.bubbleApi;
-    }
-
-    print('⚠️ Falling back to WindowManager');
-    return BubbleImplementation.windowManager;
+    return supportsBubbleApi
+        ? BubbleImplementation.bubbleApi
+        : BubbleImplementation.windowManager;
   }
+
+  // ========================================
+  // FIX-B: STREAM FORWARDING (no leak)
+  // ========================================
 
   void _setupStreamForwarding() {
-    _clickController = StreamController<BubbleClickEvent>.broadcast();
-    _bubblesController = StreamController<Map<String, dynamic>>.broadcast();
+    // FIX-B: Cancel subscriptions cũ trước khi setup mới
+    for (final sub in _streamSubscriptions) {
+      sub.cancel();
+    }
+    _streamSubscriptions.clear();
+
+    _ensureControllers();
 
     if (_currentImplementation == BubbleImplementation.bubbleApi) {
-      _bubbleApiService.bubbleClickStream.listen(
-        (event) => _clickController?.add(event),
+      _streamSubscriptions.add(
+        _bubbleApiService.bubbleClickStream.listen(
+          (event) {
+            if (!(_clickController?.isClosed ?? true)) {
+              _clickController!.add(event);
+            }
+          },
+          onError: (e) => debugPrint('⚠️ bubbleApi click stream error: $e'),
+          cancelOnError: false,
+        ),
       );
-
-      _bubbleApiService.activeBubblesStream.listen(
-        (bubbles) {
-          final converted = bubbles.map(
-            (key, value) => MapEntry(key, value.toJson()),
-          );
-          _bubblesController?.add(converted);
-        },
+      _streamSubscriptions.add(
+        _bubbleApiService.activeBubblesStream.listen(
+          (bubbles) {
+            if (!(_bubblesController?.isClosed ?? true)) {
+              final converted = bubbles.map((k, v) => MapEntry(k, v.toJson()));
+              _bubblesController!.add(converted);
+            }
+          },
+          onError: (e) => debugPrint('⚠️ bubbleApi active stream error: $e'),
+          cancelOnError: false,
+        ),
       );
     } else if (_currentImplementation == BubbleImplementation.windowManager) {
-      _windowManagerService.bubbleClickStream.listen(
-        (event) => _clickController?.add(event),
+      _streamSubscriptions.add(
+        _windowManagerService.bubbleClickStream.listen(
+          (event) {
+            if (!(_clickController?.isClosed ?? true)) {
+              _clickController!.add(event);
+            }
+          },
+          onError: (e) => debugPrint('⚠️ windowManager click stream error: $e'),
+          cancelOnError: false,
+        ),
       );
-
-      _windowManagerService.activeBubblesStream.listen(
-        (bubbles) {
-          final converted = bubbles.map(
-            (key, value) => MapEntry(key, value.toJson()),
-          );
-          _bubblesController?.add(converted);
-        },
+      _streamSubscriptions.add(
+        _windowManagerService.activeBubblesStream.listen(
+          (bubbles) {
+            if (!(_bubblesController?.isClosed ?? true)) {
+              final converted = bubbles.map((k, v) => MapEntry(k, v.toJson()));
+              _bubblesController!.add(converted);
+            }
+          },
+          onError: (e) =>
+              debugPrint('⚠️ windowManager active stream error: $e'),
+          cancelOnError: false,
+        ),
       );
     }
   }
 
-  Future<bool> hasOverlayPermission() async {
-    if (_currentImplementation == BubbleImplementation.bubbleApi) {
-      return true;
-    }
+  // ========================================
+  // PERMISSIONS
+  // ========================================
 
-    return await _windowManagerService.hasOverlayPermission();
+  Future<bool> hasOverlayPermission() async {
+    if (_currentImplementation == BubbleImplementation.bubbleApi) return true;
+    return _windowManagerService.hasOverlayPermission();
   }
 
   Future<bool> requestOverlayPermission() async {
-    if (_currentImplementation == BubbleImplementation.bubbleApi) {
-      return true;
-    }
-
-    return await _windowManagerService.requestOverlayPermission();
+    if (_currentImplementation == BubbleImplementation.bubbleApi) return true;
+    return _windowManagerService.requestOverlayPermission();
   }
+
+  // ========================================
+  // BUBBLE OPERATIONS (queued)
+  // ========================================
 
   Future<bool> showChatBubble({
     required String userId,
@@ -131,7 +183,6 @@ class UnifiedBubbleService {
     required String avatarUrl,
     String? lastMessage,
   }) async {
-    // ✅ FIX 6: Queue operation to prevent race conditions
     return await _queueOperation<bool>(() async {
           if (_currentImplementation == BubbleImplementation.bubbleApi) {
             return await _bubbleApiService.showBubble(
@@ -154,30 +205,21 @@ class UnifiedBubbleService {
         false;
   }
 
-  /// Update bubble with new message
   Future<void> updateBubbleMessage({
     required String userId,
     required String message,
   }) async {
-    // ✅ FIX 6: Queue operation to prevent race conditions
     await _queueOperation(() async {
       if (_currentImplementation == BubbleImplementation.bubbleApi) {
-        await _bubbleApiService.updateBubble(
-          userId: userId,
-          message: message,
-        );
+        await _bubbleApiService.updateBubble(userId: userId, message: message);
       } else if (_currentImplementation == BubbleImplementation.windowManager) {
         await _windowManagerService.updateBubbleMessage(
-          userId: userId,
-          message: message,
-        );
+            userId: userId, message: message);
       }
     });
   }
 
-  /// Hide a specific bubble
   Future<bool> hideChatBubble(String userId) async {
-    // ✅ FIX 6: Queue operation to prevent race conditions
     return await _queueOperation<bool>(() async {
           if (_currentImplementation == BubbleImplementation.bubbleApi) {
             return await _bubbleApiService.hideBubble(userId);
@@ -190,9 +232,7 @@ class UnifiedBubbleService {
         false;
   }
 
-  /// Hide all bubbles
   Future<void> hideAllBubbles() async {
-    // ✅ FIX 6: Queue operation to prevent race conditions
     await _queueOperation(() async {
       if (_currentImplementation == BubbleImplementation.bubbleApi) {
         await _bubbleApiService.hideAllBubbles();
@@ -202,32 +242,23 @@ class UnifiedBubbleService {
     });
   }
 
-  /// Show mini chat window
   Future<bool> showMiniChat({
     required String userId,
     required String userName,
     required String avatarUrl,
   }) async {
-    // Mini chat only works with WindowManager for now
-    // TODO: Implement mini chat for Bubble API
-    // ✅ FIX 6: Queue operation to prevent race conditions
     return await _queueOperation<bool>(() async {
           if (_currentImplementation == BubbleImplementation.windowManager) {
             return await _windowManagerService.showMiniChat(
-              userId: userId,
-              userName: userName,
-              avatarUrl: avatarUrl,
-            );
+                userId: userId, userName: userName, avatarUrl: avatarUrl);
           }
-          print('⚠️ Mini chat not supported with Bubble API yet');
+          debugPrint('⚠️ Mini chat only supported with WindowManager');
           return false;
         }) ??
         false;
   }
 
-  /// Hide mini chat
   Future<bool> hideMiniChat() async {
-    // ✅ FIX 6: Queue operation to prevent race conditions
     return await _queueOperation<bool>(() async {
           if (_currentImplementation == BubbleImplementation.windowManager) {
             return await _windowManagerService.hideMiniChat();
@@ -238,28 +269,129 @@ class UnifiedBubbleService {
   }
 
   // ========================================
-  // UTILITY METHODS
+  // MIGRATION (FIX-B: close old streams)
   // ========================================
 
-  /// Check if bubble is active
+  Future<bool> migrateToModernApi() async {
+    if (_currentImplementation == BubbleImplementation.bubbleApi) return true;
+
+    final supportsBubbleApi = await _bubbleApiService.checkBubbleApiSupport();
+    if (!supportsBubbleApi) return false;
+
+    return await _queueOperation<bool>(() async {
+          try {
+            final currentBubbles = _windowManagerService.activeBubbles;
+            await _windowManagerService.hideAllBubbles();
+
+            _currentImplementation = BubbleImplementation.bubbleApi;
+
+            // FIX-B: close old stream subscriptions và setup mới
+            _setupStreamForwarding();
+
+            for (final bubble in currentBubbles.values) {
+              await _bubbleApiService.showBubble(
+                userId: bubble.userId,
+                userName: bubble.userName,
+                message: bubble.lastMessage ?? 'New message',
+                avatarUrl: bubble.avatarUrl,
+              );
+            }
+            debugPrint('✅ Migrated to Bubble API');
+            return true;
+          } catch (e) {
+            debugPrint('❌ Migration failed: $e');
+            return false;
+          }
+        }) ??
+        false;
+  }
+
+  // ========================================
+  // MESSAGING
+  // ========================================
+
+  Future<bool> sendMessage({
+    required String userId,
+    required String userName,
+    required String message,
+    required String avatarUrl,
+    String messageType = 'text',
+  }) async {
+    if (_currentImplementation != BubbleImplementation.bubbleApi) return false;
+    try {
+      final result = await const MethodChannel('chat_bubbles_v2')
+          .invokeMethod<bool>('sendMessage', {
+        'userId': userId,
+        'userName': userName,
+        'message': message,
+        'avatarUrl': avatarUrl,
+        'messageType': messageType,
+      });
+      return result ?? false;
+    } catch (e) {
+      debugPrint('❌ sendMessage: $e');
+      return false;
+    }
+  }
+
+  Future<int> getMessageCount(String userId) async {
+    if (_currentImplementation != BubbleImplementation.bubbleApi) return 0;
+    try {
+      final result = await const MethodChannel('chat_bubbles_v2')
+          .invokeMethod<int>('getMessageCount', {'userId': userId});
+      return result ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  Future<Map<String, dynamic>> getBubbleStats() async {
+    try {
+      final result = await const MethodChannel('chat_bubbles_v2')
+          .invokeMethod<Map>('getBubbleStats');
+      return result?.cast<String, dynamic>() ?? {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<bool> clearMessageHistory(String userId) async {
+    if (_currentImplementation != BubbleImplementation.bubbleApi) return false;
+    try {
+      final result = await const MethodChannel('chat_bubbles_v2')
+          .invokeMethod<bool>('clearMessageHistory', {'userId': userId});
+      return result ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> logBubbleState() async {
+    try {
+      await const MethodChannel('chat_bubbles_v2')
+          .invokeMethod('logBubbleState');
+    } catch (_) {}
+  }
+
+  // ========================================
+  // QUERY
+  // ========================================
+
   bool isBubbleActive(String userId) {
     if (_currentImplementation == BubbleImplementation.bubbleApi) {
       return _bubbleApiService.isBubbleActive(userId);
     } else if (_currentImplementation == BubbleImplementation.windowManager) {
       return _windowManagerService.isBubbleActive(userId);
     }
-
     return false;
   }
 
-  /// Get active bubble count
   int getActiveBubbleCount() {
     if (_currentImplementation == BubbleImplementation.bubbleApi) {
       return _bubbleApiService.activeBubbleCount;
     } else if (_currentImplementation == BubbleImplementation.windowManager) {
       return _windowManagerService.activeBubbles.length;
     }
-
     return 0;
   }
 
@@ -276,261 +408,133 @@ class UnifiedBubbleService {
     }
   }
 
-  bool get isSupported {
-    return _currentImplementation != BubbleImplementation.none;
-  }
+  bool get isSupported => _currentImplementation != BubbleImplementation.none;
 
   BubbleImplementation get currentImplementation => _currentImplementation;
 
-  Future<bool> migrateToModernApi() async {
-    if (_currentImplementation == BubbleImplementation.bubbleApi) {
-      print('✅ Already using Bubble API');
-      return true;
-    }
+  String getMessageTypeFromContent(String content, int typeCode) =>
+      _getMessageType(content, typeCode);
 
-    // Check if can migrate
-    final supportsBubbleApi = await _bubbleApiService.checkBubbleApiSupport();
-    if (!supportsBubbleApi) {
-      print('⚠️ Cannot migrate: Bubble API not supported');
-      return false;
-    }
-
-    print('🔄 Migrating to Bubble API...');
-
-    // ✅ FIX 6: Queue operation to prevent race conditions during migration
-    return await _queueOperation<bool>(() async {
-          try {
-            // Get current bubbles from WindowManager
-            final currentBubbles = _windowManagerService.activeBubbles;
-
-            // Hide all WindowManager bubbles
-            await _windowManagerService.hideAllBubbles();
-
-            // Switch implementation
-            _currentImplementation = BubbleImplementation.bubbleApi;
-            _setupStreamForwarding();
-
-            // Recreate bubbles with Bubble API
-            for (var bubble in currentBubbles.values) {
-              await _bubbleApiService.showBubble(
-                userId: bubble.userId,
-                userName: bubble.userName,
-                message: bubble.lastMessage ?? 'New message',
-                avatarUrl: bubble.avatarUrl,
-              );
-            }
-
-            print('✅ Migration complete');
-            return true;
-          } catch (e) {
-            print('❌ Migration failed: $e');
-            return false;
-          }
-        }) ??
-        false;
-  }
-
-  Future<bool> sendMessage({
-    required String userId,
-    required String userName,
-    required String message,
-    required String avatarUrl,
-    String messageType = 'text', // 'text', 'image', 'voice', 'location'
-  }) async {
-    if (_currentImplementation != BubbleImplementation.bubbleApi) {
-      print('⚠️ Send message only supported with Bubble API');
-      return false;
-    }
-
-    try {
-      final result = await const MethodChannel('chat_bubbles_v2')
-          .invokeMethod<bool>('sendMessage', {
-        'userId': userId,
-        'userName': userName,
-        'message': message,
-        'avatarUrl': avatarUrl,
-        'messageType': messageType,
-      });
-
-      if (result == true) {
-        print('✅ Message sent to bubble: $message');
-      }
-
-      return result ?? false;
-    } catch (e) {
-      print('❌ Error sending message: $e');
-      return false;
-    }
-  }
-
-  /// Get message count for a bubble conversation
-  Future<int> getMessageCount(String userId) async {
-    if (_currentImplementation != BubbleImplementation.bubbleApi) {
-      return 0;
-    }
-
-    try {
-      final result = await const MethodChannel('chat_bubbles_v2')
-          .invokeMethod<int>('getMessageCount', {
-        'userId': userId,
-      });
-
-      return result ?? 0;
-    } catch (e) {
-      print('❌ Error getting message count: $e');
-      return 0;
-    }
-  }
-
-  Future<Map<String, dynamic>> getBubbleStats() async {
-    try {
-      final result = await const MethodChannel('chat_bubbles_v2')
-          .invokeMethod<Map>('getBubbleStats');
-
-      return result?.cast<String, dynamic>() ?? {};
-    } catch (e) {
-      print('❌ Error getting bubble stats: $e');
-      return {};
-    }
-  }
-
-  /// Clear message history for a user
-  Future<bool> clearMessageHistory(String userId) async {
-    if (_currentImplementation != BubbleImplementation.bubbleApi) {
-      return false;
-    }
-
-    try {
-      final result = await const MethodChannel('chat_bubbles_v2')
-          .invokeMethod<bool>('clearMessageHistory', {
-        'userId': userId,
-      });
-
-      if (result == true) {
-        print('✅ Message history cleared for: $userId');
-      }
-
-      return result ?? false;
-    } catch (e) {
-      print('❌ Error clearing history: $e');
-      return false;
-    }
-  }
-
-  Future<void> logBubbleState() async {
-    try {
-      await const MethodChannel('chat_bubbles_v2')
-          .invokeMethod('logBubbleState');
-      print('✅ Bubble state logged (check Android logs)');
-    } catch (e) {
-      print('❌ Error logging bubble state: $e');
-    }
-  }
-
-  // ========================================
-  // ✅ FIX 10: MESSAGE TYPE HELPER
-  // ========================================
-
-  /// Helper to determine message type from content and type code
-  ///
-  /// TypeMessage constants:
-  /// 0 = text, 1 = image, 2 = sticker, 3 = voice, 4 = location
   String _getMessageType(String content, int typeCode) {
     switch (typeCode) {
       case 1:
         return 'image';
       case 2:
-        return 'text'; // Stickers treated as text for bubble
+        return 'text';
       case 3:
         return 'voice';
       case 4:
         return 'location';
       case 0:
       default:
-        // Check if content contains location data
         if (content.contains('maps.google.com') ||
             content.contains('Location:') ||
-            content.contains('📍')) {
-          return 'location';
-        }
+            content.contains('📍')) return 'location';
         return 'text';
     }
   }
 
-  /// ✅ FIX 10: Public helper for external use
-  String getMessageTypeFromContent(String content, int typeCode) {
-    return _getMessageType(content, typeCode);
-  }
-
-  /// ✅ FIX 10: Send message with auto-detected type
   Future<bool> sendMessageAuto({
     required String userId,
     required String userName,
     required String message,
     required String avatarUrl,
     required int typeCode,
-  }) async {
-    final messageType = _getMessageType(message, typeCode);
-
-    return await sendMessage(
-      userId: userId,
-      userName: userName,
-      message: message,
-      avatarUrl: avatarUrl,
-      messageType: messageType,
-    );
-  }
+  }) async =>
+      sendMessage(
+        userId: userId,
+        userName: userName,
+        message: message,
+        avatarUrl: avatarUrl,
+        messageType: _getMessageType(message, typeCode),
+      );
 
   // ========================================
-  // ✅ FIX 6: OPERATION QUEUE IMPLEMENTATION
+  // FIX-A: OPERATION QUEUE (no race condition)
   // ========================================
 
-  Future<T?> _queueOperation<T>(Future<T> Function() operation) async {
+  Future<T?> _queueOperation<T>(Future<T> Function() operation) {
     final completer = Completer<T?>();
-    _operationQueue.add(() async {
-      try {
-        final result = await operation();
-        completer.complete(result);
-      } catch (e) {
-        completer.completeError(e);
-      }
-    });
+    _operationQueue.add(_QueuedOperation(
+      run: () async {
+        try {
+          completer.complete(await operation());
+        } catch (e) {
+          completer.completeError(e);
+        }
+      },
+    ));
 
+    // FIX-A: unawaited() để không block caller, tránh recursive await
     if (!_isProcessingQueue) {
-      _processQueue();
+      _processQueue(); // fire and forget, nhưng _isProcessingQueue guard đảm bảo 1 loop
     }
 
     return completer.future;
   }
 
+  // FIX-A: try-finally đảm bảo flag reset kể cả khi có error
   Future<void> _processQueue() async {
     if (_isProcessingQueue) return;
     _isProcessingQueue = true;
-
-    while (_operationQueue.isNotEmpty) {
-      final operation = _operationQueue.removeAt(0);
-      try {
-        await operation();
-      } catch (e) {
-        print('❌ Operation failed in queue: $e');
+    try {
+      while (_operationQueue.isNotEmpty) {
+        final op = _operationQueue.removeAt(0);
+        try {
+          await op.run();
+        } catch (e) {
+          debugPrint('❌ Queue operation failed: $e');
+          // Tiếp tục xử lý các operation tiếp theo
+        }
       }
+    } finally {
+      _isProcessingQueue = false;
     }
-
-    _isProcessingQueue = false;
   }
 
+  // ========================================
+  // FIX-D: DISPOSE đầy đủ
+  // ========================================
+
   void dispose() {
+    // FIX-B: cancel tất cả stream subscriptions
+    for (final sub in _streamSubscriptions) {
+      sub.cancel();
+    }
+    _streamSubscriptions.clear();
+
+    // Close stream controllers
+    if (!(_clickController?.isClosed ?? true)) {
+      _clickController!.close();
+    }
+    if (!(_bubblesController?.isClosed ?? true)) {
+      _bubblesController!.close();
+    }
+    _clickController = null;
+    _bubblesController = null;
+
+    // Clear queue
+    _operationQueue.clear();
+    _isProcessingQueue = false;
+
+    // Dispose child services
     _bubbleApiService.dispose();
     _windowManagerService.dispose();
-    _clickController?.close();
-    _bubblesController?.close();
+
     _isInitialized = false;
+    debugPrint('✅ UnifiedBubbleService disposed');
   }
 }
 
+// Helper class cho operation queue
+class _QueuedOperation {
+  final Future<void> Function() run;
+  _QueuedOperation({required this.run});
+}
+
 enum BubbleImplementation {
-  bubbleApi, // Android 11+ Bubble API
-  windowManager, // Legacy WindowManager overlays
-  none, // Not supported (iOS, etc)
-  unknown, // Not yet detected
+  bubbleApi,
+  windowManager,
+  none,
+  unknown,
 }
