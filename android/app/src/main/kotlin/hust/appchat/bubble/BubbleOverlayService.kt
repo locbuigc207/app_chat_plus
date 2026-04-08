@@ -694,8 +694,7 @@ class BubbleOverlayService : Service() {
         miniChatFlutterView = null
         miniChatChannel?.setMethodCallHandler(null)
         miniChatChannel     = null
-        // MiniChat engine: giữ trong cache (không destroy)
-        // SHARED engine của BubbleActivity: TIDAK disentuh sama sekali
+
         miniChatEngine      = null
 
         android.util.Log.d("BubbleService",
