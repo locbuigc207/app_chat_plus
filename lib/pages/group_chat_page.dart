@@ -38,7 +38,7 @@ class GroupChatPageState extends State<GroupChatPage>
   bool _isShowSticker = false;
   bool _showFeaturesMenu = false;
   bool _isRecording = false;
-  String _recordingDuration = "0:00";
+  String _recordingDuration = '0:00';
   int _recordingSeconds = 0;
   Timer? _recordingTimer;
 
@@ -52,8 +52,7 @@ class GroupChatPageState extends State<GroupChatPage>
   // Mention
   bool _showMentionSuggestions = false;
   List<Map<String, dynamic>> _memberSuggestions = [];
-  Map<String, String> _memberNames = {}; // userId -> nickname
-  String _mentionQuery = '';
+  Map<String, String> _memberNames = {};
 
   // File & upload
   File? _imageFile;
@@ -80,9 +79,6 @@ class GroupChatPageState extends State<GroupChatPage>
   late TextEditingController _chatInputController;
   late ScrollController _listScrollController;
   late FocusNode _focusNode;
-
-  // Deduplication
-  final Set<String> _processedMessageIds = {};
 
   // Scheduled messages
   final Map<String, Timer> _scheduledMessages = {};
@@ -179,7 +175,8 @@ class GroupChatPageState extends State<GroupChatPage>
             .doc(uid)
             .get();
         if (doc.exists) {
-          names[uid] = doc.get(FirestoreConstants.nickname) ?? 'User';
+          names[uid] =
+              doc.get(FirestoreConstants.nickname) as String? ?? 'User';
         }
       } catch (_) {}
     }
@@ -211,7 +208,6 @@ class GroupChatPageState extends State<GroupChatPage>
     if (resourceManager.isDisposed) return;
     _handleTyping(text);
 
-    // Detect @mention
     final cursorPos = _chatInputController.selection.baseOffset;
     if (cursorPos < 0) return;
 
@@ -228,14 +224,12 @@ class GroupChatPageState extends State<GroupChatPage>
         setState(() {
           _showMentionSuggestions = suggestions.isNotEmpty;
           _memberSuggestions = suggestions;
-          _mentionQuery = query;
         });
       }
     } else {
       if (mounted) setState(() => _showMentionSuggestions = false);
     }
 
-    // Smart replies
     if (text.isNotEmpty && _smartReplies.isNotEmpty && mounted) {
       setState(() => _smartReplies = []);
     }
@@ -273,7 +267,6 @@ class GroupChatPageState extends State<GroupChatPage>
           .collection(FirestoreConstants.pathMessageCollection)
           .doc(widget.group.id)
           .collection(widget.group.id)
-          .where(FirestoreConstants.idTo, isEqualTo: widget.group.id)
           .where('isRead', isEqualTo: false)
           .get();
 
@@ -318,7 +311,7 @@ class GroupChatPageState extends State<GroupChatPage>
         messageId: DateTime.now().millisecondsSinceEpoch.toString(),
         conversationId: widget.group.id,
       );
-    } catch (e) {
+    } catch (_) {
       Fluttertoast.showToast(msg: 'Send failed');
     }
 
@@ -336,20 +329,18 @@ class GroupChatPageState extends State<GroupChatPage>
         .collection(widget.group.id)
         .doc(messageId);
 
-    final messageData = {
-      FirestoreConstants.idFrom: _currentUserId,
-      FirestoreConstants.idTo: widget.group.id,
-      FirestoreConstants.timestamp: messageId,
-      FirestoreConstants.content: content,
-      FirestoreConstants.type: type,
-      'isDeleted': false,
-      'isPinned': false,
-      'isRead': false,
-      'groupId': widget.group.id,
-    };
-
     await FirebaseFirestore.instance.runTransaction((tx) async {
-      tx.set(docRef, messageData);
+      tx.set(docRef, {
+        FirestoreConstants.idFrom: _currentUserId,
+        FirestoreConstants.idTo: widget.group.id,
+        FirestoreConstants.timestamp: messageId,
+        FirestoreConstants.content: content,
+        FirestoreConstants.type: type,
+        'isDeleted': false,
+        'isPinned': false,
+        'isRead': false,
+        'groupId': widget.group.id,
+      });
     });
 
     await FirebaseFirestore.instance
@@ -392,7 +383,7 @@ class GroupChatPageState extends State<GroupChatPage>
         }
         return true;
       }
-    } catch (e) {
+    } catch (_) {
       Fluttertoast.showToast(msg: 'Failed to pick image');
     }
     return false;
@@ -409,7 +400,7 @@ class GroupChatPageState extends State<GroupChatPage>
         setState(() => _isLoading = false);
       }
       await _onSendMessage(_imageUrl, TypeMessage.image);
-    } catch (e) {
+    } catch (_) {
       if (mounted && !resourceManager.isDisposed) {
         setState(() => _isLoading = false);
       }
@@ -502,8 +493,9 @@ class GroupChatPageState extends State<GroupChatPage>
           await _locationProvider!.getCurrentLocationWithDetails();
       if (mounted) setState(() => _isLoading = false);
       if (locationData != null && !resourceManager.isDisposed) {
-        final message = _locationProvider!.formatLocationMessage(locationData);
-        await _onSendMessage(message, TypeMessage.text);
+        await _onSendMessage(
+            _locationProvider!.formatLocationMessage(locationData),
+            TypeMessage.text);
         Fluttertoast.showToast(msg: '📍 Location shared');
       }
     } catch (_) {
@@ -526,7 +518,10 @@ class GroupChatPageState extends State<GroupChatPage>
         onEdit: () => _editMessage(messageId, message.content),
         onDelete: () => _deleteMessage(messageId),
         onPin: () => _togglePin(messageId, message.isPinned),
-        onCopy: () => _copyMessage(message.content),
+        onCopy: () {
+          Clipboard.setData(ClipboardData(text: message.content));
+          Fluttertoast.showToast(msg: 'Copied');
+        },
         onReply: () => _setReply(message),
         onReminder: () => _setReminder(message, messageId),
         onTranslate: () => _translateMessage(message.content),
@@ -577,11 +572,6 @@ class GroupChatPageState extends State<GroupChatPage>
     if (ok) Fluttertoast.showToast(msg: current ? 'Unpinned' : 'Pinned');
   }
 
-  void _copyMessage(String content) {
-    Clipboard.setData(ClipboardData(text: content));
-    Fluttertoast.showToast(msg: 'Copied');
-  }
-
   void _setReply(MessageChat message) {
     if (resourceManager.isDisposed || !mounted) return;
     setState(() {
@@ -626,9 +616,10 @@ class GroupChatPageState extends State<GroupChatPage>
                     firstDate: DateTime.now(),
                     lastDate: DateTime.now().add(const Duration(days: 365)),
                   );
-                  if (d != null)
+                  if (d != null) {
                     ss(() => selected = DateTime(d.year, d.month, d.day,
                         selected.hour, selected.minute));
+                  }
                 },
               ),
               ListTile(
@@ -639,9 +630,10 @@ class GroupChatPageState extends State<GroupChatPage>
                   final t = await showTimePicker(
                       context: ctx,
                       initialTime: TimeOfDay.fromDateTime(selected));
-                  if (t != null)
+                  if (t != null) {
                     ss(() => selected = DateTime(selected.year, selected.month,
                         selected.day, t.hour, t.minute));
+                  }
                 },
               ),
             ],
@@ -756,7 +748,7 @@ class GroupChatPageState extends State<GroupChatPage>
     } catch (_) {}
   }
 
-  // ── Build UI ───────────────────────────────────
+  // ── UI helpers ─────────────────────────────────
   void _getSticker() {
     _focusNode.unfocus();
     setState(() {
@@ -773,6 +765,7 @@ class GroupChatPageState extends State<GroupChatPage>
     });
   }
 
+  // ── Build ──────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -788,6 +781,13 @@ class GroupChatPageState extends State<GroupChatPage>
             children: [
               Column(
                 children: [
+                  // 🆕 Active-call banner
+                  ActiveGroupCallBanner(
+                    groupId: widget.group.id,
+                    currentUserId: _currentUserId,
+                    memberIds: widget.group.memberIds,
+                    groupName: widget.group.groupName,
+                  ),
                   if (_pinnedMessages.isNotEmpty) _buildPinnedMessages(),
                   _buildListMessage(),
                   _buildTypingIndicator(),
@@ -840,7 +840,7 @@ class GroupChatPageState extends State<GroupChatPage>
                 children: [
                   Text(
                     widget.group.groupName,
-                    style: TextStyle(
+                    style: const TextStyle(
                         color: ColorConstants.primaryColor,
                         fontSize: 16,
                         fontWeight: FontWeight.bold),
@@ -848,7 +848,7 @@ class GroupChatPageState extends State<GroupChatPage>
                   ),
                   Text(
                     '${widget.group.memberIds.length} members',
-                    style: TextStyle(
+                    style: const TextStyle(
                         color: ColorConstants.greyColor, fontSize: 12),
                   ),
                 ],
@@ -858,11 +858,11 @@ class GroupChatPageState extends State<GroupChatPage>
         ),
       ),
       actions: [
-        IconButton(
-          icon: const Icon(Icons.videocam, color: ColorConstants.primaryColor),
-          onPressed: () =>
-              Fluttertoast.showToast(msg: 'Group video call coming soon'),
-          tooltip: 'Group Video Call',
+        // 🆕 Group video call button
+        GroupVideoCallButton(
+          groupId: widget.group.id,
+          groupName: widget.group.groupName,
+          memberIds: widget.group.memberIds,
         ),
         IconButton(
           icon: const Icon(Icons.search, color: ColorConstants.primaryColor),
@@ -887,7 +887,8 @@ class GroupChatPageState extends State<GroupChatPage>
                 value: 'search', child: Text('Search Messages')),
             const PopupMenuItem(
                 value: 'mute', child: Text('Mute Notifications')),
-            const PopupMenuItem(value: 'autodelte', child: Text('Auto-Delete')),
+            const PopupMenuItem(
+                value: 'autodelete', child: Text('Auto-Delete')),
             const PopupMenuItem(value: 'clear', child: Text('Clear History')),
             const PopupMenuItem(
                 value: 'leave',
@@ -935,7 +936,7 @@ class GroupChatPageState extends State<GroupChatPage>
           ),
         );
         break;
-      case 'autodelte':
+      case 'autodelete':
         _showAutoDeleteSettings();
         break;
       case 'clear':
@@ -966,32 +967,30 @@ class GroupChatPageState extends State<GroupChatPage>
         ],
       ),
     );
-    if (confirm == true) {
-      if (mounted) setState(() => _isLoading = true);
-      try {
-        final msgs = await FirebaseFirestore.instance
-            .collection(FirestoreConstants.pathMessageCollection)
-            .doc(widget.group.id)
-            .collection(widget.group.id)
-            .get();
-        WriteBatch batch = FirebaseFirestore.instance.batch();
-        int count = 0;
-        for (final doc in msgs.docs) {
-          batch.delete(doc.reference);
-          count++;
-          if (count >= 500) {
-            await batch.commit();
-            batch = FirebaseFirestore.instance.batch();
-            count = 0;
-          }
+    if (confirm != true) return;
+    if (mounted) setState(() => _isLoading = true);
+    try {
+      final msgs = await FirebaseFirestore.instance
+          .collection(FirestoreConstants.pathMessageCollection)
+          .doc(widget.group.id)
+          .collection(widget.group.id)
+          .get();
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+      int count = 0;
+      for (final doc in msgs.docs) {
+        batch.delete(doc.reference);
+        if (++count >= 500) {
+          await batch.commit();
+          batch = FirebaseFirestore.instance.batch();
+          count = 0;
         }
-        if (count > 0) await batch.commit();
-        Fluttertoast.showToast(msg: 'History cleared');
-      } catch (_) {
-        Fluttertoast.showToast(msg: 'Failed to clear history');
-      } finally {
-        if (mounted) setState(() => _isLoading = false);
       }
+      if (count > 0) await batch.commit();
+      Fluttertoast.showToast(msg: 'History cleared');
+    } catch (_) {
+      Fluttertoast.showToast(msg: 'Failed to clear history');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -1011,35 +1010,29 @@ class GroupChatPageState extends State<GroupChatPage>
         ],
       ),
     );
-    if (confirm == true) {
-      try {
-        final newMembers =
-            widget.group.memberIds.where((id) => id != _currentUserId).toList();
-        await FirebaseFirestore.instance
-            .collection(FirestoreConstants.pathGroupCollection)
-            .doc(widget.group.id)
-            .update({FirestoreConstants.memberIds: newMembers});
-
-        // Send system message
-        await _sendGroupMessage(
-            '${_memberNames[_currentUserId] ?? 'User'} left the group',
-            TypeMessage.text);
-
-        if (mounted) Navigator.of(context).pop();
-        Fluttertoast.showToast(msg: 'You left the group');
-      } catch (_) {
-        Fluttertoast.showToast(msg: 'Failed to leave group');
-      }
+    if (confirm != true) return;
+    try {
+      final newMembers =
+          widget.group.memberIds.where((id) => id != _currentUserId).toList();
+      await FirebaseFirestore.instance
+          .collection(FirestoreConstants.pathGroupCollection)
+          .doc(widget.group.id)
+          .update({FirestoreConstants.memberIds: newMembers});
+      await _sendGroupMessage(
+          '${_memberNames[_currentUserId] ?? 'User'} left the group',
+          TypeMessage.text);
+      if (mounted) Navigator.of(context).pop();
+      Fluttertoast.showToast(msg: 'You left the group');
+    } catch (_) {
+      Fluttertoast.showToast(msg: 'Failed to leave group');
     }
   }
 
   void _onBackPress() {
-    if (_presenceProvider != null) {
-      _presenceProvider!.setTypingStatus(
-          conversationId: widget.group.id,
-          userId: _currentUserId,
-          isTyping: false);
-    }
+    _presenceProvider?.setTypingStatus(
+        conversationId: widget.group.id,
+        userId: _currentUserId,
+        isTyping: false);
     Navigator.pop(context);
   }
 
@@ -1053,16 +1046,14 @@ class GroupChatPageState extends State<GroupChatPage>
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         itemCount: _pinnedMessages.length,
         itemExtent: 180,
-        itemBuilder: (context, index) {
+        itemBuilder: (_, index) {
           final message = MessageChat.fromDocument(_pinnedMessages[index]);
           return Container(
             width: 170,
             margin: const EdgeInsets.symmetric(horizontal: 4),
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-            ),
+                color: Colors.white, borderRadius: BorderRadius.circular(8)),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1070,12 +1061,10 @@ class GroupChatPageState extends State<GroupChatPage>
                     size: 14, color: ColorConstants.primaryColor),
                 const SizedBox(width: 6),
                 Expanded(
-                  child: Text(
-                    message.content,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12),
-                  ),
+                  child: Text(message.content,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12)),
                 ),
               ],
             ),
@@ -1103,7 +1092,7 @@ class GroupChatPageState extends State<GroupChatPage>
                     _buildItemMessage(index, _listMessage[index]),
               );
             }
-            return const Center(child: Text('No messages yet. Say hello!'));
+            return const Center(child: Text('No messages yet. Say hello! 👋'));
           }
           return const Center(
               child:
@@ -1119,36 +1108,29 @@ class GroupChatPageState extends State<GroupChatPage>
     final isMe = msg.idFrom == _currentUserId;
     final data = document.data() as Map<String, dynamic>?;
     final isViewOnce = data?['isViewOnce'] ?? false;
-    final isViewed = data?['isViewed'] ?? false;
 
     if (isViewOnce) {
       return _buildViewOnceMessage(document, msg, isMe);
     }
-
     if (msg.type == 3 && _voiceProvider != null) {
       return _buildVoiceMessage(document, msg, isMe);
     }
-
-    if (msg.type == TypeMessage.text) {
-      return _buildTextMessage(document, msg, isMe, index);
-    }
-
     if (msg.type == TypeMessage.image) {
       return _buildImageMessage(document, msg, isMe);
     }
-
-    // Sticker
-    return _buildStickerMessage(document, msg, isMe);
+    if (msg.type == TypeMessage.sticker) {
+      return _buildStickerMessage(document, msg, isMe);
+    }
+    return _buildTextMessage(document, msg, isMe);
   }
 
   Widget _buildSenderInfo(String senderId) {
     if (senderId == _currentUserId) return const SizedBox.shrink();
-    final name = _getSenderName(senderId);
     return Padding(
-      padding: const EdgeInsets.only(left: 40, bottom: 2),
+      padding: const EdgeInsets.only(left: 45, bottom: 2),
       child: Text(
-        name,
-        style: TextStyle(
+        _getSenderName(senderId),
+        style: const TextStyle(
             color: ColorConstants.primaryColor,
             fontSize: 12,
             fontWeight: FontWeight.bold),
@@ -1167,7 +1149,8 @@ class GroupChatPageState extends State<GroupChatPage>
         if (!snap.hasData) return const SizedBox(width: 35);
         String photoUrl = '';
         try {
-          photoUrl = snap.data!.get(FirestoreConstants.photoUrl) ?? '';
+          photoUrl =
+              snap.data!.get(FirestoreConstants.photoUrl) as String? ?? '';
         } catch (_) {}
         return ClipOval(
           child: photoUrl.isNotEmpty
@@ -1184,10 +1167,8 @@ class GroupChatPageState extends State<GroupChatPage>
     );
   }
 
-  Widget _buildTextMessage(
-      DocumentSnapshot doc, MessageChat msg, bool isMe, int index) {
+  Widget _buildTextMessage(DocumentSnapshot doc, MessageChat msg, bool isMe) {
     final location = _locationProvider?.parseLocationFromMessage(msg.content);
-
     return Column(
       crossAxisAlignment:
           isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -1216,7 +1197,7 @@ class GroupChatPageState extends State<GroupChatPage>
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: msg.isDeleted
-                      ? Text('This message was deleted',
+                      ? const Text('This message was deleted',
                           style: TextStyle(
                               color: ColorConstants.greyColor,
                               fontStyle: FontStyle.italic,
@@ -1226,12 +1207,11 @@ class GroupChatPageState extends State<GroupChatPage>
                           : Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  msg.content,
-                                  style: TextStyle(
-                                      color:
-                                          isMe ? Colors.white : Colors.black87),
-                                ),
+                                Text(msg.content,
+                                    style: TextStyle(
+                                        color: isMe
+                                            ? Colors.white
+                                            : Colors.black87)),
                                 if (msg.editedAt != null)
                                   Text('(edited)',
                                       style: TextStyle(
@@ -1246,31 +1226,17 @@ class GroupChatPageState extends State<GroupChatPage>
             ),
             if (!isMe) ...[
               const SizedBox(width: 4),
-              Column(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.add_reaction, size: 18),
-                    onPressed: () => _showReactionPicker(doc.id),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                ],
+              IconButton(
+                icon: const Icon(Icons.add_reaction, size: 18),
+                onPressed: () => _showReactionPicker(doc.id),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
               ),
             ],
           ],
         ),
-        // Reactions
         _buildReactions(doc.id, isMe),
-        // Timestamp
-        Padding(
-          padding: EdgeInsets.only(
-              left: isMe ? 0 : 45, right: isMe ? 8 : 0, bottom: 4),
-          child: Text(
-            _formatTimestamp(msg.timestamp),
-            style:
-                const TextStyle(fontSize: 11, color: ColorConstants.greyColor),
-          ),
-        ),
+        _buildTimestamp(msg.timestamp, isMe),
       ],
     );
   }
@@ -1350,35 +1316,32 @@ class GroupChatPageState extends State<GroupChatPage>
                 clipBehavior: Clip.hardEdge,
                 decoration:
                     BoxDecoration(borderRadius: BorderRadius.circular(12)),
-                child: Image.network(msg.content,
-                    width: 200,
-                    height: 200,
-                    fit: BoxFit.cover,
-                    loadingBuilder: (_, child, progress) {
-                      if (progress == null) return child;
-                      return Container(
-                          width: 200,
-                          height: 200,
-                          color: ColorConstants.greyColor2,
-                          child:
-                              const Center(child: CircularProgressIndicator()));
-                    },
-                    errorBuilder: (_, __, ___) => Container(
+                child: Image.network(
+                  msg.content,
+                  width: 200,
+                  height: 200,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (_, child, progress) {
+                    if (progress == null) return child;
+                    return Container(
                         width: 200,
                         height: 200,
                         color: ColorConstants.greyColor2,
-                        child: const Icon(Icons.error))),
+                        child:
+                            const Center(child: CircularProgressIndicator()));
+                  },
+                  errorBuilder: (_, __, ___) => Container(
+                      width: 200,
+                      height: 200,
+                      color: ColorConstants.greyColor2,
+                      child: const Icon(Icons.error)),
+                ),
               ),
             ),
           ],
         ),
         _buildReactions(doc.id, isMe),
-        Padding(
-          padding: EdgeInsets.only(left: isMe ? 0 : 45, right: 8, bottom: 4),
-          child: Text(_formatTimestamp(msg.timestamp),
-              style: const TextStyle(
-                  fontSize: 11, color: ColorConstants.greyColor)),
-        ),
+        _buildTimestamp(msg.timestamp, isMe),
       ],
     );
   }
@@ -1403,12 +1366,7 @@ class GroupChatPageState extends State<GroupChatPage>
             ),
           ],
         ),
-        Padding(
-          padding: EdgeInsets.only(left: isMe ? 0 : 45, right: 8, bottom: 4),
-          child: Text(_formatTimestamp(msg.timestamp),
-              style: const TextStyle(
-                  fontSize: 11, color: ColorConstants.greyColor)),
-        ),
+        _buildTimestamp(msg.timestamp, isMe),
       ],
     );
   }
@@ -1428,15 +1386,17 @@ class GroupChatPageState extends State<GroupChatPage>
             const SizedBox(width: 4),
             GestureDetector(
               onLongPress: () => _showMessageOptions(msg, doc.id),
-              child: Image.asset('images/${msg.content}.gif',
-                  width: 100,
-                  height: 100,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                      width: 100,
-                      height: 100,
-                      color: ColorConstants.greyColor2,
-                      child: const Icon(Icons.error))),
+              child: Image.asset(
+                'images/${msg.content}.gif',
+                width: 100,
+                height: 100,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                    width: 100,
+                    height: 100,
+                    color: ColorConstants.greyColor2,
+                    child: const Icon(Icons.error)),
+              ),
             ),
           ],
         ),
@@ -1477,8 +1437,9 @@ class GroupChatPageState extends State<GroupChatPage>
     return StreamBuilder<QuerySnapshot>(
       stream: _reactionProvider.getReactions(widget.group.id, messageId),
       builder: (_, snap) {
-        if (!snap.hasData || snap.data!.docs.isEmpty)
+        if (!snap.hasData || snap.data!.docs.isEmpty) {
           return const SizedBox.shrink();
+        }
         final reactions = <String, int>{};
         final userReactions = <String, bool>{};
         for (final doc in snap.data!.docs) {
@@ -1502,15 +1463,22 @@ class GroupChatPageState extends State<GroupChatPage>
     );
   }
 
-  String _formatTimestamp(String ts) {
+  Widget _buildTimestamp(String ts, bool isMe) {
+    String label = '';
     try {
       final dt = DateTime.fromMillisecondsSinceEpoch(int.parse(ts));
       final now = DateTime.now();
-      if (now.difference(dt).inDays == 0) return DateFormat('HH:mm').format(dt);
-      return DateFormat('MMM dd HH:mm').format(dt);
-    } catch (_) {
-      return '';
-    }
+      label = now.difference(dt).inDays == 0
+          ? DateFormat('HH:mm').format(dt)
+          : DateFormat('MMM dd HH:mm').format(dt);
+    } catch (_) {}
+    return Padding(
+      padding:
+          EdgeInsets.only(left: isMe ? 0 : 45, right: isMe ? 8 : 0, bottom: 4),
+      child: Text(label,
+          style:
+              const TextStyle(fontSize: 11, color: ColorConstants.greyColor)),
+    );
   }
 
   // ── Typing Indicator ───────────────────────────
@@ -1537,10 +1505,9 @@ class GroupChatPageState extends State<GroupChatPage>
   Widget _buildMentionSuggestions() {
     return Container(
       constraints: const BoxConstraints(maxHeight: 160),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: ColorConstants.greyColor2)),
-      ),
+      decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: ColorConstants.greyColor2))),
       child: ListView.builder(
         shrinkWrap: true,
         itemCount: _memberSuggestions.length,
@@ -1569,7 +1536,7 @@ class GroupChatPageState extends State<GroupChatPage>
   // ── Stickers ───────────────────────────────────
   Widget _buildStickers() {
     return Container(
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
           border: Border(
               top: BorderSide(color: ColorConstants.greyColor2, width: 0.5)),
           color: Colors.white),
@@ -1614,7 +1581,7 @@ class GroupChatPageState extends State<GroupChatPage>
     return Container(
       constraints: const BoxConstraints(maxHeight: 110),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
           color: Colors.white,
           border: Border(top: BorderSide(color: ColorConstants.greyColor2))),
       child: SingleChildScrollView(
@@ -1733,11 +1700,12 @@ class GroupChatPageState extends State<GroupChatPage>
                 IconButton(
                   icon: const Icon(Icons.close, size: 18),
                   onPressed: () {
-                    if (mounted)
+                    if (mounted) {
                       setState(() {
                         _replyingTo = null;
                         _replyingToSenderName = null;
                       });
+                    }
                   },
                   padding: EdgeInsets.zero,
                   constraints:
@@ -1781,7 +1749,7 @@ class GroupChatPageState extends State<GroupChatPage>
         Container(
           width: double.infinity,
           constraints: const BoxConstraints(minHeight: 50, maxHeight: 120),
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
               border: Border(
                   top:
                       BorderSide(color: ColorConstants.greyColor2, width: 0.5)),
@@ -1789,7 +1757,6 @@ class GroupChatPageState extends State<GroupChatPage>
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              // More options
               Material(
                 color: Colors.white,
                 child: IconButton(
@@ -1801,7 +1768,6 @@ class GroupChatPageState extends State<GroupChatPage>
                       const BoxConstraints(minWidth: 40, minHeight: 40),
                 ),
               ),
-              // Image
               Material(
                 color: Colors.white,
                 child: IconButton(
@@ -1815,7 +1781,6 @@ class GroupChatPageState extends State<GroupChatPage>
                       const BoxConstraints(minWidth: 40, minHeight: 40),
                 ),
               ),
-              // Sticker
               Material(
                 color: Colors.white,
                 child: IconButton(
@@ -1827,7 +1792,6 @@ class GroupChatPageState extends State<GroupChatPage>
                       const BoxConstraints(minWidth: 40, minHeight: 40),
                 ),
               ),
-              // Text field
               Expanded(
                 child: Container(
                   constraints:
@@ -1842,10 +1806,9 @@ class GroupChatPageState extends State<GroupChatPage>
                     style: const TextStyle(
                         color: ColorConstants.primaryColor, fontSize: 15),
                     controller: _chatInputController,
-                    decoration: InputDecoration.collapsed(
+                    decoration: const InputDecoration.collapsed(
                       hintText: 'Type a message... (@ to mention)',
-                      hintStyle:
-                          const TextStyle(color: ColorConstants.greyColor),
+                      hintStyle: TextStyle(color: ColorConstants.greyColor),
                     ),
                     focusNode: _focusNode,
                     maxLines: 4,
@@ -1854,7 +1817,6 @@ class GroupChatPageState extends State<GroupChatPage>
                   ),
                 ),
               ),
-              // Voice
               if (_voiceProvider != null && !_isRecording)
                 Material(
                   color: Colors.white,
@@ -1867,7 +1829,6 @@ class GroupChatPageState extends State<GroupChatPage>
                         const BoxConstraints(minWidth: 40, minHeight: 40),
                   ),
                 ),
-              // Send
               Material(
                 color: Colors.white,
                 child: IconButton(
@@ -1894,12 +1855,10 @@ class GroupChatPageState extends State<GroupChatPage>
     _scheduledMessages.clear();
     _scheduledMessageContents.clear();
     try {
-      if (_presenceProvider != null && _currentUserId.isNotEmpty) {
-        _presenceProvider!.setTypingStatus(
-            conversationId: widget.group.id,
-            userId: _currentUserId,
-            isTyping: false);
-      }
+      _presenceProvider?.setTypingStatus(
+          conversationId: widget.group.id,
+          userId: _currentUserId,
+          isTyping: false);
     } catch (_) {}
     try {
       _voiceProvider?.dispose();

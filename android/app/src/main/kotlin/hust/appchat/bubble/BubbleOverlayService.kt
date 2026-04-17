@@ -694,7 +694,6 @@ class BubbleOverlayService : Service() {
         miniChatFlutterView = null
         miniChatChannel?.setMethodCallHandler(null)
         miniChatChannel     = null
-
         miniChatEngine      = null
 
         android.util.Log.d("BubbleService",

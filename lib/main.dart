@@ -390,11 +390,13 @@ class MyApp extends StatelessWidget {
             theme: AppThemes.lightTheme(themeProvider.getPrimaryColor()),
             darkTheme: AppThemes.darkTheme(themeProvider.getPrimaryColor()),
             home: BubbleChatChannelManager(
-              child: CallListener(
-                child: BubbleManager(
-                  child: MiniChatOverlayManager(
-                    child: AppInitializer(
-                      notificationService: notificationService,
+              child: GroupCallListener(
+                child: CallListener(
+                  child: BubbleManager(
+                    child: MiniChatOverlayManager(
+                      child: AppInitializer(
+                        notificationService: notificationService,
+                      ),
                     ),
                   ),
                 ),

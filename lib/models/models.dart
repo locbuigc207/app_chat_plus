@@ -3,6 +3,7 @@ export 'call_model.dart';
 export 'conversation.dart';
 export 'friendship.dart';
 export 'group.dart';
+export 'group_call_model.dart';
 export 'menu_setting.dart';
 export 'message_chat.dart';
 export 'message_reaction.dart';
