@@ -9,7 +9,10 @@
 // ============================================================
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
+import 'package:flutter_chat_demo/models/models.dart';
+import 'package:flutter_chat_demo/providers/providers.dart';
 
 // ── MESSAGE BUBBLE ────────────────────────────────────────────────────────────
 class ImprovedMessageBubble extends StatelessWidget {
@@ -52,7 +55,7 @@ class ImprovedMessageBubble extends StatelessWidget {
           ),
           child: Column(
             crossAxisAlignment:
-                isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
               GestureDetector(
                 onLongPress: onLongPress,
@@ -446,7 +449,7 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
                         maxHeight: 120,
                       ),
                       margin:
-                          EdgeInsets.symmetric(horizontal: showFull ? 6 : 4),
+                      EdgeInsets.symmetric(horizontal: showFull ? 6 : 4),
                       decoration: BoxDecoration(
                         color: widget.isDark
                             ? ColorConstants.surfaceDark2
@@ -472,7 +475,7 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
                                 minLines: 1,
                                 onChanged: widget.onTextChanged,
                                 autofocus:
-                                    widget.isMiniChat || widget.isBubbleMode,
+                                widget.isMiniChat || widget.isBubbleMode,
                                 style: TextStyle(
                                   color: widget.isDark
                                       ? Colors.white
@@ -482,9 +485,9 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
                                 ),
                                 decoration: InputDecoration(
                                   hintText:
-                                      widget.isMiniChat || widget.isBubbleMode
-                                          ? 'Message...'
-                                          : 'Type a message...',
+                                  widget.isMiniChat || widget.isBubbleMode
+                                      ? 'Message...'
+                                      : 'Type a message...',
                                   hintStyle: TextStyle(
                                     color: widget.isDark
                                         ? Colors.white38
@@ -504,7 +507,7 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
                           if (showFull)
                             Padding(
                               padding:
-                                  const EdgeInsets.only(right: 6, bottom: 8),
+                              const EdgeInsets.only(right: 6, bottom: 8),
                               child: GestureDetector(
                                 onTap: widget.onSticker,
                                 child: Icon(
@@ -530,9 +533,9 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
                     ),
                     child: _hasText
                         ? _SendButton(
-                            key: const ValueKey('send'),
-                            onTap: widget.onSend,
-                          )
+                      key: const ValueKey('send'),
+                      onTap: widget.onSend,
+                    )
                         : _buildMediaButtons(showFull),
                   ),
                 ],
@@ -866,29 +869,29 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
           child: ClipOval(
             child: peerAvatar.isNotEmpty
                 ? Image.network(
-                    peerAvatar,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Center(
-                      child: Text(
-                        peerName.isNotEmpty ? peerName[0].toUpperCase() : '?',
-                        style: TextStyle(
-                          color: avatarColor,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ),
-                  )
-                : Center(
-                    child: Text(
-                      peerName.isNotEmpty ? peerName[0].toUpperCase() : '?',
-                      style: TextStyle(
-                        color: avatarColor,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                      ),
-                    ),
+              peerAvatar,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Center(
+                child: Text(
+                  peerName.isNotEmpty ? peerName[0].toUpperCase() : '?',
+                  style: TextStyle(
+                    color: avatarColor,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
                   ),
+                ),
+              ),
+            )
+                : Center(
+              child: Text(
+                peerName.isNotEmpty ? peerName[0].toUpperCase() : '?',
+                style: TextStyle(
+                  color: avatarColor,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
+              ),
+            ),
           ),
         ),
       ],
@@ -969,7 +972,7 @@ class ScrollToBottomButton extends StatelessWidget {
           ],
           border: Border.all(
             color:
-                isDark ? ColorConstants.borderDark : ColorConstants.greyColor2,
+            isDark ? ColorConstants.borderDark : ColorConstants.greyColor2,
           ),
         ),
         child: Icon(
