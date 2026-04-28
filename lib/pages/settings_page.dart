@@ -1,12 +1,11 @@
 import 'dart:io';
 
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
-import 'package:flutter_chat_demo/widgets/loading_view.dart';
+import 'package:flutter_chat_demo/widgets/common_widgets.dart'; // Đã đổi import
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -97,8 +96,7 @@ class SettingsPageState extends State<SettingsPage> {
         updateInfo.toJson(),
       )
           .then((_) async {
-        await _settingProvider.setPref(
-            FirestoreConstants.photoUrl, _avatarUrl);
+        await _settingProvider.setPref(FirestoreConstants.photoUrl, _avatarUrl);
         setState(() => _isLoading = false);
         Fluttertoast.showToast(msg: '✅ Photo updated');
       }).catchError((err) {
@@ -148,8 +146,9 @@ class SettingsPageState extends State<SettingsPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor:
-      isDark ? ColorConstants.backgroundDark : ColorConstants.backgroundLight,
+      backgroundColor: isDark
+          ? ColorConstants.backgroundDark
+          : ColorConstants.backgroundLight,
       appBar: AppBar(
         backgroundColor: isDark ? ColorConstants.surfaceDark : Colors.white,
         surfaceTintColor: Colors.transparent,
@@ -188,11 +187,8 @@ class SettingsPageState extends State<SettingsPage> {
             padding: const EdgeInsets.all(20),
             child: Column(
               children: [
-                // Avatar section
                 _buildAvatarSection(isDark),
                 const SizedBox(height: 24),
-
-                // Info section
                 _buildInfoSection(isDark),
               ],
             ),
@@ -233,13 +229,13 @@ class SettingsPageState extends State<SettingsPage> {
                     child: _avatarFile != null
                         ? Image.file(_avatarFile!, fit: BoxFit.cover)
                         : (_avatarUrl.isNotEmpty
-                        ? Image.network(
-                      _avatarUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _avatarPlaceholder(
-                          avatarColor),
-                    )
-                        : _avatarPlaceholder(avatarColor)),
+                            ? Image.network(
+                                _avatarUrl,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) =>
+                                    _avatarPlaceholder(avatarColor),
+                              )
+                            : _avatarPlaceholder(avatarColor)),
                   ),
                 ),
                 Positioned(
@@ -327,9 +323,8 @@ class SettingsPageState extends State<SettingsPage> {
             height: 1,
             indent: 56,
             endIndent: 16,
-            color: isDark
-                ? ColorConstants.borderDark
-                : ColorConstants.greyColor2,
+            color:
+                isDark ? ColorConstants.borderDark : ColorConstants.greyColor2,
           ),
           _buildField(
             icon: Icons.info_outline_rounded,

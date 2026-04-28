@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
+import 'package:flutter_chat_demo/providers/providers.dart';
 
 // ── LOADING VIEW ──────────────────────────────────────────────────────────────
 class LoadingView extends StatelessWidget {
@@ -64,7 +65,14 @@ class ReactionPicker extends StatelessWidget {
   const ReactionPicker({super.key, required this.onEmojiSelected});
 
   static const availableEmojis = [
-    '❤️', '👍', '😂', '😮', '😢', '🔥', '👏', '🎉'
+    '❤️',
+    '👍',
+    '😂',
+    '😮',
+    '😢',
+    '🔥',
+    '👏',
+    '🎉'
   ];
 
   @override
@@ -184,8 +192,8 @@ class MessageReactionsDisplay extends StatelessWidget {
               color: hasReacted
                   ? ColorConstants.primaryColor.withOpacity(0.15)
                   : (isDark
-                  ? ColorConstants.surfaceDark2
-                  : ColorConstants.greyColor2),
+                      ? ColorConstants.surfaceDark2
+                      : ColorConstants.greyColor2),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: hasReacted
@@ -438,10 +446,10 @@ class UserAvatarWidget extends StatelessWidget {
       child: ClipOval(
         child: photoUrl.isNotEmpty
             ? Image.network(
-          photoUrl,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _buildInitials(avatarColor),
-        )
+                photoUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _buildInitials(avatarColor),
+              )
             : _buildInitials(avatarColor),
       ),
     );

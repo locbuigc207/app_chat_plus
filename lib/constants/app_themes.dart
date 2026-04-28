@@ -64,8 +64,8 @@ class AppThemes {
         shadowColor: Colors.black.withOpacity(0.06),
         scrolledUnderElevation: 1,
         centerTitle: false,
-        titleTextStyle: TextStyle(
-          color: const Color(0xFF1A1D2E),
+        titleTextStyle: const TextStyle(
+          color: Color(0xFF1A1D2E),
           fontSize: 18,
           fontWeight: FontWeight.w700,
           letterSpacing: -0.3,
@@ -75,7 +75,7 @@ class AppThemes {
       ),
 
       // Card
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: Colors.white,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
@@ -167,7 +167,7 @@ class AppThemes {
         iconTheme: IconThemeData(color: primaryColor, size: 22),
         actionsIconTheme: IconThemeData(color: primaryColor, size: 22),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: const Color(0xFF1E2130),
         surfaceTintColor: Colors.transparent,
         elevation: 0,
