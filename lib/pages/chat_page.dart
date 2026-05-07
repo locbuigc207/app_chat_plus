@@ -24,11 +24,13 @@ class ChatPage extends StatefulWidget {
     required this.arguments,
     this.isMiniChat = false,
     this.isBubbleMode = false,
+    this.isWebMode = false,
   });
 
   final ChatPageArguments arguments;
   final bool isMiniChat;
   final bool isBubbleMode;
+  final bool isWebMode;
 
   @override
   ChatPageState createState() => ChatPageState();
@@ -2906,6 +2908,12 @@ class ChatPageState extends State<ChatPage>
     // NORMAL MODE (Original UI)
     return Scaffold(
       appBar: AppBar(
+        leading: widget.isWebMode
+            ? const SizedBox.shrink() // Web ẩn nút back
+            : IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new),
+                onPressed: _onBackPress,
+              ),
         title: InkWell(
           onTap: () async {
             if (resourceManager.isDisposed) return;

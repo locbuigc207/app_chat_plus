@@ -7,6 +7,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
+import 'package:flutter_chat_demo/firebase_options.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:flutter_chat_demo/providers/phone_auth_provider.dart'
     as custom_auth;
@@ -30,7 +31,10 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    await Firebase.initializeApp();
+    // Đã cập nhật options cho Web/Multi-platform
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
     print('✅ Firebase initialized successfully');
   } catch (e) {
     print('❌ Firebase initialization error: $e');
@@ -62,8 +66,6 @@ Future<void> main() async {
 // BubbleChatChannelManager
 // ============================================================
 
-/// Stateful widget quản lý MethodChannel handler cho bubble navigation.
-/// Đảm bảo handler được cleanup đúng khi dispose (hot-reload an toàn).
 class BubbleChatChannelManager extends StatefulWidget {
   final Widget child;
   const BubbleChatChannelManager({super.key, required this.child});
@@ -75,8 +77,6 @@ class BubbleChatChannelManager extends StatefulWidget {
 
 class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
   static const _channel = MethodChannel('bubble_chat_channel');
-
-  /// Dedup set — tránh duplicate navigate trong cùng 2-giây window
   final _recentNavigations = <String>{};
 
   @override
@@ -119,7 +119,6 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
       return null;
     }
 
-    // Dedup: key = peerId + 2-giây bucket
     final timeBucket = DateTime.now().millisecondsSinceEpoch ~/ 2000;
     final dedupKey = '$peerId:$timeBucket';
 
@@ -133,7 +132,6 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
 
     print('🧭 Navigating to: $peerNickname (bubble=$isBubbleMode)');
 
-    // Retry loop chờ navigator ready
     int retries = 0;
     const maxRetries = 5;
     while (navigatorKey.currentState == null && retries < maxRetries) {
@@ -150,7 +148,6 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
       return null;
     }
 
-    // Check route hiện tại để tránh push duplicate
     try {
       final ctx = navigatorKey.currentContext;
       if (ctx != null) {
@@ -287,7 +284,6 @@ class MyApp extends StatelessWidget {
 
     return MultiProvider(
       providers: [
-        // ── Auth ──────────────────────────────────────────────
         ChangeNotifierProvider<AuthProvider>(
           create: (_) => AuthProvider(
             firebaseAuth: firebaseAuth,
@@ -303,16 +299,12 @@ class MyApp extends StatelessWidget {
             prefs: prefs,
           ),
         ),
-
-        // ── Story (ChangeNotifier — cần truy cập từ nhiều widget) ─
         ChangeNotifierProvider<StoryProvider>(
           create: (_) => StoryProvider(
             firebaseFirestore: firebaseFirestore,
             firebaseStorage: firebaseStorage,
           ),
         ),
-
-        // ── Data providers ────────────────────────────────────
         Provider<SettingProvider>(
           create: (_) => SettingProvider(
             prefs: prefs,
@@ -343,13 +335,9 @@ class MyApp extends StatelessWidget {
           create: (_) =>
               ConversationProvider(firebaseFirestore: firebaseFirestore),
         ),
-
-        // ── Theme ─────────────────────────────────────────────
         ChangeNotifierProvider<ThemeProvider>(
           create: (_) => ThemeProvider(prefs: prefs),
         ),
-
-        // ── Feature providers ─────────────────────────────────
         Provider<ReminderProvider>(
           create: (_) => ReminderProvider(
             firebaseFirestore: firebaseFirestore,
@@ -374,8 +362,6 @@ class MyApp extends StatelessWidget {
         ),
         Provider<LocationProvider>(create: (_) => LocationProvider()),
         Provider<TranslationProvider>(create: (_) => TranslationProvider()),
-
-        // ── Services ──────────────────────────────────────────
         Provider<ChatBubbleService>(create: (_) => chatBubbleService),
         Provider<UnifiedBubbleService>(create: (_) => unifiedBubbleService),
         Provider<NotificationService>(create: (_) => notificationService),
@@ -389,6 +375,7 @@ class MyApp extends StatelessWidget {
             themeMode: themeProvider.getFlutterThemeMode(context),
             theme: AppThemes.lightTheme(themeProvider.getPrimaryColor()),
             darkTheme: AppThemes.darkTheme(themeProvider.getPrimaryColor()),
+            // Đã bọc toàn bộ AppInitializer (chứa SplashPage) qua các listener gốc
             home: BubbleChatChannelManager(
               child: GroupCallListener(
                 child: CallListener(
@@ -396,6 +383,7 @@ class MyApp extends StatelessWidget {
                     child: MiniChatOverlayManager(
                       child: AppInitializer(
                         notificationService: notificationService,
+                        child: SplashPage(),
                       ),
                     ),
                   ),
@@ -415,7 +403,13 @@ class MyApp extends StatelessWidget {
 
 class AppInitializer extends StatefulWidget {
   final NotificationService notificationService;
-  const AppInitializer({super.key, required this.notificationService});
+  final Widget child; // Đã thêm child để hỗ trợ linh hoạt widget bên trong
+
+  const AppInitializer({
+    super.key,
+    required this.notificationService,
+    required this.child,
+  });
 
   @override
   State<AppInitializer> createState() => _AppInitializerState();
@@ -462,7 +456,7 @@ class _AppInitializerState extends State<AppInitializer>
   }
 
   @override
-  Widget build(BuildContext context) => SplashPage();
+  Widget build(BuildContext context) => widget.child;
 
   @override
   void dispose() {

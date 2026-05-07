@@ -16,7 +16,14 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  final bool isWebSidebar;
+  final Function(Map<String, dynamic>)? onChatSelected;
+
+  const HomePage({
+    super.key,
+    this.isWebSidebar = false,
+    this.onChatSelected,
+  });
 
   @override
   State createState() => HomePageState();
@@ -81,7 +88,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => LoginPage()),
-          (_) => false,
+              (_) => false,
         );
       });
       return;
@@ -177,7 +184,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   void _configLocalNotification() {
     const initializationSettingsAndroid =
-        AndroidInitializationSettings('app_icon');
+    AndroidInitializationSettings('app_icon');
     const initializationSettingsIOS = DarwinInitializationSettings();
     const initializationSettings = InitializationSettings(
       android: initializationSettingsAndroid,
@@ -188,7 +195,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   void _scrollListener() {
     if (_listScrollController.offset >=
-            _listScrollController.position.maxScrollExtent &&
+        _listScrollController.position.maxScrollExtent &&
         !_listScrollController.position.outOfRange) {
       setState(() => _limit += _limitIncrement);
     }
@@ -245,7 +252,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
     await _authProvider.handleSignOut();
     await Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => LoginPage()),
-      (_) => false,
+          (_) => false,
     );
   }
 
@@ -286,7 +293,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
   String _getTimeAgo(String timestamp) {
     try {
       final messageTime =
-          DateTime.fromMillisecondsSinceEpoch(int.parse(timestamp));
+      DateTime.fromMillisecondsSinceEpoch(int.parse(timestamp));
       final now = DateTime.now();
       final diff = now.difference(messageTime);
       if (diff.inDays > 6) return DateFormat('MMM dd').format(messageTime);
@@ -360,18 +367,18 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 Text(
                   'Messages',
                   style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                        color: isDark
-                            ? const Color(0xFFF0F2F8)
-                            : const Color(0xFF1A1D2E),
-                        fontWeight: FontWeight.w800,
-                      ),
+                    color: isDark
+                        ? const Color(0xFFF0F2F8)
+                        : const Color(0xFF1A1D2E),
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   'Stay connected',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: ColorConstants.greyColor,
-                      ),
+                    color: ColorConstants.greyColor,
+                  ),
                 ),
               ],
             ),
@@ -477,8 +484,8 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     color: isLogout
                         ? ColorConstants.accentRed
                         : (isDark
-                            ? const Color(0xFFF0F2F8)
-                            : const Color(0xFF1A1D2E)),
+                        ? const Color(0xFFF0F2F8)
+                        : const Color(0xFF1A1D2E)),
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                   ),
@@ -494,7 +501,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           color:
-              isDark ? ColorConstants.surfaceDark2 : ColorConstants.greyColor2,
+          isDark ? ColorConstants.surfaceDark2 : ColorConstants.greyColor2,
         ),
         child: Icon(
           Icons.more_vert_rounded,
@@ -515,12 +522,12 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
         height: 44,
         decoration: BoxDecoration(
           color:
-              isDark ? ColorConstants.surfaceDark2 : ColorConstants.greyColor2,
+          isDark ? ColorConstants.surfaceDark2 : ColorConstants.greyColor2,
           borderRadius: BorderRadius.circular(14),
           border: _isSearchFocused
               ? Border.all(
-                  color: ColorConstants.primaryColor.withOpacity(0.5),
-                  width: 1.5)
+              color: ColorConstants.primaryColor.withOpacity(0.5),
+              width: 1.5)
               : null,
         ),
         child: Row(
@@ -587,7 +594,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
                       shape: BoxShape.circle,
                     ),
                     child:
-                        const Icon(Icons.close, size: 12, color: Colors.white),
+                    const Icon(Icons.close, size: 12, color: Colors.white),
                   ),
                 );
               },
@@ -619,7 +626,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 onAddStory: _openStoryCreator,
                 onViewStories: (userStories) {
                   final allOthers =
-                      stories.where((s) => s.userId != _currentUserId).toList();
+                  stories.where((s) => s.userId != _currentUserId).toList();
                   final userIndex = allOthers
                       .indexWhere((s) => s.userId == userStories.userId);
                   Navigator.push(
@@ -627,14 +634,14 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     MaterialPageRoute(
                       builder: (_) => StoryViewerPage(
                         allUserStories:
-                            allOthers.isNotEmpty ? allOthers : stories,
+                        allOthers.isNotEmpty ? allOthers : stories,
                         initialUserIndex: userIndex < 0 ? 0 : userIndex,
                         currentUserId: _currentUserId,
                         currentUserName: _authProvider.prefs
-                                .getString(FirestoreConstants.nickname) ??
+                            .getString(FirestoreConstants.nickname) ??
                             '',
                         currentUserPhotoUrl: _authProvider.prefs
-                                .getString(FirestoreConstants.photoUrl) ??
+                            .getString(FirestoreConstants.photoUrl) ??
                             '',
                       ),
                     ),
@@ -750,18 +757,18 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
             Text(
               'No conversations yet',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: isDark ? Colors.white70 : const Color(0xFF1A1D2E),
-                    fontWeight: FontWeight.w700,
-                  ),
+                color: isDark ? Colors.white70 : const Color(0xFF1A1D2E),
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
               'Scan a QR code to connect with friends\nand start chatting',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: ColorConstants.greyColor,
-                    height: 1.5,
-                  ),
+                color: ColorConstants.greyColor,
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 28),
             ElevatedButton.icon(
@@ -772,7 +779,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 backgroundColor: ColorConstants.primaryColor,
                 foregroundColor: Colors.white,
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -813,10 +820,22 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
             isMuted: conversation.isMuted,
             isGroup: true,
             isDark: isDark,
-            onTap: () => Navigator.push(
-              context,
-              _slideRoute(GroupChatPage(group: group)),
-            ),
+            onTap: () {
+              if (widget.isWebSidebar && widget.onChatSelected != null) {
+                // Nếu là Web: Cập nhật state ở màn hình bên phải cho group
+                widget.onChatSelected!({
+                  'peerId': group.id,
+                  'peerAvatar': group.groupPhotoUrl,
+                  'peerNickname': group.groupName,
+                  'isGroup': true,
+                });
+              } else {
+                Navigator.push(
+                  context,
+                  _slideRoute(GroupChatPage(group: group)),
+                );
+              }
+            },
             onLongPress: () => _showConversationOptions(conversation),
           );
         },
@@ -851,16 +870,28 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
           isGroup: false,
           isDark: isDark,
           onlineUserId: otherUserId,
-          onTap: () => Navigator.push(
-            context,
-            _slideRoute(ChatPage(
-              arguments: ChatPageArguments(
-                peerId: userChat.id,
-                peerAvatar: userChat.photoUrl,
-                peerNickname: userChat.nickname,
-              ),
-            )),
-          ),
+          onTap: () {
+            if (widget.isWebSidebar && widget.onChatSelected != null) {
+              // Nếu là Web: Cập nhật state ở màn hình bên phải
+              widget.onChatSelected!({
+                'peerId': userChat.id,
+                'peerAvatar': userChat.photoUrl,
+                'peerNickname': userChat.nickname,
+              });
+            } else {
+              // Nếu là Mobile: Push sang màn hình mới như cũ
+              Navigator.push(
+                context,
+                _slideRoute(ChatPage(
+                  arguments: ChatPageArguments(
+                    peerId: userChat.id,
+                    peerAvatar: userChat.photoUrl,
+                    peerNickname: userChat.nickname,
+                  ),
+                )),
+              );
+            }
+          },
           onLongPress: () => _showConversationOptions(conversation),
         );
       },
@@ -885,7 +916,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
           .collection(FirestoreConstants.pathUserCollection)
           .where(FirestoreConstants.nickname, isGreaterThanOrEqualTo: query)
           .where(FirestoreConstants.nickname,
-              isLessThanOrEqualTo: '$query\uf8ff')
+          isLessThanOrEqualTo: '$query\uf8ff')
           .limit(_limit)
           .snapshots();
     }
@@ -927,10 +958,20 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => Navigator.push(
-          context,
-          _slideRoute(UserProfilePage(userChat: userChat)),
-        ),
+        onTap: () {
+          if (widget.isWebSidebar && widget.onChatSelected != null) {
+            widget.onChatSelected!({
+              'peerId': userChat.id,
+              'peerAvatar': userChat.photoUrl,
+              'peerNickname': userChat.nickname,
+            });
+          } else {
+            Navigator.push(
+              context,
+              _slideRoute(UserProfilePage(userChat: userChat)),
+            );
+          }
+        },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           child: Row(
@@ -981,7 +1022,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
               ),
               Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: ColorConstants.primaryColor.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(20),
@@ -1052,7 +1093,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
     const iosDetails = DarwinNotificationDetails();
     final details =
-        NotificationDetails(android: androidDetails, iOS: iosDetails);
+    NotificationDetails(android: androidDetails, iOS: iosDetails);
     await _flutterLocalNotificationsPlugin.show(
       0,
       remoteNotification.title,
@@ -1084,7 +1125,7 @@ class _HeaderIconButton extends StatelessWidget {
         height: 40,
         decoration: BoxDecoration(
           color:
-              isDark ? ColorConstants.surfaceDark2 : ColorConstants.greyColor2,
+          isDark ? ColorConstants.surfaceDark2 : ColorConstants.greyColor2,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(
@@ -1226,7 +1267,7 @@ class _ConversationTile extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color:
-                            isDark ? Colors.white38 : ColorConstants.greyColor,
+                        isDark ? Colors.white38 : ColorConstants.greyColor,
                         fontSize: 13,
                         fontWeight: FontWeight.w400,
                       ),
@@ -1279,11 +1320,11 @@ class _UserAvatar extends StatelessWidget {
       child: ClipOval(
         child: photoUrl.isNotEmpty
             ? Image.network(
-                photoUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) =>
-                    _buildInitials(initials, avatarColor, isGroup, size),
-              )
+          photoUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) =>
+              _buildInitials(initials, avatarColor, isGroup, size),
+        )
             : _buildInitials(initials, avatarColor, isGroup, size),
       ),
     );
@@ -1386,9 +1427,9 @@ class _SkeletonConversationItemState extends State<_SkeletonConversationItem>
       builder: (_, __) {
         final base = widget.isDark
             ? Color.lerp(ColorConstants.surfaceDark2, const Color(0xFF2E3448),
-                _animation.value)!
+            _animation.value)!
             : Color.lerp(ColorConstants.greyColor2, const Color(0xFFE0E4F0),
-                _animation.value)!;
+            _animation.value)!;
 
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
