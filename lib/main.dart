@@ -253,7 +253,11 @@ class MyApp extends StatelessWidget {
     final firebaseFirestore = FirebaseFirestore.instance;
     final firebaseStorage = FirebaseStorage.instance;
     final firebaseAuth = firebase_auth.FirebaseAuth.instance;
-    final googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
+    final googleSignIn = GoogleSignIn(
+      scopes: ['email', 'profile'],
+      clientId:
+          kIsWeb ? dotenv.env['WEB_CLIENT_ID'] : null, // ✅ Thêm Web Client ID
+    );
 
     Widget appTree = AppInitializer(
       notificationService: notificationService,

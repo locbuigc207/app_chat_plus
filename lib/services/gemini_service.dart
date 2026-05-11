@@ -14,7 +14,7 @@ class GeminiService {
       }
 
       final model = GenerativeModel(
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.0-flash',
         apiKey: apiKey,
         systemInstruction: Content.system(
             "Bạn là một AI Assistant hữu ích, được tích hợp trực tiếp vào ứng dụng chat. "
