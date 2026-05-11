@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
@@ -15,6 +16,7 @@ import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_chat_demo/utils/utils.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
@@ -30,8 +32,10 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Load environment variables
+  await dotenv.load(fileName: ".env");
+
   try {
-    // Đã cập nhật options cho Web/Multi-platform
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
@@ -45,13 +49,14 @@ Future<void> main() async {
   tz.setLocalLocation(tz.getLocation('Asia/Ho_Chi_Minh'));
   final prefs = await SharedPreferences.getInstance();
 
-  await _initializeNotifications(flutterLocalNotificationsPlugin);
+  // Chỉ khởi tạo Local Notifications trên Mobile
+  if (!kIsWeb) {
+    await _initializeNotifications(flutterLocalNotificationsPlugin);
+  }
 
   final unifiedBubbleService = UnifiedBubbleService();
   final chatBubbleService = ChatBubbleService();
   final notificationService = NotificationService();
-
-  print('✅ App initialized successfully');
 
   runApp(MyApp(
     prefs: prefs,
@@ -82,25 +87,24 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
   @override
   void initState() {
     super.initState();
-    _channel.setMethodCallHandler(_handleMethodCall);
-    print('✅ BubbleChatChannelManager: handler registered');
+    if (!kIsWeb) {
+      _channel.setMethodCallHandler(_handleMethodCall);
+    }
   }
 
   @override
   void dispose() {
-    _channel.setMethodCallHandler(null);
+    if (!kIsWeb) {
+      _channel.setMethodCallHandler(null);
+    }
     _recentNavigations.clear();
-    print('✅ BubbleChatChannelManager: handler disposed');
     super.dispose();
   }
 
   Future<dynamic> _handleMethodCall(MethodCall call) async {
-    print('📞 Bubble channel received: ${call.method}');
-
     if (call.method == 'navigateToChat') {
       return _handleNavigateToChat(call.arguments);
     } else if (call.method == 'onBackPressed') {
-      print('⬅️ Back pressed in bubble');
       if (navigatorKey.currentState?.canPop() == true) {
         navigatorKey.currentState!.pop();
       }
@@ -114,54 +118,26 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
     final peerAvatar = arguments['peerAvatar'] as String?;
     final isBubbleMode = arguments['isBubbleMode'] as bool? ?? false;
 
-    if (peerId == null || peerNickname == null) {
-      print('❌ Missing required args for bubble navigation');
-      return null;
-    }
+    if (peerId == null || peerNickname == null) return null;
 
     final timeBucket = DateTime.now().millisecondsSinceEpoch ~/ 2000;
     final dedupKey = '$peerId:$timeBucket';
 
-    if (_recentNavigations.contains(dedupKey)) {
-      print('ℹ️ Duplicate navigation ignored: $peerNickname');
-      return null;
-    }
+    if (_recentNavigations.contains(dedupKey)) return null;
     _recentNavigations.add(dedupKey);
     Future.delayed(
         const Duration(seconds: 10), () => _recentNavigations.remove(dedupKey));
 
-    print('🧭 Navigating to: $peerNickname (bubble=$isBubbleMode)');
-
     int retries = 0;
     const maxRetries = 5;
     while (navigatorKey.currentState == null && retries < maxRetries) {
-      final delay = Duration(milliseconds: 100 * (1 << retries));
-      print(
-          '⏳ Navigator not ready, retry $retries/$maxRetries (${delay.inMilliseconds}ms)');
-      await Future.delayed(delay);
+      await Future.delayed(Duration(milliseconds: 100 * (1 << retries)));
       retries++;
     }
 
     if (navigatorKey.currentState == null) {
-      print('❌ Navigator failed after $maxRetries retries');
       _recentNavigations.remove(dedupKey);
       return null;
-    }
-
-    try {
-      final ctx = navigatorKey.currentContext;
-      if (ctx != null) {
-        final currentRoute = ModalRoute.of(ctx);
-        if (currentRoute?.settings.name == '/chat') {
-          final args = currentRoute?.settings.arguments;
-          if (args is ChatPageArguments && args.peerId == peerId) {
-            print('ℹ️ Already on chat with $peerNickname, skipping');
-            return null;
-          }
-        }
-      }
-    } catch (e) {
-      print('⚠️ Error checking current route: $e');
     }
 
     try {
@@ -185,12 +161,9 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
           ),
         ),
       );
-      print('✅ Navigation complete to: $peerNickname');
     } catch (e) {
-      print('❌ Navigation failed: $e');
       _recentNavigations.remove(dedupKey);
     }
-
     return null;
   }
 
@@ -199,7 +172,7 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
 }
 
 // ============================================================
-// Notification init
+// Notification init (Mobile only)
 // ============================================================
 
 Future<void> _initializeNotifications(
@@ -220,9 +193,7 @@ Future<void> _initializeNotifications(
 
     await plugin.initialize(
       initializationSettings,
-      onDidReceiveNotificationResponse: (NotificationResponse response) {
-        print('🔔 Notification clicked: ${response.payload}');
-      },
+      onDidReceiveNotificationResponse: (NotificationResponse response) {},
     );
 
     if (Platform.isAndroid) {
@@ -230,7 +201,11 @@ Future<void> _initializeNotifications(
           AndroidFlutterLocalNotificationsPlugin>();
       if (androidPlugin != null) {
         await androidPlugin.requestNotificationsPermission();
-        await androidPlugin.requestExactAlarmsPermission();
+        try {
+          await androidPlugin.requestExactAlarmsPermission();
+        } catch (e) {
+          print('⚠️ Exact Alarms Permission warning: $e');
+        }
         await androidPlugin.createNotificationChannel(
           const AndroidNotificationChannel(
             'message_reminders',
@@ -248,8 +223,6 @@ Future<void> _initializeNotifications(
               IOSFlutterLocalNotificationsPlugin>()
           ?.requestPermissions(alert: true, badge: true, sound: true);
     }
-
-    print('✅ Notifications initialized');
   } catch (e) {
     print('❌ Notification init error: $e');
   }
@@ -281,6 +254,26 @@ class MyApp extends StatelessWidget {
     final firebaseStorage = FirebaseStorage.instance;
     final firebaseAuth = firebase_auth.FirebaseAuth.instance;
     final googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
+
+    Widget appTree = AppInitializer(
+      notificationService: notificationService,
+      child: SplashPage(),
+    );
+
+    // Không bọc Native MethodChannels trên Web
+    if (!kIsWeb) {
+      appTree = BubbleChatChannelManager(
+        child: GroupCallListener(
+          child: CallListener(
+            child: BubbleManager(
+              child: MiniChatOverlayManager(
+                child: appTree,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     return MultiProvider(
       providers: [
@@ -375,21 +368,7 @@ class MyApp extends StatelessWidget {
             themeMode: themeProvider.getFlutterThemeMode(context),
             theme: AppThemes.lightTheme(themeProvider.getPrimaryColor()),
             darkTheme: AppThemes.darkTheme(themeProvider.getPrimaryColor()),
-            // Đã bọc toàn bộ AppInitializer (chứa SplashPage) qua các listener gốc
-            home: BubbleChatChannelManager(
-              child: GroupCallListener(
-                child: CallListener(
-                  child: BubbleManager(
-                    child: MiniChatOverlayManager(
-                      child: AppInitializer(
-                        notificationService: notificationService,
-                        child: SplashPage(),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
+            home: appTree,
           );
         },
       ),
@@ -403,7 +382,7 @@ class MyApp extends StatelessWidget {
 
 class AppInitializer extends StatefulWidget {
   final NotificationService notificationService;
-  final Widget child; // Đã thêm child để hỗ trợ linh hoạt widget bên trong
+  final Widget child;
 
   const AppInitializer({
     super.key,
@@ -422,23 +401,6 @@ class _AppInitializerState extends State<AppInitializer>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _startNotificationService();
-    _logBubbleImplementation();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-    print('📱 App lifecycle: $state');
-  }
-
-  Future<void> _logBubbleImplementation() async {
-    await Future.delayed(const Duration(milliseconds: 100));
-    if (!mounted) return;
-    final unifiedService = context.read<UnifiedBubbleService>();
-    await Future.delayed(const Duration(seconds: 1));
-    if (!mounted) return;
-    final impl = unifiedService.getImplementationInfo();
-    print('🎈 Bubble Implementation: $impl');
   }
 
   Future<void> _startNotificationService() async {
@@ -446,10 +408,8 @@ class _AppInitializerState extends State<AppInitializer>
     final auth = firebase_auth.FirebaseAuth.instance;
     auth.authStateChanges().listen((user) {
       if (user != null) {
-        print('👤 User logged in, starting notification service');
         widget.notificationService.listenForNewMessages(user.uid);
       } else {
-        print('👤 User logged out, stopping notification service');
         widget.notificationService.stopListening();
       }
     });
@@ -486,13 +446,17 @@ class _MiniChatOverlayManagerState extends State<MiniChatOverlayManager> {
   @override
   void initState() {
     super.initState();
-    _setupMiniChatChannel();
+    if (!kIsWeb) {
+      _setupMiniChatChannel();
+    }
   }
 
   @override
   void dispose() {
     _hideMiniChatOverlay();
-    _miniChatChannel.setMethodCallHandler(null);
+    if (!kIsWeb) {
+      _miniChatChannel.setMethodCallHandler(null);
+    }
     super.dispose();
   }
 
@@ -546,9 +510,7 @@ class _MiniChatOverlayManagerState extends State<MiniChatOverlayManager> {
     try {
       _miniChatOverlay?.remove();
       _miniChatOverlay = null;
-    } catch (e) {
-      print('❌ Error removing mini chat overlay: $e');
-    }
+    } catch (e) {}
   }
 
   @override
@@ -556,7 +518,7 @@ class _MiniChatOverlayManagerState extends State<MiniChatOverlayManager> {
 }
 
 // ============================================================
-// MiniChatOverlayWidget
+// MiniChatOverlayWidget (Responsive)
 // ============================================================
 
 class MiniChatOverlayWidget extends StatefulWidget {
@@ -583,8 +545,12 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget> {
   Offset _position = const Offset(20, 100);
   bool _isDragging = false;
 
-  static const double _width = 340;
-  static const double _height = 500;
+  double get _width => MediaQuery.of(context).size.width > 400
+      ? 340
+      : MediaQuery.of(context).size.width * 0.85;
+  double get _height => MediaQuery.of(context).size.height > 700
+      ? 500
+      : MediaQuery.of(context).size.height * 0.7;
 
   @override
   void didChangeDependencies() {
@@ -665,15 +631,6 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget> {
       ),
       child: Row(
         children: [
-          Container(
-            width: 40,
-            height: 4,
-            margin: const EdgeInsets.only(right: 8),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
           CircleAvatar(
             backgroundImage: widget.avatarUrl.isNotEmpty
                 ? NetworkImage(widget.avatarUrl)
@@ -720,6 +677,7 @@ class BubbleModeDetector {
   static const MethodChannel _channel = MethodChannel('bubble_chat_channel');
 
   static Future<bool> isBubbleMode() async {
+    if (kIsWeb) return false;
     try {
       final result = await _channel.invokeMethod<bool>('getBubbleMode');
       return result ?? false;

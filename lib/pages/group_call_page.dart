@@ -2,8 +2,10 @@
 import 'dart:async';
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+import 'package:flutter/foundation.dart'; // Bổ sung để check kIsWeb
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // Bổ sung để lấy AGORA_APP_ID
 import 'package:permission_handler/permission_handler.dart';
 
 import '../models/group_call_model.dart';
@@ -81,6 +83,9 @@ class _GroupCallPageState extends State<GroupCallPage>
   }
 
   Future<void> _requestPermissions() async {
+    // FIX: Bỏ qua permission_handler trên nền tảng Web vì trình duyệt tự quản lý
+    if (kIsWeb) return;
+
     final perms = [Permission.microphone];
     if (widget.call.isVideo) perms.add(Permission.camera);
     await perms.request();
@@ -88,8 +93,15 @@ class _GroupCallPageState extends State<GroupCallPage>
 
   Future<void> _initEngine() async {
     _engine = createAgoraRtcEngine();
+
+    // FIX LỖI: Lấy kAgoraAppId từ biến môi trường
+    final String agoraAppId = dotenv.env['AGORA_APP_ID'] ?? '';
+    if (agoraAppId.isEmpty) {
+      debugPrint('❌ LỖI: AGORA_APP_ID chưa được cài đặt trong file .env');
+    }
+
     await _engine.initialize(RtcEngineContext(
-      appId: kAgoraAppId,
+      appId: agoraAppId,
       channelProfile: ChannelProfileType.channelProfileCommunication,
     ));
 
@@ -118,13 +130,13 @@ class _GroupCallPageState extends State<GroupCallPage>
       onRtcStats: (conn, stats) {
         if (mounted) {
           setState(() => _stats = RtcCallStats(
-            txBitrate: stats.txKBitRate ?? 0,
-            rxBitrate: stats.rxKBitRate ?? 0,
-            txPacketLoss: stats.txPacketLossRate ?? 0,
-            rxPacketLoss: stats.rxPacketLossRate ?? 0,
-            rtt: stats.lastmileDelay ?? 0,
-            duration: stats.duration ?? 0,
-          ));
+                txBitrate: stats.txKBitRate ?? 0,
+                rxBitrate: stats.rxKBitRate ?? 0,
+                txPacketLoss: stats.txPacketLossRate ?? 0,
+                rxPacketLoss: stats.rxPacketLossRate ?? 0,
+                rtt: stats.lastmileDelay ?? 0,
+                duration: stats.duration ?? 0,
+              ));
         }
       },
       onError: (err, msg) => debugPrint('❌ Agora error [$err]: $msg'),
@@ -179,7 +191,9 @@ class _GroupCallPageState extends State<GroupCallPage>
 
   void _showEndedSnackbar() {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Call ended'), duration: Duration(seconds: 2)),
+      const SnackBar(
+          content: Text('Cuộc gọi đã kết thúc'),
+          duration: Duration(seconds: 2)),
     );
   }
 
@@ -206,9 +220,7 @@ class _GroupCallPageState extends State<GroupCallPage>
     await _engine.muteLocalAudioStream(next);
     setState(() => _isMuted = next);
     await _callService.updateParticipantState(
-        callId: widget.call.callId,
-        isMuted: next,
-        isCameraOff: _isCameraOff);
+        callId: widget.call.callId, isMuted: next, isCameraOff: _isCameraOff);
   }
 
   Future<void> _toggleCamera() async {
@@ -217,9 +229,7 @@ class _GroupCallPageState extends State<GroupCallPage>
     await _engine.muteLocalVideoStream(next);
     setState(() => _isCameraOff = next);
     await _callService.updateParticipantState(
-        callId: widget.call.callId,
-        isMuted: _isMuted,
-        isCameraOff: next);
+        callId: widget.call.callId, isMuted: _isMuted, isCameraOff: next);
   }
 
   Future<void> _toggleSpeaker() async {
@@ -269,10 +279,13 @@ class _GroupCallPageState extends State<GroupCallPage>
   // ─── Build ─────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        await _hangUp();
-        return false;
+    // FIX LỖI: Chuyển WillPopScope (bị Deprecated) thành PopScope chuẩn mới
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (!didPop) {
+          await _hangUp();
+        }
       },
       child: Scaffold(
         backgroundColor: Colors.black,
@@ -338,14 +351,13 @@ class _GroupCallPageState extends State<GroupCallPage>
                     fontSize: 22,
                     fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
-            const Text('Waiting for others to join...',
+            const Text('Đang đợi mọi người tham gia...',
                 style: TextStyle(color: Colors.white70, fontSize: 15)),
             const SizedBox(height: 8),
             if (_connectedAt != null)
               CallTimerWidget(
                 startTime: _connectedAt!,
-                style:
-                const TextStyle(color: Colors.white54, fontSize: 14),
+                style: const TextStyle(color: Colors.white54, fontSize: 14),
               ),
           ],
         ),
@@ -390,8 +402,7 @@ class _GroupCallPageState extends State<GroupCallPage>
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             children: [
               _buildLocalThumbnail(),
-              ...others.map(
-                      (uid) => _buildRemoteThumbTile(uid)),
+              ...others.map((uid) => _buildRemoteThumbTile(uid)),
             ],
           ),
         ),
@@ -460,8 +471,7 @@ class _GroupCallPageState extends State<GroupCallPage>
             controller: VideoViewController.remote(
               rtcEngine: _engine,
               canvas: VideoCanvas(uid: uid),
-              connection:
-              RtcConnection(channelId: widget.call.channelName),
+              connection: RtcConnection(channelId: widget.call.channelName),
             ),
           ),
         ),
@@ -473,7 +483,8 @@ class _GroupCallPageState extends State<GroupCallPage>
             child: Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                  color: Colors.black54, borderRadius: BorderRadius.circular(12)),
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(12)),
               child: const Icon(Icons.mic_off, color: Colors.white, size: 16),
             ),
           ),
@@ -488,12 +499,14 @@ class _GroupCallPageState extends State<GroupCallPage>
                   CircleAvatar(
                     radius: big ? 40 : 24,
                     backgroundColor: Colors.blueGrey,
-                    child: Icon(Icons.person, color: Colors.white, size: big ? 40 : 24),
+                    child: Icon(Icons.person,
+                        color: Colors.white, size: big ? 40 : 24),
                   ),
                   if (participant?.userName != null) ...[
                     const SizedBox(height: 6),
                     Text(participant!.userName,
-                        style: const TextStyle(color: Colors.white, fontSize: 12)),
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 12)),
                   ],
                 ],
               ),
@@ -508,22 +521,23 @@ class _GroupCallPageState extends State<GroupCallPage>
       children: [
         _isCameraOff
             ? Container(
-          color: Colors.black87,
-          child: const Center(
-            child: Icon(Icons.videocam_off, color: Colors.white54, size: 40),
-          ),
-        )
+                color: Colors.black87,
+                child: const Center(
+                  child:
+                      Icon(Icons.videocam_off, color: Colors.white54, size: 40),
+                ),
+              )
             : ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: _engineInitialized
-              ? AgoraVideoView(
-            controller: VideoViewController(
-              rtcEngine: _engine,
-              canvas: const VideoCanvas(uid: 0),
-            ),
-          )
-              : Container(color: Colors.black54),
-        ),
+                borderRadius: BorderRadius.circular(8),
+                child: _engineInitialized
+                    ? AgoraVideoView(
+                        controller: VideoViewController(
+                          rtcEngine: _engine,
+                          canvas: const VideoCanvas(uid: 0),
+                        ),
+                      )
+                    : Container(color: Colors.black54),
+              ),
         if (_isMuted)
           Positioned(
             bottom: 8,
@@ -542,9 +556,8 @@ class _GroupCallPageState extends State<GroupCallPage>
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(8)),
-            child: const Text('You',
+                color: Colors.black54, borderRadius: BorderRadius.circular(8)),
+            child: const Text('Bạn',
                 style: TextStyle(color: Colors.white, fontSize: 11)),
           ),
         ),
@@ -561,25 +574,27 @@ class _GroupCallPageState extends State<GroupCallPage>
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: Colors.white, width: 1.5),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 8)],
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 8)
+          ],
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(8),
           child: _isCameraOff
               ? Container(
-            color: Colors.blueGrey[900],
-            child: const Center(
-                child: Icon(Icons.videocam_off,
-                    color: Colors.white54, size: 28)),
-          )
+                  color: Colors.blueGrey[900],
+                  child: const Center(
+                      child: Icon(Icons.videocam_off,
+                          color: Colors.white54, size: 28)),
+                )
               : (_engineInitialized
-              ? AgoraVideoView(
-            controller: VideoViewController(
-              rtcEngine: _engine,
-              canvas: const VideoCanvas(uid: 0),
-            ),
-          )
-              : Container(color: Colors.black54)),
+                  ? AgoraVideoView(
+                      controller: VideoViewController(
+                        rtcEngine: _engine,
+                        canvas: const VideoCanvas(uid: 0),
+                      ),
+                    )
+                  : Container(color: Colors.black54)),
         ),
       ),
     );
@@ -597,15 +612,14 @@ class _GroupCallPageState extends State<GroupCallPage>
         borderRadius: BorderRadius.circular(7),
         child: _isCameraOff
             ? Container(
-            color: Colors.blueGrey[900],
-            child: const Center(
-                child: Icon(Icons.person, color: Colors.white54, size: 28)))
+                color: Colors.blueGrey[900],
+                child: const Center(
+                    child: Icon(Icons.person, color: Colors.white54, size: 28)))
             : (_engineInitialized
-            ? AgoraVideoView(
-            controller: VideoViewController(
-                rtcEngine: _engine,
-                canvas: const VideoCanvas(uid: 0)))
-            : Container(color: Colors.black54)),
+                ? AgoraVideoView(
+                    controller: VideoViewController(
+                        rtcEngine: _engine, canvas: const VideoCanvas(uid: 0)))
+                : Container(color: Colors.black54)),
       ),
     );
   }
@@ -688,7 +702,8 @@ class _GroupCallPageState extends State<GroupCallPage>
                     if (_connectedAt != null)
                       CallTimerWidget(
                         startTime: _connectedAt!,
-                        style: const TextStyle(color: Colors.white70, fontSize: 13),
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 13),
                       ),
                   ],
                 ),
@@ -696,9 +711,10 @@ class _GroupCallPageState extends State<GroupCallPage>
               // Participants count
               GestureDetector(
                 onTap: () => setState(
-                        () => _showParticipantsList = !_showParticipantsList),
+                    () => _showParticipantsList = !_showParticipantsList),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(16)),
@@ -707,7 +723,8 @@ class _GroupCallPageState extends State<GroupCallPage>
                       const Icon(Icons.people, color: Colors.white, size: 16),
                       const SizedBox(width: 4),
                       Text('${_callModel.participants.length}',
-                          style: const TextStyle(color: Colors.white, fontSize: 14)),
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 14)),
                     ],
                   ),
                 ),
@@ -736,14 +753,15 @@ class _GroupCallPageState extends State<GroupCallPage>
                   padding: const EdgeInsets.all(12),
                   child: Row(
                     children: [
-                      const Text('Participants',
+                      const Text('Thành viên',
                           style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
                               fontSize: 15)),
                       const Spacer(),
                       IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white, size: 20),
+                        icon: const Icon(Icons.close,
+                            color: Colors.white, size: 20),
                         onPressed: () =>
                             setState(() => _showParticipantsList = false),
                         padding: EdgeInsets.zero,
@@ -765,23 +783,27 @@ class _GroupCallPageState extends State<GroupCallPage>
                               : null,
                           backgroundColor: Colors.blueGrey,
                           child: p.userAvatar.isEmpty
-                              ? const Icon(Icons.person, color: Colors.white, size: 18)
+                              ? const Icon(Icons.person,
+                                  color: Colors.white, size: 18)
                               : null,
                         ),
                         title: Text(
                           p.userName,
-                          style: const TextStyle(color: Colors.white, fontSize: 13),
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 13),
                           overflow: TextOverflow.ellipsis,
                         ),
                         subtitle: p.isAdmin
                             ? const Text('Admin',
-                            style: TextStyle(color: Colors.amber, fontSize: 11))
+                                style: TextStyle(
+                                    color: Colors.amber, fontSize: 11))
                             : null,
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             if (p.isMuted)
-                              const Icon(Icons.mic_off, color: Colors.red, size: 16),
+                              const Icon(Icons.mic_off,
+                                  color: Colors.red, size: 16),
                             if (p.isCameraOff && widget.call.isVideo)
                               const Padding(
                                 padding: EdgeInsets.only(left: 4),
@@ -820,36 +842,36 @@ class _GroupCallPageState extends State<GroupCallPage>
                 children: [
                   _controlBtn(
                     icon: _isMuted ? Icons.mic_off : Icons.mic,
-                    label: _isMuted ? 'Unmute' : 'Mute',
+                    label: _isMuted ? 'Mở Mic' : 'Tắt Mic',
                     active: _isMuted,
                     onTap: _toggleMute,
                   ),
                   _controlBtn(
                     icon: _isSpeakerOn ? Icons.volume_up : Icons.hearing,
-                    label: _isSpeakerOn ? 'Speaker' : 'Earpiece',
+                    label: _isSpeakerOn ? 'Loa ngoài' : 'Loa trong',
                     active: _isSpeakerOn,
                     onTap: _toggleSpeaker,
                   ),
                   if (widget.call.isVideo)
                     _controlBtn(
                       icon: _isCameraOff ? Icons.videocam_off : Icons.videocam,
-                      label: _isCameraOff ? 'Cam Off' : 'Camera',
+                      label: _isCameraOff ? 'Mở Cam' : 'Tắt Cam',
                       active: _isCameraOff,
                       onTap: _toggleCamera,
                     ),
                   if (widget.call.isVideo)
                     _controlBtn(
                       icon: Icons.flip_camera_android,
-                      label: 'Flip',
+                      label: 'Xoay',
                       active: false,
                       onTap: _switchCamera,
                     ),
                   _controlBtn(
                     icon: Icons.people,
-                    label: 'Members',
+                    label: 'Danh sách',
                     active: _showParticipantsList,
                     onTap: () => setState(
-                            () => _showParticipantsList = !_showParticipantsList),
+                        () => _showParticipantsList = !_showParticipantsList),
                   ),
                 ],
               ),
@@ -870,7 +892,8 @@ class _GroupCallPageState extends State<GroupCallPage>
                           offset: const Offset(0, 4))
                     ],
                   ),
-                  child: const Icon(Icons.call_end, color: Colors.white, size: 28),
+                  child:
+                      const Icon(Icons.call_end, color: Colors.white, size: 28),
                 ),
               ),
             ],
@@ -906,8 +929,8 @@ class _GroupCallPageState extends State<GroupCallPage>
           ),
           const SizedBox(height: 6),
           Text(label,
-              style:
-              TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11)),
+              style: TextStyle(
+                  color: Colors.white.withOpacity(0.8), fontSize: 11)),
         ],
       ),
     );
@@ -987,7 +1010,8 @@ class _GroupCallPageState extends State<GroupCallPage>
                         : null,
                     backgroundColor: Colors.blueGrey,
                     child: p.userAvatar.isEmpty
-                        ? const Icon(Icons.person, size: 36, color: Colors.white)
+                        ? const Icon(Icons.person,
+                            size: 36, color: Colors.white)
                         : null,
                   ),
                   if (p.isMuted)
@@ -998,14 +1022,15 @@ class _GroupCallPageState extends State<GroupCallPage>
                         padding: const EdgeInsets.all(3),
                         decoration: const BoxDecoration(
                             color: Colors.red, shape: BoxShape.circle),
-                        child: const Icon(Icons.mic_off, size: 12, color: Colors.white),
+                        child: const Icon(Icons.mic_off,
+                            size: 12, color: Colors.white),
                       ),
                     ),
                 ],
               ),
               const SizedBox(height: 6),
               Text(
-                p.userId == widget.call.initiatorId ? 'You' : p.userName,
+                p.userId == widget.call.initiatorId ? 'Bạn' : p.userName,
                 style: const TextStyle(color: Colors.white, fontSize: 12),
               ),
             ],
@@ -1023,7 +1048,7 @@ class _GroupCallPageState extends State<GroupCallPage>
         children: [
           _controlBtn(
               icon: _isMuted ? Icons.mic_off : Icons.mic,
-              label: _isMuted ? 'Unmute' : 'Mute',
+              label: _isMuted ? 'Mở Mic' : 'Tắt Mic',
               active: _isMuted,
               onTap: _toggleMute),
           // End call
@@ -1046,7 +1071,7 @@ class _GroupCallPageState extends State<GroupCallPage>
           ),
           _controlBtn(
               icon: _isSpeakerOn ? Icons.volume_up : Icons.hearing,
-              label: _isSpeakerOn ? 'Speaker' : 'Earpiece',
+              label: _isSpeakerOn ? 'Loa ngoài' : 'Loa trong',
               active: _isSpeakerOn,
               onTap: _toggleSpeaker),
         ],

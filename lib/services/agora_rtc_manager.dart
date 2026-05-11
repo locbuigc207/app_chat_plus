@@ -2,9 +2,8 @@ import 'dart:async';
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:permission_handler/permission_handler.dart';
-
-const String kAgoraAppId = '11d7a5c344694ee5ad835a7e0d388871';
 
 enum RtcConnectionState {
   disconnected,
@@ -33,7 +32,6 @@ class RtcCallStats {
 }
 
 class AgoraRtcManager extends ChangeNotifier {
-  // ── State ──────────────────────────────────────────────
   RtcConnectionState _connectionState = RtcConnectionState.disconnected;
   bool _isMuted = false;
   bool _isCameraOff = false;
@@ -46,7 +44,6 @@ class AgoraRtcManager extends ChangeNotifier {
   String? _currentChannel;
   bool _disposed = false;
 
-  // ── Streams ────────────────────────────────────────────
   final _remoteJoinedController = StreamController<int>.broadcast();
   final _remoteLeftController = StreamController<int>.broadcast();
   final _connectionController =
@@ -59,7 +56,6 @@ class AgoraRtcManager extends ChangeNotifier {
       _connectionController.stream;
   Stream<String> get errorStream => _errorController.stream;
 
-  // ── Getters ────────────────────────────────────────────
   RtcConnectionState get connectionState => _connectionState;
   bool get isMuted => _isMuted;
   bool get isCameraOff => _isCameraOff;
@@ -75,17 +71,18 @@ class AgoraRtcManager extends ChangeNotifier {
 
   RtcEngine? _engine;
 
-  // ── Public API ─────────────────────────────────────────
+  // Lấy App ID từ file .env
+  String get kAgoraAppId => dotenv.env['AGORA_APP_ID'] ?? '';
 
   Future<bool> initialize() async {
     if (_initialized) return true;
     if (_disposed) return false;
 
-    // Kiểm tra App ID hợp lệ
-    if (kAgoraAppId == 'YOUR_AGORA_APP_ID_HERE' || kAgoraAppId.isEmpty) {
-      debugPrint('❌ AgoraRtcManager: App ID chưa được cấu hình!');
+    if (kAgoraAppId.isEmpty) {
+      debugPrint(
+          '❌ AgoraRtcManager: AGORA_APP_ID chưa được cấu hình trong .env!');
       _errorController.add(
-        'Agora App ID chưa được cấu hình. Vui lòng lấy App ID từ console.agora.io',
+        'Agora App ID chưa được cấu hình. Vui lòng thêm AGORA_APP_ID vào file .env',
       );
       return false;
     }
@@ -94,7 +91,6 @@ class AgoraRtcManager extends ChangeNotifier {
       await _requestPermissions(video: true);
       await _initAgora();
       _initialized = true;
-      debugPrint('✅ AgoraRtcManager initialized');
       return true;
     } catch (e) {
       debugPrint('❌ AgoraRtcManager init failed: $e');
@@ -141,10 +137,8 @@ class AgoraRtcManager extends ChangeNotifier {
         ),
       );
 
-      debugPrint('✅ Joined channel: $channelName');
       return true;
     } catch (e) {
-      debugPrint('❌ Join channel failed: $e');
       _setConnectionState(RtcConnectionState.failed);
       _errorController.add('Không thể kết nối cuộc gọi: $e');
       return false;
@@ -158,22 +152,15 @@ class AgoraRtcManager extends ChangeNotifier {
       _currentChannel = null;
       _remoteUid = null;
       _setConnectionState(RtcConnectionState.disconnected);
-      debugPrint('✅ Left channel');
-    } catch (e) {
-      debugPrint('❌ Leave channel error: $e');
-    }
+    } catch (e) {}
   }
-
-  // ── Controls ───────────────────────────────────────────
 
   Future<void> toggleMute() async {
     if (_disposed) return;
     _isMuted = !_isMuted;
     try {
       await _engine?.muteLocalAudioStream(_isMuted);
-    } catch (e) {
-      debugPrint('❌ Toggle mute error: $e');
-    }
+    } catch (e) {}
     _safeNotify();
   }
 
@@ -182,9 +169,7 @@ class AgoraRtcManager extends ChangeNotifier {
     _isCameraOff = !_isCameraOff;
     try {
       await _engine?.muteLocalVideoStream(_isCameraOff);
-    } catch (e) {
-      debugPrint('❌ Toggle camera error: $e');
-    }
+    } catch (e) {}
     _safeNotify();
   }
 
@@ -193,9 +178,7 @@ class AgoraRtcManager extends ChangeNotifier {
     _isSpeakerOn = !_isSpeakerOn;
     try {
       await _engine?.setEnableSpeakerphone(_isSpeakerOn);
-    } catch (e) {
-      debugPrint('❌ Toggle speaker error: $e');
-    }
+    } catch (e) {}
     _safeNotify();
   }
 
@@ -204,38 +187,27 @@ class AgoraRtcManager extends ChangeNotifier {
     _isFrontCamera = !_isFrontCamera;
     try {
       await _engine?.switchCamera();
-    } catch (e) {
-      debugPrint('❌ Switch camera error: $e');
-    }
+    } catch (e) {}
     _safeNotify();
   }
-
-  // ── Dispose ────────────────────────────────────────────
 
   @override
   void dispose() {
     if (_disposed) return;
     _disposed = true;
 
-    // Sync leave channel (fire-and-forget) trước khi dispose
-    _engine?.leaveChannel().catchError((e) {
-      debugPrint('⚠️ Leave channel on dispose: $e');
-    });
+    _engine?.leaveChannel().catchError((e) {});
 
     _remoteJoinedController.close();
     _remoteLeftController.close();
     _connectionController.close();
     _errorController.close();
 
-    _engine?.release().catchError((e) {
-      debugPrint('⚠️ Engine release error: $e');
-    });
+    _engine?.release().catchError((e) {});
     _engine = null;
 
     super.dispose();
   }
-
-  // ── Internal ───────────────────────────────────────────
 
   Future<void> _initAgora() async {
     _engine = createAgoraRtcEngine();
@@ -243,9 +215,7 @@ class AgoraRtcManager extends ChangeNotifier {
     await _engine!.initialize(RtcEngineContext(
       appId: kAgoraAppId,
       channelProfile: ChannelProfileType.channelProfileCommunication,
-      logConfig: const LogConfig(
-        level: LogLevel.logLevelWarn, // Giảm log noise
-      ),
+      logConfig: const LogConfig(level: LogLevel.logLevelWarn),
     ));
 
     await _engine!.enableAudio();
@@ -253,15 +223,12 @@ class AgoraRtcManager extends ChangeNotifier {
 
     _engine!.registerEventHandler(RtcEngineEventHandler(
       onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
-        debugPrint('✅ Joined channel: ${connection.channelId}');
         _setConnectionState(RtcConnectionState.connected);
       },
       onLeaveChannel: (RtcConnection connection, RtcStats stats) {
-        debugPrint('✅ Left channel');
         _setConnectionState(RtcConnectionState.disconnected);
       },
       onUserJoined: (RtcConnection connection, int uid, int elapsed) {
-        debugPrint('👤 Remote user joined: $uid');
         _remoteUid = uid;
         _remoteVideoOn = true;
         _remoteJoinedController.add(uid);
@@ -269,7 +236,6 @@ class AgoraRtcManager extends ChangeNotifier {
       },
       onUserOffline:
           (RtcConnection connection, int uid, UserOfflineReasonType reason) {
-        debugPrint('👤 Remote user left: $uid');
         _remoteUid = null;
         _remoteLeftController.add(uid);
         _safeNotify();
@@ -299,7 +265,6 @@ class AgoraRtcManager extends ChangeNotifier {
         }
       },
       onError: (ErrorCodeType err, String msg) {
-        debugPrint('❌ Agora error [$err]: $msg');
         if (!_errorController.isClosed) {
           _errorController.add('Lỗi cuộc gọi: $msg');
         }
@@ -317,9 +282,7 @@ class AgoraRtcManager extends ChangeNotifier {
   }
 
   void _safeNotify() {
-    if (!_disposed) {
-      notifyListeners();
-    }
+    if (!_disposed) notifyListeners();
   }
 
   RtcConnectionState _mapConnectionState(ConnectionStateType state) {
@@ -340,6 +303,9 @@ class AgoraRtcManager extends ChangeNotifier {
   }
 
   Future<void> _requestPermissions({bool video = false}) async {
+    // Web: trình duyệt tự xin quyền, không dùng permission_handler
+    if (kIsWeb) return;
+
     final permissions = [Permission.microphone];
     if (video) permissions.add(Permission.camera);
 

@@ -11,7 +11,6 @@ class WebHomeLayout extends StatefulWidget {
 }
 
 class _WebHomeLayoutState extends State<WebHomeLayout> {
-  // Biến lưu trữ thông tin cuộc trò chuyện đang được chọn
   Map<String, dynamic>? selectedChatInfo;
 
   void updateSelectedChat(Map<String, dynamic> chatInfo) {
@@ -24,12 +23,15 @@ class _WebHomeLayoutState extends State<WebHomeLayout> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    double sidebarWidth = MediaQuery.of(context).size.width * 0.35;
+    if (sidebarWidth > 350) sidebarWidth = 350;
+    if (sidebarWidth < 280) sidebarWidth = 280;
+
     return Scaffold(
       body: Row(
         children: [
-          // BÊN TRÁI: Danh sách chat (chiếm 350px hoặc 30% màn hình)
           Container(
-            width: 350,
+            width: sidebarWidth,
             decoration: BoxDecoration(
               border: Border(
                 right: BorderSide(
@@ -39,14 +41,11 @@ class _WebHomeLayoutState extends State<WebHomeLayout> {
                 ),
               ),
             ),
-            // Sửa HomePage của bạn để nó nhận callback khi click vào 1 item
             child: HomePage(
               onChatSelected: updateSelectedChat,
-              isWebSidebar: true, // Biến cờ báo cho HomePage biết nó đang ở Web
+              isWebSidebar: true,
             ),
           ),
-
-          // BÊN PHẢI: Khung chat
           Expanded(
             child: selectedChatInfo == null
                 ? Container(
@@ -72,14 +71,12 @@ class _WebHomeLayoutState extends State<WebHomeLayout> {
                     ),
                   )
                 : ChatPage(
-                    // Truyền các tham số cần thiết vào ChatPage của bạn
                     arguments: ChatPageArguments(
                       peerId: selectedChatInfo!['peerId'],
                       peerAvatar: selectedChatInfo!['peerAvatar'],
                       peerNickname: selectedChatInfo!['peerNickname'],
                     ),
-                    isWebMode:
-                        true, // Cờ báo cho ChatPage không hiển thị nút Back
+                    isWebMode: true,
                   ),
           ),
         ],
