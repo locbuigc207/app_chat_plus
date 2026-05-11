@@ -3,26 +3,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart'; // ✅ Thêm import này
 import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/models/bubble_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-/// FIXES APPLIED:
-///
-/// FIX-A — Age check dùng inMinutes thay vì inHours:
-///   Trước: age.inHours < 24 — Duration.inHours là floor integer.
-///          Bubble 23h59m vẫn pass check vì inHours = 23.
-///   Sau:  age.inMinutes < 1440 — chính xác hơn (1440 = 24×60).
-///
-/// FIX-B — _restoreBubbles() validate JSON đúng trước khi parse:
-///   Thêm try-catch per-entry và validate required fields.
-///
-/// FIX-C — dispose() cancel EventChannel subscription:
-///   Trước: _eventSubscription cancel nhưng controllers chưa chắc được close.
-///   Sau:  Đảm bảo close tất cả controllers nếu chưa closed.
-///
-/// FIX-D — _setupEventListener() idempotent:
-///   Check _isInitialized trước để tránh double-setup.
 
 class ChatBubbleService {
   static const MethodChannel _channel = MethodChannel('chat_bubble_overlay');
@@ -64,11 +48,11 @@ class ChatBubbleService {
   static const _storageKey = 'active_bubbles';
 
   // ========================================
-  // FIX-D: idempotent setup
+  // SETUP
   // ========================================
 
   void _setupEventListener() {
-    if (_isInitialized) return; // FIX-D: tidak setup dua kali
+    if (_isInitialized || kIsWeb) return; // ✅ Thêm kIsWeb vào đây
 
     try {
       _eventSubscription?.cancel();
@@ -150,7 +134,8 @@ class ChatBubbleService {
   }
 
   Future<void> _restoreBubbles() async {
-    if (!Platform.isAndroid) return;
+    // ✅ Kiểm tra kIsWeb
+    if (kIsWeb || !Platform.isAndroid) return;
 
     try {
       await _initPrefs();
@@ -173,16 +158,13 @@ class ChatBubbleService {
           final bubbleData = BubbleData.fromJson(
               Map<String, dynamic>.from(entry.value as Map));
 
-          // FIX-A: dùng inMinutes thay vì inHours để chính xác hơn
           final age = DateTime.now().difference(bubbleData.timestamp);
           if (age.inMinutes >= 1440) {
-            // 24 * 60 = 1440 phút
             print(
                 '⏰ Stale bubble skipped: ${bubbleData.userName} (${age.inHours}h old)');
             continue;
           }
 
-          // FIX-B: validate required fields
           if (bubbleData.userId.isEmpty || bubbleData.userName.isEmpty) {
             print('⚠️ Invalid bubble data for key ${entry.key}, skipping');
             continue;
@@ -234,7 +216,8 @@ class ChatBubbleService {
   // ========================================
 
   Future<bool> requestOverlayPermission() async {
-    if (!Platform.isAndroid) return false;
+    // ✅ Kiểm tra kIsWeb
+    if (kIsWeb || !Platform.isAndroid) return false;
     try {
       await _waitForRateLimit();
       final bool result = await _channel.invokeMethod('requestPermission');
@@ -247,7 +230,8 @@ class ChatBubbleService {
   }
 
   Future<bool> hasOverlayPermission() async {
-    if (!Platform.isAndroid) return false;
+    // ✅ Kiểm tra kIsWeb
+    if (kIsWeb || !Platform.isAndroid) return false;
     try {
       final bool result = await _channel.invokeMethod('hasPermission');
       return result;
@@ -268,7 +252,8 @@ class ChatBubbleService {
     String? lastMessage,
     int maxRetries = 2,
   }) async {
-    if (!Platform.isAndroid) return false;
+    // ✅ Kiểm tra kIsWeb
+    if (kIsWeb || !Platform.isAndroid) return false;
 
     try {
       await _waitForRateLimit();
@@ -322,7 +307,8 @@ class ChatBubbleService {
   }
 
   Future<bool> hideChatBubble(String userId) async {
-    if (!Platform.isAndroid) return false;
+    // ✅ Kiểm tra kIsWeb
+    if (kIsWeb || !Platform.isAndroid) return false;
     try {
       await _waitForRateLimit();
       final bool success = await _channel.invokeMethod('hideBubble', {
@@ -344,7 +330,8 @@ class ChatBubbleService {
   }
 
   Future<void> hideAllBubbles() async {
-    if (!Platform.isAndroid) return;
+    // ✅ Kiểm tra kIsWeb
+    if (kIsWeb || !Platform.isAndroid) return;
     try {
       await _waitForRateLimit();
       await _channel.invokeMethod('hideAllBubbles');
@@ -363,7 +350,8 @@ class ChatBubbleService {
     required String userName,
     required String avatarUrl,
   }) async {
-    if (!Platform.isAndroid) return false;
+    // ✅ Kiểm tra kIsWeb
+    if (kIsWeb || !Platform.isAndroid) return false;
     try {
       await _waitForRateLimit();
       final hasPermission = await hasOverlayPermission();
@@ -383,7 +371,8 @@ class ChatBubbleService {
   }
 
   Future<bool> hideMiniChat() async {
-    if (!Platform.isAndroid) return false;
+    // ✅ Kiểm tra kIsWeb
+    if (kIsWeb || !Platform.isAndroid) return false;
     try {
       await _waitForRateLimit();
       final bool success = await _channel.invokeMethod('hideMiniChat');
@@ -421,10 +410,11 @@ class ChatBubbleService {
 
   bool isBubbleActive(String userId) => _activeBubbles.containsKey(userId);
   Map<String, BubbleData> get activeBubbles => Map.unmodifiable(_activeBubbles);
-  bool get isSupported => Platform.isAndroid;
+  bool get isSupported =>
+      !kIsWeb && Platform.isAndroid; // ✅ Đã cập nhật isSupported
 
   // ========================================
-  // FIX-C: DISPOSE an toàn
+  // DISPOSE
   // ========================================
 
   void dispose() {
@@ -432,7 +422,6 @@ class ChatBubbleService {
     _eventSubscription = null;
     _isInitialized = false;
 
-    // FIX-C: close tất cả controllers
     if (!_activeBubblesController.isClosed) {
       _activeBubblesController.close();
     }

@@ -2,9 +2,11 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart'; // ✅ Thêm import này
 import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/models/bubble_models.dart';
-import 'package:flutter_chat_demo/services/bubble_service_v2.dart';
+import 'package:flutter_chat_demo/services/bubble_service_v2.dart'
+    hide debugPrint;
 import 'package:flutter_chat_demo/services/chat_bubble_service.dart';
 
 class UnifiedBubbleService {
@@ -26,17 +28,14 @@ class UnifiedBubbleService {
   // ========================================
 
   bool _isInitialized = false;
-  Completer<void>? _initCompleter; // FIX-C: prevent concurrent inits
+  Completer<void>? _initCompleter;
   BubbleImplementation _currentImplementation = BubbleImplementation.unknown;
 
-  // FIX-A: Operation queue với proper completion tracking
   final List<_QueuedOperation> _operationQueue = [];
   bool _isProcessingQueue = false;
 
-  // FIX-B: Track subscriptions để cancel khi setup ulang
   final List<StreamSubscription> _streamSubscriptions = [];
 
-  // FIX-B: Controllers riêng để có thể close và recreate
   StreamController<BubbleClickEvent>? _clickController;
   StreamController<Map<String, dynamic>>? _bubblesController;
 
@@ -60,11 +59,10 @@ class UnifiedBubbleService {
   }
 
   // ========================================
-  // INITIALIZATION (FIX-C)
+  // INITIALIZATION
   // ========================================
 
   Future<void> _initialize() async {
-    // FIX-C: prevent concurrent initializations
     if (_isInitialized) return;
     if (_initCompleter != null) {
       return _initCompleter!.future;
@@ -87,7 +85,9 @@ class UnifiedBubbleService {
   }
 
   Future<BubbleImplementation> _detectBestImplementation() async {
-    if (!Platform.isAndroid) return BubbleImplementation.none;
+    // ✅ Trả về none ngay nếu là Web hoặc không phải Android
+    if (kIsWeb || !Platform.isAndroid) return BubbleImplementation.none;
+
     final supportsBubbleApi = await _bubbleApiService.checkBubbleApiSupport();
     return supportsBubbleApi
         ? BubbleImplementation.bubbleApi
@@ -95,11 +95,10 @@ class UnifiedBubbleService {
   }
 
   // ========================================
-  // FIX-B: STREAM FORWARDING (no leak)
+  // STREAM FORWARDING
   // ========================================
 
   void _setupStreamForwarding() {
-    // FIX-B: Cancel subscriptions cũ trước khi setup mới
     for (final sub in _streamSubscriptions) {
       sub.cancel();
     }
@@ -174,7 +173,7 @@ class UnifiedBubbleService {
   }
 
   // ========================================
-  // BUBBLE OPERATIONS (queued)
+  // BUBBLE OPERATIONS
   // ========================================
 
   Future<bool> showChatBubble({
@@ -269,7 +268,7 @@ class UnifiedBubbleService {
   }
 
   // ========================================
-  // MIGRATION (FIX-B: close old streams)
+  // MIGRATION
   // ========================================
 
   Future<bool> migrateToModernApi() async {
@@ -285,7 +284,6 @@ class UnifiedBubbleService {
 
             _currentImplementation = BubbleImplementation.bubbleApi;
 
-            // FIX-B: close old stream subscriptions và setup mới
             _setupStreamForwarding();
 
             for (final bubble in currentBubbles.values) {
@@ -450,7 +448,7 @@ class UnifiedBubbleService {
       );
 
   // ========================================
-  // FIX-A: OPERATION QUEUE (no race condition)
+  // OPERATION QUEUE
   // ========================================
 
   Future<T?> _queueOperation<T>(Future<T> Function() operation) {
@@ -465,15 +463,13 @@ class UnifiedBubbleService {
       },
     ));
 
-    // FIX-A: unawaited() để không block caller, tránh recursive await
     if (!_isProcessingQueue) {
-      _processQueue(); // fire and forget, nhưng _isProcessingQueue guard đảm bảo 1 loop
+      _processQueue();
     }
 
     return completer.future;
   }
 
-  // FIX-A: try-finally đảm bảo flag reset kể cả khi có error
   Future<void> _processQueue() async {
     if (_isProcessingQueue) return;
     _isProcessingQueue = true;
@@ -484,7 +480,6 @@ class UnifiedBubbleService {
           await op.run();
         } catch (e) {
           debugPrint('❌ Queue operation failed: $e');
-          // Tiếp tục xử lý các operation tiếp theo
         }
       }
     } finally {
@@ -493,17 +488,15 @@ class UnifiedBubbleService {
   }
 
   // ========================================
-  // FIX-D: DISPOSE đầy đủ
+  // DISPOSE
   // ========================================
 
   void dispose() {
-    // FIX-B: cancel tất cả stream subscriptions
     for (final sub in _streamSubscriptions) {
       sub.cancel();
     }
     _streamSubscriptions.clear();
 
-    // Close stream controllers
     if (!(_clickController?.isClosed ?? true)) {
       _clickController!.close();
     }
@@ -513,11 +506,9 @@ class UnifiedBubbleService {
     _clickController = null;
     _bubblesController = null;
 
-    // Clear queue
     _operationQueue.clear();
     _isProcessingQueue = false;
 
-    // Dispose child services
     _bubbleApiService.dispose();
     _windowManagerService.dispose();
 
@@ -526,7 +517,6 @@ class UnifiedBubbleService {
   }
 }
 
-// Helper class cho operation queue
 class _QueuedOperation {
   final Future<void> Function() run;
   _QueuedOperation({required this.run});

@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart'; // ✅ Thêm import này
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
@@ -38,7 +39,8 @@ class _BubbleManagerState extends State<BubbleManager>
   }
 
   void _initializeBubbleService() {
-    if (!Platform.isAndroid) return;
+    // ✅ Bỏ qua ngay lập tức nếu là Web
+    if (kIsWeb || !Platform.isAndroid) return;
 
     try {
       _bubbleService = context.read<ChatBubbleService>();
@@ -81,14 +83,12 @@ class _BubbleManagerState extends State<BubbleManager>
     print('✅ Mini chat message listener setup');
   }
 
-  /// ✅ FIX: Don't hide bubble when clicked
   void _handleBubbleClick(BubbleClickEvent event) {
     if (!mounted) return;
 
     print('🫧 Bubble clicked: ${event.userName}');
 
     try {
-      // ✅ FIX: Show dialog to choose action
       showDialog(
         context: context,
         barrierDismissible: true,

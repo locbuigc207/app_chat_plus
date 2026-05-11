@@ -7,14 +7,6 @@ import '../models/call_model.dart';
 import '../pages/incoming_call_page.dart';
 import '../services/call_service.dart';
 
-/// Wrap app home để tự động bắt incoming calls
-///
-/// Dùng trong main.dart:
-///   home: CallListener(
-///     child: BubbleManager(
-///       child: AppInitializer(...),
-///     ),
-///   ),
 class CallListener extends StatefulWidget {
   final Widget child;
 
@@ -32,7 +24,6 @@ class _CallListenerState extends State<CallListener> {
   @override
   void initState() {
     super.initState();
-    // Delay nhỏ để Navigator ready
     Future.delayed(const Duration(milliseconds: 800), _startListening);
   }
 
@@ -41,7 +32,7 @@ class _CallListenerState extends State<CallListener> {
 
     _incomingCallSub = _callService.incomingCallStream.listen((call) {
       if (call == null) return;
-      if (call.callId == _activeIncomingCallId) return; // Đã hiển thị
+      if (call.callId == _activeIncomingCallId) return;
 
       _activeIncomingCallId = call.callId;
       _showIncomingCall(call);

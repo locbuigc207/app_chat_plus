@@ -12,6 +12,7 @@ import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_chat_demo/utils/utils.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
+import 'package:flutter_markdown/flutter_markdown.dart'; // ✅ Import thư viện Markdown
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -2119,6 +2120,27 @@ class ChatPageState extends State<ChatPage>
                               ),
                             ],
                           )
+                        // ✅ TÍCH HỢP MARKDOWN CHO TIN NHẮN TỪ AI TẠI ĐÂY
+                        else if (messageChat.idFrom ==
+                            AppConstants.aiAssistantId)
+                          MarkdownBody(
+                            data: messageChat.content,
+                            selectable: true,
+                            styleSheet: MarkdownStyleSheet(
+                              p: TextStyle(color: Colors.black87, fontSize: 15),
+                              code: TextStyle(
+                                backgroundColor: Colors.black87,
+                                color: Colors.greenAccent,
+                                fontFamily: 'monospace',
+                              ),
+                              codeblockPadding: const EdgeInsets.all(10),
+                              codeblockDecoration: BoxDecoration(
+                                color: Colors.black87,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          )
+                        // NẾU LÀ NGƯỜI BÌNH THƯỜNG -> DÙNG TEXT THƯỜNG
                         else
                           Text(
                             messageChat.content,
