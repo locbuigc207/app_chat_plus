@@ -1,3 +1,4 @@
+// lib/main.dart
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -18,7 +19,6 @@ import 'package:flutter_chat_demo/utils/utils.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
@@ -253,11 +253,6 @@ class MyApp extends StatelessWidget {
     final firebaseFirestore = FirebaseFirestore.instance;
     final firebaseStorage = FirebaseStorage.instance;
     final firebaseAuth = firebase_auth.FirebaseAuth.instance;
-    final googleSignIn = GoogleSignIn(
-      scopes: ['email', 'profile'],
-      clientId:
-          kIsWeb ? dotenv.env['WEB_CLIENT_ID'] : null, // ✅ Thêm Web Client ID
-    );
 
     Widget appTree = AppInitializer(
       notificationService: notificationService,
@@ -282,9 +277,9 @@ class MyApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider<AuthProvider>(
+          // ✅ Bỏ googleSignIn — AuthProvider tự khởi tạo nội bộ
           create: (_) => AuthProvider(
             firebaseAuth: firebaseAuth,
-            googleSignIn: googleSignIn,
             prefs: prefs,
             firebaseFirestore: firebaseFirestore,
           ),

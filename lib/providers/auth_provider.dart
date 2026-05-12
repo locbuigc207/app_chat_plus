@@ -1,9 +1,11 @@
-// lib/providers/auth_provider.dart - FINAL COMPLETE FIX
+// lib/providers/auth_provider.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -17,14 +19,19 @@ enum Status {
 }
 
 class AuthProvider extends ChangeNotifier {
-  final GoogleSignIn googleSignIn;
+  final GoogleSignIn googleSignIn = GoogleSignIn(
+    clientId: kIsWeb ? dotenv.env['WEB_CLIENT_ID'] : null,
+    scopes: [
+      'email',
+      'https://www.googleapis.com/auth/contacts.readonly',
+    ],
+  );
   final FirebaseAuth firebaseAuth;
   final FirebaseFirestore firebaseFirestore;
   final SharedPreferences prefs;
 
   AuthProvider({
     required this.firebaseAuth,
-    required this.googleSignIn,
     required this.prefs,
     required this.firebaseFirestore,
   });
@@ -35,10 +42,8 @@ class AuthProvider extends ChangeNotifier {
 
   String? get userFirebaseId => prefs.getString(FirestoreConstants.id);
 
-  // ✅ FINAL FIX: Simplified login check
   Future<bool> isLoggedIn() async {
     try {
-      // Check Firebase Auth (most reliable)
       final currentUser = firebaseAuth.currentUser;
       if (currentUser != null &&
           prefs.getString(FirestoreConstants.id)?.isNotEmpty == true) {
@@ -59,7 +64,6 @@ class AuthProvider extends ChangeNotifier {
     return 'CHATAPP_${userId}_${DateTime.now().millisecondsSinceEpoch}';
   }
 
-  // ✅ FINAL FIX: Working Google Sign-In
   Future<bool> handleSignIn() async {
     _status = Status.authenticating;
     notifyListeners();
@@ -67,7 +71,6 @@ class AuthProvider extends ChangeNotifier {
     try {
       print('🔄 Starting Google Sign In...');
 
-      // ✅ Sign in with Google
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
 
       if (googleUser == null) {
@@ -79,17 +82,14 @@ class AuthProvider extends ChangeNotifier {
 
       print('✅ Google user: ${googleUser.email}');
 
-      // ✅ Get authentication details
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
 
-      // ✅ Create Firebase credential
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      // ✅ Sign in to Firebase
       final UserCredential userCredential =
           await firebaseAuth.signInWithCredential(credential);
 
@@ -104,7 +104,6 @@ class AuthProvider extends ChangeNotifier {
 
       print('✅ Firebase user: ${firebaseUser.uid}');
 
-      // Check if user exists in Firestore
       final result = await firebaseFirestore
           .collection(FirestoreConstants.pathUserCollection)
           .where(FirestoreConstants.id, isEqualTo: firebaseUser.uid)
@@ -134,13 +133,13 @@ class AuthProvider extends ChangeNotifier {
 
         await prefs.setString(FirestoreConstants.id, firebaseUser.uid);
         await prefs.setString(
-            FirestoreConstants.nickname, firebaseUser.displayName ?? "");
+            FirestoreConstants.nickname, firebaseUser.displayName ?? '');
         await prefs.setString(
-            FirestoreConstants.photoUrl, firebaseUser.photoURL ?? "");
+            FirestoreConstants.photoUrl, firebaseUser.photoURL ?? '');
         await prefs.setString(
-            FirestoreConstants.phoneNumber, firebaseUser.phoneNumber ?? "");
+            FirestoreConstants.phoneNumber, firebaseUser.phoneNumber ?? '');
         await prefs.setString(FirestoreConstants.qrCode, qrCode);
-        await prefs.setString(FirestoreConstants.aboutMe, "");
+        await prefs.setString(FirestoreConstants.aboutMe, '');
 
         print('✅ New user created');
       } else {
@@ -187,7 +186,6 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ✅ FINAL FIX: Working sign out
   Future<void> handleSignOut() async {
     _status = Status.uninitialized;
 

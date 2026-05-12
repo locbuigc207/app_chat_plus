@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
@@ -155,7 +156,6 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
       if (mounted) {
         setState(() {
-          // Giới hạn tối đa 9 id để query whereIn không bị lỗi
           _myFriendIds = ids.take(9).toList();
         });
       }
@@ -306,6 +306,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
     }
   }
 
+  // ── BUILD ───────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -318,19 +319,117 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
       body: SafeArea(
         child: Stack(
           children: [
-            Column(
-              children: [
-                _buildHeader(isDark),
-                _buildSearchBar(isDark),
-                if (_textSearch.isEmpty) ...[
-                  _buildStoriesSection(provider, isDark),
-                  _buildOnlineFriendsSection(isDark),
-                ],
-                Expanded(
-                  child: _textSearch.isEmpty
-                      ? _buildConversationList(isDark)
-                      : _buildSearchResults(isDark),
+            CustomScrollView(
+              controller: _listScrollController,
+              physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics()),
+              slivers: [
+                // ── Premium Sticky Header ──
+                SliverAppBar(
+                  expandedHeight: 110.0,
+                  floating: true,
+                  pinned: true,
+                  stretch: true,
+                  elevation: 0,
+                  backgroundColor:
+                      (isDark ? ColorConstants.surfaceDark : Colors.white)
+                          .withOpacity(0.95),
+                  flexibleSpace: FlexibleSpaceBar(
+                    titlePadding: const EdgeInsets.fromLTRB(20, 0, 12, 14),
+                    title: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Messages',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .headlineLarge
+                                    ?.copyWith(
+                                      color: isDark
+                                          ? const Color(0xFFF0F2F8)
+                                          : const Color(0xFF1A1D2E),
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 22,
+                                    ),
+                              ),
+                              Text(
+                                'Stay connected',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color: ColorConstants.greyColor,
+                                      fontSize: 11,
+                                    ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        _buildNotificationBadge(isDark),
+                        const SizedBox(width: 4),
+                        _buildMenuButton(isDark),
+                        const SizedBox(width: 4),
+                      ],
+                    ),
+                    background: Container(
+                      color: isDark ? ColorConstants.surfaceDark : Colors.white,
+                    ),
+                  ),
                 ),
+
+                // ── Search Bar ──
+                SliverToBoxAdapter(
+                  child: Container(
+                    color: isDark ? ColorConstants.surfaceDark : Colors.white,
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                    child: _buildPremiumSearchBar(isDark),
+                  ),
+                ),
+
+                // ── Stories + Online Friends ──
+                if (_textSearch.isEmpty) ...[
+                  SliverToBoxAdapter(
+                    child: _buildStoriesSection(provider, isDark),
+                  ),
+                  SliverToBoxAdapter(
+                    child: _buildOnlineFriendsSection(isDark),
+                  ),
+                ],
+
+                // ── Conversation / Search list wrapped in card ──
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  sliver: SliverToBoxAdapter(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color:
+                            isDark ? ColorConstants.surfaceDark : Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(
+                            color:
+                                Colors.black.withOpacity(isDark ? 0.25 : 0.06),
+                            blurRadius: 20,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(24),
+                        child: _textSearch.isEmpty
+                            ? _buildConversationList(isDark)
+                            : _buildSearchResults(isDark),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SliverToBoxAdapter(child: SizedBox(height: 100)),
               ],
             ),
             if (_isLoading) LoadingView(),
@@ -340,57 +439,118 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
       floatingActionButton: ScaleTransition(
         scale: _fabScaleAnim,
         child: FloatingActionButton(
-          onPressed: _scanQRCode,
+          onPressed: () {
+            HapticFeedback.lightImpact();
+            _scanQRCode();
+          },
           backgroundColor: ColorConstants.primaryColor,
-          elevation: 4,
+          elevation: 8,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(20),
           ),
           child: const Icon(Icons.qr_code_scanner_rounded,
-              color: Colors.white, size: 26),
+              color: Colors.white, size: 28),
         ),
       ),
     );
   }
 
-  // ── HEADER ─────────────────────────────────────────────────
-  Widget _buildHeader(bool isDark) {
-    return Container(
-      color: isDark ? ColorConstants.surfaceDark : Colors.white,
-      padding: const EdgeInsets.fromLTRB(20, 12, 12, 8),
+  // ── PREMIUM SEARCH BAR ──────────────────────────────────────
+  Widget _buildPremiumSearchBar(bool isDark) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      height: 48,
+      decoration: BoxDecoration(
+        color: isDark ? ColorConstants.surfaceDark2 : ColorConstants.greyColor2,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: _isSearchFocused
+            ? [
+                BoxShadow(
+                  color: ColorConstants.primaryColor.withOpacity(0.15),
+                  blurRadius: 12,
+                  offset: const Offset(0, 2),
+                )
+              ]
+            : [],
+        border: _isSearchFocused
+            ? Border.all(
+                color: ColorConstants.primaryColor.withOpacity(0.5), width: 1.5)
+            : null,
+      ),
       child: Row(
         children: [
+          const SizedBox(width: 12),
+          Icon(
+            Icons.search_rounded,
+            color: _isSearchFocused
+                ? ColorConstants.primaryColor
+                : ColorConstants.greyColor,
+            size: 20,
+          ),
+          const SizedBox(width: 8),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Messages',
-                  style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                        color: isDark
-                            ? const Color(0xFFF0F2F8)
-                            : const Color(0xFF1A1D2E),
-                        fontWeight: FontWeight.w800,
-                      ),
+            child: TextFormField(
+              controller: _searchBarController,
+              focusNode: _searchFocusNode,
+              style: TextStyle(
+                fontSize: 15,
+                color: isDark ? Colors.white : const Color(0xFF1A1D2E),
+                fontWeight: FontWeight.w400,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Tìm kiếm bạn bè, tin nhắn...',
+                hintStyle: const TextStyle(
+                  color: ColorConstants.greyColor,
+                  fontSize: 15,
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  'Stay connected',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: ColorConstants.greyColor,
-                      ),
-                ),
-              ],
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+                isDense: true,
+              ),
+              onChanged: (value) {
+                _searchDebouncer.run(() {
+                  if (value.isNotEmpty) {
+                    _btnClearController.add(true);
+                    setState(() => _textSearch = value);
+                  } else {
+                    _btnClearController.add(false);
+                    setState(() => _textSearch = '');
+                  }
+                });
+              },
             ),
           ),
-          _buildNotificationBadge(isDark),
-          const SizedBox(width: 4),
-          _buildMenuButton(isDark),
+          StreamBuilder<bool>(
+            stream: _btnClearController.stream,
+            builder: (_, snapshot) {
+              if (snapshot.data != true) return const SizedBox(width: 12);
+              return GestureDetector(
+                onTap: () {
+                  _searchBarController.clear();
+                  _btnClearController.add(false);
+                  setState(() => _textSearch = '');
+                },
+                child: Container(
+                  margin: const EdgeInsets.only(right: 10),
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: ColorConstants.greyColor.withOpacity(0.3),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close, size: 12, color: Colors.white),
+                ),
+              );
+            },
+          ),
         ],
       ),
     );
   }
 
+  // ── NOTIFICATION BADGE ──────────────────────────────────────
   Widget _buildNotificationBadge(bool isDark) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -442,6 +602,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
+  // ── MENU BUTTON ─────────────────────────────────────────────
   Widget _buildMenuButton(bool isDark) {
     return PopupMenuButton<MenuSetting>(
       onSelected: _onItemMenuPress,
@@ -507,99 +668,6 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
           Icons.more_vert_rounded,
           color: isDark ? Colors.white70 : ColorConstants.primaryColor,
           size: 20,
-        ),
-      ),
-    );
-  }
-
-  // ── SEARCH BAR ─────────────────────────────────────────────
-  Widget _buildSearchBar(bool isDark) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      color: isDark ? ColorConstants.surfaceDark : Colors.white,
-      padding: EdgeInsets.fromLTRB(16, 0, 16, _isSearchFocused ? 12 : 8),
-      child: Container(
-        height: 44,
-        decoration: BoxDecoration(
-          color:
-              isDark ? ColorConstants.surfaceDark2 : ColorConstants.greyColor2,
-          borderRadius: BorderRadius.circular(14),
-          border: _isSearchFocused
-              ? Border.all(
-                  color: ColorConstants.primaryColor.withOpacity(0.5),
-                  width: 1.5)
-              : null,
-        ),
-        child: Row(
-          children: [
-            const SizedBox(width: 12),
-            Icon(
-              Icons.search_rounded,
-              color: _isSearchFocused
-                  ? ColorConstants.primaryColor
-                  : ColorConstants.greyColor,
-              size: 20,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextFormField(
-                controller: _searchBarController,
-                focusNode: _searchFocusNode,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: isDark ? Colors.white : const Color(0xFF1A1D2E),
-                  fontWeight: FontWeight.w400,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Search by name or phone...',
-                  hintStyle: const TextStyle(
-                    color: ColorConstants.greyColor,
-                    fontSize: 14,
-                  ),
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
-                  isDense: true,
-                ),
-                onChanged: (value) {
-                  _searchDebouncer.run(() {
-                    if (value.isNotEmpty) {
-                      _btnClearController.add(true);
-                      setState(() => _textSearch = value);
-                    } else {
-                      _btnClearController.add(false);
-                      setState(() => _textSearch = '');
-                    }
-                  });
-                },
-              ),
-            ),
-            StreamBuilder<bool>(
-              stream: _btnClearController.stream,
-              builder: (_, snapshot) {
-                if (snapshot.data != true) return const SizedBox(width: 12);
-                return GestureDetector(
-                  onTap: () {
-                    _searchBarController.clear();
-                    _btnClearController.add(false);
-                    setState(() => _textSearch = '');
-                  },
-                  child: Container(
-                    margin: const EdgeInsets.only(right: 8),
-                    width: 20,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      color: ColorConstants.greyColor.withOpacity(0.3),
-                      shape: BoxShape.circle,
-                    ),
-                    child:
-                        const Icon(Icons.close, size: 12, color: Colors.white),
-                  ),
-                );
-              },
-            ),
-          ],
         ),
       ),
     );
@@ -712,27 +780,22 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
         }
         final conversations = snapshot.data ?? [];
 
-        // Luôn luôn hiển thị AI Assistant ghim lên đầu bất kể đã có danh sách chat hay chưa.
         if (conversations.isEmpty) {
           return Column(
             children: [
               _buildAiAssistantTile(isDark),
-              Expanded(child: _buildEmptyState(isDark)),
+              _buildEmptyState(isDark),
             ],
           );
         }
 
         return ListView.builder(
-          controller: _listScrollController,
-          padding: const EdgeInsets.only(top: 8, bottom: 100),
-          itemCount:
-              conversations.length + 1, // +1 vì đã chèn AI Assistant vào đầu
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(top: 8, bottom: 16),
+          itemCount: conversations.length + 1,
           itemBuilder: (_, i) {
-            // Index 0 luôn được render là AI Assistant
-            if (i == 0) {
-              return _buildAiAssistantTile(isDark);
-            }
-            // Các index còn lại render tin nhắn thật (-1 bù lại)
+            if (i == 0) return _buildAiAssistantTile(isDark);
             return _buildConversationItem(conversations[i - 1], isDark);
           },
         );
@@ -740,7 +803,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
-  // Giao diện AI Assistant
+  // ── AI ASSISTANT TILE ───────────────────────────────────────
   Widget _buildAiAssistantTile(bool isDark) {
     return _ConversationTile(
       id: AppConstants.aiAssistantId,
@@ -748,11 +811,12 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
       photoUrl: AppConstants.aiAssistantAvatar,
       lastMessage: "Trợ lý ảo thông minh từ Google Gemini",
       timeLabel: "",
-      isPinned: true, // Luôn luôn ghim AI Assistant lên đầu
+      isPinned: true,
       isMuted: false,
       isGroup: false,
       isDark: isDark,
       onTap: () {
+        HapticFeedback.lightImpact();
         if (widget.isWebSidebar && widget.onChatSelected != null) {
           widget.onChatSelected!({
             'peerId': AppConstants.aiAssistantId,
@@ -780,6 +844,8 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   Widget _buildListSkeleton(bool isDark) {
     return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.only(top: 8),
       itemCount: 8,
       itemBuilder: (_, i) => _SkeletonConversationItem(isDark: isDark),
@@ -787,60 +853,60 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   Widget _buildEmptyState(bool isDark) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 96,
-              height: 96,
-              decoration: BoxDecoration(
-                color: ColorConstants.primaryColor.withOpacity(0.08),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.chat_bubble_outline_rounded,
-                size: 46,
-                color: ColorConstants.primaryColor.withOpacity(0.6),
-              ),
+    return Padding(
+      padding: const EdgeInsets.all(40),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 96,
+            height: 96,
+            decoration: BoxDecoration(
+              color: ColorConstants.primaryColor.withOpacity(0.08),
+              shape: BoxShape.circle,
             ),
-            const SizedBox(height: 24),
-            Text(
-              'No conversations yet',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: isDark ? Colors.white70 : const Color(0xFF1A1D2E),
-                    fontWeight: FontWeight.w700,
-                  ),
+            child: Icon(
+              Icons.chat_bubble_outline_rounded,
+              size: 46,
+              color: ColorConstants.primaryColor.withOpacity(0.6),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Scan a QR code to connect with friends\nand start chatting',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: ColorConstants.greyColor,
-                    height: 1.5,
-                  ),
-            ),
-            const SizedBox(height: 28),
-            ElevatedButton.icon(
-              onPressed: _scanQRCode,
-              icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
-              label: const Text('Scan QR Code'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: ColorConstants.primaryColor,
-                foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'No conversations yet',
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: isDark ? Colors.white70 : const Color(0xFF1A1D2E),
+                  fontWeight: FontWeight.w700,
                 ),
-                elevation: 0,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Scan a QR code to connect with friends\nand start chatting',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: ColorConstants.greyColor,
+                  height: 1.5,
+                ),
+          ),
+          const SizedBox(height: 28),
+          ElevatedButton.icon(
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              _scanQRCode();
+            },
+            icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
+            label: const Text('Scan QR Code'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: ColorConstants.primaryColor,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
+              elevation: 0,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -874,8 +940,8 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
             isGroup: true,
             isDark: isDark,
             onTap: () {
+              HapticFeedback.lightImpact();
               if (widget.isWebSidebar && widget.onChatSelected != null) {
-                // Nếu là Web: Cập nhật state ở màn hình bên phải cho group
                 widget.onChatSelected!({
                   'peerId': group.id,
                   'peerAvatar': group.groupPhotoUrl,
@@ -924,15 +990,14 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
           isDark: isDark,
           onlineUserId: otherUserId,
           onTap: () {
+            HapticFeedback.lightImpact();
             if (widget.isWebSidebar && widget.onChatSelected != null) {
-              // Nếu là Web: Cập nhật state ở màn hình bên phải
               widget.onChatSelected!({
                 'peerId': userChat.id,
                 'peerAvatar': userChat.photoUrl,
                 'peerNickname': userChat.nickname,
               });
             } else {
-              // Nếu là Mobile: Push sang màn hình mới như cũ
               Navigator.push(
                 context,
                 _slideRoute(ChatPage(
@@ -980,26 +1045,33 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
         if (!snapshot.hasData) return _buildListSkeleton(isDark);
         final docs = snapshot.data!.docs;
         if (docs.isEmpty) {
-          return Center(
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 40),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.search_off_rounded,
                     size: 56, color: ColorConstants.greyColor.withOpacity(0.5)),
                 const SizedBox(height: 16),
-                Text('No results for "$_textSearch"',
-                    style: TextStyle(
-                        color: ColorConstants.greyColor, fontSize: 15)),
+                Text(
+                  'No results for "$_textSearch"',
+                  style:
+                      TextStyle(color: ColorConstants.greyColor, fontSize: 15),
+                ),
               ],
             ),
           );
         }
         return ListView.builder(
-          padding: const EdgeInsets.only(top: 8, bottom: 100),
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(top: 8, bottom: 16),
           itemCount: docs.length,
           itemBuilder: (_, i) {
             final userChat = UserChat.fromDocument(docs[i]);
-            if (userChat.id == _currentUserId) return const SizedBox.shrink();
+            if (userChat.id == _currentUserId) {
+              return const SizedBox.shrink();
+            }
             return _buildSearchResultTile(userChat, isDark);
           },
         );
@@ -1012,6 +1084,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
       color: Colors.transparent,
       child: InkWell(
         onTap: () {
+          HapticFeedback.lightImpact();
           if (widget.isWebSidebar && widget.onChatSelected != null) {
             widget.onChatSelected!({
               'peerId': userChat.id,
@@ -1229,7 +1302,7 @@ class _ConversationTile extends StatelessWidget {
         onLongPress: onLongPress,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             color: isPinned
                 ? ColorConstants.primaryColor.withOpacity(isDark ? 0.06 : 0.04)
@@ -1273,7 +1346,7 @@ class _ConversationTile extends StatelessWidget {
                     ),
                 ],
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
 
               // Content
               Expanded(
@@ -1295,10 +1368,10 @@ class _ConversationTile extends StatelessWidget {
                             style: TextStyle(
                               color: isDark
                                   ? Colors.white
-                                  : const Color(0xFF1A1D2E),
+                                  : const Color(0xFF111418),
                               fontWeight: FontWeight.w600,
-                              fontSize: 15,
-                              letterSpacing: -0.1,
+                              fontSize: 16,
+                              letterSpacing: -0.3,
                             ),
                           ),
                         ),
@@ -1307,21 +1380,21 @@ class _ConversationTile extends StatelessWidget {
                           timeLabel,
                           style: const TextStyle(
                             color: ColorConstants.greyColor,
-                            fontSize: 12,
+                            fontSize: 13,
                             fontWeight: FontWeight.w400,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 4),
                     Text(
                       lastMessage,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color:
-                            isDark ? Colors.white38 : ColorConstants.greyColor,
-                        fontSize: 13,
+                            isDark ? Colors.white38 : const Color(0xFF8E8E93),
+                        fontSize: 14,
                         fontWeight: FontWeight.w400,
                       ),
                     ),
@@ -1424,10 +1497,10 @@ class _OnlineDot extends StatelessWidget {
         final isOnline = snap.data?['isOnline'] as bool? ?? false;
         if (!isOnline) return const SizedBox.shrink();
         return Container(
-          width: 13,
-          height: 13,
+          width: 14,
+          height: 14,
           decoration: BoxDecoration(
-            color: ColorConstants.accentGreen,
+            color: const Color(0xFF34C759), // iOS-style green
             shape: BoxShape.circle,
             border: Border.all(
               color: Theme.of(context).scaffoldBackgroundColor,
@@ -1496,7 +1569,7 @@ class _SkeletonConversationItemState extends State<_SkeletonConversationItem>
                   shape: BoxShape.circle,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

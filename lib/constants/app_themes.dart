@@ -41,6 +41,22 @@ class AppThemes {
         ),
       ];
 
+  // ── Premium Soft Shadow ────────────────────────────────────
+  static List<BoxShadow> get softShadow => [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.04),
+          blurRadius: 24,
+          offset: const Offset(0, 8),
+          spreadRadius: 0,
+        ),
+        BoxShadow(
+          color: Colors.black.withOpacity(0.02),
+          blurRadius: 8,
+          offset: const Offset(0, 4),
+          spreadRadius: 0,
+        ),
+      ];
+
   // ── Light Theme ────────────────────────────────────────────
   static ThemeData lightTheme(Color primaryColor) {
     final colorScheme = ColorScheme.fromSeed(
@@ -54,7 +70,9 @@ class AppThemes {
       useMaterial3: true,
       brightness: Brightness.light,
       colorScheme: colorScheme,
+      primaryColor: primaryColor,
       scaffoldBackgroundColor: const Color(0xFFF0F2F8),
+      fontFamily: 'Inter',
 
       // AppBar
       appBarTheme: AppBarTheme(
@@ -80,9 +98,10 @@ class AppThemes {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(radiusLG),
+          borderRadius: BorderRadius.circular(radiusXL),
         ),
         shadowColor: Colors.black.withOpacity(0.06),
+        margin: EdgeInsets.zero,
       ),
 
       // Bottom Navigation
@@ -90,6 +109,14 @@ class AppThemes {
         backgroundColor: Colors.white,
         elevation: 0,
         type: BottomNavigationBarType.fixed,
+      ),
+
+      // Bottom Sheet
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        ),
       ),
 
       // Input
@@ -120,8 +147,8 @@ class AppThemes {
       ),
 
       // Divider
-      dividerTheme: const DividerThemeData(
-        color: Color(0xFFF0F2F8),
+      dividerTheme: DividerThemeData(
+        color: const Color(0xFF8E8E93).withOpacity(0.15),
         thickness: 1,
         space: 1,
       ),
@@ -151,7 +178,9 @@ class AppThemes {
       useMaterial3: true,
       brightness: Brightness.dark,
       colorScheme: colorScheme,
+      primaryColor: primaryColor,
       scaffoldBackgroundColor: const Color(0xFF141622),
+      fontFamily: 'Inter',
       appBarTheme: AppBarTheme(
         backgroundColor: const Color(0xFF1E2130),
         surfaceTintColor: Colors.transparent,
@@ -172,7 +201,14 @@ class AppThemes {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(radiusLG),
+          borderRadius: BorderRadius.circular(radiusXL),
+        ),
+        margin: EdgeInsets.zero,
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: Color(0xFF1E2130),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(

@@ -1,6 +1,6 @@
 // lib/widgets/enhanced_message_options_dialog.dart
 import 'package:flutter/material.dart';
-import 'package:flutter_chat_demo/constants/constants.dart';
+import 'package:flutter/services.dart';
 
 class EnhancedMessageOptionsDialog extends StatelessWidget {
   final bool isOwnMessage;
@@ -33,83 +33,97 @@ class EnhancedMessageOptionsDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.circular(32),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 40,
+            spreadRadius: 5,
+          ),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Handle bar
+          // Drag handle
           Container(
-            width: 40,
-            height: 4,
-            margin: const EdgeInsets.only(bottom: 16),
+            width: 48,
+            height: 5,
+            margin: const EdgeInsets.only(bottom: 12),
             decoration: BoxDecoration(
-              color: ColorConstants.greyColor2,
-              borderRadius: BorderRadius.circular(2),
+              color: const Color(0xFFE5E5EA),
+              borderRadius: BorderRadius.circular(3),
             ),
           ),
 
           if (isOwnMessage && !isDeleted) ...[
             _buildOption(
-              icon: Icons.edit,
-              label: 'Edit Message',
+              icon: Icons.edit_rounded,
+              label: 'Chỉnh sửa',
               onTap: () {
                 Navigator.pop(context);
                 onEdit();
               },
             ),
             _buildOption(
-              icon: Icons.delete,
-              label: 'Delete Message',
-              color: Colors.red,
+              icon: Icons.delete_rounded,
+              label: 'Thu hồi',
+              color: const Color(0xFFFF3B30),
               onTap: () {
                 Navigator.pop(context);
                 onDelete();
               },
             ),
-            Divider(height: 1),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24),
+              child: Divider(height: 1, color: Color(0xFFF2F2F7)),
+            ),
           ],
 
           if (!isDeleted) ...[
             _buildOption(
-              icon: isPinned ? Icons.push_pin : Icons.push_pin_outlined,
-              label: isPinned ? 'Unpin Message' : 'Pin Message',
+              icon: isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+              label: isPinned ? 'Bỏ ghim' : 'Ghim tin nhắn',
               onTap: () {
                 Navigator.pop(context);
                 onPin();
               },
             ),
             _buildOption(
-              icon: Icons.copy,
-              label: 'Copy Text',
+              icon: Icons.copy_rounded,
+              label: 'Sao chép',
               onTap: () {
                 Navigator.pop(context);
                 onCopy();
               },
             ),
             _buildOption(
-              icon: Icons.reply,
-              label: 'Reply',
+              icon: Icons.reply_rounded,
+              label: 'Trả lời',
               onTap: () {
                 Navigator.pop(context);
                 onReply();
               },
             ),
-            Divider(height: 1),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24),
+              child: Divider(height: 1, color: Color(0xFFF2F2F7)),
+            ),
             _buildOption(
-              icon: Icons.alarm_add,
-              label: 'Set Reminder',
+              icon: Icons.alarm_add_rounded,
+              label: 'Hẹn giờ nhắc nhở',
               onTap: () {
                 Navigator.pop(context);
                 onReminder();
               },
             ),
             _buildOption(
-              icon: Icons.translate,
-              label: 'Translate',
+              icon: Icons.translate_rounded,
+              label: 'Dịch',
               onTap: () {
                 Navigator.pop(context);
                 onTranslate();
@@ -128,17 +142,26 @@ class EnhancedMessageOptionsDialog extends StatelessWidget {
     Color? color,
   }) {
     return InkWell(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      highlightColor: const Color(0xFFF2F2F7),
+      splashColor: Colors.transparent,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
         child: Row(
           children: [
-            Icon(icon, color: color ?? ColorConstants.primaryColor, size: 22),
+            Icon(
+              icon,
+              color: color ?? const Color(0xFF111418),
+              size: 24,
+            ),
             const SizedBox(width: 16),
             Text(
               label,
               style: TextStyle(
-                color: color ?? ColorConstants.primaryColor,
+                color: color ?? const Color(0xFF111418),
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
               ),

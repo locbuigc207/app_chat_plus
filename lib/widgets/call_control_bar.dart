@@ -1,5 +1,8 @@
 // lib/widgets/call_control_bar.dart
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Bottom control bar hiển thị trong cuộc gọi active.
 class CallControlBar extends StatelessWidget {
@@ -12,7 +15,6 @@ class CallControlBar extends StatelessWidget {
   final VoidCallback? onCameraTap;
   final VoidCallback onSpeakerTap;
   final VoidCallback? onSwitchCameraTap;
-  // FIX: Thay Future<void> Function() thành VoidCallback để tránh lỗi
   final VoidCallback onEndCall;
 
   const CallControlBar({
@@ -31,87 +33,101 @@ class CallControlBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // ── Hàng nút phụ ──────────────────────────────
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              // Micro
-              _ControlButton(
-                icon: isMuted ? Icons.mic_off : Icons.mic,
-                label: isMuted ? 'Bật mic' : 'Tắt mic',
-                active: isMuted,
-                activeBg: Colors.white.withOpacity(0.2),
-                inactiveBg: Colors.white.withOpacity(0.1),
-                onTap: onMuteTap,
-              ),
-
-              // Loa ngoài
-              _ControlButton(
-                icon: isSpeakerOn ? Icons.volume_up : Icons.hearing,
-                label: isSpeakerOn ? 'Loa ngoài' : 'Tai nghe',
-                active: isSpeakerOn,
-                activeBg: Colors.white.withOpacity(0.2),
-                inactiveBg: Colors.white.withOpacity(0.1),
-                onTap: onSpeakerTap,
-              ),
-
-              // Camera (video only)
-              if (isVideoCall && onCameraTap != null)
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 32),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(40),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 30.0, sigmaY: 30.0),
+          child: Container(
+            padding:
+            const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(40),
+              border: Border.all(
+                  color: Colors.white.withOpacity(0.2), width: 1),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Micro
                 _ControlButton(
-                  icon: isCameraOff ? Icons.videocam_off : Icons.videocam,
-                  label: isCameraOff ? 'Bật cam' : 'Tắt cam',
-                  active: isCameraOff,
-                  activeBg: Colors.white.withOpacity(0.2),
-                  inactiveBg: Colors.white.withOpacity(0.1),
-                  onTap: onCameraTap!,
-                )
-              else
-                const SizedBox(width: 64),
+                  icon: isMuted
+                      ? Icons.mic_off_rounded
+                      : Icons.mic_none_rounded,
+                  label: isMuted ? 'Bật mic' : 'Tắt mic',
+                  isActive: isMuted,
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    onMuteTap();
+                  },
+                ),
+                const SizedBox(width: 16),
 
-              // Đổi camera (video only)
-              if (isVideoCall && onSwitchCameraTap != null)
+                // Loa ngoài
                 _ControlButton(
-                  icon: Icons.flip_camera_android,
-                  label: 'Đổi cam',
-                  active: false,
-                  activeBg: Colors.white.withOpacity(0.1),
-                  inactiveBg: Colors.white.withOpacity(0.1),
-                  onTap: onSwitchCameraTap!,
-                )
-              else
-                const SizedBox(width: 64),
-            ],
+                  icon: isSpeakerOn
+                      ? Icons.volume_up_rounded
+                      : Icons.hearing_rounded,
+                  label: isSpeakerOn ? 'Loa ngoài' : 'Tai nghe',
+                  isActive: isSpeakerOn,
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    onSpeakerTap();
+                  },
+                ),
+
+                // Camera + Flip (video only)
+                if (isVideoCall) ...[
+                  const SizedBox(width: 16),
+                  _ControlButton(
+                    icon: isCameraOff
+                        ? Icons.videocam_off_rounded
+                        : Icons.videocam_outlined,
+                    label: isCameraOff ? 'Bật cam' : 'Tắt cam',
+                    isActive: isCameraOff,
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      onCameraTap?.call();
+                    },
+                  ),
+                  const SizedBox(width: 16),
+                  _ControlButton(
+                    icon: Icons.flip_camera_ios_rounded,
+                    label: 'Đổi cam',
+                    isActive: false,
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      onSwitchCameraTap?.call();
+                    },
+                  ),
+                ],
+
+                const SizedBox(width: 24),
+
+                // End Call button
+                _EndCallButton(onTap: onEndCall),
+              ],
+            ),
           ),
-
-          const SizedBox(height: 28),
-
-          // ── Nút kết thúc ──────────────────────────────
-          _EndCallButton(onTap: onEndCall),
-        ],
+        ),
       ),
     );
   }
 }
 
+// ── Control Button ─────────────────────────────
 class _ControlButton extends StatelessWidget {
   final IconData icon;
   final String label;
-  final bool active;
-  final Color activeBg;
-  final Color inactiveBg;
+  final bool isActive;
   final VoidCallback onTap;
 
   const _ControlButton({
     required this.icon,
     required this.label,
-    required this.active,
-    required this.activeBg,
-    required this.inactiveBg,
+    required this.isActive,
     required this.onTap,
   });
 
@@ -124,23 +140,25 @@ class _ControlButton extends StatelessWidget {
         children: [
           AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            width: 56,
-            height: 56,
+            width: 52,
+            height: 52,
             decoration: BoxDecoration(
-              color: active ? activeBg : inactiveBg,
+              color: isActive
+                  ? Colors.white
+                  : Colors.black.withOpacity(0.3),
               shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white.withOpacity(0.3),
-                width: 1,
-              ),
             ),
-            child: Icon(icon, color: Colors.white, size: 24),
+            child: Icon(
+              icon,
+              color: isActive ? Colors.black : Colors.white,
+              size: 24,
+            ),
           ),
           const SizedBox(height: 6),
           Text(
             label,
-            style:
-                TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11),
+            style: TextStyle(
+                color: Colors.white.withOpacity(0.8), fontSize: 11),
           ),
         ],
       ),
@@ -148,6 +166,7 @@ class _ControlButton extends StatelessWidget {
   }
 }
 
+// ── End Call Button ────────────────────────────
 class _EndCallButton extends StatefulWidget {
   final VoidCallback onTap;
   const _EndCallButton({required this.onTap});
@@ -165,6 +184,7 @@ class _EndCallButtonState extends State<_EndCallButton> {
       onTapDown: (_) => setState(() => _pressing = true),
       onTapUp: (_) {
         setState(() => _pressing = false);
+        HapticFeedback.heavyImpact();
         widget.onTap();
       },
       onTapCancel: () => setState(() => _pressing = false),
@@ -173,27 +193,31 @@ class _EndCallButtonState extends State<_EndCallButton> {
         children: [
           AnimatedContainer(
             duration: const Duration(milliseconds: 100),
-            width: _pressing ? 68 : 72,
-            height: _pressing ? 68 : 72,
+            width: _pressing ? 62 : 66,
+            height: _pressing ? 52 : 56,
             decoration: BoxDecoration(
-              color: const Color(0xFFE53935),
-              shape: BoxShape.circle,
+              color: const Color(0xFFFF3B30),
+              borderRadius: BorderRadius.circular(30),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFFE53935).withOpacity(0.4),
+                  color: const Color(0xFFFF3B30)
+                      .withOpacity(_pressing ? 0.3 : 0.45),
                   blurRadius: _pressing ? 8 : 16,
-                  offset: const Offset(0, 4),
+                  offset: const Offset(0, 6),
                 ),
               ],
             ),
-            child: const Icon(Icons.call_end, color: Colors.white, size: 32),
+            child: const Icon(Icons.call_end_rounded,
+                color: Colors.white, size: 28),
           ),
           const SizedBox(height: 6),
-          const Text('Kết thúc',
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500)),
+          const Text(
+            'Kết thúc',
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w500),
+          ),
         ],
       ),
     );

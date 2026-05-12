@@ -1,7 +1,12 @@
-// lib/widgets/view_once_message_widget.dart - UPDATED (No countdown UI)
+// lib/widgets/view_once_message_widget.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
+
+// ==========================================
+// ViewOnceMessageWidget
+// ==========================================
 
 class ViewOnceMessageWidget extends StatefulWidget {
   final String groupChatId;
@@ -31,6 +36,7 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget> {
   bool _isRevealed = false;
 
   void _revealMessage() async {
+    HapticFeedback.heavyImpact(); // Rung mạnh cảnh báo xem 1 lần
     setState(() => _isRevealed = true);
 
     // Mark as viewed and schedule auto-delete (10 seconds)
@@ -41,7 +47,6 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget> {
     );
 
     // Message will be auto-deleted by the provider after 10 seconds
-    // No need to show countdown UI
   }
 
   @override
@@ -49,21 +54,24 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget> {
     // Already viewed and not revealed = show "opened" message
     if (widget.isViewed && !_isRevealed) {
       return Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: ColorConstants.greyColor2,
-          borderRadius: BorderRadius.circular(12),
+          color: const Color(0xFFF2F2F7),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFE5E5EA)),
         ),
-        child: Row(
+        child: const Row(
           mainAxisSize: MainAxisSize.min,
-          children: const [
-            Icon(Icons.visibility_off, color: ColorConstants.greyColor),
+          children: [
+            Icon(Icons.visibility_off_rounded,
+                color: Color(0xFF8E8E93), size: 18),
             SizedBox(width: 8),
             Text(
-              'This message was opened',
+              'Tin nhắn đã được mở',
               style: TextStyle(
-                color: ColorConstants.greyColor,
+                color: Color(0xFF8E8E93),
                 fontStyle: FontStyle.italic,
+                fontSize: 14,
               ),
             ),
           ],
@@ -76,25 +84,32 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget> {
       return GestureDetector(
         onTap: _revealMessage,
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           decoration: BoxDecoration(
-            color: ColorConstants.primaryColor.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: ColorConstants.primaryColor,
-              width: 2,
+            gradient: const LinearGradient(
+              colors: [Color(0xFF8A2387), Color(0xFFE94057)],
             ),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFE94057).withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              )
+            ],
           ),
-          child: Row(
+          child: const Row(
             mainAxisSize: MainAxisSize.min,
-            children: const [
-              Icon(Icons.visibility, color: ColorConstants.primaryColor),
+            children: [
+              Icon(Icons.lock_clock_rounded, color: Colors.white, size: 20),
               SizedBox(width: 8),
               Text(
-                'Tap to view once',
+                'Nhấn để xem bí mật',
                 style: TextStyle(
-                  color: ColorConstants.primaryColor,
+                  color: Colors.white,
                   fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  letterSpacing: 0.2,
                 ),
               ),
             ],
@@ -105,31 +120,36 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget> {
 
     // Revealed = show actual message content (will auto-delete after 10s)
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: ColorConstants.greyColor2,
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xFFE94057).withOpacity(0.5),
+          width: 2,
+        ),
       ),
       child: widget.type == TypeMessage.text
           ? Text(
               widget.content,
               style: const TextStyle(
-                color: ColorConstants.primaryColor,
-                fontSize: 14,
+                color: Color(0xFF111418),
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
               ),
             )
           : widget.type == TypeMessage.image
               ? ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(12),
                   child: Image.network(
                     widget.content,
-                    width: 200,
-                    height: 200,
+                    width: 220,
+                    height: 220,
                     fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => Container(
-                      width: 200,
-                      height: 200,
-                      color: ColorConstants.greyColor2,
+                      width: 220,
+                      height: 220,
+                      color: const Color(0xFFF2F2F7),
                       child: const Icon(Icons.error),
                     ),
                   ),
@@ -139,7 +159,10 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget> {
   }
 }
 
-// Send View Once Dialog (unchanged)
+// ==========================================
+// SendViewOnceDialog
+// ==========================================
+
 class SendViewOnceDialog extends StatefulWidget {
   final Function(String content, int type) onSend;
 
@@ -178,9 +201,7 @@ class _SendViewOnceDialogState extends State<SendViewOnceDialog> {
             children: [
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    setState(() => _isText = true);
-                  },
+                  onPressed: () => setState(() => _isText = true),
                   icon: const Icon(Icons.text_fields),
                   label: const Text('Text'),
                   style: ElevatedButton.styleFrom(
@@ -194,9 +215,7 @@ class _SendViewOnceDialogState extends State<SendViewOnceDialog> {
               const SizedBox(width: 8),
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    setState(() => _isText = false);
-                  },
+                  onPressed: () => setState(() => _isText = false),
                   icon: const Icon(Icons.image),
                   label: const Text('Image'),
                   style: ElevatedButton.styleFrom(

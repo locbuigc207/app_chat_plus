@@ -1,10 +1,14 @@
-// lib/widgets/voice_message_widget.dart - COMPLETE FIXED
+// lib/widgets/voice_message_widget.dart
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
 
+// ──────────────────────────────────────────────
+// VoiceMessageWidget
+// ──────────────────────────────────────────────
 class VoiceMessageWidget extends StatefulWidget {
   final String voiceUrl;
   final bool isMyMessage;
@@ -52,7 +56,7 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget> {
             _currentPosition = event.position.inMilliseconds.toDouble();
             _totalDuration = event.duration.inMilliseconds.toDouble();
 
-            // Check if playback finished
+            // Detect playback finished
             if (_totalDuration > 0 &&
                 _currentPosition >= _totalDuration - 100) {
               _isPlaying = false;
@@ -76,6 +80,7 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget> {
   Future<void> _togglePlayback() async {
     if (_isLoading) return;
 
+    HapticFeedback.lightImpact();
     setState(() => _isLoading = true);
 
     try {
@@ -83,7 +88,6 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget> {
         await widget.voiceProvider.pausePlayback();
         setState(() => _isPlaying = false);
       } else {
-        // If paused, resume; otherwise start from beginning
         if (widget.voiceProvider.isPaused) {
           await widget.voiceProvider.resumePlayback();
         } else {
@@ -93,9 +97,11 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget> {
       }
     } catch (e) {
       print('❌ Error toggling playback: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to play voice message')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to play voice message')),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -113,112 +119,114 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isMe = widget.isMyMessage;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      constraints: BoxConstraints(maxWidth: 250),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      constraints: const BoxConstraints(maxWidth: 260),
       decoration: BoxDecoration(
-        color: widget.isMyMessage
-            ? ColorConstants.primaryColor
-            : ColorConstants.greyColor2,
-        borderRadius: BorderRadius.circular(20),
+        gradient: isMe
+            ? const LinearGradient(
+                colors: [Color(0xFF007AFF), Color(0xFF0056D6)],
+              )
+            : null,
+        color: isMe ? null : Colors.white,
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: isMe
+            ? [
+                BoxShadow(
+                  color: const Color(0xFF007AFF).withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Play/Pause button
+          // Play / Pause button
           _isLoading
               ? SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      widget.isMyMessage
-                          ? Colors.white
-                          : ColorConstants.primaryColor,
+                  width: 36,
+                  height: 36,
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        isMe ? Colors.white : const Color(0xFF007AFF),
+                      ),
                     ),
                   ),
                 )
-              : IconButton(
-                  icon: Icon(
-                    _isPlaying
-                        ? Icons.pause_circle_filled
-                        : Icons.play_circle_filled,
-                    color: widget.isMyMessage
-                        ? Colors.white
-                        : ColorConstants.primaryColor,
-                    size: 32,
+              : GestureDetector(
+                  onTap: _togglePlayback,
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: isMe
+                          ? Colors.white.withOpacity(0.2)
+                          : const Color(0xFFF2F2F7),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _isPlaying
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
+                      color: isMe ? Colors.white : const Color(0xFF007AFF),
+                      size: 22,
+                    ),
                   ),
-                  onPressed: _togglePlayback,
-                  padding: EdgeInsets.zero,
-                  constraints: BoxConstraints(),
                 ),
 
-          const SizedBox(width: 8),
+          const SizedBox(width: 12),
 
-          // Waveform/Progress
+          // Waveform + duration
           Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Waveform visualization (simplified)
-                Container(
-                  height: 30,
+                SizedBox(
+                  height: 24,
                   child: CustomPaint(
                     painter: WaveformPainter(
                       progress: _totalDuration > 0
                           ? _currentPosition / _totalDuration
                           : 0,
-                      activeColor: widget.isMyMessage
-                          ? Colors.white
-                          : ColorConstants.primaryColor,
-                      inactiveColor: widget.isMyMessage
-                          ? Colors.white38
-                          : ColorConstants.greyColor,
+                      activeColor:
+                          isMe ? Colors.white : const Color(0xFF007AFF),
+                      inactiveColor: isMe
+                          ? Colors.white.withOpacity(0.3)
+                          : const Color(0xFFE5E5EA),
                     ),
                     size: Size.infinite,
                   ),
                 ),
-
-                const SizedBox(height: 4),
-
-                // Duration
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      _formatDuration(_currentPosition),
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: widget.isMyMessage
-                            ? Colors.white70
-                            : ColorConstants.greyColor,
-                      ),
-                    ),
-                    Text(
-                      _formatDuration(_totalDuration),
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: widget.isMyMessage
-                            ? Colors.white70
-                            : ColorConstants.greyColor,
-                      ),
-                    ),
-                  ],
+                const SizedBox(height: 6),
+                Text(
+                  _formatDuration(
+                    _isPlaying ? _currentPosition : _totalDuration,
+                  ),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
+                    color: isMe
+                        ? Colors.white.withOpacity(0.8)
+                        : const Color(0xFF8E8E93),
+                  ),
                 ),
               ],
             ),
-          ),
-
-          const SizedBox(width: 4),
-
-          // Voice icon
-          Icon(
-            Icons.mic,
-            size: 16,
-            color:
-                widget.isMyMessage ? Colors.white70 : ColorConstants.greyColor,
           ),
         ],
       ),
@@ -235,7 +243,9 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget> {
   }
 }
 
-// Simple waveform painter
+// ──────────────────────────────────────────────
+// WaveformPainter
+// ──────────────────────────────────────────────
 class WaveformPainter extends CustomPainter {
   final double progress;
   final Color activeColor;
@@ -249,16 +259,14 @@ class WaveformPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final barCount = 30;
-    final barWidth = size.width / (barCount * 2);
-    final maxHeight = size.height * 0.8;
+    const barCount = 30;
+    final barWidth = size.width / (barCount * 1.8);
+    final maxHeight = size.height * 0.9;
 
     for (int i = 0; i < barCount; i++) {
-      // Generate pseudo-random heights for waveform visualization
       final seed = (i * 7 + 3) % 10;
       final height = maxHeight * (0.3 + (seed / 10) * 0.7);
-
-      final x = i * barWidth * 2 + barWidth / 2;
+      final x = i * barWidth * 1.8 + barWidth / 2;
       final isActive = (i / barCount) <= progress;
 
       final paint = Paint()
@@ -280,7 +288,9 @@ class WaveformPainter extends CustomPainter {
   }
 }
 
-// Recording indicator widget
+// ──────────────────────────────────────────────
+// VoiceRecordingIndicator
+// ──────────────────────────────────────────────
 class VoiceRecordingIndicator extends StatefulWidget {
   final String duration;
   final VoidCallback onCancel;
@@ -321,11 +331,11 @@ class _VoiceRecordingIndicatorState extends State<VoiceRecordingIndicator>
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.all(12),
+      padding: const EdgeInsets.all(12),
       color: Colors.red.withOpacity(0.1),
       child: Row(
         children: [
-          // Animated recording indicator
+          // Animated red dot
           AnimatedBuilder(
             animation: _animationController,
             builder: (context, child) {
@@ -333,35 +343,36 @@ class _VoiceRecordingIndicatorState extends State<VoiceRecordingIndicator>
                 width: 12,
                 height: 12,
                 decoration: BoxDecoration(
-                  color: Colors.red
-                      .withOpacity(0.5 + _animationController.value * 0.5),
+                  color: Colors.red.withOpacity(
+                    0.5 + _animationController.value * 0.5,
+                  ),
                   shape: BoxShape.circle,
                 ),
               );
             },
           ),
 
-          SizedBox(width: 12),
+          const SizedBox(width: 12),
 
-          // Duration
+          // Duration label
           Text(
             'Recording... ${widget.duration}',
-            style: TextStyle(
+            style: const TextStyle(
               color: Colors.red,
               fontWeight: FontWeight.bold,
             ),
           ),
 
-          Spacer(),
+          const Spacer(),
 
-          // Cancel button
+          // Cancel
           IconButton(
-            icon: Icon(Icons.delete, color: Colors.red),
+            icon: const Icon(Icons.delete, color: Colors.red),
             onPressed: widget.onCancel,
             tooltip: 'Cancel recording',
           ),
 
-          // Send button
+          // Send
           IconButton(
             icon: Icon(Icons.send, color: ColorConstants.primaryColor),
             onPressed: widget.onSend,

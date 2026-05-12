@@ -1,8 +1,8 @@
+// lib/pages/login_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:flutter_chat_demo/providers/auth_provider.dart';
-import 'package:flutter_chat_demo/widgets/widgets.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:provider/provider.dart';
 
@@ -64,17 +64,18 @@ class _LoginPageState extends State<LoginPage>
     switch (authProvider.status) {
       case Status.authenticateError:
         WidgetsBinding.instance.addPostFrameCallback(
-              (_) => Fluttertoast.showToast(msg: 'Sign in failed. Please try again.'),
+          (_) =>
+              Fluttertoast.showToast(msg: 'Sign in failed. Please try again.'),
         );
         break;
       case Status.authenticateCanceled:
         WidgetsBinding.instance.addPostFrameCallback(
-              (_) => Fluttertoast.showToast(msg: 'Sign in cancelled'),
+          (_) => Fluttertoast.showToast(msg: 'Sign in cancelled'),
         );
         break;
       case Status.authenticated:
         WidgetsBinding.instance.addPostFrameCallback(
-              (_) => Fluttertoast.showToast(msg: 'Welcome back!'),
+          (_) => Fluttertoast.showToast(msg: 'Welcome back!'),
         );
         break;
       default:
@@ -82,180 +83,180 @@ class _LoginPageState extends State<LoginPage>
     }
 
     return Scaffold(
-      backgroundColor: isDark ? ColorConstants.backgroundDark : Colors.white,
       body: Stack(
         children: [
-          // Background gradient decoration
-          Positioned(
-            top: -100,
-            right: -100,
-            child: Container(
-              width: 340,
-              height: 340,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: ColorConstants.primaryColor.withOpacity(0.06),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: -80,
-            left: -80,
-            child: Container(
-              width: 280,
-              height: 280,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: ColorConstants.primaryColor.withOpacity(0.04),
+          // Gradient nền toàn màn hình
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.blue.shade900, Colors.blue.shade500],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
             ),
           ),
 
-          // Main content
+          // Nội dung chính căn giữa, giới hạn chiều rộng (web/tablet friendly)
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 28),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(height: size.height * 0.1),
-
-                  // Logo & Brand
-                  FadeTransition(
-                    opacity: _fadeAnim,
-                    child: ScaleTransition(
-                      scale: _scaleAnim,
-                      child: Center(
-                        child: Column(
-                          children: [
-                            Container(
-                              width: 80,
-                              height: 80,
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: ColorConstants.primaryGradient,
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 450),
+                child: SingleChildScrollView(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+                  child: Card(
+                    elevation: 10,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    color:
+                        isDark ? ColorConstants.backgroundDark : Colors.white,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 28, vertical: 36),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Logo & Brand
+                          FadeTransition(
+                            opacity: _fadeAnim,
+                            child: ScaleTransition(
+                              scale: _scaleAnim,
+                              child: Center(
+                                child: Column(
+                                  children: [
+                                    Container(
+                                      width: 80,
+                                      height: 80,
+                                      decoration: BoxDecoration(
+                                        gradient: const LinearGradient(
+                                          colors:
+                                              ColorConstants.primaryGradient,
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                        ),
+                                        borderRadius: BorderRadius.circular(24),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: ColorConstants.primaryColor
+                                                .withOpacity(0.35),
+                                            blurRadius: 20,
+                                            offset: const Offset(0, 8),
+                                          ),
+                                        ],
+                                      ),
+                                      child: const Icon(
+                                        Icons.chat_bubble_rounded,
+                                        color: Colors.white,
+                                        size: 38,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 20),
+                                    Text(
+                                      'Flutter Chat',
+                                      style: TextStyle(
+                                        color: isDark
+                                            ? Colors.white
+                                            : const Color(0xFF1A1D2E),
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: -0.5,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'Connect with friends instantly',
+                                      style: TextStyle(
+                                        color: ColorConstants.greyColor,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w400,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                borderRadius: BorderRadius.circular(24),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: ColorConstants.primaryColor
-                                        .withOpacity(0.35),
-                                    blurRadius: 20,
-                                    offset: const Offset(0, 8),
+                              ),
+                            ),
+                          ),
+
+                          SizedBox(height: size.height * 0.06),
+
+                          // Sign in buttons
+                          SlideTransition(
+                            position: _slideAnim,
+                            child: FadeTransition(
+                              opacity: _fadeAnim,
+                              child: Column(
+                                children: [
+                                  // Google Sign In
+                                  _buildGoogleSignInBtn(authProvider, isDark),
+                                  const SizedBox(height: 14),
+
+                                  // Divider
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Container(
+                                          height: 1,
+                                          color: isDark
+                                              ? Colors.white.withOpacity(0.08)
+                                              : ColorConstants.greyColor2,
+                                        ),
+                                      ),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 16),
+                                        child: Text(
+                                          'or',
+                                          style: TextStyle(
+                                            color: ColorConstants.greyColor,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Container(
+                                          height: 1,
+                                          color: isDark
+                                              ? Colors.white.withOpacity(0.08)
+                                              : ColorConstants.greyColor2,
+                                        ),
+                                      ),
+                                    ],
                                   ),
+                                  const SizedBox(height: 14),
+
+                                  // Phone Sign In
+                                  _buildPhoneSignInBtn(isDark),
                                 ],
                               ),
-                              child: const Icon(
-                                Icons.chat_bubble_rounded,
-                                color: Colors.white,
-                                size: 38,
-                              ),
                             ),
-                            const SizedBox(height: 20),
-                            Text(
-                              'Flutter Chat',
-                              style: TextStyle(
-                                color: isDark
-                                    ? Colors.white
-                                    : const Color(0xFF1A1D2E),
-                                fontSize: 28,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.5,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Connect with friends instantly',
-                              style: TextStyle(
-                                color: ColorConstants.greyColor,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w400,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  SizedBox(height: size.height * 0.1),
-
-                  // Sign in options
-                  SlideTransition(
-                    position: _slideAnim,
-                    child: FadeTransition(
-                      opacity: _fadeAnim,
-                      child: Column(
-                        children: [
-                          // Google Sign In
-                          _buildGoogleSignInBtn(authProvider, isDark),
-                          const SizedBox(height: 14),
-
-                          // Divider
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Container(
-                                  height: 1,
-                                  color: isDark
-                                      ? Colors.white.withOpacity(0.08)
-                                      : ColorConstants.greyColor2,
-                                ),
-                              ),
-                              Padding(
-                                padding:
-                                const EdgeInsets.symmetric(horizontal: 16),
-                                child: Text(
-                                  'or',
-                                  style: TextStyle(
-                                    color: ColorConstants.greyColor,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                child: Container(
-                                  height: 1,
-                                  color: isDark
-                                      ? Colors.white.withOpacity(0.08)
-                                      : ColorConstants.greyColor2,
-                                ),
-                              ),
-                            ],
                           ),
-                          const SizedBox(height: 14),
 
-                          // Phone Sign In
-                          _buildPhoneSignInBtn(isDark),
+                          const SizedBox(height: 28),
+
+                          // Footer
+                          FadeTransition(
+                            opacity: _fadeAnim,
+                            child: Center(
+                              child: Text(
+                                'By continuing, you agree to our Terms of Service\nand Privacy Policy',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color:
+                                      ColorConstants.greyColor.withOpacity(0.7),
+                                  fontSize: 12,
+                                  height: 1.5,
+                                ),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
                   ),
-
-                  const Spacer(),
-
-                  // Footer
-                  FadeTransition(
-                    opacity: _fadeAnim,
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      child: Center(
-                        child: Text(
-                          'By continuing, you agree to our Terms of Service\nand Privacy Policy',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: ColorConstants.greyColor.withOpacity(0.7),
-                            fontSize: 12,
-                            height: 1.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -407,7 +408,7 @@ class _AuthButton extends StatelessWidget {
 class _GoogleIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       width: 22,
       height: 22,
       child: CustomPaint(painter: _GoogleLogoPainter()),

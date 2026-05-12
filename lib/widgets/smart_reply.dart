@@ -1,5 +1,6 @@
-// Smart Reply Widget
+// lib/widgets/smart_reply.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
 
@@ -18,56 +19,84 @@ class SmartReplyWidget extends StatelessWidget {
     if (replies.isEmpty) return const SizedBox.shrink();
 
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 5,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+      padding: const EdgeInsets.only(left: 16, bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.auto_awesome,
-                size: 16,
-                color: ColorConstants.primaryColor,
+          // Gradient AI icon
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [
+                  Color(0xFF8A2387),
+                  Color(0xFFE94057),
+                  Color(0xFFF27121)
+                ],
               ),
-              const SizedBox(width: 8),
-              const Text(
-                'Smart Replies',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: ColorConstants.greyColor,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFE94057).withOpacity(0.3),
+                  blurRadius: 6,
                 ),
-              ),
-            ],
+              ],
+            ),
+            child: const Icon(
+              Icons.auto_awesome_rounded,
+              size: 14,
+              color: Colors.white,
+            ),
           ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: replies.map((reply) {
-              return ActionChip(
-                label: Text(
-                  reply.text,
-                  style: const TextStyle(fontSize: 13),
-                ),
-                onPressed: () => onReplySelected(reply.text),
-                backgroundColor: ColorConstants.greyColor2,
-                side: BorderSide(
-                  color: ColorConstants.primaryColor.withOpacity(0.3),
-                ),
-              );
-            }).toList(),
+
+          const SizedBox(width: 12),
+
+          // Horizontally scrollable chips
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                children: replies.map((reply) {
+                  return GestureDetector(
+                    onTap: () {
+                      HapticFeedback.mediumImpact();
+                      onReplySelected(reply.text);
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: ColorConstants.primaryColor.withOpacity(0.3),
+                          width: 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.03),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        reply.text,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: ColorConstants.primaryColor,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
           ),
         ],
       ),

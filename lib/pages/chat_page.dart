@@ -12,7 +12,7 @@ import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_chat_demo/utils/utils.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
-import 'package:flutter_markdown/flutter_markdown.dart'; // ✅ Import thư viện Markdown
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -86,7 +86,7 @@ class ChatPageState extends State<ChatPage>
   MessageChat? _replyingTo;
   bool _conversationLockedChecked = false;
 
-  // ✅ FIX 14: Add deduplication for message listener
+  // Deduplication for message listener
   final Set<String> _processedMessageIds = {};
   bool _isProcessingMessage = false;
 
@@ -100,18 +100,20 @@ class ChatPageState extends State<ChatPage>
   final Map<String, Timer> _scheduledMessages = {};
   final Map<String, String> _scheduledMessageContents = {};
 
+  // ==========================================
+  // LIFECYCLE
+  // ==========================================
+
   @override
   void initState() {
     super.initState();
 
-    // ✅ FIX: Initialize controllers in initState
     _chatInputController = TextEditingController();
     _listScrollController = ScrollController();
     _focusNode = FocusNode();
 
     WidgetsBinding.instance.addObserver(this);
 
-    // ✅ FIX: Add listeners with resource manager
     _focusNode.addListener(_onFocusChange);
     resourceManager
         .addDisposer(() => _focusNode.removeListener(_onFocusChange));
@@ -130,15 +132,67 @@ class ChatPageState extends State<ChatPage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-
     if (resourceManager.isDisposed) return;
-
     if (state == AppLifecycleState.paused) {
       _presenceProvider?.setUserOffline(_currentUserId);
     } else if (state == AppLifecycleState.resumed) {
       _presenceProvider?.setUserOnline(_currentUserId);
     }
   }
+
+  @override
+  void dispose() {
+    _scheduledMessages.forEach((key, timer) {
+      try {
+        timer.cancel();
+      } catch (e) {
+        print('⚠️ Error canceling timer: $e');
+      }
+    });
+    _scheduledMessages.clear();
+    _scheduledMessageContents.clear();
+
+    _recordingTimer?.cancel();
+
+    try {
+      if (_presenceProvider != null && _currentUserId.isNotEmpty) {
+        _presenceProvider!.setUserOffline(_currentUserId);
+        _presenceProvider!.setTypingStatus(
+          conversationId: _groupChatId,
+          userId: _currentUserId,
+          isTyping: false,
+        );
+      }
+    } catch (e) {
+      print('⚠️ Error updating presence: $e');
+    }
+
+    try {
+      _voiceProvider?.dispose();
+    } catch (e) {
+      print('⚠️ Error disposing voice provider: $e');
+    }
+
+    try {
+      _chatInputController.dispose();
+      _listScrollController.dispose();
+      _focusNode.dispose();
+    } catch (e) {
+      print('⚠️ Controller disposal error: $e');
+    }
+
+    try {
+      WidgetsBinding.instance.removeObserver(this);
+    } catch (e) {
+      print('⚠️ Error removing observer: $e');
+    }
+
+    super.dispose();
+  }
+
+  // ==========================================
+  // INITIALIZATION
+  // ==========================================
 
   void _initializeProviders(BuildContext context) {
     if (resourceManager.isDisposed) return;
@@ -153,17 +207,12 @@ class ChatPageState extends State<ChatPage>
     _viewOnceProvider = context.read<ViewOnceProvider>();
     _smartReplyProvider = context.read<SmartReplyProvider>();
     _presenceProvider = context.read<UserPresenceProvider>();
-
-    // ✅ GIAI ĐOẠN 4: Use UnifiedBubbleService
     _unifiedBubbleService = context.read<UnifiedBubbleService>();
 
-    // Setup mini chat message listener (bubbleClickStream)
     final miniChatSub = _unifiedBubbleService?.bubbleClickStream.listen(
       (event) {
         if (event.userId == widget.arguments.peerId) {
           print('💬 Bubble clicked for: ${event.userName}');
-
-          // Show notification
           Fluttertoast.showToast(
             msg: '📨 ${widget.arguments.peerNickname}: ${event.message}',
             backgroundColor: Colors.green,
@@ -208,48 +257,6 @@ class ChatPageState extends State<ChatPage>
     ErrorLogger.logScreenView('chat_page');
   }
 
-  void _scrollListener() {
-    if (resourceManager.isDisposed || !_listScrollController.hasClients) return;
-    final pos = _listScrollController.position;
-    if (pos.pixels >= pos.maxScrollExtent - 100 &&
-        !_listScrollController.position.outOfRange &&
-        _limit <= _listMessage.length) {
-      if (mounted) {
-        setState(() {
-          _limit += _limitIncrement;
-        });
-      }
-    }
-  }
-
-  // ✅ ADD: Better keyboard handling for mini chat
-  void _ensureKeyboardVisibility() {
-    if (widget.isMiniChat) {
-      Future.delayed(Duration(milliseconds: 100), () {
-        if (mounted && _focusNode.hasFocus && !resourceManager.isDisposed) {
-          _focusNode.requestFocus();
-        }
-      });
-    }
-  }
-
-  // ✅ MODIFY: _onFocusChange to handle mini chat
-  void _onFocusChange() {
-    if (resourceManager.isDisposed || !mounted) return;
-
-    if (_focusNode.hasFocus) {
-      setState(() {
-        _isShowSticker = false;
-        _showFeaturesMenu = false;
-      });
-
-      // ✅ In mini chat, ensure keyboard stays visible
-      if (widget.isMiniChat) {
-        _ensureKeyboardVisibility();
-      }
-    }
-  }
-
   void _readLocal() {
     if (_authProvider.userFirebaseId?.isNotEmpty == true) {
       _currentUserId = _authProvider.userFirebaseId!;
@@ -268,7 +275,6 @@ class ChatPageState extends State<ChatPage>
       _groupChatId = '$peerId-$_currentUserId';
     }
 
-    // ✅ THÊM DÒNG NÀY - Setup listener SAU KHI có _groupChatId
     _setupIncomingMessageListener();
 
     _chatProvider.updateDataFirestore(
@@ -277,39 +283,540 @@ class ChatPageState extends State<ChatPage>
       {FirestoreConstants.chattingWith: peerId},
     );
 
-    Future.delayed(Duration(milliseconds: 500), () {
+    Future.delayed(const Duration(milliseconds: 500), () {
       if (!resourceManager.isDisposed && mounted) {
         _markMessagesAsRead();
       }
     });
   }
 
+  // ==========================================
+  // SCROLL
+  // ==========================================
+
+  void _scrollListener() {
+    if (resourceManager.isDisposed || !_listScrollController.hasClients) return;
+    final pos = _listScrollController.position;
+    if (pos.pixels >= pos.maxScrollExtent - 100 &&
+        !_listScrollController.position.outOfRange &&
+        _limit <= _listMessage.length) {
+      if (mounted) setState(() => _limit += _limitIncrement);
+    }
+  }
+
+  // ==========================================
+  // FOCUS & KEYBOARD
+  // ==========================================
+
+  void _ensureKeyboardVisibility() {
+    if (widget.isMiniChat) {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted && _focusNode.hasFocus && !resourceManager.isDisposed) {
+          _focusNode.requestFocus();
+        }
+      });
+    }
+  }
+
+  void _onFocusChange() {
+    if (resourceManager.isDisposed || !mounted) return;
+    if (_focusNode.hasFocus) {
+      setState(() {
+        _isShowSticker = false;
+        _showFeaturesMenu = false;
+      });
+      if (widget.isMiniChat) _ensureKeyboardVisibility();
+    }
+  }
+
+  // ==========================================
+  // PINNED MESSAGES
+  // ==========================================
+
   void _loadPinnedMessages() {
     if (resourceManager.isDisposed) return;
-
     final subscription =
         _messageProvider.getPinnedMessages(_groupChatId).listen(
       (snapshot) {
         if (!mounted || resourceManager.isDisposed) return;
-        setState(() {
-          _pinnedMessages = snapshot.docs;
-        });
+        setState(() => _pinnedMessages = snapshot.docs);
       },
       onError: (err) {
         ErrorLogger.logError(err, null, context: 'Load Pinned Messages');
       },
     );
-
     resourceManager.addSubscription(subscription);
   }
 
+  // ==========================================
+  // MESSAGE LISTENER
+  // ==========================================
+
+  void _setupIncomingMessageListener() {
+    if (resourceManager.isDisposed ||
+        _groupChatId.isEmpty ||
+        _currentUserId.isEmpty) {
+      print('⚠️ Cannot setup listener: groupChatId or currentUserId is empty');
+      return;
+    }
+
+    final subscription = FirebaseFirestore.instance
+        .collection(FirestoreConstants.pathMessageCollection)
+        .doc(_groupChatId)
+        .collection(_groupChatId)
+        .where(FirestoreConstants.idTo, isEqualTo: _currentUserId)
+        .where('isRead', isEqualTo: false)
+        .snapshots()
+        .listen(
+      (snapshot) async {
+        if (resourceManager.isDisposed) return;
+
+        if (_isProcessingMessage) {
+          print('⚠️ Already processing messages, skipping...');
+          return;
+        }
+
+        _isProcessingMessage = true;
+
+        try {
+          for (var change in snapshot.docChanges) {
+            if (resourceManager.isDisposed) break;
+
+            if (change.type == DocumentChangeType.added) {
+              final docId = change.doc.id;
+
+              if (_processedMessageIds.contains(docId)) {
+                print('ℹ️ Message already processed: $docId');
+                continue;
+              }
+
+              _processedMessageIds.add(docId);
+              print('✅ Processing new message: $docId');
+
+              if (_processedMessageIds.length > 100) {
+                final toRemove = _processedMessageIds.length - 100;
+                final oldIds = _processedMessageIds.take(toRemove).toList();
+                _processedMessageIds.removeAll(oldIds);
+                print('🗑️ Cleaned ${oldIds.length} old message IDs');
+              }
+
+              final data = change.doc.data();
+              if (data != null) {
+                final content =
+                    data[FirestoreConstants.content] as String? ?? '';
+                final type = data[FirestoreConstants.type] as int? ?? 0;
+                await _updateBubbleWithMessage(content, type,
+                    isFromUser: false);
+              }
+
+              _showChatBubbleIfNeeded();
+            }
+          }
+        } finally {
+          _isProcessingMessage = false;
+        }
+      },
+      onError: (error) {
+        _isProcessingMessage = false;
+        ErrorLogger.logError(
+          error,
+          null,
+          context: 'Incoming Messages Listener',
+        );
+      },
+    );
+
+    resourceManager.addSubscription(subscription);
+    print('✅ Incoming message listener setup with deduplication');
+  }
+
+  void _setupAutoReadMarking() {
+    if (resourceManager.isDisposed) return;
+    final subscription = FirebaseFirestore.instance
+        .collection(FirestoreConstants.pathMessageCollection)
+        .doc(_groupChatId)
+        .collection(_groupChatId)
+        .where(FirestoreConstants.idTo, isEqualTo: _currentUserId)
+        .where('isRead', isEqualTo: false)
+        .snapshots()
+        .listen(
+      (snapshot) {
+        if (resourceManager.isDisposed) return;
+        if (snapshot.docs.isNotEmpty && mounted) _markMessagesAsRead();
+      },
+      onError: (error) {
+        ErrorLogger.logError(error, null, context: 'Setup Auto Read');
+      },
+    );
+    resourceManager.addSubscription(subscription);
+  }
+
+  Future<void> _markMessagesAsRead() async {
+    if (resourceManager.isDisposed) return;
+    try {
+      final unreadMessages = await FirebaseFirestore.instance
+          .collection(FirestoreConstants.pathMessageCollection)
+          .doc(_groupChatId)
+          .collection(_groupChatId)
+          .where(FirestoreConstants.idTo, isEqualTo: _currentUserId)
+          .where('isRead', isEqualTo: false)
+          .get();
+
+      if (unreadMessages.docs.isEmpty) return;
+
+      final batch = FirebaseFirestore.instance.batch();
+      for (var doc in unreadMessages.docs) {
+        batch.update(doc.reference, {
+          'isRead': true,
+          'readAt': FieldValue.serverTimestamp(),
+        });
+      }
+      await batch.commit();
+      ErrorLogger.logMessageRead(conversationId: _groupChatId);
+    } catch (e) {
+      ErrorLogger.logError(e, null, context: 'Mark Messages Read');
+    }
+  }
+
+  // ==========================================
+  // SEND MESSAGE
+  // ==========================================
+
+  Future<void> _onSendMessageWithAutoDelete(String content, int type) async {
+    if (resourceManager.isDisposed) return;
+
+    if (content.trim().isEmpty) {
+      Fluttertoast.showToast(
+        msg: 'Nothing to send',
+        backgroundColor: ColorConstants.greyColor,
+      );
+      return;
+    }
+
+    HapticFeedback.mediumImpact();
+
+    String finalContent = content;
+    if (_replyingTo != null) {
+      finalContent = '↪ ${_replyingTo!.content}\n$finalContent';
+    }
+
+    if (!resourceManager.isDisposed && _chatInputController.hasListeners) {
+      _chatInputController.clear();
+    }
+
+    if (mounted && !resourceManager.isDisposed) {
+      setState(() {
+        _replyingTo = null;
+        _smartReplies = [];
+      });
+    }
+
+    try {
+      _chatProvider.sendMessage(
+        finalContent,
+        type,
+        _groupChatId,
+        _currentUserId,
+        widget.arguments.peerId,
+      );
+
+      ErrorLogger.logMessageSent(
+        conversationId: _groupChatId,
+        messageType: type,
+      );
+
+      await _updateBubbleWithMessage(finalContent, type, isFromUser: true);
+    } catch (e) {
+      ErrorLogger.logError(e, null, context: 'Send Message');
+      Fluttertoast.showToast(msg: 'Send failed');
+      return;
+    }
+
+    try {
+      final messageId = DateTime.now().millisecondsSinceEpoch.toString();
+      await _autoDeleteProvider.scheduleMessageDeletion(
+        groupChatId: _groupChatId,
+        messageId: messageId,
+        conversationId: _groupChatId,
+      );
+    } catch (e) {
+      ErrorLogger.logError(e, null, context: 'Schedule Auto Delete');
+    }
+
+    if (!resourceManager.isDisposed) {
+      await _loadSmartReplies();
+    }
+
+    if (_listScrollController.hasClients && !resourceManager.isDisposed) {
+      _listScrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  // ==========================================
+  // BUBBLE
+  // ==========================================
+
+  Future<void> _updateBubbleWithMessage(String content, int type,
+      {required bool isFromUser}) async {
+    if (_unifiedBubbleService == null || resourceManager.isDisposed) return;
+
+    try {
+      if (!_unifiedBubbleService!.isBubbleActive(widget.arguments.peerId)) {
+        return;
+      }
+
+      String messageType = 'text';
+      String displayMessage = content;
+
+      switch (type) {
+        case TypeMessage.text:
+          messageType = 'text';
+          if (content.contains('maps.google.com') ||
+              content.contains('Location:')) {
+            messageType = 'location';
+            displayMessage = '📍 Location';
+          }
+          break;
+        case TypeMessage.image:
+          messageType = 'image';
+          displayMessage = '📷 Photo';
+          break;
+        case 3:
+          messageType = 'voice';
+          displayMessage = '🎤 Voice message';
+          break;
+        default:
+          messageType = 'text';
+      }
+
+      await _unifiedBubbleService!.sendMessage(
+        userId: widget.arguments.peerId,
+        userName: widget.arguments.peerNickname,
+        message: displayMessage,
+        avatarUrl: widget.arguments.peerAvatar,
+        messageType: messageType,
+      );
+
+      print(
+          '✅ Bubble updated with ${isFromUser ? "sent" : "received"} message');
+    } catch (e) {
+      print('❌ Error updating bubble: $e');
+    }
+  }
+
+  Future<void> _showChatBubbleIfNeeded() async {
+    if (resourceManager.isDisposed) return;
+    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+      await _unifiedBubbleService?.showChatBubble(
+        userId: widget.arguments.peerId,
+        userName: widget.arguments.peerNickname,
+        avatarUrl: widget.arguments.peerAvatar,
+      );
+    }
+  }
+
+  Future<void> _createChatBubble() async {
+    if (_unifiedBubbleService == null || resourceManager.isDisposed) {
+      Fluttertoast.showToast(msg: 'Bubble service not available');
+      return;
+    }
+
+    if (!_unifiedBubbleService!.isSupported) {
+      Fluttertoast.showToast(msg: 'Chat bubbles not supported on this device');
+      return;
+    }
+
+    final hasPermission = await _unifiedBubbleService!.hasOverlayPermission();
+    if (!hasPermission) {
+      final granted = await _unifiedBubbleService!.requestOverlayPermission();
+      if (!granted) {
+        Fluttertoast.showToast(msg: 'Overlay permission required');
+        return;
+      }
+    }
+
+    final impl = _unifiedBubbleService!.getImplementationInfo();
+    print('🎈 Creating bubble using: $impl');
+
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create Chat Bubble'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Choose how to open this conversation:'),
+            const SizedBox(height: 8),
+            Text(
+              'Using: $impl',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'bubble'),
+            child: const Text('Bubble Only'),
+          ),
+          if (_unifiedBubbleService!.currentImplementation ==
+              BubbleImplementation.windowManager)
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'minichat'),
+              child: const Text('Mini Chat'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (choice == null) return;
+
+    if (choice == 'bubble') {
+      final success = await _unifiedBubbleService!.showChatBubble(
+        userId: widget.arguments.peerId,
+        userName: widget.arguments.peerNickname,
+        avatarUrl: widget.arguments.peerAvatar,
+      );
+      Fluttertoast.showToast(
+        msg: success ? '💬 Chat bubble created' : '❌ Failed to create bubble',
+        backgroundColor: success ? Colors.green : Colors.red,
+      );
+    } else if (choice == 'minichat') {
+      final success = await _unifiedBubbleService!.showMiniChat(
+        userId: widget.arguments.peerId,
+        userName: widget.arguments.peerNickname,
+        avatarUrl: widget.arguments.peerAvatar,
+      );
+      Fluttertoast.showToast(
+        msg: success
+            ? '💬 Mini chat opened'
+            : '⚠️ Mini chat not supported with Bubble API',
+        backgroundColor: success ? Colors.green : Colors.orange,
+      );
+    }
+  }
+
+  void _showBubbleInfo() {
+    if (_unifiedBubbleService == null) return;
+
+    final impl = _unifiedBubbleService!.getImplementationInfo();
+    final canMigrate = _unifiedBubbleService!.currentImplementation ==
+        BubbleImplementation.windowManager;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Bubble Implementation'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Current: $impl'),
+            const SizedBox(height: 16),
+            if (canMigrate)
+              Text(
+                'Your device supports the new Bubble API! Migrate for better performance and battery life.',
+                style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+              ),
+          ],
+        ),
+        actions: [
+          if (canMigrate)
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                final success =
+                    await _unifiedBubbleService!.migrateToModernApi();
+                Fluttertoast.showToast(
+                  msg: success
+                      ? '✅ Migrated to Bubble API'
+                      : '❌ Migration failed',
+                  backgroundColor: success ? Colors.green : Colors.red,
+                );
+              },
+              child: const Text('Migrate Now'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showBubbleDebugInfo() async {
+    if (_unifiedBubbleService == null) return;
+
+    try {
+      final count =
+          await _unifiedBubbleService!.getMessageCount(widget.arguments.peerId);
+      final stats = await _unifiedBubbleService!.getBubbleStats();
+      await _unifiedBubbleService!.logBubbleState();
+
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Bubble Debug Info'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Message count: $count'),
+              const SizedBox(height: 8),
+              Text('Active conversations: ${stats['activeConversations']}'),
+              Text('Total messages: ${stats['totalMessages']}'),
+              Text('Average messages: ${stats['averageMessages']}'),
+              const SizedBox(height: 8),
+              const Text(
+                'Check Android logs for detailed state',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await _unifiedBubbleService!
+                    .clearMessageHistory(widget.arguments.peerId);
+                Navigator.pop(context);
+                Fluttertoast.showToast(msg: 'History cleared');
+              },
+              child: const Text('Clear History'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      print('❌ Error showing debug info: $e');
+    }
+  }
+
+  // ==========================================
+  // IMAGE & FILE
+  // ==========================================
+
   Future<bool> _pickImage() async {
+    HapticFeedback.lightImpact();
     try {
       final imagePicker = ImagePicker();
       final pickedXFile = await imagePicker.pickImage(
         source: ImageSource.gallery,
       );
-
       if (pickedXFile != null) {
         final imageFile = File(pickedXFile.path);
         if (!mounted || resourceManager.isDisposed) return false;
@@ -327,14 +834,43 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
+  Future<void> _uploadFile() async {
+    if (_imageFile == null) return;
+    try {
+      final fileName = DateTime.now().millisecondsSinceEpoch.toString();
+      final uploadTask = _chatProvider.uploadFile(_imageFile!, fileName);
+      final snapshot = await uploadTask;
+      _imageUrl = await snapshot.ref.getDownloadURL();
+
+      if (!mounted || resourceManager.isDisposed) return;
+      setState(() => _isLoading = false);
+      await _onSendMessageWithAutoDelete(_imageUrl, TypeMessage.image);
+    } catch (e) {
+      ErrorLogger.logError(e, null, context: 'Upload File');
+      if (mounted && !resourceManager.isDisposed) {
+        setState(() => _isLoading = false);
+      }
+      Fluttertoast.showToast(msg: 'Upload failed');
+    }
+  }
+
+  // ==========================================
+  // STICKER
+  // ==========================================
+
   void _getSticker() {
     if (resourceManager.isDisposed) return;
+    HapticFeedback.lightImpact();
     _focusNode.unfocus();
     setState(() {
       _isShowSticker = !_isShowSticker;
       _showFeaturesMenu = false;
     });
   }
+
+  // ==========================================
+  // TYPING
+  // ==========================================
 
   void _handleTyping(String text) {
     if (_presenceProvider == null || resourceManager.isDisposed) return;
@@ -372,377 +908,15 @@ class ChatPageState extends State<ChatPage>
     }));
   }
 
-  // ========================================
-  // STEP 3: Update _setupIncomingMessageListener (with GIAI ĐOẠN 7 + FIX 14)
-  // ========================================
-
-  void _setupIncomingMessageListener() {
-    if (resourceManager.isDisposed) return;
-
-    if (_groupChatId.isEmpty || _currentUserId.isEmpty) {
-      print('⚠️ Cannot setup listener: groupChatId or currentUserId is empty');
-      return;
-    }
-
-    final subscription = FirebaseFirestore.instance
-        .collection(FirestoreConstants.pathMessageCollection)
-        .doc(_groupChatId)
-        .collection(_groupChatId)
-        .where(FirestoreConstants.idTo, isEqualTo: _currentUserId)
-        .where('isRead', isEqualTo: false)
-        .snapshots()
-        .listen(
-      (snapshot) async {
-        if (resourceManager.isDisposed) return;
-
-        // ✅ FIX 14: Prevent concurrent processing
-        if (_isProcessingMessage) {
-          print('⚠️ Already processing messages, skipping...');
-          return;
-        }
-
-        _isProcessingMessage = true;
-
-        try {
-          for (var change in snapshot.docChanges) {
-            if (resourceManager.isDisposed) break;
-
-            if (change.type == DocumentChangeType.added) {
-              final docId = change.doc.id;
-
-              // ✅ FIX 14: Deduplication check
-              if (_processedMessageIds.contains(docId)) {
-                print('ℹ️ Message already processed: $docId');
-                continue;
-              }
-
-              _processedMessageIds.add(docId);
-              print('✅ Processing new message: $docId');
-
-              // ✅ FIX 14: Cleanup old processed IDs (keep last 100)
-              if (_processedMessageIds.length > 100) {
-                final toRemove = _processedMessageIds.length - 100;
-                final oldIds = _processedMessageIds.take(toRemove).toList();
-                _processedMessageIds.removeAll(oldIds);
-                print('🗑️ Cleaned ${oldIds.length} old message IDs');
-              }
-
-              // Process message
-              final data = change.doc.data();
-              if (data != null) {
-                final content =
-                    data[FirestoreConstants.content] as String? ?? '';
-                final type = data[FirestoreConstants.type] as int? ?? 0;
-
-                // Update bubble if it exists
-                await _updateBubbleWithMessage(content, type,
-                    isFromUser: false);
-              }
-
-              _showChatBubbleIfNeeded();
-            }
-          }
-        } finally {
-          _isProcessingMessage = false;
-        }
-      },
-      onError: (error) {
-        _isProcessingMessage = false;
-        ErrorLogger.logError(
-          error,
-          null,
-          context: 'Incoming Messages Listener',
-        );
-      },
-    );
-
-    resourceManager.addSubscription(subscription);
-    print('✅ Incoming message listener setup with deduplication');
-  }
-
-  /// Open location in Google Maps
-  Future<void> _openLocationInMaps(String mapsUrl) async {
-    try {
-      final uri = Uri.parse(mapsUrl);
-
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(
-          uri,
-          mode: LaunchMode.externalApplication,
-        );
-        print('✅ Opened Maps: $mapsUrl');
-      } else {
-        Fluttertoast.showToast(
-          msg: '❌ Cannot open Google Maps',
-          backgroundColor: Colors.red,
-        );
-        print('❌ Cannot launch URL: $mapsUrl');
-      }
-    } catch (e) {
-      print('❌ Error opening Maps: $e');
-      Fluttertoast.showToast(
-        msg: '❌ Failed to open location',
-        backgroundColor: Colors.red,
-      );
-    }
-  }
-
-  // ✅ GIAI ĐOẠN 4: Update _showChatBubbleIfNeeded
-  Future<void> _showChatBubbleIfNeeded() async {
-    if (resourceManager.isDisposed) return;
-
-    final lifecycleState = WidgetsBinding.instance.lifecycleState;
-
-    if (lifecycleState != AppLifecycleState.resumed) {
-      await _unifiedBubbleService?.showChatBubble(
-        userId: widget.arguments.peerId,
-        userName: widget.arguments.peerNickname,
-        avatarUrl: widget.arguments.peerAvatar,
-      );
-    }
-  }
-
-  Widget _buildTypingIndicator() {
-    if (_presenceProvider == null) return const SizedBox.shrink();
-
-    return StreamBuilder<Map<String, bool>>(
-      stream: _presenceProvider!.getTypingStatus(_groupChatId),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const SizedBox.shrink();
-
-        final typingUsers = snapshot.data!;
-        final peerTyping = typingUsers[widget.arguments.peerId] ?? false;
-
-        if (!peerTyping) return const SizedBox.shrink();
-
-        return TypingIndicator(userName: widget.arguments.peerNickname);
-      },
-    );
-  }
-
-  void _setupAutoReadMarking() {
-    if (resourceManager.isDisposed) return;
-
-    final subscription = FirebaseFirestore.instance
-        .collection(FirestoreConstants.pathMessageCollection)
-        .doc(_groupChatId)
-        .collection(_groupChatId)
-        .where(FirestoreConstants.idTo, isEqualTo: _currentUserId)
-        .where('isRead', isEqualTo: false)
-        .snapshots()
-        .listen(
-      (snapshot) {
-        if (resourceManager.isDisposed) return;
-        if (snapshot.docs.isNotEmpty && mounted) {
-          _markMessagesAsRead();
-        }
-      },
-      onError: (error) {
-        ErrorLogger.logError(error, null, context: 'Setup Auto Read');
-      },
-    );
-
-    resourceManager.addSubscription(subscription);
-  }
-
-  Future<void> _uploadFile() async {
-    if (_imageFile == null) return;
-
-    try {
-      final fileName = DateTime.now().millisecondsSinceEpoch.toString();
-      final uploadTask = _chatProvider.uploadFile(_imageFile!, fileName);
-      final snapshot = await uploadTask;
-      _imageUrl = await snapshot.ref.getDownloadURL();
-
-      if (!mounted || resourceManager.isDisposed) return;
-      setState(() {
-        _isLoading = false;
-      });
-
-      await _onSendMessageWithAutoDelete(_imageUrl, TypeMessage.image);
-    } catch (e) {
-      ErrorLogger.logError(e, null, context: 'Upload File');
-
-      if (mounted && !resourceManager.isDisposed) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-      Fluttertoast.showToast(msg: 'Upload failed');
-    }
-  }
-
-  // ========================================
-  // STEP 1: Update _onSendMessageWithAutoDelete (with GIAI ĐOẠN 7)
-  // ========================================
-
-  Future<void> _onSendMessageWithAutoDelete(String content, int type) async {
-    if (resourceManager.isDisposed) return;
-
-    if (content.trim().isEmpty) {
-      Fluttertoast.showToast(
-        msg: 'Nothing to send',
-        backgroundColor: ColorConstants.greyColor,
-      );
-      return;
-    }
-
-    String finalContent = content;
-    if (_replyingTo != null) {
-      finalContent = '↪ ${_replyingTo!.content}\n$finalContent';
-    }
-
-    if (!resourceManager.isDisposed && _chatInputController.hasListeners) {
-      _chatInputController.clear();
-    }
-
-    if (mounted && !resourceManager.isDisposed) {
-      setState(() {
-        _replyingTo = null;
-        _smartReplies = [];
-      });
-    }
-
-    try {
-      _chatProvider.sendMessage(
-        finalContent,
-        type,
-        _groupChatId,
-        _currentUserId,
-        widget.arguments.peerId,
-      );
-
-      ErrorLogger.logMessageSent(
-        conversationId: _groupChatId,
-        messageType: type,
-      );
-
-      // ✅ GIAI ĐOẠN 7: Update bubble with sent message
-      await _updateBubbleWithMessage(finalContent, type, isFromUser: true);
-    } catch (e) {
-      ErrorLogger.logError(e, null, context: 'Send Message');
-      Fluttertoast.showToast(msg: 'Send failed');
-      return;
-    }
-
-    try {
-      final messageId = DateTime.now().millisecondsSinceEpoch.toString();
-      await _autoDeleteProvider.scheduleMessageDeletion(
-        groupChatId: _groupChatId,
-        messageId: messageId,
-        conversationId: _groupChatId,
-      );
-    } catch (e) {
-      ErrorLogger.logError(e, null, context: 'Schedule Auto Delete');
-    }
-
-    if (!resourceManager.isDisposed) {
-      await _loadSmartReplies();
-    }
-
-    if (_listScrollController.hasClients && !resourceManager.isDisposed) {
-      _listScrollController.animateTo(
-        0,
-        duration: Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    }
-  }
-
-  // ========================================
-  // STEP 2: Add NEW METHOD - _updateBubbleWithMessage (GIAI ĐOẠN 7)
-  // ========================================
-
-  /// ✅ GIAI ĐOẠN 7: Update bubble notification with message
-  Future<void> _updateBubbleWithMessage(String content, int type,
-      {required bool isFromUser}) async {
-    if (_unifiedBubbleService == null || resourceManager.isDisposed) return;
-
-    try {
-      // Check if bubble exists for this conversation
-      if (!_unifiedBubbleService!.isBubbleActive(widget.arguments.peerId)) {
-        return; // No bubble, skip update
-      }
-
-      // Determine message type
-      String messageType = 'text';
-      String displayMessage = content;
-
-      switch (type) {
-        case TypeMessage.text:
-          messageType = 'text';
-          // Check if it's a location
-          if (content.contains('maps.google.com') ||
-              content.contains('Location:')) {
-            messageType = 'location';
-            displayMessage = '📍 Location';
-          }
-          break;
-        case TypeMessage.image:
-          messageType = 'image';
-          displayMessage = '📷 Photo';
-          break;
-        case 3: // Voice
-          messageType = 'voice';
-          displayMessage = '🎤 Voice message';
-          break;
-        default:
-          messageType = 'text';
-      }
-
-      // Send to bubble
-      await _unifiedBubbleService!.sendMessage(
-        userId: widget.arguments.peerId,
-        userName: widget.arguments.peerNickname,
-        message: displayMessage,
-        avatarUrl: widget.arguments.peerAvatar,
-        messageType: messageType,
-      );
-
-      print(
-          '✅ Bubble updated with ${isFromUser ? "sent" : "received"} message');
-    } catch (e) {
-      print('❌ Error updating bubble: $e');
-    }
-  }
-
-  Future<void> _markMessagesAsRead() async {
-    if (resourceManager.isDisposed) return;
-
-    try {
-      final unreadMessages = await FirebaseFirestore.instance
-          .collection(FirestoreConstants.pathMessageCollection)
-          .doc(_groupChatId)
-          .collection(_groupChatId)
-          .where(FirestoreConstants.idTo, isEqualTo: _currentUserId)
-          .where('isRead', isEqualTo: false)
-          .get();
-
-      if (unreadMessages.docs.isEmpty) return;
-
-      final batch = FirebaseFirestore.instance.batch();
-
-      for (var doc in unreadMessages.docs) {
-        batch.update(doc.reference, {
-          'isRead': true,
-          'readAt': FieldValue.serverTimestamp(),
-        });
-      }
-
-      await batch.commit();
-
-      ErrorLogger.logMessageRead(conversationId: _groupChatId);
-    } catch (e) {
-      ErrorLogger.logError(e, null, context: 'Mark Messages Read');
-    }
-  }
+  // ==========================================
+  // MESSAGE OPTIONS
+  // ==========================================
 
   void _showAdvancedMessageOptions(MessageChat message, String messageId) {
     if (resourceManager.isDisposed) return;
-
     showModalBottomSheet(
       context: context,
-      shape: RoundedRectangleBorder(
+      shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) => EnhancedMessageOptionsDialog(
@@ -763,7 +937,6 @@ class ChatPageState extends State<ChatPage>
 
   Future<void> _editMessage(String messageId, String currentContent) async {
     if (resourceManager.isDisposed) return;
-
     showDialog(
       context: context,
       builder: (context) => EditMessageDialog(
@@ -784,20 +957,19 @@ class ChatPageState extends State<ChatPage>
 
   Future<void> _deleteMessage(String messageId) async {
     if (resourceManager.isDisposed) return;
-
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Delete Message'),
-        content: Text('Are you sure you want to delete this message?'),
+        title: const Text('Delete Message'),
+        content: const Text('Are you sure you want to delete this message?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancel'),
+            child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text('Delete', style: TextStyle(color: Colors.red)),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -816,7 +988,6 @@ class ChatPageState extends State<ChatPage>
 
   Future<void> _togglePinMessage(String messageId, bool currentStatus) async {
     if (resourceManager.isDisposed) return;
-
     final success = await _messageProvider.togglePinMessage(
       _groupChatId,
       messageId,
@@ -835,16 +1006,14 @@ class ChatPageState extends State<ChatPage>
   }
 
   void _setReplyToMessage(MessageChat message) {
+    HapticFeedback.selectionClick();
     if (resourceManager.isDisposed || !mounted) return;
-    setState(() {
-      _replyingTo = message;
-    });
+    setState(() => _replyingTo = message);
     _focusNode.requestFocus();
   }
 
   void _showReactionPicker(String messageId) {
     if (resourceManager.isDisposed) return;
-
     showDialog(
       context: context,
       builder: (context) => Dialog(
@@ -864,10 +1033,14 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
+  // ==========================================
+  // REMINDER
+  // ==========================================
+
   Future<DateTime?> _pickTimeWithWheel() async {
     if (resourceManager.isDisposed) return null;
 
-    DateTime selectedTime = DateTime.now().add(Duration(hours: 1));
+    DateTime selectedTime = DateTime.now().add(const Duration(hours: 1));
 
     return await showDialog<DateTime>(
       context: context,
@@ -875,22 +1048,22 @@ class ChatPageState extends State<ChatPage>
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: Text('Set Reminder Time'),
+              title: const Text('Set Reminder Time'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   ListTile(
-                    title: Text('Date'),
+                    title: const Text('Date'),
                     subtitle: Text(
                       DateFormat('MMM dd, yyyy').format(selectedTime),
                     ),
-                    trailing: Icon(Icons.calendar_today),
+                    trailing: const Icon(Icons.calendar_today),
                     onTap: () async {
                       final date = await showDatePicker(
                         context: context,
                         initialDate: selectedTime,
                         firstDate: DateTime.now(),
-                        lastDate: DateTime.now().add(Duration(days: 365)),
+                        lastDate: DateTime.now().add(const Duration(days: 365)),
                       );
                       if (date != null) {
                         setState(() {
@@ -906,9 +1079,9 @@ class ChatPageState extends State<ChatPage>
                     },
                   ),
                   ListTile(
-                    title: Text('Time'),
+                    title: const Text('Time'),
                     subtitle: Text(DateFormat('HH:mm').format(selectedTime)),
-                    trailing: Icon(Icons.access_time),
+                    trailing: const Icon(Icons.access_time),
                     onTap: () async {
                       final time = await showTimePicker(
                         context: context,
@@ -932,11 +1105,11 @@ class ChatPageState extends State<ChatPage>
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: Text('Cancel'),
+                  child: const Text('Cancel'),
                 ),
                 TextButton(
                   onPressed: () => Navigator.pop(context, selectedTime),
-                  child: Text('Set'),
+                  child: const Text('Set'),
                 ),
               ],
             );
@@ -963,17 +1136,66 @@ class ChatPageState extends State<ChatPage>
         message: message.content,
       );
 
-      if (success) {
-        Fluttertoast.showToast(msg: '⏰ Reminder set successfully');
-      } else {
-        Fluttertoast.showToast(msg: 'Failed to set reminder');
-      }
+      Fluttertoast.showToast(
+        msg: success ? '⏰ Reminder set successfully' : 'Failed to set reminder',
+      );
     }
   }
 
+  void _showReminders() {
+    if (resourceManager.isDisposed) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: const Text('Reminders')),
+          body: StreamBuilder<QuerySnapshot>(
+            stream: _reminderProvider.getUserReminders(_currentUserId),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final reminders = snapshot.data!.docs;
+              if (reminders.isEmpty) {
+                return const Center(child: Text('No reminders'));
+              }
+              return ListView.builder(
+                itemCount: reminders.length,
+                itemBuilder: (context, index) {
+                  final reminder =
+                      MessageReminder.fromDocument(reminders[index]);
+                  return ListTile(
+                    title: Text(reminder.message),
+                    subtitle: Text(
+                      DateFormat('MMM dd, HH:mm').format(
+                        DateTime.fromMillisecondsSinceEpoch(
+                          int.parse(reminder.reminderTime),
+                        ),
+                      ),
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      onPressed: () {
+                        _reminderProvider.deleteReminder(reminder.id);
+                      },
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // TRANSLATION
+  // ==========================================
+
   Future<void> _translateMessage(String content) async {
     if (_translationProvider == null || resourceManager.isDisposed) return;
-
     showDialog(
       context: context,
       builder: (context) => TranslationDialog(
@@ -982,6 +1204,10 @@ class ChatPageState extends State<ChatPage>
       ),
     );
   }
+
+  // ==========================================
+  // CONVERSATION LOCK
+  // ==========================================
 
   Future<void> _checkConversationLock() async {
     if (resourceManager.isDisposed) return;
@@ -994,16 +1220,13 @@ class ChatPageState extends State<ChatPage>
       if (!mounted || resourceManager.isDisposed) return;
 
       final verified = await _showPINVerificationDialog();
-
       if (verified != true && mounted) {
         Navigator.pop(context);
       }
     }
 
     if (mounted && !resourceManager.isDisposed) {
-      setState(() {
-        _conversationLockedChecked = true;
-      });
+      setState(() => _conversationLockedChecked = true);
     }
   }
 
@@ -1032,9 +1255,7 @@ class ChatPageState extends State<ChatPage>
         enteredPin: pin,
       );
 
-      if (result['success'] == true) {
-        return true;
-      }
+      if (result['success'] == true) return true;
 
       remainingAttempts = 5 - (result['failedAttempts'] as int);
       errorMessage = result['message'] as String;
@@ -1054,425 +1275,24 @@ class ChatPageState extends State<ChatPage>
     return false;
   }
 
-  Future<void> _loadSmartReplies() async {
-    if (_listMessage.isEmpty || resourceManager.isDisposed) return;
-
-    final lastMessage = _listMessage.first;
-    final messageChat = MessageChat.fromDocument(lastMessage);
-
-    if (messageChat.idFrom != _currentUserId &&
-        messageChat.type == TypeMessage.text) {
-      final replies = _smartReplyProvider.getRuleBasedReplies(
-        messageChat.content,
-      );
-
-      if (mounted && !resourceManager.isDisposed) {
-        setState(() {
-          _smartReplies = replies;
-          _lastReceivedMessage = messageChat.content;
-        });
-      }
-    }
-  }
-
-  void _showReminders() {
-    if (resourceManager.isDisposed) return;
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => Scaffold(
-          appBar: AppBar(title: Text('Reminders')),
-          body: StreamBuilder<QuerySnapshot>(
-            stream: _reminderProvider.getUserReminders(_currentUserId),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) {
-                return Center(child: CircularProgressIndicator());
-              }
-
-              final reminders = snapshot.data!.docs;
-
-              if (reminders.isEmpty) {
-                return Center(child: Text('No reminders'));
-              }
-
-              return ListView.builder(
-                itemCount: reminders.length,
-                itemBuilder: (context, index) {
-                  final reminder = MessageReminder.fromDocument(
-                    reminders[index],
-                  );
-
-                  return ListTile(
-                    title: Text(reminder.message),
-                    subtitle: Text(
-                      DateFormat('MMM dd, HH:mm').format(
-                        DateTime.fromMillisecondsSinceEpoch(
-                          int.parse(reminder.reminderTime),
-                        ),
-                      ),
-                    ),
-                    trailing: IconButton(
-                      icon: Icon(Icons.delete, color: Colors.red),
-                      onPressed: () {
-                        _reminderProvider.deleteReminder(reminder.id);
-                      },
-                    ),
-                  );
-                },
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ✅ GIAI ĐOẠN 4: Update _createChatBubble to use UnifiedBubbleService
-  Future<void> _createChatBubble() async {
-    if (_unifiedBubbleService == null || resourceManager.isDisposed) {
-      Fluttertoast.showToast(msg: 'Bubble service not available');
-      return;
-    }
-
-    // Check if bubbles are supported
-    if (!_unifiedBubbleService!.isSupported) {
-      Fluttertoast.showToast(msg: 'Chat bubbles not supported on this device');
-      return;
-    }
-
-    // Check permissions (only needed for WindowManager on Android < 11)
-    final hasPermission = await _unifiedBubbleService!.hasOverlayPermission();
-    if (!hasPermission) {
-      final granted = await _unifiedBubbleService!.requestOverlayPermission();
-      if (!granted) {
-        Fluttertoast.showToast(msg: 'Overlay permission required');
-        return;
-      }
-    }
-
-    // Show implementation info
-    final impl = _unifiedBubbleService!.getImplementationInfo();
-    print('🎈 Creating bubble using: $impl');
-
-    final choice = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Create Chat Bubble'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Choose how to open this conversation:'),
-            SizedBox(height: 8),
-            Text(
-              'Using: $impl',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, 'bubble'),
-            child: Text('Bubble Only'),
-          ),
-          // ✅ Only show mini chat for WindowManager
-          if (_unifiedBubbleService!.currentImplementation ==
-              BubbleImplementation.windowManager)
-            TextButton(
-              onPressed: () => Navigator.pop(context, 'minichat'),
-              child: Text('Mini Chat'),
-            ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel'),
-          ),
-        ],
-      ),
-    );
-
-    if (choice == null) return;
-
-    if (choice == 'bubble') {
-      // Create bubble
-      final success = await _unifiedBubbleService!.showChatBubble(
-        userId: widget.arguments.peerId,
-        userName: widget.arguments.peerNickname,
-        avatarUrl: widget.arguments.peerAvatar,
-      );
-
-      if (success) {
-        Fluttertoast.showToast(
-          msg: '💬 Chat bubble created',
-          backgroundColor: Colors.green,
-        );
-      } else {
-        Fluttertoast.showToast(
-          msg: '❌ Failed to create bubble',
-          backgroundColor: Colors.red,
-        );
-      }
-    } else if (choice == 'minichat') {
-      // Show mini chat (only works with WindowManager)
-      final success = await _unifiedBubbleService!.showMiniChat(
-        userId: widget.arguments.peerId,
-        userName: widget.arguments.peerNickname,
-        avatarUrl: widget.arguments.peerAvatar,
-      );
-
-      if (success) {
-        Fluttertoast.showToast(
-          msg: '💬 Mini chat opened',
-          backgroundColor: Colors.green,
-        );
-      } else {
-        Fluttertoast.showToast(
-          msg: '⚠️ Mini chat not supported with Bubble API',
-          backgroundColor: Colors.orange,
-        );
-      }
-    }
-  }
-
-  List<Widget> _buildAppBarActions() {
-    return [
-      VideoCallIconButton(
-        peerId: widget.arguments.peerId,
-        peerName: widget.arguments.peerNickname,
-        peerAvatar: widget.arguments.peerAvatar,
-      ),
-      VoiceCallIconButton(
-        peerId: widget.arguments.peerId,
-        peerName: widget.arguments.peerNickname,
-        peerAvatar: widget.arguments.peerAvatar,
-      ),
-
-      // More options menu
-      IconButton(
-        icon: Icon(Icons.more_vert),
-        onPressed: _showChatOptionsMenu,
-        tooltip: 'More options',
-      ),
-    ];
-  }
-
-  // ========================================
-  // STEP 5: Update _buildChatOptionsMenu (with GIAI ĐOẠN 7)
-  // ========================================
-
-  void _showChatOptionsMenu() {
-    if (resourceManager.isDisposed) return;
-
-    showModalBottomSheet(
-      context: context,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Search Messages
-            ListTile(
-              leading: Icon(Icons.search, color: ColorConstants.primaryColor),
-              title: Text('Search Messages'),
-              subtitle: Text('Search in conversation'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => SearchMessagesPage(
-                      groupChatId: _groupChatId,
-                      peerName: widget.arguments.peerNickname,
-                    ),
-                  ),
-                );
-              },
-            ),
-
-            // Show Reminders
-            ListTile(
-              leading:
-                  Icon(Icons.notifications, color: ColorConstants.primaryColor),
-              title: Text('Reminders'),
-              subtitle: Text('View all reminders'),
-              onTap: () {
-                Navigator.pop(context);
-                _showReminders();
-              },
-            ),
-
-            // ✅ GIAI ĐOẠN 4: Show current bubble implementation
-            if (_unifiedBubbleService != null)
-              ListTile(
-                leading: Icon(Icons.info_outline, color: Colors.blue),
-                title: Text('Bubble Implementation'),
-                subtitle: Text(_unifiedBubbleService!.getImplementationInfo()),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showBubbleInfo();
-                },
-              ),
-
-            // ✅ GIAI ĐOẠN 7: Add debug option
-            if (kDebugMode) // Only in debug mode
-              ListTile(
-                leading: Icon(Icons.bug_report, color: Colors.orange),
-                title: Text('Bubble Debug'),
-                subtitle: Text('View message history & stats'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showBubbleDebugInfo();
-                },
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ✅ GIAI ĐOẠN 4: Show bubble implementation info
-  void _showBubbleInfo() {
-    if (_unifiedBubbleService == null) return;
-
-    final impl = _unifiedBubbleService!.getImplementationInfo();
-    final canMigrate = _unifiedBubbleService!.currentImplementation ==
-        BubbleImplementation.windowManager;
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Bubble Implementation'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Current: $impl'),
-            SizedBox(height: 16),
-            if (canMigrate)
-              Text(
-                'Your device supports the new Bubble API! Migrate for better performance and battery life.',
-                style: TextStyle(fontSize: 13, color: Colors.grey[700]),
-              ),
-          ],
-        ),
-        actions: [
-          if (canMigrate)
-            TextButton(
-              onPressed: () async {
-                Navigator.pop(context);
-                final success =
-                    await _unifiedBubbleService!.migrateToModernApi();
-
-                if (success) {
-                  Fluttertoast.showToast(
-                    msg: '✅ Migrated to Bubble API',
-                    backgroundColor: Colors.green,
-                  );
-                } else {
-                  Fluttertoast.showToast(
-                    msg: '❌ Migration failed',
-                    backgroundColor: Colors.red,
-                  );
-                }
-              },
-              child: Text('Migrate Now'),
-            ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ========================================
-  // STEP 4: Add _showBubbleDebugInfo (GIAI ĐOẠN 7)
-  // ========================================
-
-  void _showBubbleDebugInfo() async {
-    if (_unifiedBubbleService == null) return;
-
-    try {
-      // Get message count
-      final count = await _unifiedBubbleService!.getMessageCount(
-        widget.arguments.peerId,
-      );
-
-      // Get stats
-      final stats = await _unifiedBubbleService!.getBubbleStats();
-
-      // Log state
-      await _unifiedBubbleService!.logBubbleState();
-
-      if (!mounted) return;
-
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text('Bubble Debug Info'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Message count: $count'),
-              SizedBox(height: 8),
-              Text('Active conversations: ${stats['activeConversations']}'),
-              Text('Total messages: ${stats['totalMessages']}'),
-              Text('Average messages: ${stats['averageMessages']}'),
-              SizedBox(height: 8),
-              Text('Check Android logs for detailed state',
-                  style: TextStyle(fontSize: 12, color: Colors.grey)),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                await _unifiedBubbleService!.clearMessageHistory(
-                  widget.arguments.peerId,
-                );
-                Navigator.pop(context);
-                Fluttertoast.showToast(msg: 'History cleared');
-              },
-              child: Text('Clear History'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text('Close'),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      print('❌ Error showing debug info: $e');
-    }
-  }
-
   void _showLockOptions() async {
     if (resourceManager.isDisposed) return;
 
     final action = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Lock Conversation'),
+        title: const Text('Lock Conversation'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: Icon(Icons.lock_outline),
-              title: Text('Set PIN'),
+              leading: const Icon(Icons.lock_outline),
+              title: const Text('Set PIN'),
               onTap: () => Navigator.pop(context, 'set_pin'),
             ),
             ListTile(
-              leading: Icon(Icons.lock_open),
-              title: Text('Remove Lock'),
+              leading: const Icon(Icons.lock_open),
+              title: const Text('Remove Lock'),
               onTap: () => Navigator.pop(context, 'remove'),
             ),
           ],
@@ -1490,7 +1310,6 @@ class ChatPageState extends State<ChatPage>
 
   void _showSetPINDialog() async {
     if (resourceManager.isDisposed) return;
-
     final pin = await showDialog<String>(
       context: context,
       builder: (context) => PINInputDialog(
@@ -1498,7 +1317,6 @@ class ChatPageState extends State<ChatPage>
         onComplete: (pin) => Navigator.pop(context, pin),
       ),
     );
-
     if (pin != null && !resourceManager.isDisposed) {
       _showConfirmPINDialog(pin);
     }
@@ -1506,7 +1324,6 @@ class ChatPageState extends State<ChatPage>
 
   void _showConfirmPINDialog(String originalPin) async {
     if (resourceManager.isDisposed) return;
-
     final confirmPin = await showDialog<String>(
       context: context,
       builder: (context) => PINInputDialog(
@@ -1520,7 +1337,6 @@ class ChatPageState extends State<ChatPage>
         conversationId: _groupChatId,
         pin: originalPin,
       );
-
       if (success) {
         Fluttertoast.showToast(msg: 'PIN set successfully');
       }
@@ -1529,7 +1345,36 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
+  // ==========================================
+  // SMART REPLIES
+  // ==========================================
+
+  Future<void> _loadSmartReplies() async {
+    if (_listMessage.isEmpty || resourceManager.isDisposed) return;
+
+    final lastMessage = _listMessage.first;
+    final messageChat = MessageChat.fromDocument(lastMessage);
+
+    if (messageChat.idFrom != _currentUserId &&
+        messageChat.type == TypeMessage.text) {
+      final replies = _smartReplyProvider.getRuleBasedReplies(
+        messageChat.content,
+      );
+      if (mounted && !resourceManager.isDisposed) {
+        setState(() {
+          _smartReplies = replies;
+          _lastReceivedMessage = messageChat.content;
+        });
+      }
+    }
+  }
+
+  // ==========================================
+  // FEATURES MENU
+  // ==========================================
+
   void _toggleFeaturesMenu() {
+    HapticFeedback.selectionClick();
     if (resourceManager.isDisposed || !mounted) return;
     setState(() {
       _showFeaturesMenu = !_showFeaturesMenu;
@@ -1537,127 +1382,29 @@ class ChatPageState extends State<ChatPage>
     });
   }
 
-  Widget _buildFeaturesMenu() {
-    if (!_showFeaturesMenu) return SizedBox.shrink();
+  // ==========================================
+  // LOCATION
+  // ==========================================
 
-    return Container(
-      constraints: BoxConstraints(maxHeight: 110),
-      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: ColorConstants.greyColor2)),
-      ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            _buildFeatureButton(
-              icon: Icons.visibility_off,
-              label: 'View Once',
-              onTap: () {
-                setState(() => _showFeaturesMenu = false);
-                showDialog(
-                  context: context,
-                  builder: (_) => SendViewOnceDialog(
-                    onSend: (content, type) async {
-                      await _viewOnceProvider.sendViewOnceMessage(
-                        groupChatId: _groupChatId,
-                        currentUserId: _currentUserId,
-                        peerId: widget.arguments.peerId,
-                        content: content,
-                        type: type,
-                      );
-                      await _loadSmartReplies();
-                    },
-                  ),
-                );
-              },
-            ),
-            _buildFeatureButton(
-              icon: Icons.timer,
-              label: 'Delete',
-              onTap: () {
-                setState(() => _showFeaturesMenu = false);
-                showDialog(
-                  context: context,
-                  builder: (_) => AutoDeleteSettingsDialog(
-                    conversationId: _groupChatId,
-                    provider: _autoDeleteProvider,
-                  ),
-                );
-              },
-            ),
-            _buildFeatureButton(
-              icon: Icons.lock,
-              label: 'Lock',
-              onTap: () {
-                setState(() => _showFeaturesMenu = false);
-                _showLockOptions();
-              },
-            ),
-            _buildFeatureButton(
-              icon: Icons.location_on,
-              label: 'Location',
-              onTap: () {
-                setState(() => _showFeaturesMenu = false);
-                _shareLocation();
-              },
-            ),
-            _buildFeatureButton(
-              icon: Icons.schedule_send,
-              label: 'Schedule',
-              onTap: () {
-                setState(() => _showFeaturesMenu = false);
-                _scheduleMessage();
-              },
-            ),
-            _buildFeatureButton(
-              icon: Icons.bubble_chart,
-              label: 'Bubble',
-              onTap: () {
-                setState(() => _showFeaturesMenu = false);
-                _createChatBubble();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFeatureButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: () {
-        if (resourceManager.isDisposed) return;
-        setState(() => _showFeaturesMenu = false);
-        onTap();
-      },
-      child: Container(
-        width: 70,
-        padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: ColorConstants.primaryColor, size: 26),
-            SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                color: ColorConstants.primaryColor,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
+  Future<void> _openLocationInMaps(String mapsUrl) async {
+    try {
+      final uri = Uri.parse(mapsUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        print('✅ Opened Maps: $mapsUrl');
+      } else {
+        Fluttertoast.showToast(
+          msg: '❌ Cannot open Google Maps',
+          backgroundColor: Colors.red,
+        );
+      }
+    } catch (e) {
+      print('❌ Error opening Maps: $e');
+      Fluttertoast.showToast(
+        msg: '❌ Failed to open location',
+        backgroundColor: Colors.red,
+      );
+    }
   }
 
   Future<void> _shareLocation() async {
@@ -1666,13 +1413,13 @@ class ChatPageState extends State<ChatPage>
     if (mounted) setState(() => _isLoading = true);
 
     try {
-      // ✅ Request permission first
       final hasPermission =
           await _locationProvider!.requestLocationPermission();
 
       if (!hasPermission) {
-        if (mounted && !resourceManager.isDisposed)
+        if (mounted && !resourceManager.isDisposed) {
           setState(() => _isLoading = false);
+        }
         Fluttertoast.showToast(
           msg: '📍 Location permission required',
           backgroundColor: Colors.red,
@@ -1680,24 +1427,20 @@ class ChatPageState extends State<ChatPage>
         return;
       }
 
-      // ✅ Get location with full details
       final locationData =
           await _locationProvider!.getCurrentLocationWithDetails();
 
-      if (mounted && !resourceManager.isDisposed)
+      if (mounted && !resourceManager.isDisposed) {
         setState(() => _isLoading = false);
+      }
 
       if (locationData != null && !resourceManager.isDisposed) {
-        // ✅ Format message with clickable link
         final message = _locationProvider!.formatLocationMessage(locationData);
-
         await _onSendMessageWithAutoDelete(message, TypeMessage.text);
-
         Fluttertoast.showToast(
           msg: '📍 Location shared successfully',
           backgroundColor: Colors.green,
         );
-
         print('✅ Location sent: ${locationData.mapsUrl}');
       } else {
         Fluttertoast.showToast(
@@ -1707,14 +1450,19 @@ class ChatPageState extends State<ChatPage>
       }
     } catch (e) {
       print('❌ Location share error: $e');
-      if (mounted && !resourceManager.isDisposed)
+      if (mounted && !resourceManager.isDisposed) {
         setState(() => _isLoading = false);
+      }
       Fluttertoast.showToast(
         msg: '❌ Failed to get location',
         backgroundColor: Colors.red,
       );
     }
   }
+
+  // ==========================================
+  // SCHEDULE MESSAGE
+  // ==========================================
 
   Future<void> _scheduleMessage() async {
     if (resourceManager.isDisposed) return;
@@ -1729,18 +1477,14 @@ class ChatPageState extends State<ChatPage>
 
     final messageText = result['message'] as String;
     final scheduledTime = result['time'] as DateTime;
-
     final delay = scheduledTime.difference(DateTime.now());
 
     if (delay.isNegative) {
-      if (mounted) {
-        Fluttertoast.showToast(msg: 'Invalid time');
-      }
+      if (mounted) Fluttertoast.showToast(msg: 'Invalid time');
       return;
     }
 
     final scheduleKey = scheduledTime.millisecondsSinceEpoch.toString();
-
     _scheduledMessageContents[scheduleKey] = messageText;
 
     final timer = Timer(delay, () {
@@ -1765,6 +1509,10 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
+  // ==========================================
+  // VOICE RECORDING
+  // ==========================================
+
   Future<void> _startRecording() async {
     if (_voiceProvider == null || resourceManager.isDisposed) {
       Fluttertoast.showToast(msg: 'Voice recording not available');
@@ -1785,7 +1533,7 @@ class ChatPageState extends State<ChatPage>
         _recordingDuration = "0:00";
       });
 
-      _recordingTimer = Timer.periodic(Duration(seconds: 1), (timer) {
+      _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
         if (!mounted || resourceManager.isDisposed) {
           timer.cancel();
           return;
@@ -1807,8 +1555,9 @@ class ChatPageState extends State<ChatPage>
 
     final filePath = await _voiceProvider!.stopRecording();
     if (filePath == null) {
-      if (mounted && !resourceManager.isDisposed)
+      if (mounted && !resourceManager.isDisposed) {
         setState(() => _isRecording = false);
+      }
       Fluttertoast.showToast(msg: 'Recording failed');
       return;
     }
@@ -1823,8 +1572,9 @@ class ChatPageState extends State<ChatPage>
     final fileName = 'voice_${DateTime.now().millisecondsSinceEpoch}.aac';
     final url = await _voiceProvider!.uploadVoiceMessage(filePath, fileName);
 
-    if (mounted && !resourceManager.isDisposed)
+    if (mounted && !resourceManager.isDisposed) {
       setState(() => _isLoading = false);
+    }
 
     if (url != null && !resourceManager.isDisposed) {
       await _onSendMessageWithAutoDelete(url, 3);
@@ -1836,63 +1586,222 @@ class ChatPageState extends State<ChatPage>
 
   Future<void> _cancelRecording() async {
     if (_voiceProvider == null || resourceManager.isDisposed) return;
-
     _recordingTimer?.cancel();
     await _voiceProvider!.cancelRecording();
-    if (mounted && !resourceManager.isDisposed)
+    if (mounted && !resourceManager.isDisposed) {
       setState(() => _isRecording = false);
+    }
   }
 
-  Widget _buildPinnedMessages() {
-    if (_pinnedMessages.isEmpty) return SizedBox.shrink();
+  // ==========================================
+  // NAVIGATION
+  // ==========================================
 
-    return Container(
-      height: 60,
-      color: ColorConstants.greyColor2.withOpacity(0.3),
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        itemCount: _pinnedMessages.length,
-        itemExtent: 180,
-        itemBuilder: (context, index) {
-          final message = MessageChat.fromDocument(_pinnedMessages[index]);
-          return GestureDetector(
-            onTap: () {
-              // TODO: Scroll to message
-            },
-            child: Container(
-              width: 170,
-              margin: EdgeInsets.symmetric(horizontal: 4),
-              padding: EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.push_pin,
-                    size: 14,
-                    color: ColorConstants.primaryColor,
-                  ),
-                  SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      message.content,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12),
+  void _onBackPress() {
+    if (_isShowSticker || _showFeaturesMenu) {
+      if (mounted && !resourceManager.isDisposed) {
+        setState(() {
+          _isShowSticker = false;
+          _showFeaturesMenu = false;
+        });
+      }
+    } else {
+      _chatProvider.updateDataFirestore(
+        FirestoreConstants.pathUserCollection,
+        _currentUserId,
+        {FirestoreConstants.chattingWith: null},
+      );
+      Navigator.pop(context);
+    }
+  }
+
+  void _minimizeBubble() {
+    print('📦 Minimizing bubble');
+    _focusNode.unfocus();
+    _bubbleChannel.invokeMethod('minimize');
+  }
+
+  void _closeBubble() {
+    print('❌ Closing bubble');
+    _focusNode.unfocus();
+    _bubbleChannel.invokeMethod('close');
+  }
+
+  // ==========================================
+  // CHAT OPTIONS MENU
+  // ==========================================
+
+  void _showChatOptionsMenu() {
+    if (resourceManager.isDisposed) return;
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(Icons.search, color: ColorConstants.primaryColor),
+              title: const Text('Search Messages'),
+              subtitle: const Text('Search in conversation'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SearchMessagesPage(
+                      groupChatId: _groupChatId,
+                      peerName: widget.arguments.peerNickname,
                     ),
                   ),
-                ],
+                );
+              },
+            ),
+            ListTile(
+              leading:
+                  Icon(Icons.notifications, color: ColorConstants.primaryColor),
+              title: const Text('Reminders'),
+              subtitle: const Text('View all reminders'),
+              onTap: () {
+                Navigator.pop(context);
+                _showReminders();
+              },
+            ),
+            if (_unifiedBubbleService != null)
+              ListTile(
+                leading: const Icon(Icons.info_outline, color: Colors.blue),
+                title: const Text('Bubble Implementation'),
+                subtitle: Text(_unifiedBubbleService!.getImplementationInfo()),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showBubbleInfo();
+                },
               ),
+            if (kDebugMode)
+              ListTile(
+                leading: const Icon(Icons.bug_report, color: Colors.orange),
+                title: const Text('Bubble Debug'),
+                subtitle: const Text('View message history & stats'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showBubbleDebugInfo();
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildAppBarActions() {
+    return [
+      VideoCallIconButton(
+        peerId: widget.arguments.peerId,
+        peerName: widget.arguments.peerNickname,
+        peerAvatar: widget.arguments.peerAvatar,
+      ),
+      VoiceCallIconButton(
+        peerId: widget.arguments.peerId,
+        peerName: widget.arguments.peerNickname,
+        peerAvatar: widget.arguments.peerAvatar,
+      ),
+      IconButton(
+        icon: const Icon(Icons.more_horiz_rounded),
+        onPressed: _showChatOptionsMenu,
+        tooltip: 'More options',
+      ),
+    ];
+  }
+
+  // ==========================================
+  // UI: TYPING INDICATOR
+  // ==========================================
+
+  Widget _buildTypingIndicator() {
+    if (_presenceProvider == null) return const SizedBox.shrink();
+
+    return StreamBuilder<Map<String, bool>>(
+      stream: _presenceProvider!.getTypingStatus(_groupChatId),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const SizedBox.shrink();
+
+        final typingUsers = snapshot.data!;
+        final peerTyping = typingUsers[widget.arguments.peerId] ?? false;
+
+        if (!peerTyping) return const SizedBox.shrink();
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          child: TypingIndicator(userName: widget.arguments.peerNickname),
+        );
+      },
+    );
+  }
+
+  // ==========================================
+  // UI: PINNED MESSAGES (Premium)
+  // ==========================================
+
+  Widget _buildPinnedMessages() {
+    if (_pinnedMessages.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      height: 54,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border:
+            Border(bottom: BorderSide(color: Colors.black.withOpacity(0.05))),
+      ),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        itemCount: _pinnedMessages.length,
+        itemBuilder: (context, index) {
+          final message = MessageChat.fromDocument(_pinnedMessages[index]);
+          return Container(
+            width: 200,
+            margin: const EdgeInsets.only(right: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF2F2F7),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.push_pin_rounded,
+                    size: 14, color: Color(0xFF007AFF)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    message.content,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF111418),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
             ),
           );
         },
       ),
     );
   }
+
+  // ==========================================
+  // UI: MESSAGE LIST
+  // ==========================================
 
   Widget _buildListMessage() {
     return Flexible(
@@ -1904,18 +1813,26 @@ class ChatPageState extends State<ChatPage>
                   _listMessage = snapshot.data!.docs;
                   if (_listMessage.isNotEmpty) {
                     return ListView.builder(
-                      padding: EdgeInsets.all(10),
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
                       itemBuilder: (_, index) =>
                           _buildItemMessage(index, snapshot.data?.docs[index]),
                       itemCount: snapshot.data?.docs.length,
                       reverse: true,
                       controller: _listScrollController,
+                      physics: const BouncingScrollPhysics(
+                        parent: AlwaysScrollableScrollPhysics(),
+                      ),
                     );
                   } else {
-                    return Center(child: Text("No message here yet..."));
+                    return const Center(
+                      child: Text(
+                        "Bắt đầu cuộc trò chuyện...",
+                        style: TextStyle(color: Color(0xFF8E8E93)),
+                      ),
+                    );
                   }
                 } else {
-                  return Center(
+                  return const Center(
                     child: CircularProgressIndicator(
                       color: ColorConstants.themeColor,
                     ),
@@ -1923,7 +1840,7 @@ class ChatPageState extends State<ChatPage>
                 }
               },
             )
-          : Center(
+          : const Center(
               child: CircularProgressIndicator(
                 color: ColorConstants.themeColor,
               ),
@@ -1931,19 +1848,30 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
+  // ==========================================
+  // UI: MESSAGE ITEM (Premium Bubbles)
+  // ==========================================
+
   Widget _buildItemMessage(int index, DocumentSnapshot? document) {
-    if (document == null) return SizedBox.shrink();
+    if (document == null) return const SizedBox.shrink();
 
     final messageChat = MessageChat.fromDocument(document);
     final isMyMessage = messageChat.idFrom == _currentUserId;
-
     final data = document.data() as Map<String, dynamic>?;
     final isViewOnce = data?['isViewOnce'] ?? false;
     final isViewed = data?['isViewed'] ?? false;
 
+    // Dynamic border radius based on grouping
+    bool isLastInGroup = true;
+    if (index > 0) {
+      final prevMsg = MessageChat.fromDocument(_listMessage[index - 1]);
+      isLastInGroup = prevMsg.idFrom != messageChat.idFrom;
+    }
+    final double tailRadius = isLastInGroup ? 4.0 : 20.0;
+
     if (isViewOnce) {
       return Container(
-        margin: EdgeInsets.only(bottom: 10),
+        margin: const EdgeInsets.only(bottom: 6),
         child: Row(
           mainAxisAlignment:
               isMyMessage ? MainAxisAlignment.end : MainAxisAlignment.start,
@@ -1965,7 +1893,7 @@ class ChatPageState extends State<ChatPage>
     // Voice Message
     if (messageChat.type == 3 && _voiceProvider != null) {
       return Container(
-        margin: EdgeInsets.only(bottom: 10),
+        margin: const EdgeInsets.only(bottom: 6),
         child: Row(
           mainAxisAlignment:
               isMyMessage ? MainAxisAlignment.end : MainAxisAlignment.start,
@@ -1986,7 +1914,7 @@ class ChatPageState extends State<ChatPage>
           _locationProvider?.parseLocationFromMessage(messageChat.content);
 
       return Container(
-        margin: EdgeInsets.only(bottom: 10),
+        margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
         child: Column(
           crossAxisAlignment:
               isMyMessage ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -1994,19 +1922,53 @@ class ChatPageState extends State<ChatPage>
             Row(
               mainAxisAlignment:
                   isMyMessage ? MainAxisAlignment.end : MainAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 GestureDetector(
-                  onLongPress: () =>
-                      _showAdvancedMessageOptions(messageChat, document.id),
-                  onDoubleTap: () => _showReactionPicker(document.id),
+                  onLongPress: () {
+                    HapticFeedback.heavyImpact();
+                    _showAdvancedMessageOptions(messageChat, document.id);
+                  },
+                  onDoubleTap: () {
+                    HapticFeedback.mediumImpact();
+                    _showReactionPicker(document.id);
+                  },
                   child: Container(
-                    padding: EdgeInsets.all(12),
-                    constraints: BoxConstraints(maxWidth: 250),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.75,
+                    ),
                     decoration: BoxDecoration(
-                      color: isMyMessage
-                          ? ColorConstants.primaryColor
-                          : ColorConstants.greyColor2,
-                      borderRadius: BorderRadius.circular(12),
+                      gradient: isMyMessage
+                          ? const LinearGradient(
+                              colors: [Color(0xFF007AFF), Color(0xFF0056D6)])
+                          : null,
+                      color: isMyMessage ? null : Colors.white,
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(20),
+                        topRight: const Radius.circular(20),
+                        bottomLeft:
+                            Radius.circular(isMyMessage ? 20 : tailRadius),
+                        bottomRight:
+                            Radius.circular(isMyMessage ? tailRadius : 20),
+                      ),
+                      boxShadow: isMyMessage
+                          ? [
+                              BoxShadow(
+                                color:
+                                    const Color(0xFF007AFF).withOpacity(0.25),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              )
+                            ]
+                          : [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.04),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              )
+                            ],
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2017,15 +1979,15 @@ class ChatPageState extends State<ChatPage>
                             style: TextStyle(
                               color: isMyMessage
                                   ? Colors.white70
-                                  : ColorConstants.greyColor,
+                                  : const Color(0xFF8E8E93),
                               fontStyle: FontStyle.italic,
+                              fontSize: 15,
                             ),
                           )
                         else if (location != null)
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Location icon và title
                               Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -2035,7 +1997,7 @@ class ChatPageState extends State<ChatPage>
                                         isMyMessage ? Colors.white : Colors.red,
                                     size: 20,
                                   ),
-                                  SizedBox(width: 4),
+                                  const SizedBox(width: 4),
                                   Text(
                                     'Location',
                                     style: TextStyle(
@@ -2047,9 +2009,7 @@ class ChatPageState extends State<ChatPage>
                                   ),
                                 ],
                               ),
-                              SizedBox(height: 8),
-
-                              // Address
+                              const SizedBox(height: 8),
                               Text(
                                 location.address,
                                 style: TextStyle(
@@ -2059,15 +2019,12 @@ class ChatPageState extends State<ChatPage>
                                   fontSize: 13,
                                 ),
                               ),
-
-                              SizedBox(height: 8),
-
-                              // Clickable Maps link
+                              const SizedBox(height: 8),
                               InkWell(
                                 onTap: () =>
                                     _openLocationInMaps(location.mapsUrl),
                                 child: Container(
-                                  padding: EdgeInsets.symmetric(
+                                  padding: const EdgeInsets.symmetric(
                                     horizontal: 8,
                                     vertical: 6,
                                   ),
@@ -2094,7 +2051,7 @@ class ChatPageState extends State<ChatPage>
                                             ? Colors.white
                                             : ColorConstants.primaryColor,
                                       ),
-                                      SizedBox(width: 4),
+                                      const SizedBox(width: 4),
                                       Text(
                                         'View on Google Maps',
                                         style: TextStyle(
@@ -2106,7 +2063,7 @@ class ChatPageState extends State<ChatPage>
                                           decoration: TextDecoration.underline,
                                         ),
                                       ),
-                                      SizedBox(width: 4),
+                                      const SizedBox(width: 4),
                                       Icon(
                                         Icons.open_in_new,
                                         size: 14,
@@ -2120,17 +2077,20 @@ class ChatPageState extends State<ChatPage>
                               ),
                             ],
                           )
-                        // ✅ TÍCH HỢP MARKDOWN CHO TIN NHẮN TỪ AI TẠI ĐÂY
                         else if (messageChat.idFrom ==
                             AppConstants.aiAssistantId)
                           MarkdownBody(
                             data: messageChat.content,
                             selectable: true,
                             styleSheet: MarkdownStyleSheet(
-                              p: TextStyle(color: Colors.black87, fontSize: 15),
-                              code: TextStyle(
-                                backgroundColor: Colors.black87,
-                                color: Colors.greenAccent,
+                              p: const TextStyle(
+                                color: Color(0xFF111418),
+                                fontSize: 16,
+                                height: 1.4,
+                              ),
+                              code: const TextStyle(
+                                backgroundColor: Color(0xFFF2F2F7),
+                                color: Color(0xFFE91E63),
                                 fontFamily: 'monospace',
                               ),
                               codeblockPadding: const EdgeInsets.all(10),
@@ -2140,31 +2100,50 @@ class ChatPageState extends State<ChatPage>
                               ),
                             ),
                           )
-                        // NẾU LÀ NGƯỜI BÌNH THƯỜNG -> DÙNG TEXT THƯỜNG
                         else
                           Text(
                             messageChat.content,
                             style: TextStyle(
-                              color:
-                                  isMyMessage ? Colors.white : Colors.black87,
-                            ),
-                          ),
-                        if (messageChat.editedAt != null)
-                          Text(
-                            '(edited)',
-                            style: TextStyle(
-                              fontSize: 10,
                               color: isMyMessage
-                                  ? Colors.white70
-                                  : ColorConstants.greyColor,
+                                  ? Colors.white
+                                  : const Color(0xFF111418),
+                              fontSize: 16,
+                              height: 1.3,
                             ),
                           ),
-                        if (isMyMessage && !messageChat.isDeleted)
+
+                        // Edit tag + Read receipt
+                        if (messageChat.editedAt != null ||
+                            (isMyMessage && !messageChat.isDeleted))
                           Padding(
                             padding: const EdgeInsets.only(top: 4),
-                            child: ReadReceiptWidget(
-                              isRead: messageChat.isRead,
-                              size: 14,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                if (messageChat.editedAt != null)
+                                  Text(
+                                    '(edited)',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: isMyMessage
+                                          ? Colors.white70
+                                          : const Color(0xFF8E8E93),
+                                    ),
+                                  ),
+                                if (messageChat.editedAt != null && isMyMessage)
+                                  const SizedBox(width: 4),
+                                if (isMyMessage && !messageChat.isDeleted)
+                                  Icon(
+                                    messageChat.isRead
+                                        ? Icons.done_all_rounded
+                                        : Icons.check_rounded,
+                                    size: 14,
+                                    color: messageChat.isRead
+                                        ? Colors.white
+                                        : Colors.white70,
+                                  ),
+                              ],
                             ),
                           ),
                       ],
@@ -2172,35 +2151,36 @@ class ChatPageState extends State<ChatPage>
                   ),
                 ),
                 if (!messageChat.isDeleted) ...[
-                  SizedBox(width: 4),
+                  const SizedBox(width: 4),
                   Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
-                        icon: Icon(Icons.add_reaction, size: 18),
+                        icon: const Icon(Icons.add_reaction, size: 18),
                         onPressed: () => _showReactionPicker(document.id),
                         padding: EdgeInsets.zero,
-                        constraints: BoxConstraints(),
+                        constraints: const BoxConstraints(),
                       ),
                       if (!isMyMessage)
                         IconButton(
-                          icon: Icon(Icons.alarm_add, size: 18),
+                          icon: const Icon(Icons.alarm_add, size: 18),
                           onPressed: () =>
                               _setMessageReminder(messageChat, document.id),
                           padding: EdgeInsets.zero,
-                          constraints: BoxConstraints(),
+                          constraints: const BoxConstraints(),
                         ),
                     ],
                   ),
                 ],
               ],
             ),
+
             // Reactions display
             StreamBuilder<QuerySnapshot>(
               stream: _reactionProvider.getReactions(_groupChatId, document.id),
               builder: (context, snapshot) {
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return SizedBox.shrink();
+                  return const SizedBox.shrink();
                 }
 
                 final reactions = <String, int>{};
@@ -2239,16 +2219,18 @@ class ChatPageState extends State<ChatPage>
         ),
       );
     }
+
     // Image Message
     else if (messageChat.type == TypeMessage.image) {
       return Container(
-        margin: EdgeInsets.only(bottom: 10),
+        margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
         child: Row(
           mainAxisAlignment:
               isMyMessage ? MainAxisAlignment.end : MainAxisAlignment.start,
           children: [
             GestureDetector(
               onTap: () {
+                HapticFeedback.lightImpact();
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -2256,39 +2238,50 @@ class ChatPageState extends State<ChatPage>
                   ),
                 );
               },
-              onLongPress: () =>
-                  _showAdvancedMessageOptions(messageChat, document.id),
+              onLongPress: () {
+                HapticFeedback.heavyImpact();
+                _showAdvancedMessageOptions(messageChat, document.id);
+              },
               child: Container(
-                clipBehavior: Clip.hardEdge,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.08),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    )
+                  ],
                 ),
-                child: Image.network(
-                  messageChat.content,
-                  width: 200,
-                  height: 200,
-                  fit: BoxFit.cover,
-                  loadingBuilder: (_, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-                    return Container(
-                      width: 200,
-                      height: 200,
-                      color: ColorConstants.greyColor2,
-                      child: Center(
-                        child: CircularProgressIndicator(
-                          value: loadingProgress.expectedTotalBytes != null
-                              ? loadingProgress.cumulativeBytesLoaded /
-                                  loadingProgress.expectedTotalBytes!
-                              : null,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: Image.network(
+                    messageChat.content,
+                    width: MediaQuery.of(context).size.width * 0.65,
+                    height: 250,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (_, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Container(
+                        width: MediaQuery.of(context).size.width * 0.65,
+                        height: 250,
+                        color: const Color(0xFFF2F2F7),
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            value: loadingProgress.expectedTotalBytes != null
+                                ? loadingProgress.cumulativeBytesLoaded /
+                                    loadingProgress.expectedTotalBytes!
+                                : null,
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                  errorBuilder: (_, __, ___) => Container(
-                    width: 200,
-                    height: 200,
-                    color: ColorConstants.greyColor2,
-                    child: Icon(Icons.error),
+                      );
+                    },
+                    errorBuilder: (_, __, ___) => Container(
+                      width: MediaQuery.of(context).size.width * 0.65,
+                      height: 250,
+                      color: ColorConstants.greyColor2,
+                      child: const Icon(Icons.error),
+                    ),
                   ),
                 ),
               ),
@@ -2297,10 +2290,11 @@ class ChatPageState extends State<ChatPage>
         ),
       );
     }
+
     // Sticker
     else {
       return Container(
-        margin: EdgeInsets.only(bottom: 10),
+        margin: const EdgeInsets.only(bottom: 10),
         child: Row(
           mainAxisAlignment:
               isMyMessage ? MainAxisAlignment.end : MainAxisAlignment.start,
@@ -2317,7 +2311,7 @@ class ChatPageState extends State<ChatPage>
                   width: 100,
                   height: 100,
                   color: ColorConstants.greyColor2,
-                  child: Icon(Icons.error),
+                  child: const Icon(Icons.error),
                 ),
               ),
             ),
@@ -2327,6 +2321,10 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
+  // ==========================================
+  // UI: STICKERS
+  // ==========================================
+
   Widget _buildStickers() {
     return Container(
       decoration: BoxDecoration(
@@ -2335,7 +2333,7 @@ class ChatPageState extends State<ChatPage>
         ),
         color: Colors.white,
       ),
-      padding: EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -2377,17 +2375,173 @@ class ChatPageState extends State<ChatPage>
         width: 50,
         height: 50,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Icon(Icons.error),
+        errorBuilder: (_, __, ___) => const Icon(Icons.error),
       ),
     );
   }
 
-  // ✅ BUBBLE MODE INPUT ADJUSTMENTS
+  // ==========================================
+  // UI: FEATURES MENU
+  // ==========================================
+
+  Widget _buildFeaturesMenu() {
+    if (!_showFeaturesMenu) return const SizedBox.shrink();
+
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 110),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: ColorConstants.greyColor2)),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _buildFeatureButton(
+              icon: Icons.visibility_off,
+              label: 'View Once',
+              onTap: () {
+                showDialog(
+                  context: context,
+                  builder: (_) => SendViewOnceDialog(
+                    onSend: (content, type) async {
+                      await _viewOnceProvider.sendViewOnceMessage(
+                        groupChatId: _groupChatId,
+                        currentUserId: _currentUserId,
+                        peerId: widget.arguments.peerId,
+                        content: content,
+                        type: type,
+                      );
+                      await _loadSmartReplies();
+                    },
+                  ),
+                );
+              },
+            ),
+            _buildFeatureButton(
+              icon: Icons.timer,
+              label: 'Delete',
+              onTap: () {
+                showDialog(
+                  context: context,
+                  builder: (_) => AutoDeleteSettingsDialog(
+                    conversationId: _groupChatId,
+                    provider: _autoDeleteProvider,
+                  ),
+                );
+              },
+            ),
+            _buildFeatureButton(
+              icon: Icons.lock,
+              label: 'Lock',
+              onTap: _showLockOptions,
+            ),
+            _buildFeatureButton(
+              icon: Icons.location_on,
+              label: 'Location',
+              onTap: _shareLocation,
+            ),
+            _buildFeatureButton(
+              icon: Icons.schedule_send,
+              label: 'Schedule',
+              onTap: _scheduleMessage,
+            ),
+            _buildFeatureButton(
+              icon: Icons.bubble_chart,
+              label: 'Bubble',
+              onTap: _createChatBubble,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFeatureButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: () {
+        if (resourceManager.isDisposed) return;
+        setState(() => _showFeaturesMenu = false);
+        onTap();
+      },
+      child: Container(
+        width: 70,
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: ColorConstants.primaryColor, size: 26),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                color: ColorConstants.primaryColor,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // UI: RECORDING INDICATOR
+  // ==========================================
+
+  Widget _buildRecordingIndicator() {
+    if (!_isRecording) return const SizedBox.shrink();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      color: Colors.red.withOpacity(0.1),
+      child: Row(
+        children: [
+          const Icon(Icons.fiber_manual_record, color: Colors.red, size: 16),
+          const SizedBox(width: 8),
+          Text(
+            'Recording... $_recordingDuration',
+            style: const TextStyle(
+              color: Colors.red,
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
+          ),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+            onPressed: _cancelRecording,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+          ),
+          IconButton(
+            icon: const Icon(Icons.send,
+                color: ColorConstants.primaryColor, size: 20),
+            onPressed: _stopRecording,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==========================================
+  // UI: INPUT BAR (Premium Pill)
+  // ==========================================
+
   Widget _buildAdvancedInput() {
-    // ✅ Disable complex features in bubble mode/mini chat
     final showFullFeatures = !widget.isBubbleMode && !widget.isMiniChat;
 
-    // ✅ Auto-focus in mini chat/bubble mode
     if ((widget.isMiniChat || widget.isBubbleMode) && !_focusNode.hasFocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !resourceManager.isDisposed) {
@@ -2399,10 +2553,10 @@ class ChatPageState extends State<ChatPage>
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Smart Replies (only in normal mode)
+        // Smart Replies (normal mode only)
         if (_smartReplies.isNotEmpty && showFullFeatures)
           Container(
-            constraints: BoxConstraints(maxHeight: 60),
+            constraints: const BoxConstraints(maxHeight: 60),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: SmartReplyWidget(
@@ -2411,7 +2565,6 @@ class ChatPageState extends State<ChatPage>
                   if (!resourceManager.isDisposed) {
                     _chatInputController.text = reply;
                     setState(() => _smartReplies = []);
-                    // ✅ Refocus after selecting reply
                     _focusNode.requestFocus();
                   }
                 },
@@ -2419,237 +2572,227 @@ class ChatPageState extends State<ChatPage>
             ),
           ),
 
-        // Reply indicator
-        if (_replyingTo != null)
-          Container(
-            width: double.infinity,
-            constraints: BoxConstraints(maxHeight: 50),
-            color: ColorConstants.greyColor2.withOpacity(0.2),
-            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Replying: ${_replyingTo!.content}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 13),
-                  ),
-                ),
-                IconButton(
-                  icon: Icon(Icons.close, size: 18),
-                  onPressed: () {
-                    if (mounted && !resourceManager.isDisposed) {
-                      setState(() => _replyingTo = null);
-                      // ✅ Refocus after closing reply
-                      _focusNode.requestFocus();
-                    }
-                  },
-                  padding: EdgeInsets.zero,
-                  constraints: BoxConstraints(minWidth: 32, minHeight: 32),
-                ),
-              ],
-            ),
-          ),
-
         // Recording indicator
-        if (_isRecording)
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.all(12),
-            color: Colors.red.withOpacity(0.1),
-            child: Row(
-              children: [
-                Icon(Icons.fiber_manual_record, color: Colors.red, size: 16),
-                SizedBox(width: 8),
-                Text(
-                  'Recording... $_recordingDuration',
-                  style: TextStyle(
-                    color: Colors.red,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
-                ),
-                Spacer(),
-                IconButton(
-                  icon: Icon(Icons.delete, color: Colors.red, size: 20),
-                  onPressed: _cancelRecording,
-                  padding: EdgeInsets.zero,
-                  constraints: BoxConstraints(minWidth: 36, minHeight: 36),
-                ),
-                IconButton(
-                  icon: Icon(
-                    Icons.send,
-                    color: ColorConstants.primaryColor,
-                    size: 20,
-                  ),
-                  onPressed: _stopRecording,
-                  padding: EdgeInsets.zero,
-                  constraints: BoxConstraints(minWidth: 36, minHeight: 36),
-                ),
-              ],
-            ),
-          ),
+        _buildRecordingIndicator(),
 
-        // ✅ KEYBOARD FIX: Input area
+        // Floating Pill Input
         Container(
-          width: double.infinity,
-          constraints: BoxConstraints(
-            minHeight: 50,
-            maxHeight: 120,
+          margin: EdgeInsets.only(
+            bottom: MediaQuery.of(context).padding.bottom + 12,
+            left: 16,
+            right: 16,
+            top: 8,
           ),
-          decoration: BoxDecoration(
-            border: Border(
-              top: BorderSide(color: ColorConstants.greyColor2, width: 0.5),
-            ),
-            color: Colors.white,
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // More options button (Disabled in Mini Chat/Bubble Mode)
-              if (showFullFeatures)
-                Material(
-                  color: Colors.white,
-                  child: Container(
-                    margin: EdgeInsets.symmetric(horizontal: 1),
-                    child: IconButton(
-                      icon: Icon(
-                        _showFeaturesMenu ? Icons.close : Icons.more_horiz,
-                        color: ColorConstants.primaryColor,
-                        size: 24,
+              // Reply indicator
+              if (_replyingTo != null)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.04),
+                        blurRadius: 8,
+                      )
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.reply_rounded,
+                          color: Color(0xFF007AFF), size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Đang trả lời: ${_replyingTo!.content}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF8E8E93),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                       ),
-                      onPressed: _toggleFeaturesMenu,
-                      padding: EdgeInsets.all(8),
-                      constraints: BoxConstraints(minWidth: 40, minHeight: 40),
+                      GestureDetector(
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          if (mounted) {
+                            setState(() => _replyingTo = null);
+                            _focusNode.requestFocus();
+                          }
+                        },
+                        child: const Icon(Icons.close_rounded,
+                            size: 20, color: Color(0xFF8E8E93)),
+                      ),
+                    ],
+                  ),
+                ),
+
+              // Main pill
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(30),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.06),
+                      blurRadius: 20,
+                      offset: const Offset(0, 6),
                     ),
-                  ),
+                  ],
                 ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    // More options
+                    if (showFullFeatures)
+                      IconButton(
+                        icon: Icon(
+                          _showFeaturesMenu
+                              ? Icons.close_rounded
+                              : Icons.add_circle_rounded,
+                        ),
+                        color: const Color(0xFF8E8E93),
+                        iconSize: 28,
+                        onPressed: _toggleFeaturesMenu,
+                      ),
 
-              // Image picker (Disabled in Mini Chat/Bubble Mode)
-              if (showFullFeatures)
-                Material(
-                  color: Colors.white,
-                  child: IconButton(
-                    icon: Icon(Icons.image, size: 24),
-                    onPressed: () {
-                      _pickImage().then((isSuccess) {
-                        if (isSuccess) _uploadFile();
-                      });
-                    },
-                    color: ColorConstants.primaryColor,
-                    padding: EdgeInsets.all(8),
-                    constraints: BoxConstraints(minWidth: 40, minHeight: 40),
-                  ),
-                ),
+                    // Image picker
+                    if (showFullFeatures && !_showFeaturesMenu)
+                      IconButton(
+                        icon: const Icon(Icons.image_rounded),
+                        color: const Color(0xFF8E8E93),
+                        iconSize: 26,
+                        onPressed: () => _pickImage().then((s) {
+                          if (s) _uploadFile();
+                        }),
+                      ),
 
-              // Sticker button (Disabled in Mini Chat/Bubble Mode)
-              if (showFullFeatures)
-                Material(
-                  color: Colors.white,
-                  child: IconButton(
-                    icon: Icon(Icons.face, size: 24),
-                    onPressed: _getSticker,
-                    color: ColorConstants.primaryColor,
-                    padding: EdgeInsets.all(8),
-                    constraints: BoxConstraints(minWidth: 40, minHeight: 40),
-                  ),
-                ),
+                    // Sticker button
+                    if (showFullFeatures && !_showFeaturesMenu)
+                      IconButton(
+                        icon: const Icon(Icons.face_rounded),
+                        color: const Color(0xFF8E8E93),
+                        iconSize: 26,
+                        onPressed: _getSticker,
+                      ),
 
-              // ✅ KEYBOARD FIX: Text input with better handling
-              Expanded(
-                child: Container(
-                  constraints: BoxConstraints(
-                    minHeight: 40,
-                    maxHeight: 100,
-                  ),
-                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  child: TextField(
-                    // ✅ CRITICAL: Don't close keyboard on outside tap in mini chat/bubble mode
-                    onTapOutside: (widget.isBubbleMode || widget.isMiniChat)
-                        ? null
-                        : (_) {
-                            Utilities.closeKeyboard();
+                    // Text field
+                    Expanded(
+                      child: Container(
+                        constraints: const BoxConstraints(
+                          minHeight: 40,
+                          maxHeight: 120,
+                        ),
+                        padding: EdgeInsets.only(
+                          left: showFullFeatures ? 0 : 16,
+                          right: 8,
+                          top: 12,
+                          bottom: 12,
+                        ),
+                        child: TextField(
+                          controller: _chatInputController,
+                          focusNode: _focusNode,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Color(0xFF111418),
+                          ),
+                          maxLines: null,
+                          textInputAction: TextInputAction.newline,
+                          autofocus: widget.isMiniChat || widget.isBubbleMode,
+                          onTapOutside:
+                              (widget.isBubbleMode || widget.isMiniChat)
+                                  ? null
+                                  : (_) {
+                                      Utilities.closeKeyboard();
+                                    },
+                          onSubmitted: (_) {
+                            if (!resourceManager.isDisposed) {
+                              _onSendMessageWithAutoDelete(
+                                _chatInputController.text,
+                                TypeMessage.text,
+                              );
+                              if (widget.isMiniChat || widget.isBubbleMode) {
+                                Future.delayed(
+                                    const Duration(milliseconds: 100), () {
+                                  if (mounted) {
+                                    _focusNode.requestFocus();
+                                  }
+                                });
+                              }
+                            }
                           },
-                    onSubmitted: (_) {
-                      if (!resourceManager.isDisposed) {
-                        _onSendMessageWithAutoDelete(
-                          _chatInputController.text,
-                          TypeMessage.text,
-                        );
-                        // ✅ Refocus after sending in mini chat/bubble mode
-                        if (widget.isMiniChat || widget.isBubbleMode) {
-                          Future.delayed(Duration(milliseconds: 100), () {
-                            if (mounted) _focusNode.requestFocus();
-                          });
-                        }
-                      }
-                    },
-                    onChanged: (text) {
-                      _handleTyping(text);
-                      if (text.isNotEmpty &&
-                          _smartReplies.isNotEmpty &&
-                          mounted &&
-                          !resourceManager.isDisposed) {
-                        setState(() => _smartReplies = []);
-                      }
-                    },
-                    style: TextStyle(
-                      color: ColorConstants.primaryColor,
-                      fontSize: 15,
+                          onChanged: (text) {
+                            _handleTyping(text);
+                            if (text.isNotEmpty &&
+                                _smartReplies.isNotEmpty &&
+                                mounted &&
+                                !resourceManager.isDisposed) {
+                              setState(() => _smartReplies = []);
+                            }
+                          },
+                          decoration: InputDecoration.collapsed(
+                            hintText: (widget.isBubbleMode || widget.isMiniChat)
+                                ? 'Nhắn tin...'
+                                : 'Nhắn tin...',
+                            hintStyle: const TextStyle(
+                              color: Color(0xFF8E8E93),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                    controller: _chatInputController,
-                    decoration: InputDecoration.collapsed(
-                      hintText: (widget.isBubbleMode || widget.isMiniChat)
-                          ? 'Type...'
-                          : 'Type your message...',
-                      hintStyle: TextStyle(color: ColorConstants.greyColor),
+
+                    // Send / Mic button
+                    Padding(
+                      padding: const EdgeInsets.all(6.0),
+                      child: GestureDetector(
+                        onTap: () {
+                          if (_chatInputController.text.trim().isNotEmpty) {
+                            _onSendMessageWithAutoDelete(
+                              _chatInputController.text,
+                              TypeMessage.text,
+                            );
+                            if (widget.isMiniChat || widget.isBubbleMode) {
+                              Future.delayed(const Duration(milliseconds: 100),
+                                  () {
+                                if (mounted) _focusNode.requestFocus();
+                              });
+                            }
+                          } else if (showFullFeatures) {
+                            _startRecording();
+                          }
+                        },
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF007AFF),
+                            shape: BoxShape.circle,
+                          ),
+                          child: ValueListenableBuilder<TextEditingValue>(
+                            valueListenable: _chatInputController,
+                            builder: (context, value, child) {
+                              final hasText = value.text.trim().isNotEmpty;
+                              return Icon(
+                                hasText
+                                    ? Icons.send_rounded
+                                    : Icons.mic_rounded,
+                                color: Colors.white,
+                                size: 20,
+                              );
+                            },
+                          ),
+                        ),
+                      ),
                     ),
-                    focusNode: _focusNode,
-                    maxLines: 4,
-                    minLines: 1,
-                    textInputAction: TextInputAction.newline,
-                    // ✅ CRITICAL: Auto-focus in mini chat/bubble mode (triggers keyboard)
-                    autofocus: widget.isMiniChat || widget.isBubbleMode,
-                  ),
-                ),
-              ),
-
-              // Voice button (disabled in mini chat/bubble mode)
-              if (!_isRecording && _voiceProvider != null && showFullFeatures)
-                Material(
-                  color: Colors.white,
-                  child: IconButton(
-                    icon: Icon(Icons.mic, size: 24),
-                    onPressed: _startRecording,
-                    color: ColorConstants.primaryColor,
-                    padding: EdgeInsets.all(8),
-                    constraints: BoxConstraints(minWidth: 40, minHeight: 40),
-                  ),
-                ),
-
-              // Send button
-              Material(
-                color: Colors.white,
-                child: IconButton(
-                  icon: Icon(Icons.send, size: 24),
-                  onPressed: () {
-                    if (!resourceManager.isDisposed) {
-                      _onSendMessageWithAutoDelete(
-                        _chatInputController.text,
-                        TypeMessage.text,
-                      );
-                      // ✅ Keep focus in mini chat/bubble mode
-                      if (widget.isMiniChat || widget.isBubbleMode) {
-                        Future.delayed(Duration(milliseconds: 100), () {
-                          if (mounted) _focusNode.requestFocus();
-                        });
-                      }
-                    }
-                  },
-                  color: ColorConstants.primaryColor,
-                  padding: EdgeInsets.all(8),
-                  constraints: BoxConstraints(minWidth: 40, minHeight: 40),
+                  ],
                 ),
               ),
             ],
@@ -2659,85 +2802,29 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  void _onBackPress() {
-    if (_isShowSticker || _showFeaturesMenu) {
-      if (mounted && !resourceManager.isDisposed) {
-        setState(() {
-          _isShowSticker = false;
-          _showFeaturesMenu = false;
-        });
-      }
-    } else {
-      _chatProvider.updateDataFirestore(
-        FirestoreConstants.pathUserCollection,
-        _currentUserId,
-        {FirestoreConstants.chattingWith: null},
-      );
-      Navigator.pop(context);
-    }
-  }
+  // ==========================================
+  // UI: HEADERS (Bubble / MiniChat)
+  // ==========================================
 
-  // ✅ BUBBLE ACTIONS
-  void _minimizeBubble() {
-    print('📦 Minimizing bubble');
-
-    // Close keyboard if open
-    _focusNode.unfocus();
-
-    // Tell BubbleActivity to minimize
-    _bubbleChannel.invokeMethod('minimize');
-  }
-
-  void _closeBubble() {
-    print('❌ Closing bubble');
-
-    // Close keyboard
-    _focusNode.unfocus();
-
-    // Tell BubbleActivity to close
-    _bubbleChannel.invokeMethod('close');
-  }
-
-  // ✅ BUBBLE HEADER
   Widget _buildBubbleHeader() {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: ColorConstants.primaryColor,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 4,
-            offset: Offset(0, 2),
-          ),
-        ],
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        border: Border(bottom: BorderSide(color: Color(0xFFF2F2F7), width: 1)),
       ),
       child: Row(
         children: [
-          // Drag handle indicator
-          Container(
-            width: 40,
-            height: 4,
-            margin: EdgeInsets.only(right: 8),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-
-          // Peer Avatar
           CircleAvatar(
             backgroundImage: NetworkImage(widget.arguments.peerAvatar),
             radius: 18,
             onBackgroundImageError: (_, __) {},
             child: widget.arguments.peerAvatar.isEmpty
-                ? Icon(Icons.person, size: 18, color: Colors.grey)
+                ? const Icon(Icons.person, size: 18, color: Colors.grey)
                 : null,
           ),
-          SizedBox(width: 8),
-
-          // Peer Nickname
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2745,117 +2832,100 @@ class ChatPageState extends State<ChatPage>
               children: [
                 Text(
                   widget.arguments.peerNickname,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
+                  style: const TextStyle(
+                    color: Color(0xFF111418),
+                    fontWeight: FontWeight.w700,
                     fontSize: 16,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
-                // ✅ Show online status
                 UserStatusIndicator(
                   userId: widget.arguments.peerId,
                   showText: true,
                   size: 8,
-                  textColor: Colors.white70,
+                  textColor: const Color(0xFF8E8E93),
                 ),
               ],
             ),
           ),
-
-          // Minimize button
           IconButton(
-            icon: Icon(Icons.remove, color: Colors.white, size: 22),
-            onPressed: _minimizeBubble,
+            icon: const Icon(Icons.remove_rounded, color: Color(0xFF8E8E93)),
+            onPressed: () {
+              _focusNode.unfocus();
+              _bubbleChannel.invokeMethod('minimize');
+            },
             padding: EdgeInsets.zero,
-            constraints: BoxConstraints(minWidth: 36, minHeight: 36),
-            tooltip: 'Minimize',
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
           ),
-          SizedBox(width: 4),
-
-          // Close button
+          const SizedBox(width: 4),
           IconButton(
-            icon: Icon(Icons.close, color: Colors.white, size: 22),
-            onPressed: _closeBubble,
+            icon: const Icon(Icons.close_rounded, color: Color(0xFF8E8E93)),
+            onPressed: () {
+              _focusNode.unfocus();
+              _bubbleChannel.invokeMethod('close');
+            },
             padding: EdgeInsets.zero,
-            constraints: BoxConstraints(minWidth: 36, minHeight: 36),
-            tooltip: 'Close',
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
           ),
         ],
       ),
     );
   }
 
-  // ✅ MODIFY: _buildMiniChatHeader to use the correct buttons and close keyboard
   Widget _buildMiniChatHeader() {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: ColorConstants.primaryColor,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        border: Border(bottom: BorderSide(color: Color(0xFFF2F2F7), width: 1)),
       ),
       child: Row(
         children: [
-          // Drag handle indicator
-          Container(
-            width: 40,
-            height: 4,
-            margin: EdgeInsets.only(right: 8),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-
-          // Peer Avatar
           CircleAvatar(
             backgroundImage: NetworkImage(widget.arguments.peerAvatar),
             radius: 18,
             onBackgroundImageError: (_, __) {},
           ),
-          SizedBox(width: 8),
-
-          // Peer Nickname
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
               widget.arguments.peerNickname,
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
+              style: const TextStyle(
+                color: Color(0xFF111418),
+                fontWeight: FontWeight.w700,
                 fontSize: 16,
               ),
               overflow: TextOverflow.ellipsis,
             ),
           ),
-
-          // Minimize button
           IconButton(
-            icon: Icon(Icons.remove, color: Colors.white, size: 22),
+            icon: const Icon(Icons.remove_rounded, color: Color(0xFF8E8E93)),
             onPressed: () {
-              // ✅ Close keyboard before minimizing
               _focusNode.unfocus();
               _miniChatChannel.invokeMethod('minimize');
             },
             padding: EdgeInsets.zero,
-            constraints: BoxConstraints(minWidth: 36, minHeight: 36),
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
           ),
-          SizedBox(width: 4),
-
-          // Close button
+          const SizedBox(width: 4),
           IconButton(
-            icon: Icon(Icons.close, color: Colors.white, size: 22),
+            icon: const Icon(Icons.close_rounded, color: Color(0xFF8E8E93)),
             onPressed: () {
-              // ✅ Close keyboard before closing
               _focusNode.unfocus();
               _miniChatChannel.invokeMethod('close');
             },
             padding: EdgeInsets.zero,
-            constraints: BoxConstraints(minWidth: 36, minHeight: 36),
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
           ),
         ],
       ),
     );
   }
+
+  // ==========================================
+  // UI: CHAT CONTENT
+  // ==========================================
 
   Widget _buildChatContent() {
     return Stack(
@@ -2865,40 +2935,39 @@ class ChatPageState extends State<ChatPage>
             _buildPinnedMessages(),
             _buildListMessage(),
             _buildTypingIndicator(),
-            // Sticker và Feature Menu chỉ nên hiển thị trong main app (Normal Mode)
-            if (_isShowSticker &&
-                !widget.isMiniChat &&
-                !widget.isBubbleMode) // ✅ Check Bubble Mode
+            if (_isShowSticker && !widget.isMiniChat && !widget.isBubbleMode)
               _buildStickers(),
-            if (_showFeaturesMenu &&
-                !widget.isMiniChat &&
-                !widget.isBubbleMode) // ✅ Check Bubble Mode
+            if (_showFeaturesMenu && !widget.isMiniChat && !widget.isBubbleMode)
               _buildFeaturesMenu(),
             _buildAdvancedInput(),
           ],
         ),
         Positioned(
-          child: _isLoading ? LoadingView() : SizedBox.shrink(),
+          child: _isLoading ? const LoadingView() : const SizedBox.shrink(),
         ),
       ],
     );
   }
 
+  // ==========================================
+  // BUILD
+  // ==========================================
+
   @override
   Widget build(BuildContext context) {
-    // ✅ BUBBLE MODE: Use custom header
+    // Bubble Mode
     if (widget.isBubbleMode) {
       return Scaffold(
+        backgroundColor: const Color(0xFFF2F2F7),
         body: PopScope(
           canPop: false,
           onPopInvokedWithResult: (didPop, result) {
             if (didPop) return;
-            // Minimize bubble instead of popping
             _minimizeBubble();
           },
           child: Column(
             children: [
-              _buildBubbleHeader(), // ✅ Custom header for bubble
+              _buildBubbleHeader(),
               Expanded(child: _buildChatContent()),
             ],
           ),
@@ -2906,34 +2975,39 @@ class ChatPageState extends State<ChatPage>
       );
     }
 
-    // MINI CHAT MODE (existing)
+    // Mini Chat Mode
     if (widget.isMiniChat) {
       return Scaffold(
+        backgroundColor: const Color(0xFFF2F2F7),
         body: PopScope(
           canPop: false,
           onPopInvokedWithResult: (didPop, result) {
             if (didPop) return;
+            _focusNode.unfocus();
             _miniChatChannel.invokeMethod('minimize');
           },
-          child: Container(
-            child: Column(
-              children: [
-                _buildMiniChatHeader(),
-                Expanded(child: _buildChatContent()),
-              ],
-            ),
+          child: Column(
+            children: [
+              _buildMiniChatHeader(),
+              Expanded(child: _buildChatContent()),
+            ],
           ),
         ),
       );
     }
 
-    // NORMAL MODE (Original UI)
+    // Normal Mode
     return Scaffold(
+      backgroundColor: const Color(0xFFF2F2F7),
       appBar: AppBar(
+        backgroundColor: Colors.white.withOpacity(0.95),
+        elevation: 0,
+        scrolledUnderElevation: 0.5,
         leading: widget.isWebMode
-            ? const SizedBox.shrink() // Web ẩn nút back
+            ? const SizedBox.shrink()
             : IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new),
+                icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                    color: Color(0xFF007AFF)),
                 onPressed: _onBackPress,
               ),
         title: InkWell(
@@ -2948,8 +3022,9 @@ class ChatPageState extends State<ChatPage>
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) =>
-                      UserProfilePage(userChat: UserChat.fromDocument(userDoc)),
+                  builder: (_) => UserProfilePage(
+                    userChat: UserChat.fromDocument(userDoc),
+                  ),
                 ),
               );
             }
@@ -2969,9 +3044,11 @@ class ChatPageState extends State<ChatPage>
                   children: [
                     Text(
                       widget.arguments.peerNickname,
-                      style: TextStyle(
-                        color: ColorConstants.primaryColor,
-                        fontSize: 16,
+                      style: const TextStyle(
+                        color: Color(0xFF111418),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.4,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -2988,6 +3065,7 @@ class ChatPageState extends State<ChatPage>
         ),
         centerTitle: false,
         actions: _buildAppBarActions(),
+        iconTheme: const IconThemeData(color: Color(0xFF007AFF)),
       ),
       body: SafeArea(
         child: PopScope(
@@ -3001,65 +3079,11 @@ class ChatPageState extends State<ChatPage>
       ),
     );
   }
-
-  @override
-  void dispose() {
-    // ✅ FIX: ResourceManager handles subscriptions and listener cleanup
-
-    // Cancel scheduled messages
-    _scheduledMessages.forEach((key, timer) {
-      try {
-        timer.cancel();
-      } catch (e) {
-        print('⚠️ Error canceling timer: $e');
-      }
-    });
-    _scheduledMessages.clear();
-    _scheduledMessageContents.clear();
-
-    // Cancel recording timer
-    _recordingTimer?.cancel();
-
-    // Set user offline
-    try {
-      if (_presenceProvider != null && _currentUserId.isNotEmpty) {
-        _presenceProvider!.setUserOffline(_currentUserId);
-        _presenceProvider!.setTypingStatus(
-          conversationId: _groupChatId,
-          userId: _currentUserId,
-          isTyping: false,
-        );
-      }
-    } catch (e) {
-      print('⚠️ Error updating presence: $e');
-    }
-
-    // Dispose voice provider
-    try {
-      _voiceProvider?.dispose();
-    } catch (e) {
-      print('⚠️ Error disposing voice provider: $e');
-    }
-
-    // Dispose controllers
-    try {
-      _chatInputController.dispose();
-      _listScrollController.dispose();
-      _focusNode.dispose();
-    } catch (e) {
-      print('⚠️ Controller disposal error: $e');
-    }
-
-    // Remove lifecycle observer
-    try {
-      WidgetsBinding.instance.removeObserver(this);
-    } catch (e) {
-      print('⚠️ Error removing observer: $e');
-    }
-
-    super.dispose();
-  }
 }
+
+// ==========================================
+// ChatPageArguments
+// ==========================================
 
 class ChatPageArguments {
   final String peerId;
