@@ -28,6 +28,7 @@ dependencies:
 
   # Authentication
   google_sign_in: ^6.2.1
+  google_sign_in_web: ^0.12.4+2
   local_auth: ^3.0.0
 
   # Image handling
