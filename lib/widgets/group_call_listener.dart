@@ -1,15 +1,13 @@
 // lib/widgets/group_call_listener.dart
 import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart'; // Thêm dòng này
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 import '../models/group_call_model.dart';
 import '../pages/incoming_group_call_page.dart';
-import '../providers/auth_provider.dart';
 import '../services/group_call_service.dart';
 
-/// Wrap around CallListener in main.dart to handle incoming group calls
 class GroupCallListener extends StatefulWidget {
   final Widget child;
   const GroupCallListener({super.key, required this.child});
@@ -21,27 +19,27 @@ class GroupCallListener extends StatefulWidget {
 class _GroupCallListenerState extends State<GroupCallListener> {
   final _service = GroupCallService();
   StreamSubscription? _sub;
+  StreamSubscription? _authSub; // Thêm biến này
   String? _activeCallId;
 
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 500), _startListening);
-  }
-
-  void _startListening() {
-    final uid = context.read<AuthProvider>().userFirebaseId;
-    if (uid == null || uid.isEmpty) return;
-
-    _sub = _service.incomingGroupCallStream(uid).listen((call) {
-      if (call == null) return;
-      if (call.callId == _activeCallId) return;
-      _activeCallId = call.callId;
-      _showIncoming(call, uid);
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      _sub?.cancel();
+      if (user != null) {
+        _sub = _service.incomingGroupCallStream(user.uid).listen((call) {
+          if (call == null) return;
+          if (call.callId == _activeCallId) return;
+          _activeCallId = call.callId;
+          _showIncoming(call, user.uid);
+        });
+      }
     });
   }
 
   void _showIncoming(GroupCallModel call, String currentUserId) {
+    if (!mounted) return;
     final nav = Navigator.of(context, rootNavigator: true);
     nav
         .push(
@@ -67,6 +65,7 @@ class _GroupCallListenerState extends State<GroupCallListener> {
   @override
   void dispose() {
     _sub?.cancel();
+    _authSub?.cancel();
     super.dispose();
   }
 

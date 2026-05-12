@@ -1,6 +1,7 @@
 // lib/widgets/call_listener.dart
 import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart'; // Thêm dòng này
 import 'package:flutter/material.dart';
 
 import '../models/call_model.dart';
@@ -9,7 +10,6 @@ import '../services/call_service.dart';
 
 class CallListener extends StatefulWidget {
   final Widget child;
-
   const CallListener({super.key, required this.child});
 
   @override
@@ -19,29 +19,32 @@ class CallListener extends StatefulWidget {
 class _CallListenerState extends State<CallListener> {
   final _callService = CallService();
   StreamSubscription? _incomingCallSub;
+  StreamSubscription? _authSub; // Thêm biến này
   String? _activeIncomingCallId;
 
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 800), _startListening);
-  }
+    // Lắng nghe sự thay đổi trạng thái đăng nhập
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      // Hủy lắng nghe cũ (nếu có)
+      _incomingCallSub?.cancel();
 
-  void _startListening() {
-    if (!mounted) return;
+      // Nếu user đã đăng nhập, bắt đầu lắng nghe cuộc gọi tới
+      if (user != null) {
+        _incomingCallSub = _callService.incomingCallStream.listen((call) {
+          if (call == null) return;
+          if (call.callId == _activeIncomingCallId) return;
 
-    _incomingCallSub = _callService.incomingCallStream.listen((call) {
-      if (call == null) return;
-      if (call.callId == _activeIncomingCallId) return;
-
-      _activeIncomingCallId = call.callId;
-      _showIncomingCall(call);
+          _activeIncomingCallId = call.callId;
+          _showIncomingCall(call);
+        });
+      }
     });
   }
 
   void _showIncomingCall(CallModel call) {
     if (!mounted) return;
-
     final nav = Navigator.of(context, rootNavigator: true);
     nav
         .push(
@@ -67,6 +70,7 @@ class _CallListenerState extends State<CallListener> {
   @override
   void dispose() {
     _incomingCallSub?.cancel();
+    _authSub?.cancel(); // Đừng quên cancel authSub
     super.dispose();
   }
 

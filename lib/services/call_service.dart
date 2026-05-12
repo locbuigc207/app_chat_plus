@@ -15,7 +15,7 @@ class CallService {
   static const int _callTimeoutSeconds = 30;
 
   // ── Incoming calls stream ──────────────────────────────
-  // FIX: Dùng 2 query riêng thay vì compound OR (tránh lỗi index)
+  // FIX: Bỏ .orderBy('createdAt') để tránh lỗi yêu cầu composite index
   Stream<CallModel?> get incomingCallStream {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return Stream.value(null);
@@ -24,7 +24,7 @@ class CallService {
         .collection(_callsCollection)
         .where('calleeId', isEqualTo: uid)
         .where('status', whereIn: ['calling', 'ringing'])
-        .orderBy('createdAt', descending: true)
+        // .orderBy('createdAt', descending: true) // XÓA để tránh lỗi index
         .limit(1)
         .snapshots()
         .map((snap) {

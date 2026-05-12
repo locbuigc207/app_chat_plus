@@ -320,12 +320,8 @@ class _GroupCallPageState extends State<GroupCallPage>
           // Participants panel
           if (_showParticipantsList) _buildParticipantsPanel(),
 
-          // Bottom controls
-          AnimatedOpacity(
-            opacity: _showControls ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 300),
-            child: _buildBottomControls(),
-          ),
+          // Bottom controls - AnimatedOpacity đã chuyển vào trong _buildBottomControls
+          _buildBottomControls(),
         ],
       ),
     );
@@ -340,7 +336,6 @@ class _GroupCallPageState extends State<GroupCallPage>
           children: [
             CircleAvatar(
               radius: 56,
-              backgroundImage: widget.call.groupName.isNotEmpty ? null : null,
               backgroundColor: Colors.blueGrey,
               child: const Icon(Icons.group, size: 56, color: Colors.white),
             ),
@@ -411,7 +406,6 @@ class _GroupCallPageState extends State<GroupCallPage>
   }
 
   Widget _buildGridLayout(List<int> allUids) {
-    // Up to 2x2 then scrollable
     final count = allUids.length;
 
     if (count == 1) {
@@ -830,73 +824,79 @@ class _GroupCallPageState extends State<GroupCallPage>
       bottom: 0,
       left: 0,
       right: 0,
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 20, left: 16, right: 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Secondary controls row
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _controlBtn(
-                    icon: _isMuted ? Icons.mic_off : Icons.mic,
-                    label: _isMuted ? 'Mở Mic' : 'Tắt Mic',
-                    active: _isMuted,
-                    onTap: _toggleMute,
-                  ),
-                  _controlBtn(
-                    icon: _isSpeakerOn ? Icons.volume_up : Icons.hearing,
-                    label: _isSpeakerOn ? 'Loa ngoài' : 'Loa trong',
-                    active: _isSpeakerOn,
-                    onTap: _toggleSpeaker,
-                  ),
-                  if (widget.call.isVideo)
+      child: AnimatedOpacity(
+        // ✅ AnimatedOpacity chuyển vào đây, bỏ wrapper bên ngoài
+        opacity: _showControls ? 1.0 : 0.0,
+        duration: const Duration(milliseconds: 300),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 20, left: 16, right: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Secondary controls row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
                     _controlBtn(
-                      icon: _isCameraOff ? Icons.videocam_off : Icons.videocam,
-                      label: _isCameraOff ? 'Mở Cam' : 'Tắt Cam',
-                      active: _isCameraOff,
-                      onTap: _toggleCamera,
+                      icon: _isMuted ? Icons.mic_off : Icons.mic,
+                      label: _isMuted ? 'Mở Mic' : 'Tắt Mic',
+                      active: _isMuted,
+                      onTap: _toggleMute,
                     ),
-                  if (widget.call.isVideo)
                     _controlBtn(
-                      icon: Icons.flip_camera_android,
-                      label: 'Xoay',
-                      active: false,
-                      onTap: _switchCamera,
+                      icon: _isSpeakerOn ? Icons.volume_up : Icons.hearing,
+                      label: _isSpeakerOn ? 'Loa ngoài' : 'Loa trong',
+                      active: _isSpeakerOn,
+                      onTap: _toggleSpeaker,
                     ),
-                  _controlBtn(
-                    icon: Icons.people,
-                    label: 'Danh sách',
-                    active: _showParticipantsList,
-                    onTap: () => setState(
-                        () => _showParticipantsList = !_showParticipantsList),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              // End call
-              GestureDetector(
-                onTap: _hangUp,
-                child: Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE53935),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                          color: const Color(0xFFE53935).withOpacity(0.4),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4))
-                    ],
-                  ),
-                  child:
-                      const Icon(Icons.call_end, color: Colors.white, size: 28),
+                    if (widget.call.isVideo)
+                      _controlBtn(
+                        icon:
+                            _isCameraOff ? Icons.videocam_off : Icons.videocam,
+                        label: _isCameraOff ? 'Mở Cam' : 'Tắt Cam',
+                        active: _isCameraOff,
+                        onTap: _toggleCamera,
+                      ),
+                    if (widget.call.isVideo)
+                      _controlBtn(
+                        icon: Icons.flip_camera_android,
+                        label: 'Xoay',
+                        active: false,
+                        onTap: _switchCamera,
+                      ),
+                    _controlBtn(
+                      icon: Icons.people,
+                      label: 'Danh sách',
+                      active: _showParticipantsList,
+                      onTap: () => setState(
+                          () => _showParticipantsList = !_showParticipantsList),
+                    ),
+                  ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 20),
+                // End call
+                GestureDetector(
+                  onTap: _hangUp,
+                  child: Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE53935),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                            color: const Color(0xFFE53935).withOpacity(0.4),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4))
+                      ],
+                    ),
+                    child: const Icon(Icons.call_end,
+                        color: Colors.white, size: 28),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
