@@ -18,28 +18,26 @@ import io.flutter.plugin.common.MethodChannel
  * FIXES APPLIED:
  *
  * FIX-A — Engine warmup với readiness callback:
- *   Trước: warmUpSharedEngine() tạo engine xong là coi ready, nhưng Dart VM
- *          chưa chắc đã execute xong entry point.
- *   Sau:  Thêm lifecycleChannel.appIsResumed() để signal Flutter engine
- *         đang active, giúp Dart VM start sớm hơn. Giảm black screen 1-3s.
+ * Trước: warmUpSharedEngine() tạo engine xong là coi ready, nhưng Dart VM
+ * chưa chắc đã execute xong entry point.
+ * Sau:  Thêm lifecycleChannel.appIsResumed() để signal Flutter engine
+ * đang active, giúp Dart VM start sớm hơn. Giảm black screen 1-3s.
  *
  * FIX-B — NavigationCompletedForUser Set có giới hạn 50 entries:
- *   Trước: Set tích lũy vô hạn trong session dài.
- *   Sau:  Tự động evict entry cũ nhất khi vượt quá 50.
+ * Trước: Set tích lũy vô hạn trong session dài.
+ * Sau:  Tự động evict entry cũ nhất khi vượt quá 50.
  *
  * FIX-C — Retry interval giảm 200ms → 50ms, maxRetries tăng lên 40:
- *   Trước: 10 retries × 200ms = 2000ms tổng — quá chậm trên flagship.
- *   Sau:  40 retries × 50ms = 2000ms tổng — check thường xuyên hơn,
- *         phản hồi nhanh hơn khi engine sẵn sàng.
+ * Trước: 10 retries × 200ms = 2000ms tổng — quá chậm trên flagship.
+ * Sau:  40 retries × 50ms = 2000ms tổng — check thường xuyên hơn,
+ * phản hồi nhanh hơn khi engine sẵn sàng.
  *
- * FIX-D — onBackPressed dùng OnBackPressedDispatcher (Android 13+):
- *   Trước: @Suppress("DEPRECATION") onBackPressed() override.
- *   Sau:  Dùng addCallback() cho Android 13+, fallback graceful cho cũ hơn.
+ * FIX-D — (UPDATED) Ghi đè trực tiếp onBackPressed()
  *
  * FIX-E — Guard check trong provideFlutterEngine:
- *   Trước: Nếu engine trong cache đã bị destroyed (edge case), dùng lại
- *          engine chết gây crash.
- *   Sau:  Kiểm tra engine còn hoạt động trước khi reuse.
+ * Trước: Nếu engine trong cache đã bị destroyed (edge case), dùng lại
+ * engine chết gây crash.
+ * Sau:  Kiểm tra engine còn hoạt động trước khi reuse.
  */
 class BubbleActivity : FlutterActivity() {
 
@@ -151,33 +149,13 @@ class BubbleActivity : FlutterActivity() {
             finish()
             return
         }
-
-        // FIX-D: register back press callback (Android 13+)
-        setupBackPressHandler()
-    }
-
-    // FIX-D: dùng OnBackPressedDispatcher thay vì deprecated onBackPressed()
-    private fun setupBackPressHandler() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            onBackPressedDispatcher.addCallback(this,
-                object : androidx.activity.OnBackPressedCallback(true) {
-                    override fun handleOnBackPressed() {
-                        Log.d(TAG, "⬅️ Back pressed (API 33+) — minimizing")
-                        moveTaskToBack(true)
-                    }
-                }
-            )
-        }
     }
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            Log.d(TAG, "⬅️ Back pressed — minimizing to bubble")
-            moveTaskToBack(true)
-        } else {
-            super.onBackPressed()
-        }
+        Log.d(TAG, "⬅️ Back pressed — minimizing to bubble")
+        // Thu nhỏ ứng dụng xuống dạng bong bóng thay vì đóng hoàn toàn
+        moveTaskToBack(true)
     }
 
     // ========================================
