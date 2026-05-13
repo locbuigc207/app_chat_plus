@@ -73,24 +73,38 @@ service cloud.firestore {
     
     // Groups collection
     match /groups/{groupId} {
-      allow read: if isAuthenticated() && 
+      // Lấy role của user: ưu tiên roles map, fallback về adminId (owner), mặc định là member
+      function getUserRole(data, uid) {
+        let roles = data.get('roles', {});
+        let role = roles.get(uid, 'member');
+        let oldAdmin = data.get('adminId', '');
+        return (role != 'member') ? role : (oldAdmin == uid ? 'owner' : 'member');
+      }
+
+      allow read: if isAuthenticated() &&
                      request.auth.uid in resource.data.memberIds;
       allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && 
-                       request.auth.uid in resource.data.memberIds;
-      allow delete: if isAuthenticated() && 
-                       request.auth.uid == resource.data.adminId;
+
+      // Chỉ Owner hoặc Admin mới được phép chỉnh sửa
+      allow update: if isAuthenticated() &&
+                       request.auth.uid in resource.data.memberIds &&
+                       (getUserRole(resource.data, request.auth.uid) == 'owner' ||
+                        getUserRole(resource.data, request.auth.uid) == 'admin');
+
+      // Chỉ Owner (Trưởng nhóm) mới được quyền xóa nhóm
+      allow delete: if isAuthenticated() &&
+                       getUserRole(resource.data, request.auth.uid) == 'owner';
     }
-    
+
     // Reminders collection
     match /reminders/{reminderId} {
-      allow read: if isAuthenticated() && 
+      allow read: if isAuthenticated() &&
                      request.auth.uid == resource.data.userId;
-      allow create: if isAuthenticated() && 
+      allow create: if isAuthenticated() &&
                        request.auth.uid == request.resource.data.userId;
-      allow update: if isAuthenticated() && 
+      allow update: if isAuthenticated() &&
                        request.auth.uid == resource.data.userId;
-      allow delete: if isAuthenticated() && 
+      allow delete: if isAuthenticated() &&
                        request.auth.uid == resource.data.userId;
     }
   }

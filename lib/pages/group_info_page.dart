@@ -31,6 +31,7 @@ class GroupInfoPage extends StatefulWidget {
 class _GroupInfoPageState extends State<GroupInfoPage> {
   late Group _group;
   bool _isLoading = false;
+  bool _isOwner = false;
   bool _isAdmin = false;
   Map<String, UserChat> _memberData = {};
 
@@ -38,8 +39,23 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
   void initState() {
     super.initState();
     _group = widget.group;
-    _isAdmin = _group.adminId == widget.currentUserId;
+    _checkRoles();
     _loadMemberData();
+  }
+
+  void _checkRoles() {
+    String myRole = _group.roles[widget.currentUserId] ?? 'member';
+    if (_group.adminId == widget.currentUserId && myRole == 'member') {
+      myRole = 'owner'; // Tương thích ngược
+    }
+    _isOwner = myRole == 'owner';
+    _isAdmin = myRole == 'admin' || _isOwner;
+  }
+
+  String _getUserRole(String uid) {
+    String role = _group.roles[uid] ?? 'member';
+    if (_group.adminId == uid && role == 'member') return 'owner';
+    return role;
   }
 
   Future<void> _loadMemberData() async {
@@ -84,6 +100,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
           groupPhotoUrl: url,
           adminId: _group.adminId,
           memberIds: _group.memberIds,
+          roles: _group.roles,
           createdAt: _group.createdAt,
         );
       });
@@ -133,6 +150,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
           groupPhotoUrl: _group.groupPhotoUrl,
           adminId: _group.adminId,
           memberIds: _group.memberIds,
+          roles: _group.roles,
           createdAt: _group.createdAt,
         );
       });
@@ -146,7 +164,6 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
 
   Future<void> _addMembers() async {
     if (!_isAdmin) return;
-    // Show friend list to pick new members
     final friends = await _fetchFriends();
     if (!mounted) return;
     final existing = Set<String>.from(_group.memberIds);
@@ -163,10 +180,18 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
     setState(() => _isLoading = true);
     try {
       final newList = [..._group.memberIds, ...selected];
+      Map<String, dynamic> newRoles = Map.from(_group.roles);
+      for (String id in selected) {
+        newRoles[id] = 'member'; // Mặc định là member khi mới vào
+      }
+
       await FirebaseFirestore.instance
           .collection(FirestoreConstants.pathGroupCollection)
           .doc(_group.id)
-          .update({FirestoreConstants.memberIds: newList});
+          .update({
+        FirestoreConstants.memberIds: newList,
+        'roles': newRoles,
+      });
       await FirebaseFirestore.instance
           .collection(FirestoreConstants.pathConversationCollection)
           .doc(_group.id)
@@ -179,6 +204,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
           groupPhotoUrl: _group.groupPhotoUrl,
           adminId: _group.adminId,
           memberIds: newList,
+          roles: newRoles,
           createdAt: _group.createdAt,
         );
       });
@@ -224,6 +250,15 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
 
   Future<void> _removeMember(String userId) async {
     if (!_isAdmin || userId == widget.currentUserId) return;
+
+    // Check hierarchy: Admin cannot remove Owner or another Admin
+    final targetRole = _getUserRole(userId);
+    if (!_isOwner && (targetRole == 'owner' || targetRole == 'admin')) {
+      Fluttertoast.showToast(
+          msg: 'Bạn không có quyền đuổi Phó nhóm/Trưởng nhóm');
+      return;
+    }
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -245,10 +280,16 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
     setState(() => _isLoading = true);
     try {
       final newList = _group.memberIds.where((id) => id != userId).toList();
+      Map<String, dynamic> newRoles = Map.from(_group.roles);
+      newRoles.remove(userId);
+
       await FirebaseFirestore.instance
           .collection(FirestoreConstants.pathGroupCollection)
           .doc(_group.id)
-          .update({FirestoreConstants.memberIds: newList});
+          .update({
+        FirestoreConstants.memberIds: newList,
+        'roles': newRoles,
+      });
       setState(() {
         _group = Group(
           id: _group.id,
@@ -256,6 +297,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
           groupPhotoUrl: _group.groupPhotoUrl,
           adminId: _group.adminId,
           memberIds: newList,
+          roles: newRoles,
           createdAt: _group.createdAt,
         );
         _memberData.remove(userId);
@@ -268,46 +310,33 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
     }
   }
 
-  Future<void> _makeAdmin(String userId) async {
-    if (!_isAdmin || userId == widget.currentUserId) return;
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Make Admin'),
-        content: Text(
-            'Make ${_memberData[userId]?.nickname ?? 'this member'} admin?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Confirm')),
-        ],
-      ),
-    );
-    if (confirm != true) return;
+  Future<void> _changeRole(String userId, String newRole) async {
+    if (!_isOwner || userId == widget.currentUserId) return;
 
     setState(() => _isLoading = true);
     try {
+      Map<String, dynamic> newRoles = Map.from(_group.roles);
+      newRoles[userId] = newRole;
+
       await FirebaseFirestore.instance
           .collection(FirestoreConstants.pathGroupCollection)
           .doc(_group.id)
-          .update({FirestoreConstants.adminId: userId});
+          .update({'roles': newRoles});
+
       setState(() {
         _group = Group(
           id: _group.id,
           groupName: _group.groupName,
           groupPhotoUrl: _group.groupPhotoUrl,
-          adminId: userId,
+          adminId: _group.adminId,
           memberIds: _group.memberIds,
+          roles: newRoles,
           createdAt: _group.createdAt,
         );
-        _isAdmin = userId == widget.currentUserId;
       });
-      Fluttertoast.showToast(msg: 'Admin transferred');
+      Fluttertoast.showToast(msg: 'Đã cập nhật quyền thành công');
     } catch (_) {
-      Fluttertoast.showToast(msg: 'Failed to transfer admin');
+      Fluttertoast.showToast(msg: 'Cập nhật quyền thất bại');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -421,7 +450,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                // Members section
+                // Members section header
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Row(
@@ -441,7 +470,8 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
                     ],
                   ),
                 ),
-                ..._group.memberIds.map((uid) => _buildMemberTile(uid)),
+                // Members list: Owner -> Admin -> Member
+                ..._buildSortedMemberList(),
                 const SizedBox(height: 32),
               ],
             ),
@@ -452,10 +482,31 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
     );
   }
 
+  List<Widget> _buildSortedMemberList() {
+    final owners = <String>[];
+    final admins = <String>[];
+    final members = <String>[];
+
+    for (final uid in _group.memberIds) {
+      final role = _getUserRole(uid);
+      if (role == 'owner') {
+        owners.add(uid);
+      } else if (role == 'admin') {
+        admins.add(uid);
+      } else {
+        members.add(uid);
+      }
+    }
+
+    return [...owners, ...admins, ...members]
+        .map((uid) => _buildMemberTile(uid))
+        .toList();
+  }
+
   Widget _buildMemberTile(String uid) {
     final user = _memberData[uid];
-    final isThisAdmin = uid == _group.adminId;
     final isMe = uid == widget.currentUserId;
+    final targetRole = _getUserRole(uid);
 
     return ListTile(
       leading: CircleAvatar(
@@ -483,14 +534,25 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
                       fontSize: 11, color: ColorConstants.primaryColor)),
             ),
           ],
-          if (isThisAdmin) ...[
+          if (targetRole == 'owner') ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8)),
+              child: const Text('Key',
+                  style: TextStyle(fontSize: 11, color: Colors.red)),
+            ),
+          ],
+          if (targetRole == 'admin') ...[
             const SizedBox(width: 6),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                   color: Colors.amber.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(8)),
-              child: const Text('Admin',
+              child: const Text('Phó nhóm',
                   style: TextStyle(fontSize: 11, color: Colors.amber)),
             ),
           ],
@@ -499,54 +561,68 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
       subtitle: user?.aboutMe.isNotEmpty == true
           ? Text(user!.aboutMe, maxLines: 1, overflow: TextOverflow.ellipsis)
           : null,
-      trailing: _isAdmin && !isMe
-          ? PopupMenuButton<String>(
-              onSelected: (val) {
-                if (val == 'remove') _removeMember(uid);
-                if (val == 'admin') _makeAdmin(uid);
-                if (val == 'message') {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ChatPage(
-                        arguments: ChatPageArguments(
-                          peerId: uid,
-                          peerAvatar: user?.photoUrl ?? '',
-                          peerNickname: user?.nickname ?? 'User',
-                        ),
-                      ),
-                    ),
-                  );
-                }
-              },
-              itemBuilder: (_) => [
-                const PopupMenuItem(value: 'message', child: Text('Message')),
-                if (!isThisAdmin)
-                  const PopupMenuItem(
-                      value: 'admin', child: Text('Make Admin')),
-                const PopupMenuItem(
-                    value: 'remove',
-                    child: Text('Remove', style: TextStyle(color: Colors.red))),
-              ],
-            )
-          : !isMe
-              ? IconButton(
-                  icon: const Icon(Icons.message,
-                      color: ColorConstants.primaryColor),
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ChatPage(
-                        arguments: ChatPageArguments(
-                          peerId: uid,
-                          peerAvatar: user?.photoUrl ?? '',
-                          peerNickname: user?.nickname ?? 'User',
-                        ),
-                      ),
-                    ),
-                  ),
-                )
-              : null,
+      trailing: _buildTrailingMenu(uid, targetRole, isMe, user),
+    );
+  }
+
+  Widget? _buildTrailingMenu(
+      String uid, String targetRole, bool isMe, UserChat? user) {
+    if (isMe) return null;
+
+    bool canManage = false;
+    final menuItems = <PopupMenuEntry<String>>[
+      const PopupMenuItem(value: 'message', child: Text('Nhắn tin riêng')),
+    ];
+
+    if (_isOwner) {
+      canManage = true;
+      if (targetRole == 'member') {
+        menuItems.add(const PopupMenuItem(
+            value: 'promote', child: Text('Thăng cấp Phó nhóm')));
+      } else if (targetRole == 'admin') {
+        menuItems.add(const PopupMenuItem(
+            value: 'demote', child: Text('Giáng cấp thành viên')));
+      }
+      menuItems.add(const PopupMenuItem(
+          value: 'remove',
+          child: Text('Xóa khỏi nhóm', style: TextStyle(color: Colors.red))));
+    } else if (_isAdmin && targetRole == 'member') {
+      canManage = true;
+      menuItems.add(const PopupMenuItem(
+          value: 'remove',
+          child: Text('Xóa khỏi nhóm', style: TextStyle(color: Colors.red))));
+    }
+
+    if (!canManage && menuItems.length == 1) {
+      return IconButton(
+        icon: const Icon(Icons.message, color: ColorConstants.primaryColor),
+        onPressed: () => _navigateToPrivateChat(uid, user),
+      );
+    }
+
+    return PopupMenuButton<String>(
+      onSelected: (val) {
+        if (val == 'remove') _removeMember(uid);
+        if (val == 'promote') _changeRole(uid, 'admin');
+        if (val == 'demote') _changeRole(uid, 'member');
+        if (val == 'message') _navigateToPrivateChat(uid, user);
+      },
+      itemBuilder: (_) => menuItems,
+    );
+  }
+
+  void _navigateToPrivateChat(String uid, UserChat? user) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatPage(
+          arguments: ChatPageArguments(
+            peerId: uid,
+            peerAvatar: user?.photoUrl ?? '',
+            peerNickname: user?.nickname ?? 'User',
+          ),
+        ),
+      ),
     );
   }
 
@@ -560,7 +636,6 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
   }
 }
 
-// Add members dialog
 class _AddMembersDialog extends StatefulWidget {
   const _AddMembersDialog({required this.friends});
   final List<UserChat> friends;
@@ -590,10 +665,11 @@ class _AddMembersDialogState extends State<_AddMembersDialog> {
                     value: selected,
                     onChanged: (v) {
                       setState(() {
-                        if (v == true)
+                        if (v == true) {
                           _selected.add(friend.id);
-                        else
+                        } else {
                           _selected.remove(friend.id);
+                        }
                       });
                     },
                     title: Text(friend.nickname),
