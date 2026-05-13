@@ -39,7 +39,6 @@ class StoryProvider extends ChangeNotifier {
 
     // NOTE: This query requires the composite index:
     //   userId ASC + isDeleted ASC + createdAt DESC
-    // (see setup instructions)
     return firebaseFirestore
         .collection(_col)
         .where('userId', whereIn: ids)
@@ -52,7 +51,6 @@ class StoryProvider extends ChangeNotifier {
   List<UserStories> Function(QuerySnapshot) _groupAndFilter(
       String currentUserId) {
     return (QuerySnapshot snapshot) {
-      final now = DateTime.now();
       final Map<String, List<Story>> grouped = {};
 
       for (final doc in snapshot.docs) {
@@ -129,7 +127,10 @@ class StoryProvider extends ChangeNotifier {
       final fileName =
           'stories/${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final ref = firebaseStorage.ref().child(fileName);
-      final task = await ref.putFile(imageFile);
+
+      // Có thể thêm SettableMetadata để xác định type rõ ràng
+      final metadata = SettableMetadata(contentType: 'image/jpeg');
+      final task = await ref.putFile(imageFile, metadata);
       final mediaUrl = await task.ref.getDownloadURL();
 
       return _saveDocument(
@@ -143,6 +144,42 @@ class StoryProvider extends ChangeNotifier {
       );
     } catch (e) {
       debugPrint('❌ createImageStory: $e');
+      return null;
+    }
+  }
+
+  // BỔ SUNG: Hàm tạo Video Story (Giai đoạn 4)
+  Future<String?> createVideoStory({
+    required String userId,
+    required String userName,
+    required String userPhotoUrl,
+    required File videoFile,
+    String? caption,
+    StoryPrivacy privacy = StoryPrivacy.friends,
+  }) async {
+    try {
+      // Đặt đuôi file là mp4
+      final fileName =
+          'stories/${userId}_${DateTime.now().millisecondsSinceEpoch}.mp4';
+      final ref = firebaseStorage.ref().child(fileName);
+
+      // Thiết lập metadata là video
+      final metadata = SettableMetadata(contentType: 'video/mp4');
+      final task = await ref.putFile(videoFile, metadata);
+      final mediaUrl = await task.ref.getDownloadURL();
+
+      return _saveDocument(
+        userId: userId,
+        userName: userName,
+        userPhotoUrl: userPhotoUrl,
+        type: StoryType
+            .video, // Đảm bảo StoryType enum trong story_model.dart có .video
+        mediaUrl: mediaUrl,
+        caption: caption,
+        privacy: privacy,
+      );
+    } catch (e) {
+      debugPrint('❌ createVideoStory: $e');
       return null;
     }
   }

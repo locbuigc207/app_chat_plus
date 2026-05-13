@@ -1,13 +1,24 @@
 // lib/pages/story_creator_page.dart
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:deepar_flutter_plus/deepar_flutter_plus.dart';
+import 'package:ffmpeg_kit_flutter_min_gpl/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_min_gpl/return_code.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_chat_demo/constants/color_constants.dart';
 import 'package:flutter_chat_demo/providers/story_provider.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 // ─────────────────────────────────────────────────────────────
-// STORY CREATOR PAGE
+// STORY CREATOR PAGE  (3 tabs: Photo · Text · Video)
 // ─────────────────────────────────────────────────────────────
 
 class StoryCreatorPage extends StatefulWidget {
@@ -34,7 +45,7 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 2, vsync: this)
+    _tab = TabController(length: 3, vsync: this)
       ..addListener(() {
         if (_tab.indexIsChanging) setState(() => _tabIndex = _tab.index);
       });
@@ -91,6 +102,14 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
                             setState(() => _tabIndex = 1);
                           },
                         ),
+                        _TabBtn(
+                          label: '🎥  Video',
+                          selected: _tabIndex == 2,
+                          onTap: () {
+                            _tab.animateTo(2);
+                            setState(() => _tabIndex = 2);
+                          },
+                        ),
                       ],
                     ),
                   ),
@@ -106,6 +125,8 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
           Expanded(
             child: TabBarView(
               controller: _tab,
+              physics:
+                  const NeverScrollableScrollPhysics(), // prevent swipe into camera
               children: [
                 _PhotoCreator(
                   userId: widget.userId,
@@ -113,6 +134,11 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
                   userPhotoUrl: widget.userPhotoUrl,
                 ),
                 _TextCreator(
+                  userId: widget.userId,
+                  userName: widget.userName,
+                  userPhotoUrl: widget.userPhotoUrl,
+                ),
+                _VideoCreator(
                   userId: widget.userId,
                   userName: widget.userName,
                   userPhotoUrl: widget.userPhotoUrl,
@@ -126,7 +152,10 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
   }
 }
 
-// Small tab button
+// ─────────────────────────────────────────────────────────────
+// TAB BUTTON
+// ─────────────────────────────────────────────────────────────
+
 class _TabBtn extends StatelessWidget {
   final String label;
   final bool selected;
@@ -232,86 +261,95 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
 
   @override
   Widget build(BuildContext context) {
-    if (_image == null) {
-      return _PickerPrompt(onPick: _pick);
-    }
+    if (_image == null) return _PickerPrompt(onPick: _pick);
 
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        // Preview
-        Image.file(_image!, fit: BoxFit.cover),
+    // Lấy chiều cao của bàn phím
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
-        // Side tools
-        Positioned(
-          top: 16,
-          right: 16,
-          child: Column(
-            children: [
-              _SideBtn(
-                  icon: Icons.collections,
-                  label: 'Gallery',
-                  onTap: () => _pick(ImageSource.gallery)),
-              const SizedBox(height: 12),
-              _SideBtn(
-                  icon: Icons.camera_alt,
-                  label: 'Camera',
-                  onTap: () => _pick(ImageSource.camera)),
-              const SizedBox(height: 12),
-              _SideBtn(
-                icon: _privacy == StoryPrivacy.friends
-                    ? Icons.people
-                    : Icons.public,
-                label: _privacy == StoryPrivacy.friends ? 'Friends' : 'All',
-                onTap: () => setState(() {
-                  _privacy = _privacy == StoryPrivacy.friends
-                      ? StoryPrivacy.everyone
-                      : StoryPrivacy.friends;
-                }),
-              ),
-            ],
-          ),
-        ),
+    return GestureDetector(
+      onTap: () =>
+          FocusScope.of(context).unfocus(), // Chạm ra ngoài để ẩn bàn phím
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.file(_image!, fit: BoxFit.cover),
 
-        // Caption
-        Positioned(
-          bottom: 96,
-          left: 16,
-          right: 16,
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.black45,
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: TextField(
-              controller: _captionCtrl,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                hintText: 'Add a caption…',
-                hintStyle: TextStyle(color: Colors.white54),
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                border: InputBorder.none,
-              ),
-              maxLines: 3,
-              minLines: 1,
+          // Side tools
+          Positioned(
+            top: 16,
+            right: 16,
+            child: Column(
+              children: [
+                _SideBtn(
+                    icon: Icons.collections,
+                    label: 'Gallery',
+                    onTap: () => _pick(ImageSource.gallery)),
+                const SizedBox(height: 12),
+                _SideBtn(
+                    icon: Icons.camera_alt,
+                    label: 'Camera',
+                    onTap: () => _pick(ImageSource.camera)),
+                const SizedBox(height: 12),
+                _SideBtn(
+                  icon: _privacy == StoryPrivacy.friends
+                      ? Icons.people
+                      : Icons.public,
+                  label: _privacy == StoryPrivacy.friends ? 'Friends' : 'All',
+                  onTap: () => setState(() {
+                    _privacy = _privacy == StoryPrivacy.friends
+                        ? StoryPrivacy.everyone
+                        : StoryPrivacy.friends;
+                  }),
+                ),
+              ],
             ),
           ),
-        ),
 
-        // Publish
-        Positioned(
-          bottom: 32,
-          left: 16,
-          right: 16,
-          child: _PublishBtn(loading: _loading, onTap: _publish),
-        ),
-      ],
+          // Caption – nảy lên khi có bàn phím
+          Positioned(
+            bottom: bottomInset > 0 ? bottomInset + 16 : 96,
+            left: 16,
+            right: 16,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black45,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: TextField(
+                controller: _captionCtrl,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  hintText: 'Add a caption…',
+                  hintStyle: TextStyle(color: Colors.white54),
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  border: InputBorder.none,
+                ),
+                maxLines: 3,
+                minLines: 1,
+              ),
+            ),
+          ),
+
+          // Ẩn nút Publish khi đang gõ để đỡ rối
+          Positioned(
+            bottom: 32,
+            left: 16,
+            right: 16,
+            child: bottomInset > 0
+                ? const SizedBox.shrink()
+                : _PublishBtn(loading: _loading, onTap: _publish),
+          ),
+        ],
+      ),
     );
   }
 }
 
-// Empty state prompt
+// ─────────────────────────────────────────────────────────────
+// PICKER PROMPT
+// ─────────────────────────────────────────────────────────────
+
 class _PickerPrompt extends StatelessWidget {
   final void Function(ImageSource) onPick;
   const _PickerPrompt({required this.onPick});
@@ -501,13 +539,13 @@ class _TextCreatorState extends State<_TextCreator> {
           ),
         ),
 
-        // Text input (centered)
+        // Text input
         Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
             child: TextField(
               controller: _ctrl,
-              autofocus: true,
+              autofocus: false,
               maxLines: null,
               textAlign: TextAlign.center,
               style: TextStyle(
@@ -584,7 +622,7 @@ class _TextCreatorState extends State<_TextCreator> {
                         color: Colors.white54, size: 16),
                     Expanded(
                       child: SliderTheme(
-                        data: SliderThemeData(
+                        data: const SliderThemeData(
                           activeTrackColor: Colors.white,
                           inactiveTrackColor: Colors.white30,
                           thumbColor: Colors.white,
@@ -642,7 +680,6 @@ class _TextCreatorState extends State<_TextCreator> {
           ),
         ),
 
-        // Publish button
         Positioned(
           bottom: 32,
           left: 16,
@@ -653,6 +690,354 @@ class _TextCreatorState extends State<_TextCreator> {
             onTap: _publish,
           ),
         ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// AR FILTER MODEL
+// ─────────────────────────────────────────────────────────────
+
+/// Đại diện cho một hiệu ứng DeepAR đọc động từ AssetManifest.
+class _ArFilter {
+  /// Tên hiển thị trên UI, lấy từ tên file (không có đuôi .deepar).
+  final String displayName;
+
+  /// Asset path đầy đủ, ví dụ: "assets/effects/flower_face.deepar".
+  /// Null = không dùng hiệu ứng (slot "None").
+  final String? assetPath;
+
+  const _ArFilter({required this.displayName, this.assetPath});
+
+  /// Slot đặc biệt "Không hiệu ứng"
+  static const _ArFilter none = _ArFilter(displayName: 'None');
+
+  /// Chuyển asset path thành display name đẹp hơn.
+  /// "assets/effects/flower_face.deepar" → "Flower Face"
+  static String _toDisplayName(String assetPath) {
+    final fileName = assetPath.split('/').last; // "flower_face.deepar"
+    final withoutExt = fileName.replaceAll('.deepar', ''); // "flower_face"
+    return withoutExt
+        .split('_')
+        .map((w) => w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}')
+        .join(' '); // "Flower Face"
+  }
+
+  /// Load toàn bộ filter từ AssetManifest ở runtime.
+  /// Luôn đặt slot "None" ở đầu danh sách.
+  static Future<List<_ArFilter>> loadAll() async {
+    final manifestJson = await rootBundle.loadString('AssetManifest.json');
+    final manifest = json.decode(manifestJson) as Map<String, dynamic>;
+
+    final effectPaths = manifest.keys
+        .where((key) =>
+            key.startsWith('assets/effects/') && key.endsWith('.deepar'))
+        .toList()
+      ..sort(); // Sắp xếp theo tên file để thứ tự nhất quán
+
+    final filters = [
+      _ArFilter.none,
+      ...effectPaths.map(
+        (path) => _ArFilter(
+          displayName: _toDisplayName(path),
+          assetPath: path,
+        ),
+      ),
+    ];
+
+    return filters;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// VIDEO CREATOR  (DeepAR + AR filters động + background music)
+// ─────────────────────────────────────────────────────────────
+
+class _VideoCreator extends StatefulWidget {
+  final String userId;
+  final String userName;
+  final String userPhotoUrl;
+
+  const _VideoCreator({
+    required this.userId,
+    required this.userName,
+    required this.userPhotoUrl,
+  });
+
+  @override
+  State<_VideoCreator> createState() => _VideoCreatorState();
+}
+
+class _VideoCreatorState extends State<_VideoCreator> {
+  // Thay bằng license key thực của bạn
+  static const _androidKey =
+      '694aafc68314126d55d03f1cb2b23ce05f57467994107fb3895aab7f7060c2a5863a6c28f29a341b';
+  static const _iosKey = 'YOUR_IOS_DEEPAR_KEY_HERE';
+
+  late DeepArControllerPlus _deepArController;
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
+  bool _isInitialized = false;
+  bool _isRecording = false;
+  bool _isProcessing = false;
+  String? _selectedAudioPath;
+
+  /// Danh sách filter đọc động từ AssetManifest
+  List<_ArFilter> _filters = [];
+  int _currentFilterIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _initAll();
+  }
+
+  /// Khởi tạo song song: load filter list + xin quyền + init DeepAR
+  Future<void> _initAll() async {
+    // Load filter list trước (không cần quyền)
+    final filters = await _ArFilter.loadAll();
+    if (mounted) setState(() => _filters = filters);
+
+    // Xin quyền Camera & Mic
+    await _initDeepAr();
+  }
+
+  Future<void> _initDeepAr() async {
+    final statuses = await [
+      Permission.camera,
+      Permission.microphone,
+    ].request();
+
+    if (statuses[Permission.camera]!.isGranted &&
+        statuses[Permission.microphone]!.isGranted) {
+      _deepArController = DeepArControllerPlus();
+      await _deepArController.initialize(
+        androidLicenseKey: _androidKey,
+        iosLicenseKey: _iosKey,
+        resolution: Resolution.high,
+      );
+      if (mounted) setState(() => _isInitialized = true);
+    } else {
+      Fluttertoast.showToast(msg: 'Cần cấp quyền Camera & Mic để quay Story!');
+      if (mounted) Navigator.pop(context);
+    }
+  }
+
+  void _switchFilter(int index) {
+    setState(() => _currentFilterIndex = index);
+
+    final filter = _filters[index];
+    _deepArController.switchEffect(
+      filter.assetPath ?? '',
+    );
+  }
+
+  Future<void> _pickMusic() async {
+    final result = await FilePicker.platform.pickFiles(type: FileType.audio);
+    if (result != null && result.files.single.path != null) {
+      setState(() => _selectedAudioPath = result.files.single.path);
+      await _audioPlayer.setFilePath(_selectedAudioPath!);
+      Fluttertoast.showToast(msg: 'Đã thêm nhạc nền!');
+    }
+  }
+
+  Future<void> _startRecording() async {
+    setState(() => _isRecording = true);
+    if (_selectedAudioPath != null) {
+      await _audioPlayer.seek(Duration.zero);
+      _audioPlayer.play();
+    }
+    await _deepArController.startVideoRecording();
+  }
+
+  Future<void> _stopRecording() async {
+    if (_selectedAudioPath != null) await _audioPlayer.stop();
+
+    final File videoFile = await _deepArController.stopVideoRecording();
+    setState(() {
+      _isRecording = false;
+      _isProcessing = true;
+    });
+
+    if (_selectedAudioPath != null) {
+      await _mergeAudioAndVideo(videoFile.path, _selectedAudioPath!);
+    } else {
+      await _uploadStory(videoFile.path);
+    }
+  }
+
+  Future<void> _mergeAudioAndVideo(String videoPath, String audioPath) async {
+    final dir = await getApplicationDocumentsDirectory();
+    final output =
+        '${dir.path}/story_${DateTime.now().millisecondsSinceEpoch}.mp4';
+
+    final cmd =
+        "-i '$videoPath' -i '$audioPath' -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest '$output'";
+
+    await FFmpegKit.executeAsync(cmd, (session) async {
+      final rc = await session.getReturnCode();
+      if (ReturnCode.isSuccess(rc)) {
+        await _uploadStory(output);
+      } else {
+        if (mounted) setState(() => _isProcessing = false);
+        Fluttertoast.showToast(msg: 'Lỗi ghép nhạc vào video!');
+      }
+    });
+  }
+
+  Future<void> _uploadStory(String finalPath) async {
+    try {
+      await context.read<StoryProvider>().createVideoStory(
+            userId: widget.userId,
+            userName: widget.userName,
+            userPhotoUrl: widget.userPhotoUrl,
+            videoFile: File(finalPath),
+            privacy: StoryPrivacy.friends,
+          );
+      Fluttertoast.showToast(msg: 'Đăng Story thành công!');
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      Fluttertoast.showToast(msg: 'Lỗi đăng Story: $e');
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _deepArController.destroy();
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isInitialized) {
+      return const Center(
+        child: CircularProgressIndicator(color: ColorConstants.primaryColor),
+      );
+    }
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // DeepAR camera preview
+        Positioned.fill(child: DeepArPreviewPlus(_deepArController)),
+
+        // Music button (top-right)
+        Positioned(
+          top: 16,
+          right: 16,
+          child: _SideBtn(
+            icon:
+                _selectedAudioPath != null ? Icons.music_note : Icons.music_off,
+            label: _selectedAudioPath != null ? 'Music ✓' : 'Music',
+            iconColor:
+                _selectedAudioPath != null ? Colors.greenAccent : Colors.white,
+            onTap: _pickMusic,
+          ),
+        ),
+
+        // Processing overlay
+        if (_isProcessing)
+          Container(
+            color: Colors.black87,
+            child: const Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: Colors.white),
+                  SizedBox(height: 16),
+                  Text('Đang xử lý Video…',
+                      style: TextStyle(color: Colors.white, fontSize: 16)),
+                ],
+              ),
+            ),
+          ),
+
+        // Bottom controls
+        if (!_isProcessing)
+          Positioned(
+            bottom: 32,
+            left: 0,
+            right: 0,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ── AR filter picker (dynamic) ─────────────
+                if (_filters.isNotEmpty)
+                  SizedBox(
+                    height: 80,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _filters.length,
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      itemBuilder: (_, i) {
+                        final filter = _filters[i];
+                        final sel = i == _currentFilterIndex;
+                        return GestureDetector(
+                          onTap: () => _switchFilter(i),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            width: 64,
+                            margin: const EdgeInsets.symmetric(horizontal: 6),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white24,
+                              border: Border.all(
+                                color: sel ? Colors.white : Colors.transparent,
+                                width: 3,
+                              ),
+                            ),
+                            child: Center(
+                              child: Text(
+                                filter.displayName,
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                const SizedBox(height: 20),
+
+                // ── Record button ─────────────────────────
+                GestureDetector(
+                  onLongPressStart: (_) => _startRecording(),
+                  onLongPressEnd: (_) => _stopRecording(),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 4),
+                      color: _isRecording ? Colors.red : Colors.white38,
+                    ),
+                    child: _isRecording
+                        ? const Icon(Icons.stop, color: Colors.white, size: 40)
+                        : const Icon(Icons.videocam,
+                            color: Colors.white, size: 36),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  _isRecording ? 'Đang quay… thả để dừng' : 'Nhấn giữ để quay',
+                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }

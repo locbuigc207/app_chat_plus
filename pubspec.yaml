@@ -46,7 +46,6 @@ dependencies:
 
   # Storage
   shared_preferences: ^2.5.0
-  path_provider: ^2.1.0
 
   # QR
   otp: ^3.1.2
@@ -95,6 +94,13 @@ dependencies:
   flutter_markdown: ^0.7.1
   package_info_plus: ^9.0.1
 
+  # Giai đoạn 4: Story AR & Nhạc
+  deepar_flutter_plus: ^0.2.1
+  just_audio: ^0.10.5 # Nâng cấp để tương thích với audio_session
+  ffmpeg_kit_flutter_min_gpl: ^6.0.3 # Gộp Video và Audio
+  file_picker: ^6.1.1 # Chọn file nhạc từ máy
+  path_provider: ^2.1.2 # Lấy đường dẫn lưu video tạm
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -107,3 +113,8 @@ flutter:
   assets:
     - images/
     - .env
+    - assets/effects/ # Khai báo thư mục chứa filter
+
+# Ép buộc đồng bộ permission_handler
+dependency_overrides:
+  permission_handler: ^12.0.0

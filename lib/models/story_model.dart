@@ -9,7 +9,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 // ENUMS
 // ─────────────────────────────────────────────────────────────
 
-enum StoryType { image, text }
+// BỔ SUNG: Thêm 'video' vào StoryType
+enum StoryType { image, text, video }
 
 enum StoryPrivacy { everyone, friends }
 
@@ -31,20 +32,20 @@ class StoryView {
   });
 
   Map<String, dynamic> toJson() => {
-    'userId': userId,
-    'userName': userName,
-    'photoUrl': photoUrl,
-    'viewedAt': viewedAt.millisecondsSinceEpoch.toString(),
-  };
+        'userId': userId,
+        'userName': userName,
+        'photoUrl': photoUrl,
+        'viewedAt': viewedAt.millisecondsSinceEpoch.toString(),
+      };
 
   factory StoryView.fromJson(Map<String, dynamic> json) => StoryView(
-    userId: json['userId']?.toString() ?? '',
-    userName: json['userName']?.toString() ?? '',
-    photoUrl: json['photoUrl']?.toString() ?? '',
-    viewedAt: DateTime.fromMillisecondsSinceEpoch(
-      int.tryParse(json['viewedAt']?.toString() ?? '0') ?? 0,
-    ),
-  );
+        userId: json['userId']?.toString() ?? '',
+        userName: json['userName']?.toString() ?? '',
+        photoUrl: json['photoUrl']?.toString() ?? '',
+        viewedAt: DateTime.fromMillisecondsSinceEpoch(
+          int.tryParse(json['viewedAt']?.toString() ?? '0') ?? 0,
+        ),
+      );
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -104,23 +105,23 @@ class Story {
   // ── Serialization ────────────────────────────────────────
 
   Map<String, dynamic> toJson() => {
-    'userId': userId,
-    'userName': userName,
-    'userPhotoUrl': userPhotoUrl,
-    'type': type.index,
-    'mediaUrl': mediaUrl,
-    'textContent': textContent,
-    'caption': caption,
-    'backgroundColor': backgroundColor?.value,
-    'textColor': textColor?.value,
-    'fontFamily': fontFamily,
-    'fontSize': fontSize,
-    'createdAt': createdAt.millisecondsSinceEpoch.toString(),
-    'expiresAt': expiresAt.millisecondsSinceEpoch.toString(),
-    'views': views.map((v) => v.toJson()).toList(),
-    'privacy': privacy.index,
-    'isDeleted': isDeleted,
-  };
+        'userId': userId,
+        'userName': userName,
+        'userPhotoUrl': userPhotoUrl,
+        'type': type.index,
+        'mediaUrl': mediaUrl,
+        'textContent': textContent,
+        'caption': caption,
+        'backgroundColor': backgroundColor?.value,
+        'textColor': textColor?.value,
+        'fontFamily': fontFamily,
+        'fontSize': fontSize,
+        'createdAt': createdAt.millisecondsSinceEpoch.toString(),
+        'expiresAt': expiresAt.millisecondsSinceEpoch.toString(),
+        'views': views.map((v) => v.toJson()).toList(),
+        'privacy': privacy.index,
+        'isDeleted': isDeleted,
+      };
 
   factory Story.fromDocument(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
@@ -138,8 +139,7 @@ class Story {
     }
 
     // Safe int parsing for timestamp strings
-    int _parseTs(dynamic raw) =>
-        int.tryParse(raw?.toString() ?? '0') ?? 0;
+    int _parseTs(dynamic raw) => int.tryParse(raw?.toString() ?? '0') ?? 0;
 
     // Safe enum index
     int _safeIdx(dynamic raw, int maxIdx) {
@@ -165,7 +165,8 @@ class Story {
       userId: data['userId']?.toString() ?? '',
       userName: data['userName']?.toString() ?? '',
       userPhotoUrl: data['userPhotoUrl']?.toString() ?? '',
-      type: StoryType.values[_safeIdx(data['type'], StoryType.values.length - 1)],
+      type:
+          StoryType.values[_safeIdx(data['type'], StoryType.values.length - 1)],
       mediaUrl: data['mediaUrl']?.toString(),
       textContent: data['textContent']?.toString(),
       caption: data['caption']?.toString(),
@@ -173,11 +174,13 @@ class Story {
       textColor: _parseColor(data['textColor']),
       fontFamily: data['fontFamily']?.toString(),
       fontSize: (data['fontSize'] as num?)?.toDouble() ?? 28.0,
-      createdAt: DateTime.fromMillisecondsSinceEpoch(_parseTs(data['createdAt'])),
-      expiresAt: DateTime.fromMillisecondsSinceEpoch(_parseTs(data['expiresAt'])),
+      createdAt:
+          DateTime.fromMillisecondsSinceEpoch(_parseTs(data['createdAt'])),
+      expiresAt:
+          DateTime.fromMillisecondsSinceEpoch(_parseTs(data['expiresAt'])),
       views: views,
-      privacy: StoryPrivacy.values[
-      _safeIdx(data['privacy'], StoryPrivacy.values.length - 1)],
+      privacy: StoryPrivacy
+          .values[_safeIdx(data['privacy'], StoryPrivacy.values.length - 1)],
       isDeleted: data['isDeleted'] == true,
     );
   }
