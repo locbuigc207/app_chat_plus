@@ -1,8 +1,11 @@
+// lib/services/agora_rtc_manager.dart
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
 
 enum RtcConnectionState {
@@ -71,8 +74,47 @@ class AgoraRtcManager extends ChangeNotifier {
 
   RtcEngine? _engine;
 
-  // Lấy App ID từ file .env
-  String get kAgoraAppId => dotenv.env['AGORA_APP_ID'] ?? '';
+  // FIX: trim() để tránh lỗi whitespace trong .env
+  String get kAgoraAppId => (dotenv.env['AGORA_APP_ID'] ?? '').trim();
+
+  // ─── Token Server ────────────────────────────────────────────────────────────
+
+  /// Gọi lên Render token server để lấy Agora Token bảo mật.
+  /// Có retry logic để xử lý trường hợp server sleep (Render free plan).
+  Future<String?> _fetchTokenFromServer(String channelName) async {
+    const maxRetries = 3;
+
+    for (int i = 0; i < maxRetries; i++) {
+      try {
+        final String serverUrl =
+            'https://agora-token-service-boa9.onrender.com/rtc'
+            '/$channelName/publisher/uid/0';
+
+        final response = await http
+            .get(Uri.parse(serverUrl))
+            .timeout(const Duration(seconds: 30));
+
+        if (response.statusCode == 200) {
+          final Map<String, dynamic> data =
+              json.decode(response.body) as Map<String, dynamic>;
+          // Hỗ trợ cả 2 key: 'rtcToken' (Render server) và 'token' (Firebase)
+          return (data['rtcToken'] ?? data['token']) as String?;
+        } else {
+          debugPrint('❌ Lỗi từ Token Server: ${response.body}');
+        }
+      } catch (e) {
+        debugPrint('❌ Lần thử ${i + 1} thất bại: $e');
+        if (i < maxRetries - 1) {
+          await Future.delayed(const Duration(seconds: 3));
+        }
+      }
+    }
+
+    debugPrint('❌ Không thể lấy token sau $maxRetries lần thử');
+    return null;
+  }
+
+  // ─── Lifecycle ───────────────────────────────────────────────────────────────
 
   Future<bool> initialize() async {
     if (_initialized) return true;
@@ -99,13 +141,21 @@ class AgoraRtcManager extends ChangeNotifier {
     }
   }
 
+  // ─── Channel ─────────────────────────────────────────────────────────────────
+
+  /// Tham gia kênh, tự động lấy Token từ Render server trước khi join.
   Future<bool> joinChannel({
     required String channelName,
     required bool isVideoCall,
-    String? token,
     int uid = 0,
   }) async {
     if (_disposed) return false;
+
+    if (channelName.trim().isEmpty) {
+      debugPrint('❌ AgoraRtcManager: channelName không được để trống');
+      _errorController.add('Tên kênh không hợp lệ');
+      return false;
+    }
 
     if (!_initialized) {
       final ok = await initialize();
@@ -114,8 +164,17 @@ class AgoraRtcManager extends ChangeNotifier {
 
     try {
       await _requestPermissions(video: isVideoCall);
-      _currentChannel = channelName;
+      _currentChannel = channelName.trim();
       _setConnectionState(RtcConnectionState.connecting);
+
+      // Lấy Token bảo mật từ Render server
+      final token = await _fetchTokenFromServer(_currentChannel!);
+
+      if (token == null || token.isEmpty) {
+        _errorController.add('Lỗi bảo mật: Không thể lấy được Token cuộc gọi');
+        _setConnectionState(RtcConnectionState.failed);
+        return false;
+      }
 
       if (!isVideoCall) {
         await _engine?.disableVideo();
@@ -124,8 +183,8 @@ class AgoraRtcManager extends ChangeNotifier {
       }
 
       await _engine?.joinChannel(
-        token: token ?? '',
-        channelId: channelName,
+        token: token,
+        channelId: _currentChannel!,
         uid: uid,
         options: ChannelMediaOptions(
           channelProfile: ChannelProfileType.channelProfileCommunication,
@@ -149,11 +208,17 @@ class AgoraRtcManager extends ChangeNotifier {
     if (!_initialized || _engine == null) return;
     try {
       await _engine!.leaveChannel();
-      _currentChannel = null;
+    } catch (e) {
+      debugPrint('⚠️ leaveChannel error: $e');
+    } finally {
       _remoteUid = null;
+      _currentChannel = null;
       _setConnectionState(RtcConnectionState.disconnected);
-    } catch (e) {}
+      _safeNotify();
+    }
   }
+
+  // ─── Controls ────────────────────────────────────────────────────────────────
 
   Future<void> toggleMute() async {
     if (_disposed) return;
@@ -191,6 +256,8 @@ class AgoraRtcManager extends ChangeNotifier {
     _safeNotify();
   }
 
+  // ─── Dispose ─────────────────────────────────────────────────────────────────
+
   @override
   void dispose() {
     if (_disposed) return;
@@ -208,6 +275,8 @@ class AgoraRtcManager extends ChangeNotifier {
 
     super.dispose();
   }
+
+  // ─── Private ─────────────────────────────────────────────────────────────────
 
   Future<void> _initAgora() async {
     _engine = createAgoraRtcEngine();

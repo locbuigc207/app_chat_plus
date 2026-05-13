@@ -53,7 +53,8 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     _rtcManager = AgoraRtcManager();
     _callStatus = widget.call.status;
 
-    if (widget.call.status == CallStatus.connected) {
+    if (widget.call.status == CallStatus.connected ||
+        widget.call.status == CallStatus.accepted) {
       _callConnectedAt = DateTime.now();
     }
 
@@ -97,11 +98,11 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
       return;
     }
 
-    if (widget.call.channelName != null) {
+    if (widget.call.channelName.isNotEmpty) {
+      // FIX: Bỏ tham số 'token' — joinChannel tự lấy token từ server
       final joined = await _rtcManager.joinChannel(
-        channelName: widget.call.channelName!,
+        channelName: widget.call.channelName,
         isVideoCall: widget.call.isVideoCall,
-        token: widget.call.token,
       );
       if (!joined && mounted) {
         setState(() {
@@ -122,12 +123,16 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
 
       if (mounted) setState(() => _callStatus = call.status);
 
-      if (call.status == CallStatus.connected && _callConnectedAt == null) {
+      // FIX: Bắt cả 'accepted' như 'connected'
+      if ((call.status == CallStatus.connected ||
+              call.status == CallStatus.accepted) &&
+          _callConnectedAt == null) {
         if (mounted) setState(() => _callConnectedAt = DateTime.now());
       }
 
       if (call.status == CallStatus.ended ||
           call.status == CallStatus.declined ||
+          call.status == CallStatus.rejected ||
           call.status == CallStatus.missed ||
           call.status == CallStatus.failed) {
         _endCall(remote: true);
@@ -188,7 +193,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     _controlsHideTimer?.cancel();
     if (widget.call.isVideoCall) {
       _controlsHideTimer = Timer(const Duration(seconds: 4), () {
-        if (mounted && _callStatus == CallStatus.connected) {
+        if (mounted && _isConnectedStatus(_callStatus)) {
           setState(() => _showControls = false);
         }
       });
@@ -299,7 +304,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
           _buildRemoteVideoView(),
 
           // Local PiP
-          if (_callStatus == CallStatus.connected) _buildLocalVideoPip(),
+          if (_isConnectedStatus(_callStatus)) _buildLocalVideoPip(),
 
           // Gradient overlays
           Positioned(
@@ -387,16 +392,16 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
       child: ListenableBuilder(
         listenable: _rtcManager,
         builder: (_, __) {
-          final showVideo = _callStatus == CallStatus.connected &&
+          final showVideo = _isConnectedStatus(_callStatus) &&
               _rtcManager.hasRemoteUser &&
               _rtcManager.remoteVideoOn &&
               _rtcManager.engine != null &&
-              widget.call.channelName != null;
+              widget.call.channelName.isNotEmpty;
 
           if (!showVideo) {
             return _buildRemoteVideoPlaceholder(
-              connected: _callStatus == CallStatus.connected &&
-                  _rtcManager.hasRemoteUser,
+              connected:
+                  _isConnectedStatus(_callStatus) && _rtcManager.hasRemoteUser,
             );
           }
 
@@ -404,7 +409,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
             controller: VideoViewController.remote(
               rtcEngine: _rtcManager.engine!,
               canvas: VideoCanvas(uid: _rtcManager.remoteUid!),
-              connection: RtcConnection(channelId: widget.call.channelName!),
+              connection: RtcConnection(channelId: widget.call.channelName),
             ),
           );
         },
@@ -421,7 +426,6 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Blurred avatar as background
         if (avatar.isNotEmpty)
           Image.network(avatar,
               fit: BoxFit.cover,
@@ -528,7 +532,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
                             fontWeight: FontWeight.bold),
                       ),
                     ),
-                    if (_callStatus == CallStatus.connected &&
+                    if (_isConnectedStatus(_callStatus) &&
                         _callConnectedAt != null)
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -559,7 +563,6 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Blurred avatar background
         if (peerAvatar.isNotEmpty)
           Image.network(peerAvatar,
               fit: BoxFit.cover,
@@ -569,7 +572,6 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
           filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
           child: Container(color: Colors.black.withOpacity(0.5)),
         ),
-
         SafeArea(
           child: Column(
             children: [
@@ -591,11 +593,9 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
 
               const Spacer(flex: 2),
 
-              // Avatar
               _buildAvatar(peerAvatar, peerName, size: 140),
               const SizedBox(height: 32),
 
-              // Name
               Text(
                 peerName,
                 style: const TextStyle(
@@ -606,9 +606,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
               ),
               const SizedBox(height: 12),
 
-              // Status / Timer
-              if (_callStatus == CallStatus.connected &&
-                  _callConnectedAt != null)
+              if (_isConnectedStatus(_callStatus) && _callConnectedAt != null)
                 CallTimerWidget(
                   startTime: _callConnectedAt!,
                   style: const TextStyle(
@@ -636,7 +634,6 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
 
               const Spacer(flex: 3),
 
-              // Control bar
               _buildControlBar(),
             ],
           ),
@@ -667,6 +664,12 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
   }
 
   // ── Helpers ────────────────────────────────────
+
+  /// Trả về true nếu trạng thái hiện tại tương đương "đã kết nối".
+  /// Bao gồm cả 'accepted' (schema cũ) và 'connected' (schema mới).
+  bool _isConnectedStatus(CallStatus s) =>
+      s == CallStatus.connected || s == CallStatus.accepted;
+
   Widget _buildAvatar(String url, String name, {double size = 90}) {
     return Container(
       width: size,
@@ -711,16 +714,21 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     return _StatusDotsWidget(label: _statusLabel());
   }
 
+  // FIX: Exhaustive switch — bao gồm tất cả các case của CallStatus
   String _statusLabel() {
     switch (_callStatus) {
+      case CallStatus.dialing:
+        return widget.isOutgoing ? 'Đang gọi…' : 'Cuộc gọi đến…';
       case CallStatus.calling:
         return widget.isOutgoing ? 'Đang gọi…' : 'Cuộc gọi đến…';
       case CallStatus.ringing:
         return 'Đang đổ chuông…';
+      case CallStatus.accepted:
       case CallStatus.connected:
         return 'Đã kết nối';
       case CallStatus.ended:
         return 'Cuộc gọi kết thúc';
+      case CallStatus.rejected:
       case CallStatus.declined:
         return 'Đã từ chối';
       case CallStatus.missed:

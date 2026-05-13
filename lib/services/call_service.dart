@@ -14,8 +14,14 @@ class CallService {
   static const String _callsCollection = 'calls';
   static const int _callTimeoutSeconds = 30;
 
-  // ── Incoming calls stream ──────────────────────────────
-  // FIX: Bỏ .orderBy('createdAt') để tránh lỗi yêu cầu composite index
+  /// Shorthand reference để tương thích với cách dùng callCollection.doc(...)
+  CollectionReference get callCollection =>
+      _firestore.collection(_callsCollection);
+
+  // ── Incoming calls stream (theo uid đang đăng nhập) ───────────────────────
+
+  /// Lắng nghe cuộc gọi đến theo uid của user hiện tại (Firestore Auth).
+  /// FIX: Bỏ .orderBy('createdAt') để tránh lỗi yêu cầu composite index.
   Stream<CallModel?> get incomingCallStream {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return Stream.value(null);
@@ -23,8 +29,7 @@ class CallService {
     return _firestore
         .collection(_callsCollection)
         .where('calleeId', isEqualTo: uid)
-        .where('status', whereIn: ['calling', 'ringing'])
-        // .orderBy('createdAt', descending: true) // XÓA để tránh lỗi index
+        .where('status', whereIn: ['calling', 'ringing', 'dialing'])
         .limit(1)
         .snapshots()
         .map((snap) {
@@ -38,7 +43,30 @@ class CallService {
         });
   }
 
-  // ── Watch specific call ────────────────────────────────
+  // ── Incoming calls stream (theo userId truyền vào) ────────────────────────
+
+  /// Lắng nghe cuộc gọi đến cho một userId cụ thể.
+  /// Hỗ trợ cả field 'receiverId' (schema cũ) và 'calleeId' (schema mới).
+  Stream<CallModel?> listenToIncomingCall(String userId) {
+    // Ưu tiên 'receiverId' để backward-compat với schema cũ
+    return callCollection
+        .where('receiverId', isEqualTo: userId)
+        .where('status', isEqualTo: 'dialing')
+        .snapshots()
+        .map((snapshot) {
+      if (snapshot.docs.isEmpty) return null;
+      try {
+        return CallModel.fromMap(
+            snapshot.docs.first.data() as Map<String, dynamic>);
+      } catch (e) {
+        debugPrint('❌ Error parsing incoming call (listenToIncomingCall): $e');
+        return null;
+      }
+    });
+  }
+
+  // ── Watch specific call ───────────────────────────────────────────────────
+
   Stream<CallModel?> watchCall(String callId) {
     return _firestore
         .collection(_callsCollection)
@@ -55,7 +83,9 @@ class CallService {
     });
   }
 
-  // ── Initiate call ──────────────────────────────────────
+  // ── Initiate call (full flow với Firestore Auth) ──────────────────────────
+
+  /// Tạo cuộc gọi mới, tự lấy thông tin caller từ Firestore.
   Future<CallModel?> initiateCall({
     required String calleeId,
     required String calleeName,
@@ -93,10 +123,10 @@ class CallService {
         calleeId: calleeId,
         calleeName: calleeName,
         calleeAvatar: calleeAvatar,
+        channelName: channelName,
         callType: callType,
         status: CallStatus.calling,
-        channelName: channelName,
-        token: null, // No-token mode cho dev
+        token: null,
         createdAt: DateTime.now(),
       );
 
@@ -117,7 +147,16 @@ class CallService {
     }
   }
 
-  // ── Answer call ────────────────────────────────────────
+  // ── Make call (truyền thẳng CallModel — schema cũ) ───────────────────────
+
+  /// Tạo cuộc gọi bằng cách truyền thẳng CallModel.
+  /// Tương thích với schema cũ dùng call.id và toMap().
+  Future<void> makeCall(CallModel call) async {
+    await callCollection.doc(call.callId).set(call.toMap());
+  }
+
+  // ── Answer call ───────────────────────────────────────────────────────────
+
   Future<bool> answerCall(String callId) async {
     try {
       await _firestore.collection(_callsCollection).doc(callId).update({
@@ -132,7 +171,8 @@ class CallService {
     }
   }
 
-  // ── Decline call ───────────────────────────────────────
+  // ── Decline call ──────────────────────────────────────────────────────────
+
   Future<bool> declineCall(String callId) async {
     try {
       await _firestore
@@ -147,8 +187,22 @@ class CallService {
     }
   }
 
-  // ── End call ───────────────────────────────────────────
-  Future<bool> endCall(String callId, {int? durationSeconds}) async {
+  // ── Update call status (tổng quát) ───────────────────────────────────────
+
+  /// Cập nhật trạng thái cuộc gọi. Dùng được cho cả schema cũ và mới.
+  Future<void> updateCallStatus(String callId, String status) async {
+    await callCollection.doc(callId).update({'status': status});
+  }
+
+  // ── End call ──────────────────────────────────────────────────────────────
+
+  /// Kết thúc cuộc gọi.
+  /// [deleteAfter]: xóa document sau 2 giây (hữu ích khi dùng schema đơn giản).
+  Future<bool> endCall(
+    String callId, {
+    int? durationSeconds,
+    bool deleteAfter = false,
+  }) async {
     try {
       final updates = <String, dynamic>{
         'status': CallStatus.ended.name,
@@ -157,8 +211,16 @@ class CallService {
       if (durationSeconds != null) {
         updates['durationSeconds'] = durationSeconds;
       }
+
       await _firestore.collection(_callsCollection).doc(callId).update(updates);
       debugPrint('✅ Cuộc gọi kết thúc: $callId');
+
+      if (deleteAfter) {
+        Future.delayed(const Duration(seconds: 2), () {
+          callCollection.doc(callId).delete();
+        });
+      }
+
       return true;
     } catch (e) {
       debugPrint('❌ Lỗi kết thúc cuộc gọi: $e');
@@ -166,7 +228,8 @@ class CallService {
     }
   }
 
-  // ── Miss call ──────────────────────────────────────────
+  // ── Mark missed ───────────────────────────────────────────────────────────
+
   Future<void> markCallMissed(String callId) async {
     try {
       final doc =
@@ -174,8 +237,7 @@ class CallService {
       if (!doc.exists) return;
 
       final call = CallModel.fromDocument(doc);
-      if (call.status == CallStatus.calling ||
-          call.status == CallStatus.ringing) {
+      if (call.isActive) {
         await _firestore
             .collection(_callsCollection)
             .doc(callId)
@@ -187,13 +249,13 @@ class CallService {
     }
   }
 
-  // ── Call history ───────────────────────────────────────
-  // FIX: Tách thành 2 query riêng để tránh cần composite index
+  // ── Call history ──────────────────────────────────────────────────────────
+
+  /// FIX: Tách thành 2 query riêng để tránh cần composite index.
   Stream<List<CallModel>> getCallHistory({int limit = 30}) {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return Stream.value([]);
 
-    // Merge 2 streams: calls as caller + calls as callee
     final asCaller = _firestore
         .collection(_callsCollection)
         .where('callerId', isEqualTo: uid)
@@ -212,7 +274,6 @@ class CallService {
       final callerDocs = (snapshots[0] as QuerySnapshot).docs;
       final calleeDocs = (snapshots[1] as QuerySnapshot).docs;
 
-      // Merge và dedup bằng callId
       final seen = <String>{};
       final all = <CallModel>[];
 
@@ -224,21 +285,38 @@ class CallService {
         } catch (_) {}
       }
 
-      // Sắp xếp theo thời gian mới nhất
       all.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return all.take(limit).toList();
     });
   }
 
-  // ── Helpers ────────────────────────────────────────────
+  // ── Get single call ───────────────────────────────────────────────────────
+
+  Future<CallModel?> getCall(String callId) async {
+    try {
+      final doc =
+          await _firestore.collection(_callsCollection).doc(callId).get();
+      if (!doc.exists) return null;
+      return CallModel.fromDocument(doc);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ── Private helpers ───────────────────────────────────────────────────────
 
   Future<CallModel?> _getActiveCallForUser(String userId) async {
     try {
-      // Kiểm tra user đang là caller
       final asCallerSnap = await _firestore
           .collection(_callsCollection)
           .where('callerId', isEqualTo: userId)
-          .where('status', whereIn: ['calling', 'ringing', 'connected'])
+          .where('status', whereIn: [
+            'dialing',
+            'calling',
+            'ringing',
+            'connected',
+            'accepted'
+          ])
           .limit(1)
           .get();
 
@@ -246,11 +324,16 @@ class CallService {
         return CallModel.fromDocument(asCallerSnap.docs.first);
       }
 
-      // Kiểm tra user đang là callee
       final asCalleeSnap = await _firestore
           .collection(_callsCollection)
           .where('calleeId', isEqualTo: userId)
-          .where('status', whereIn: ['calling', 'ringing', 'connected'])
+          .where('status', whereIn: [
+            'dialing',
+            'calling',
+            'ringing',
+            'connected',
+            'accepted'
+          ])
           .limit(1)
           .get();
 
@@ -276,27 +359,19 @@ class CallService {
     final uid = (_auth.currentUser?.uid ?? 'anon').substring(0, 8);
     return '${uid}_$timestamp';
   }
-
-  Future<CallModel?> getCall(String callId) async {
-    try {
-      final doc =
-          await _firestore.collection(_callsCollection).doc(callId).get();
-      if (!doc.exists) return null;
-      return CallModel.fromDocument(doc);
-    } catch (e) {
-      return null;
-    }
-  }
 }
 
-/// Helper để merge 2 streams
+// ── StreamZip helper ──────────────────────────────────────────────────────────
+
+/// Merge nhiều streams thành 1 stream phát ra List chứa giá trị mới nhất
+/// của từng stream mỗi khi bất kỳ stream nào phát ra giá trị mới.
 class StreamZip<T> extends StreamView<List<T>> {
   StreamZip(List<Stream<T>> streams) : super(_buildStream(streams));
 
   static Stream<List<T>> _buildStream<T>(List<Stream<T>> streams) {
     final controller = StreamController<List<T>>();
     final latest = List<T?>.filled(streams.length, null);
-    var initialized = List<bool>.filled(streams.length, false);
+    final initialized = List<bool>.filled(streams.length, false);
     final subs = <StreamSubscription<T>>[];
 
     void tryEmit() {

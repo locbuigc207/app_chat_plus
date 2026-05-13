@@ -4,6 +4,11 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 import '../constants/constants.dart';
 
 class GeminiService {
+  // Free tier limits: 15 RPM, 1M TPM, 1500 req/day (gemini-2.0-flash)
+  static const String _model = 'gemini-2.0-flash';
+  static const int _maxRetries = 2;
+  static const Duration _retryDelay = Duration(seconds: 5);
+
   Future<String> sendMessage(
       String message, List<Map<String, dynamic>> historyRaw) async {
     try {
@@ -14,26 +19,97 @@ class GeminiService {
       }
 
       final model = GenerativeModel(
-        model: 'gemini-2.0-flash',
+        model: _model,
         apiKey: apiKey,
+        generationConfig: GenerationConfig(
+          maxOutputTokens: 1024, // Giới hạn để tiết kiệm quota free tier
+          temperature: 0.7,
+        ),
         systemInstruction: Content.system(
-            "Bạn là một AI Assistant hữu ích, được tích hợp trực tiếp vào ứng dụng chat. "
-            "Bạn có khả năng trả lời câu hỏi, viết code, tạo bảng và phân tích. "
-            "Hãy phản hồi bằng tiếng Việt một cách thân thiện, ngắn gọn và định dạng Markdown rõ ràng."),
+          "Bạn là một AI Assistant hữu ích, được tích hợp trực tiếp vào ứng dụng chat. "
+          "Bạn có khả năng trả lời câu hỏi, viết code, tạo bảng và phân tích. "
+          "Hãy phản hồi bằng tiếng Việt một cách thân thiện, ngắn gọn và định dạng Markdown rõ ràng.",
+        ),
       );
 
-      List<Content> chatHistory = historyRaw.map((msg) {
-        final role =
-            msg['idFrom'] == AppConstants.aiAssistantId ? 'model' : 'user';
-        return Content(role, [TextPart(msg['content'])]);
-      }).toList();
+      // Gemini yêu cầu history phải xen kẽ user/model, bắt đầu bằng user
+      final List<Content> chatHistory = _buildValidHistory(historyRaw);
 
-      final chat = model.startChat(history: chatHistory);
-      final response = await chat.sendMessage(Content.text(message));
-
-      return response.text ?? "Xin lỗi, tôi không thể tạo câu trả lời lúc này.";
+      return await _sendWithRetry(model, chatHistory, message);
     } catch (e) {
-      return "Lỗi kết nối Gemini AI: $e\nVui lòng kiểm tra lại kết nối mạng hoặc API Key.";
+      return _handleError(e);
     }
+  }
+
+  /// Đảm bảo history hợp lệ: xen kẽ user/model, bắt đầu bằng user
+  List<Content> _buildValidHistory(List<Map<String, dynamic>> historyRaw) {
+    final List<Content> contents = [];
+
+    for (final msg in historyRaw) {
+      final role =
+          msg['idFrom'] == AppConstants.aiAssistantId ? 'model' : 'user';
+      final content = msg['content']?.toString() ?? '';
+      if (content.isEmpty) continue;
+
+      // Bỏ qua nếu role trùng với phần tử cuối (tránh consecutive same role)
+      if (contents.isNotEmpty && contents.last.role == role) continue;
+
+      contents.add(Content(role, [TextPart(content)]));
+    }
+
+    // History không được bắt đầu bằng 'model'
+    if (contents.isNotEmpty && contents.first.role == 'model') {
+      contents.removeAt(0);
+    }
+
+    return contents;
+  }
+
+  Future<String> _sendWithRetry(
+    GenerativeModel model,
+    List<Content> history,
+    String message,
+  ) async {
+    int attempt = 0;
+
+    while (attempt <= _maxRetries) {
+      try {
+        final chat = model.startChat(history: history);
+        final response = await chat.sendMessage(Content.text(message));
+        return response.text ??
+            "Xin lỗi, tôi không thể tạo câu trả lời lúc này.";
+      } catch (e) {
+        final isRateLimit = e.toString().contains('429') ||
+            e.toString().toLowerCase().contains('quota') ||
+            e.toString().toLowerCase().contains('rate');
+
+        if (isRateLimit && attempt < _maxRetries) {
+          attempt++;
+          // Tăng delay theo số lần retry (5s, 10s)
+          await Future.delayed(_retryDelay * attempt);
+          continue;
+        }
+        rethrow;
+      }
+    }
+
+    return "Xin lỗi, hệ thống đang bận. Vui lòng thử lại sau vài giây.";
+  }
+
+  String _handleError(Object e) {
+    final errorStr = e.toString();
+
+    if (errorStr.contains('429') || errorStr.toLowerCase().contains('quota')) {
+      return "⚠️ Đã đạt giới hạn request miễn phí. Vui lòng chờ 1 phút rồi thử lại.";
+    }
+    if (errorStr.contains('403') ||
+        errorStr.toLowerCase().contains('api key')) {
+      return "🔑 API Key không hợp lệ hoặc chưa được kích hoạt. Kiểm tra lại Google AI Studio.";
+    }
+    if (errorStr.contains('SocketException') || errorStr.contains('network')) {
+      return "📶 Lỗi kết nối mạng. Vui lòng kiểm tra internet.";
+    }
+
+    return "❌ Lỗi: $e\nVui lòng thử lại.";
   }
 }
