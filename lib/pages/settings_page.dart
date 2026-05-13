@@ -4,8 +4,9 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
+import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
-import 'package:flutter_chat_demo/widgets/common_widgets.dart'; // Đã đổi import
+import 'package:flutter_chat_demo/widgets/common_widgets.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -27,6 +28,8 @@ class SettingsPageState extends State<SettingsPage> {
   String _avatarUrl = '';
   String _phoneNumber = '';
   String _qrCode = '';
+  bool _is2FAEnabled = false;
+  String _twoFactorSecret = '';
 
   bool _isLoading = false;
   File? _avatarFile;
@@ -51,6 +54,8 @@ class SettingsPageState extends State<SettingsPage> {
       _phoneNumber =
           _settingProvider.getPref(FirestoreConstants.phoneNumber) ?? '';
       _qrCode = _settingProvider.getPref(FirestoreConstants.qrCode) ?? '';
+      _is2FAEnabled = _settingProvider.getPref('is2FAEnabled') == true;
+      _twoFactorSecret = _settingProvider.getPref('twoFactorSecret') ?? '';
     });
     _controllerNickname = TextEditingController(text: _nickname);
     _controllerAboutMe = TextEditingController(text: _aboutMe);
@@ -88,6 +93,8 @@ class SettingsPageState extends State<SettingsPage> {
         aboutMe: _aboutMe,
         phoneNumber: _phoneNumber,
         qrCode: _qrCode,
+        is2FAEnabled: _is2FAEnabled,
+        twoFactorSecret: _twoFactorSecret,
       );
       _settingProvider
           .updateDataFirestore(
@@ -121,6 +128,8 @@ class SettingsPageState extends State<SettingsPage> {
       aboutMe: _aboutMe,
       phoneNumber: _phoneNumber,
       qrCode: _qrCode,
+      is2FAEnabled: _is2FAEnabled,
+      twoFactorSecret: _twoFactorSecret,
     );
 
     _settingProvider
@@ -350,6 +359,60 @@ class SettingsPageState extends State<SettingsPage> {
               label: 'Phone',
               value: _phoneNumber,
               isDark: isDark,
+            ),
+            Divider(
+              height: 1,
+              indent: 56,
+              endIndent: 16,
+              color: isDark
+                  ? ColorConstants.borderDark
+                  : ColorConstants.greyColor2,
+            ),
+            ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              leading: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.security_rounded,
+                    color: Colors.green, size: 18),
+              ),
+              title: Text(
+                'Xác thực 2 lớp (2FA)',
+                style: TextStyle(
+                  fontSize: 15,
+                  color: isDark ? Colors.white : Colors.black87,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              trailing: Switch(
+                value: _is2FAEnabled,
+                activeColor: ColorConstants.primaryColor,
+                onChanged: (val) {
+                  if (val) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const TwoFactorSetupPage()),
+                    ).then((_) => _readLocal());
+                  } else {
+                    _settingProvider.updateDataFirestore(
+                      FirestoreConstants.pathUserCollection,
+                      _userId,
+                      {'is2FAEnabled': false, 'twoFactorSecret': ''},
+                    ).then((_) {
+                      _settingProvider.setPref('is2FAEnabled', false);
+                      _settingProvider.setPref('twoFactorSecret', '');
+                      setState(() => _is2FAEnabled = false);
+                      Fluttertoast.showToast(msg: 'Đã tắt 2FA');
+                    });
+                  }
+                },
+              ),
             ),
           ],
         ],

@@ -8,6 +8,8 @@ class UserChat {
   final String aboutMe;
   final String phoneNumber;
   final String qrCode;
+  final bool is2FAEnabled;
+  final String twoFactorSecret;
 
   const UserChat({
     required this.id,
@@ -16,15 +18,19 @@ class UserChat {
     required this.aboutMe,
     this.phoneNumber = '',
     this.qrCode = '',
+    this.is2FAEnabled = false,
+    this.twoFactorSecret = '',
   });
 
-  Map<String, String> toJson() {
+  Map<String, dynamic> toJson() {
     return {
       FirestoreConstants.nickname: nickname,
       FirestoreConstants.aboutMe: aboutMe,
       FirestoreConstants.photoUrl: photoUrl,
       FirestoreConstants.phoneNumber: phoneNumber,
       FirestoreConstants.qrCode: qrCode,
+      'is2FAEnabled': is2FAEnabled,
+      'twoFactorSecret': twoFactorSecret,
     };
   }
 
@@ -34,6 +40,9 @@ class UserChat {
     String nickname = "";
     String phoneNumber = "";
     String qrCode = "";
+    bool is2FAEnabled = false;
+    String twoFactorSecret = "";
+
     try {
       aboutMe = doc.get(FirestoreConstants.aboutMe);
     } catch (_) {}
@@ -49,6 +58,13 @@ class UserChat {
     try {
       qrCode = doc.get(FirestoreConstants.qrCode);
     } catch (_) {}
+    try {
+      is2FAEnabled = doc.get('is2FAEnabled') ?? false;
+    } catch (_) {}
+    try {
+      twoFactorSecret = doc.get('twoFactorSecret') ?? "";
+    } catch (_) {}
+
     return UserChat(
       id: doc.id,
       photoUrl: photoUrl,
@@ -56,6 +72,8 @@ class UserChat {
       aboutMe: aboutMe,
       phoneNumber: phoneNumber,
       qrCode: qrCode,
+      is2FAEnabled: is2FAEnabled,
+      twoFactorSecret: twoFactorSecret,
     );
   }
 }

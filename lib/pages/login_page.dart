@@ -279,11 +279,16 @@ class _LoginPageState extends State<LoginPage>
   Widget _buildGoogleSignInBtn(AuthProvider authProvider, bool isDark) {
     return _AuthButton(
       onPressed: () {
-        authProvider.handleSignIn().then((isSuccess) {
-          if (isSuccess) {
+        authProvider.handleSignIn().then((result) {
+          if (result == 'success') {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (_) => HomePage()),
+            );
+          } else if (result == 'requires_2fa') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => TwoFactorVerifyPage()),
             );
           }
         }).catchError((error, stackTrace) {

@@ -42,19 +42,18 @@ class AuthProvider extends ChangeNotifier {
 
   String? get userFirebaseId => prefs.getString(FirestoreConstants.id);
 
+  // Lưu tạm thông tin người dùng đang chờ xác thực 2FA
+  UserChat? tempUserChat;
+
   Future<bool> isLoggedIn() async {
     try {
       final currentUser = firebaseAuth.currentUser;
       if (currentUser != null &&
           prefs.getString(FirestoreConstants.id)?.isNotEmpty == true) {
-        print('✅ User logged in: ${currentUser.uid}');
         return true;
       }
-
-      print('❌ No active login found');
       return false;
     } catch (e) {
-      print('❌ Error checking login status: $e');
       return false;
     }
   }
@@ -64,23 +63,19 @@ class AuthProvider extends ChangeNotifier {
     return 'CHATAPP_${userId}_${DateTime.now().millisecondsSinceEpoch}';
   }
 
-  Future<bool> handleSignIn() async {
+  // Trả về 'success', 'requires_2fa', 'canceled', hoặc 'error'
+  Future<String> handleSignIn() async {
     _status = Status.authenticating;
     notifyListeners();
 
     try {
-      print('🔄 Starting Google Sign In...');
-
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
 
       if (googleUser == null) {
-        print('❌ User canceled sign in');
         _status = Status.authenticateCanceled;
         notifyListeners();
-        return false;
+        return 'canceled';
       }
-
-      print('✅ Google user: ${googleUser.email}');
 
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
@@ -96,13 +91,10 @@ class AuthProvider extends ChangeNotifier {
       final User? firebaseUser = userCredential.user;
 
       if (firebaseUser == null) {
-        print('❌ Firebase user is null');
         _status = Status.authenticateError;
         notifyListeners();
-        return false;
+        return 'error';
       }
-
-      print('✅ Firebase user: ${firebaseUser.uid}');
 
       final result = await firebaseFirestore
           .collection(FirestoreConstants.pathUserCollection)
@@ -112,8 +104,7 @@ class AuthProvider extends ChangeNotifier {
       final documents = result.docs;
 
       if (documents.isEmpty) {
-        print('📝 Creating new user...');
-
+        // Tạo user mới
         final qrCode = _generateQRCode(firebaseUser.uid);
 
         await firebaseFirestore
@@ -129,56 +120,106 @@ class AuthProvider extends ChangeNotifier {
               DateTime.now().millisecondsSinceEpoch.toString(),
           FirestoreConstants.chattingWith: null,
           FirestoreConstants.aboutMe: '',
+          'is2FAEnabled': false,
+          'twoFactorSecret': '',
         });
 
-        await prefs.setString(FirestoreConstants.id, firebaseUser.uid);
-        await prefs.setString(
-            FirestoreConstants.nickname, firebaseUser.displayName ?? '');
-        await prefs.setString(
-            FirestoreConstants.photoUrl, firebaseUser.photoURL ?? '');
-        await prefs.setString(
-            FirestoreConstants.phoneNumber, firebaseUser.phoneNumber ?? '');
-        await prefs.setString(FirestoreConstants.qrCode, qrCode);
-        await prefs.setString(FirestoreConstants.aboutMe, '');
+        await _saveUserToPrefs(
+          firebaseUser.uid,
+          firebaseUser.displayName ?? '',
+          firebaseUser.photoURL ?? '',
+          firebaseUser.phoneNumber ?? '',
+          qrCode,
+          '',
+          false,
+          '',
+        );
 
-        print('✅ New user created');
+        _status = Status.authenticated;
+        notifyListeners();
+        return 'success';
       } else {
-        print('📖 Loading existing user...');
-
+        // Load user đã tồn tại
         final documentSnapshot = documents.first;
         final userChat = UserChat.fromDocument(documentSnapshot);
 
-        if (userChat.qrCode.isEmpty) {
-          final qrCode = _generateQRCode(firebaseUser.uid);
+        String qrCode = userChat.qrCode;
+        if (qrCode.isEmpty) {
+          qrCode = _generateQRCode(firebaseUser.uid);
           await firebaseFirestore
               .collection(FirestoreConstants.pathUserCollection)
               .doc(firebaseUser.uid)
               .update({FirestoreConstants.qrCode: qrCode});
-
-          await prefs.setString(FirestoreConstants.qrCode, qrCode);
-        } else {
-          await prefs.setString(FirestoreConstants.qrCode, userChat.qrCode);
         }
 
-        await prefs.setString(FirestoreConstants.id, userChat.id);
-        await prefs.setString(FirestoreConstants.nickname, userChat.nickname);
-        await prefs.setString(FirestoreConstants.photoUrl, userChat.photoUrl);
-        await prefs.setString(FirestoreConstants.aboutMe, userChat.aboutMe);
-        await prefs.setString(
-            FirestoreConstants.phoneNumber, userChat.phoneNumber);
-
-        print('✅ User loaded');
+        // Kiểm tra 2FA
+        if (userChat.is2FAEnabled) {
+          // Chưa lưu Prefs, gán vào tempUserChat chờ xác thực 2FA
+          tempUserChat = userChat;
+          _status = Status.uninitialized;
+          notifyListeners();
+          return 'requires_2fa';
+        } else {
+          await _saveUserToPrefs(
+            userChat.id,
+            userChat.nickname,
+            userChat.photoUrl,
+            userChat.phoneNumber,
+            qrCode,
+            userChat.aboutMe,
+            false,
+            '',
+          );
+          _status = Status.authenticated;
+          notifyListeners();
+          return 'success';
+        }
       }
-
-      _status = Status.authenticated;
-      notifyListeners();
-      return true;
     } catch (e) {
       print('❌ Sign in error: $e');
       _status = Status.authenticateError;
       notifyListeners();
-      return false;
+      return 'error';
     }
+  }
+
+  // Hoàn tất đăng nhập sau khi 2FA xác thực thành công
+  Future<void> complete2FALogin() async {
+    if (tempUserChat != null) {
+      await _saveUserToPrefs(
+        tempUserChat!.id,
+        tempUserChat!.nickname,
+        tempUserChat!.photoUrl,
+        tempUserChat!.phoneNumber,
+        tempUserChat!.qrCode,
+        tempUserChat!.aboutMe,
+        true,
+        tempUserChat!.twoFactorSecret,
+      );
+      tempUserChat = null;
+      _status = Status.authenticated;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _saveUserToPrefs(
+    String id,
+    String nickname,
+    String photoUrl,
+    String phoneNumber,
+    String qrCode,
+    String aboutMe,
+    bool is2FAEnabled,
+    String secret,
+  ) async {
+    await prefs.setString(FirestoreConstants.id, id);
+    await prefs.setString(FirestoreConstants.nickname, nickname);
+    await prefs.setString(FirestoreConstants.photoUrl, photoUrl);
+    await prefs.setString(FirestoreConstants.phoneNumber, phoneNumber);
+    await prefs.setString(FirestoreConstants.qrCode, qrCode);
+    await prefs.setString(FirestoreConstants.aboutMe, aboutMe);
+    await prefs.setBool('is2FAEnabled', is2FAEnabled);
+    await prefs.setString('twoFactorSecret', secret);
   }
 
   void handleException() {
@@ -193,6 +234,7 @@ class AuthProvider extends ChangeNotifier {
       await firebaseAuth.signOut();
       await googleSignIn.disconnect();
       await googleSignIn.signOut();
+      await prefs.clear();
       print('✅ Sign out successful');
     } catch (e) {
       print('⚠️ Sign out error: $e');
