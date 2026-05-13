@@ -1,18 +1,20 @@
 // ============================================================
-// IMPROVED CHAT PAGE - Key UI/UX changes:
+// IMPROVED CHAT WIDGETS
 // 1. Modern message bubbles with tail, soft shadows
 // 2. Improved input bar with smooth animations
 // 3. Beautiful date separators
 // 4. Read receipts with blue ticks
 // 5. Smooth scroll-to-bottom FAB
 // 6. Message reactions display improved
+// 7. Link preview support in bubbles
 // ============================================================
 
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
+import 'package:flutter_chat_demo/widgets/link_preview_widget.dart';
+import 'package:provider/provider.dart';
 
 // ── MESSAGE BUBBLE ────────────────────────────────────────────────────────────
 class ImprovedMessageBubble extends StatelessWidget {
@@ -55,7 +57,7 @@ class ImprovedMessageBubble extends StatelessWidget {
           ),
           child: Column(
             crossAxisAlignment:
-            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
               GestureDetector(
                 onLongPress: onLongPress,
@@ -118,6 +120,19 @@ class _BubbleBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Regex tìm URL trong nội dung tin nhắn
+    final RegExp exp =
+        RegExp(r'(?:(?:https?|ftp):\/\/)?[\w/\-?=%.]+\.[\w/\-?=%.]+');
+    final Iterable<RegExpMatch> matches = exp.allMatches(content);
+    String? firstUrl = matches.isNotEmpty
+        ? content.substring(matches.first.start, matches.first.end)
+        : null;
+
+    // Thêm 'https://' nếu url chưa có để LinkPreviewWidget hoạt động chuẩn
+    if (firstUrl != null && !firstUrl.startsWith('http')) {
+      firstUrl = 'https://$firstUrl';
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -140,6 +155,7 @@ class _BubbleBody extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Pinned indicator
           if (isPinned) ...[
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -162,6 +178,8 @@ class _BubbleBody extends StatelessWidget {
             ),
             const SizedBox(height: 4),
           ],
+
+          // Content
           if (isDeleted)
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -183,15 +201,25 @@ class _BubbleBody extends StatelessWidget {
               ],
             )
           else
-            Text(
-              content,
-              style: TextStyle(
-                color: _textColor,
-                fontSize: 14.5,
-                height: 1.4,
-              ),
+            // FIX: Gộp text + link preview vào Column
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  content,
+                  style: TextStyle(
+                    color: _textColor,
+                    fontSize: 14.5,
+                    height: 1.4,
+                  ),
+                ),
+                if (firstUrl != null) LinkPreviewWidget(url: firstUrl),
+              ],
             ),
+
           const SizedBox(height: 4),
+
+          // Timestamp + read receipt
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -449,7 +477,7 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
                         maxHeight: 120,
                       ),
                       margin:
-                      EdgeInsets.symmetric(horizontal: showFull ? 6 : 4),
+                          EdgeInsets.symmetric(horizontal: showFull ? 6 : 4),
                       decoration: BoxDecoration(
                         color: widget.isDark
                             ? ColorConstants.surfaceDark2
@@ -475,7 +503,7 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
                                 minLines: 1,
                                 onChanged: widget.onTextChanged,
                                 autofocus:
-                                widget.isMiniChat || widget.isBubbleMode,
+                                    widget.isMiniChat || widget.isBubbleMode,
                                 style: TextStyle(
                                   color: widget.isDark
                                       ? Colors.white
@@ -485,9 +513,9 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
                                 ),
                                 decoration: InputDecoration(
                                   hintText:
-                                  widget.isMiniChat || widget.isBubbleMode
-                                      ? 'Message...'
-                                      : 'Type a message...',
+                                      widget.isMiniChat || widget.isBubbleMode
+                                          ? 'Message...'
+                                          : 'Type a message...',
                                   hintStyle: TextStyle(
                                     color: widget.isDark
                                         ? Colors.white38
@@ -503,11 +531,11 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
                               ),
                             ),
                           ),
-                          // Sticker btn (only full)
+                          // Sticker btn (only full mode)
                           if (showFull)
                             Padding(
                               padding:
-                              const EdgeInsets.only(right: 6, bottom: 8),
+                                  const EdgeInsets.only(right: 6, bottom: 8),
                               child: GestureDetector(
                                 onTap: widget.onSticker,
                                 child: Icon(
@@ -524,7 +552,7 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
                     ),
                   ),
 
-                  // Send / Image / Voice
+                  // Send / Image / Voice — animated switch
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 200),
                     transitionBuilder: (child, anim) => ScaleTransition(
@@ -533,9 +561,9 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
                     ),
                     child: _hasText
                         ? _SendButton(
-                      key: const ValueKey('send'),
-                      onTap: widget.onSend,
-                    )
+                            key: const ValueKey('send'),
+                            onTap: widget.onSend,
+                          )
                         : _buildMediaButtons(showFull),
                   ),
                 ],
@@ -592,8 +620,11 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
           ),
           GestureDetector(
             onTap: widget.onClearReply,
-            child: Icon(Icons.close_rounded,
-                size: 16, color: ColorConstants.greyColor),
+            child: Icon(
+              Icons.close_rounded,
+              size: 16,
+              color: ColorConstants.greyColor,
+            ),
           ),
         ],
       ),
@@ -856,22 +887,31 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
         : peerName.codeUnitAt(0) % ColorConstants.avatarColors.length;
     final avatarColor = ColorConstants.avatarColors[colorIndex];
 
-    return Stack(
-      children: [
-        Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: avatarColor.withOpacity(0.15),
-            border: Border.all(color: avatarColor.withOpacity(0.2), width: 1.5),
-          ),
-          child: ClipOval(
-            child: peerAvatar.isNotEmpty
-                ? Image.network(
-              peerAvatar,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Center(
+    return Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: avatarColor.withOpacity(0.15),
+        border: Border.all(color: avatarColor.withOpacity(0.2), width: 1.5),
+      ),
+      child: ClipOval(
+        child: peerAvatar.isNotEmpty
+            ? Image.network(
+                peerAvatar,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Center(
+                  child: Text(
+                    peerName.isNotEmpty ? peerName[0].toUpperCase() : '?',
+                    style: TextStyle(
+                      color: avatarColor,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              )
+            : Center(
                 child: Text(
                   peerName.isNotEmpty ? peerName[0].toUpperCase() : '?',
                   style: TextStyle(
@@ -881,20 +921,7 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
                   ),
                 ),
               ),
-            )
-                : Center(
-              child: Text(
-                peerName.isNotEmpty ? peerName[0].toUpperCase() : '?',
-                style: TextStyle(
-                  color: avatarColor,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -972,7 +999,7 @@ class ScrollToBottomButton extends StatelessWidget {
           ],
           border: Border.all(
             color:
-            isDark ? ColorConstants.borderDark : ColorConstants.greyColor2,
+                isDark ? ColorConstants.borderDark : ColorConstants.greyColor2,
           ),
         ),
         child: Icon(

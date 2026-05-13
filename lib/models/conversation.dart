@@ -1,4 +1,4 @@
-// lib/models/conversation.dart (FIXED - Handle Timestamp)
+// lib/models/conversation.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
@@ -12,6 +12,7 @@ class Conversation {
   final bool isPinned;
   final String? pinnedAt;
   final bool isMuted;
+  final List<String> archivedBy;
 
   const Conversation({
     required this.id,
@@ -23,6 +24,7 @@ class Conversation {
     this.isPinned = false,
     this.pinnedAt,
     this.isMuted = false,
+    this.archivedBy = const [],
   });
 
   Map<String, dynamic> toJson() {
@@ -35,10 +37,10 @@ class Conversation {
       'isPinned': isPinned,
       'pinnedAt': pinnedAt,
       'isMuted': isMuted,
+      'archivedBy': archivedBy,
     };
   }
 
-  // ✅ FIX 5: Properly handle Timestamp conversion
   factory Conversation.fromDocument(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>?;
 
@@ -46,8 +48,7 @@ class Conversation {
       throw Exception('Conversation document data is null');
     }
 
-    // ✅ FIX 5: Helper function to convert Timestamp to String safely
-    String _getStringValue(dynamic value, {String defaultValue = '0'}) {
+    String getStringValue(dynamic value, {String defaultValue = '0'}) {
       if (value == null) return defaultValue;
       if (value is String) return value;
       if (value is Timestamp) {
@@ -62,7 +63,7 @@ class Conversation {
       return defaultValue;
     }
 
-    String? _getOptionalStringValue(dynamic value) {
+    String? getOptionalStringValue(dynamic value) {
       if (value == null) return null;
       if (value is String) return value;
       if (value is Timestamp) {
@@ -77,13 +78,13 @@ class Conversation {
       return null;
     }
 
-    List<String> _getParticipants(dynamic value) {
+    List<String> getListString(dynamic value) {
       if (value == null) return [];
       if (value is List) {
         try {
           return value.map((e) => e.toString()).toList();
         } catch (e) {
-          print('⚠️ Error converting participants: $e');
+          print('⚠️ Error converting list: $e');
           return [];
         }
       }
@@ -94,20 +95,20 @@ class Conversation {
       return Conversation(
         id: doc.id,
         isGroup: data[FirestoreConstants.isGroup] ?? false,
-        participants: _getParticipants(data[FirestoreConstants.participants]),
+        participants: getListString(data[FirestoreConstants.participants]),
         lastMessage: data[FirestoreConstants.lastMessage] ?? '',
-        lastMessageTime: _getStringValue(
+        lastMessageTime: getStringValue(
           data[FirestoreConstants.lastMessageTime],
           defaultValue: '0',
         ),
         lastMessageType: data[FirestoreConstants.lastMessageType] ?? 0,
         isPinned: data['isPinned'] ?? false,
-        pinnedAt: _getOptionalStringValue(data['pinnedAt']),
+        pinnedAt: getOptionalStringValue(data['pinnedAt']),
         isMuted: data['isMuted'] ?? false,
+        archivedBy: getListString(data['archivedBy']),
       );
     } catch (e) {
       print('❌ Error creating Conversation from document: $e');
-      // Return a minimal valid conversation on error
       return Conversation(
         id: doc.id,
         isGroup: false,

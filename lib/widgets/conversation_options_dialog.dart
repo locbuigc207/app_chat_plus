@@ -1,22 +1,27 @@
+// lib/widgets/conversation_options_dialog.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
 class ConversationOptionsDialog extends StatelessWidget {
   final bool isPinned;
   final bool isMuted;
+  final bool isArchived;
   final VoidCallback onPin;
   final VoidCallback onMute;
   final VoidCallback onClearHistory;
   final VoidCallback onMarkAsRead;
+  final VoidCallback onArchive;
 
   const ConversationOptionsDialog({
     super.key,
     required this.isPinned,
     required this.isMuted,
+    required this.isArchived,
     required this.onPin,
     required this.onMute,
     required this.onClearHistory,
     required this.onMarkAsRead,
+    required this.onArchive,
   });
 
   @override
@@ -64,7 +69,9 @@ class ConversationOptionsDialog extends StatelessWidget {
           // Options grid
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 10,
               children: [
                 _OptionCard(
                   icon: isPinned
@@ -78,7 +85,6 @@ class ConversationOptionsDialog extends StatelessWidget {
                     onPin();
                   },
                 ),
-                const SizedBox(width: 10),
                 _OptionCard(
                   icon: isMuted
                       ? Icons.volume_up_rounded
@@ -91,7 +97,18 @@ class ConversationOptionsDialog extends StatelessWidget {
                     onMute();
                   },
                 ),
-                const SizedBox(width: 10),
+                _OptionCard(
+                  icon: isArchived
+                      ? Icons.unarchive_rounded
+                      : Icons.archive_outlined,
+                  label: isArchived ? 'Unarchive' : 'Archive',
+                  isDark: isDark,
+                  color: Colors.orange,
+                  onTap: () {
+                    Navigator.pop(context);
+                    onArchive();
+                  },
+                ),
                 _OptionCard(
                   icon: Icons.mark_chat_read_outlined,
                   label: 'Mark Read',
@@ -102,7 +119,6 @@ class ConversationOptionsDialog extends StatelessWidget {
                     onMarkAsRead();
                   },
                 ),
-                const SizedBox(width: 10),
                 _OptionCard(
                   icon: Icons.delete_sweep_outlined,
                   label: 'Clear',
@@ -142,33 +158,34 @@ class _OptionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: BoxDecoration(
-            color: color.withOpacity(isDark ? 0.12 : 0.07),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: color.withOpacity(isDark ? 0.2 : 0.12),
-            ),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: (MediaQuery.of(context).size.width - 62) / 4,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: color.withOpacity(isDark ? 0.12 : 0.07),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: color.withOpacity(isDark ? 0.2 : 0.12),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: color, size: 22),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 22),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
               ),
-            ],
-          ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+            ),
+          ],
         ),
       ),
     );

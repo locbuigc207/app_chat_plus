@@ -1,3 +1,4 @@
+// lib/providers/conversation_provider.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
@@ -6,7 +7,9 @@ class ConversationProvider {
 
   ConversationProvider({required this.firebaseFirestore});
 
-  /// Pin/Unpin conversation
+  // ── Pin / Unpin ─────────────────────────────────────────────────────────────
+
+  /// Pin hoặc unpin một conversation.
   Future<bool> togglePinConversation(
       String conversationId, bool currentStatus) async {
     try {
@@ -26,7 +29,9 @@ class ConversationProvider {
     }
   }
 
-  /// Mute/Unmute conversation
+  // ── Mute / Unmute ───────────────────────────────────────────────────────────
+
+  /// Mute hoặc unmute thông báo của một conversation.
   Future<bool> toggleMuteConversation(
       String conversationId, bool currentStatus) async {
     try {
@@ -43,41 +48,60 @@ class ConversationProvider {
     }
   }
 
-  /// Xóa lịch sử conversation (chỉ xóa tin nhắn, giữ trạng thái bạn bè)
+  // ── Archive / Unarchive ─────────────────────────────────────────────────────
+
+  /// Archive hoặc unarchive conversation cho một user cụ thể.
+  /// Dùng arrayUnion/arrayRemove để hỗ trợ nhiều user archive độc lập.
+  Future<bool> toggleArchiveConversation(
+      String conversationId, String currentUserId, bool isArchiving) async {
+    try {
+      await firebaseFirestore
+          .collection(FirestoreConstants.pathConversationCollection)
+          .doc(conversationId)
+          .update({
+        'archivedBy': isArchiving
+            ? FieldValue.arrayUnion([currentUserId])
+            : FieldValue.arrayRemove([currentUserId]),
+      });
+      return true;
+    } catch (e) {
+      print('Error archiving conversation: $e');
+      return false;
+    }
+  }
+
+  // ── Clear History ───────────────────────────────────────────────────────────
+
+  /// Xóa toàn bộ tin nhắn trong conversation, giữ nguyên trạng thái bạn bè.
+  /// Batch delete theo từng chunk 500 (giới hạn Firestore).
   Future<bool> clearConversationHistory(String conversationId) async {
     try {
-      // Xóa tất cả tin nhắn trong conversation
       final messagesSnapshot = await firebaseFirestore
           .collection(FirestoreConstants.pathMessageCollection)
           .doc(conversationId)
           .collection(conversationId)
           .get();
 
-      if (messagesSnapshot.docs.isEmpty) {
-        return true; // Không có tin nhắn để xóa
-      }
+      if (messagesSnapshot.docs.isEmpty) return true;
 
-      // Batch delete messages
       final batch = firebaseFirestore.batch();
       int count = 0;
 
-      for (var doc in messagesSnapshot.docs) {
+      for (final doc in messagesSnapshot.docs) {
         batch.delete(doc.reference);
         count++;
 
-        // Commit mỗi 500 operations (giới hạn của Firestore)
         if (count >= 500) {
           await batch.commit();
           count = 0;
         }
       }
 
-      // Commit các operations còn lại
       if (count > 0) {
         await batch.commit();
       }
 
-      // Cập nhật conversation với lastMessage rỗng
+      // Reset lastMessage sau khi xóa
       await firebaseFirestore
           .collection(FirestoreConstants.pathConversationCollection)
           .doc(conversationId)
@@ -95,7 +119,10 @@ class ConversationProvider {
     }
   }
 
-  /// Lấy danh sách conversation của user, ưu tiên pinned lên đầu
+  // ── Streams ─────────────────────────────────────────────────────────────────
+
+  /// Stream danh sách conversation của user, pinned lên đầu,
+  /// sau đó sắp xếp theo lastMessageTime giảm dần.
   Stream<List<QueryDocumentSnapshot>> getConversationsWithPinned(
       String userId) {
     return firebaseFirestore
@@ -105,20 +132,20 @@ class ConversationProvider {
         .map((snapshot) {
       final docs = snapshot.docs;
 
-      // Sắp xếp: pinned trước, sau đó theo lastMessageTime
       docs.sort((a, b) {
         final aData = a.data();
         final bData = b.data();
 
-        final aPinned = aData['isPinned'] ?? false;
-        final bPinned = bData['isPinned'] ?? false;
+        final aPinned = (aData['isPinned'] as bool?) ?? false;
+        final bPinned = (bData['isPinned'] as bool?) ?? false;
 
         if (aPinned && !bPinned) return -1;
         if (!aPinned && bPinned) return 1;
 
-        // Cả hai pinned hoặc không pinned -> so theo thời gian tin nhắn cuối
-        final aTime = int.tryParse(aData['lastMessageTime'] ?? '0') ?? 0;
-        final bTime = int.tryParse(bData['lastMessageTime'] ?? '0') ?? 0;
+        final aTime =
+            int.tryParse(aData['lastMessageTime'] as String? ?? '0') ?? 0;
+        final bTime =
+            int.tryParse(bData['lastMessageTime'] as String? ?? '0') ?? 0;
         return bTime.compareTo(aTime);
       });
 

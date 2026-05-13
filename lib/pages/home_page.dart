@@ -1,3 +1,4 @@
+// lib/pages/home_page.dart
 import 'dart:async';
 import 'dart:io';
 
@@ -370,8 +371,21 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
                             ],
                           ),
                         ),
+                        // ── Notification badge ──
                         _buildNotificationBadge(isDark),
                         const SizedBox(width: 4),
+                        // ── Archive button ──
+                        _HeaderIconButton(
+                          icon: Icons.archive_outlined,
+                          isDark: isDark,
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const ArchivedChatsPage()),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        // ── Menu button ──
                         _buildMenuButton(isDark),
                         const SizedBox(width: 4),
                       ],
@@ -778,9 +792,15 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _buildListSkeleton(isDark);
         }
-        final conversations = snapshot.data ?? [];
 
-        if (conversations.isEmpty) {
+        // Lọc cuộc hội thoại: Chỉ hiện những cái mà user hiện tại CHƯA lưu trữ
+        final allDocs = snapshot.data ?? [];
+        final activeConversations = allDocs.where((doc) {
+          final conv = Conversation.fromDocument(doc);
+          return !conv.archivedBy.contains(_currentUserId);
+        }).toList();
+
+        if (activeConversations.isEmpty) {
           return Column(
             children: [
               _buildAiAssistantTile(isDark),
@@ -793,10 +813,10 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           padding: const EdgeInsets.only(top: 8, bottom: 16),
-          itemCount: conversations.length + 1,
+          itemCount: activeConversations.length + 1,
           itemBuilder: (_, i) {
             if (i == 0) return _buildAiAssistantTile(isDark);
-            return _buildConversationItem(conversations[i - 1], isDark);
+            return _buildConversationItem(activeConversations[i - 1], isDark);
           },
         );
       },
@@ -1169,6 +1189,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
+  // ── CONVERSATION OPTIONS ────────────────────────────────────
   void _showConversationOptions(Conversation conversation) {
     showModalBottomSheet(
       context: context,
@@ -1176,6 +1197,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
       builder: (_) => ConversationOptionsDialog(
         isPinned: conversation.isPinned,
         isMuted: conversation.isMuted,
+        isArchived: conversation.archivedBy.contains(_currentUserId),
         onPin: () => _conversationProvider.togglePinConversation(
             conversation.id, conversation.isPinned),
         onMute: () => _conversationProvider.toggleMuteConversation(
@@ -1183,6 +1205,11 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
         onClearHistory: () =>
             _conversationProvider.clearConversationHistory(conversation.id),
         onMarkAsRead: () {},
+        onArchive: () => _conversationProvider.toggleArchiveConversation(
+          conversation.id,
+          _currentUserId,
+          !conversation.archivedBy.contains(_currentUserId),
+        ),
       ),
     );
   }
@@ -1500,7 +1527,7 @@ class _OnlineDot extends StatelessWidget {
           width: 14,
           height: 14,
           decoration: BoxDecoration(
-            color: const Color(0xFF34C759), // iOS-style green
+            color: const Color(0xFF34C759),
             shape: BoxShape.circle,
             border: Border.all(
               color: Theme.of(context).scaffoldBackgroundColor,

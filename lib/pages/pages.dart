@@ -1,3 +1,4 @@
+export 'archived_chats_page.dart';
 export 'call_history_page.dart';
 export 'call_page.dart';
 export 'chat_page.dart';

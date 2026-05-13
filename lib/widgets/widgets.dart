@@ -18,6 +18,7 @@ export 'enhanced_message_options_dialog.dart';
 export 'group_call_button.dart';
 export 'group_call_listener.dart';
 export 'improved_chat_widgets.dart';
+export 'link_preview_widget.dart';
 export 'message_options_dialog.dart';
 export 'mini_chat_overlay.dart';
 export 'mini_map_widget.dart';
