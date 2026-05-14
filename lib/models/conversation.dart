@@ -13,6 +13,7 @@ class Conversation {
   final String? pinnedAt;
   final bool isMuted;
   final List<String> archivedBy;
+  final String contextType;
 
   const Conversation({
     required this.id,
@@ -25,6 +26,7 @@ class Conversation {
     this.pinnedAt,
     this.isMuted = false,
     this.archivedBy = const [],
+    this.contextType = 'default',
   });
 
   Map<String, dynamic> toJson() {
@@ -38,6 +40,7 @@ class Conversation {
       'pinnedAt': pinnedAt,
       'isMuted': isMuted,
       'archivedBy': archivedBy,
+      'contextType': contextType,
     };
   }
 
@@ -55,7 +58,6 @@ class Conversation {
         try {
           return value.millisecondsSinceEpoch.toString();
         } catch (e) {
-          print('⚠️ Error converting Timestamp: $e');
           return defaultValue;
         }
       }
@@ -70,7 +72,6 @@ class Conversation {
         try {
           return value.millisecondsSinceEpoch.toString();
         } catch (e) {
-          print('⚠️ Error converting optional Timestamp: $e');
           return null;
         }
       }
@@ -84,7 +85,6 @@ class Conversation {
         try {
           return value.map((e) => e.toString()).toList();
         } catch (e) {
-          print('⚠️ Error converting list: $e');
           return [];
         }
       }
@@ -106,9 +106,9 @@ class Conversation {
         pinnedAt: getOptionalStringValue(data['pinnedAt']),
         isMuted: data['isMuted'] ?? false,
         archivedBy: getListString(data['archivedBy']),
+        contextType: data['contextType'] ?? 'default',
       );
     } catch (e) {
-      print('❌ Error creating Conversation from document: $e');
       return Conversation(
         id: doc.id,
         isGroup: false,

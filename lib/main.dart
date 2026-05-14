@@ -39,7 +39,6 @@ Future<void> main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    print('✅ Firebase initialized successfully');
   } catch (e) {
     print('❌ Firebase initialization error: $e');
   }
@@ -276,8 +275,10 @@ class MyApp extends StatelessWidget {
 
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider<AppModeProvider>(
+          create: (_) => AppModeProvider(),
+        ),
         ChangeNotifierProvider<AuthProvider>(
-          // ✅ Bỏ googleSignIn — AuthProvider tự khởi tạo nội bộ
           create: (_) => AuthProvider(
             firebaseAuth: firebaseAuth,
             prefs: prefs,

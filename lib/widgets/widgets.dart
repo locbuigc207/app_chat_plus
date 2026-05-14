@@ -1,3 +1,4 @@
+export 'adaptive_chat_bubble.dart';
 export 'advanced_search_bar.dart';
 export 'auto_delete_settings_dialog.dart';
 export 'bubble_adaptive_ui.dart';
