@@ -41,11 +41,11 @@ dependencies:
 
   # UI / UX
   fluttertoast: ^9.0.0
-  provider: ^6.1.0
+  provider: ^6.1.5+1
   intl: ^0.20.0
 
   # Storage
-  shared_preferences: ^2.5.0
+  shared_preferences: ^2.5.5
 
   # QR
   otp: ^3.1.2
