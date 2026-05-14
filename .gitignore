@@ -18,9 +18,7 @@ migrate_working_dir/
 *.iws
 .idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
+# VS Code
 #.vscode/
 
 # Flutter/Dart/Pub related
@@ -32,15 +30,63 @@ migrate_working_dir/
 .packages
 .pub-cache/
 .pub/
+
+# Build outputs (root and nested)
 /build/
+**/build/
 
-# Symbolication related
-app.*.symbols
-
-# Obfuscation related
-app.*.map.json
-
-# Android Studio will place build artifacts here
+# Android
+android/app/.cxx/
+android/.gradle/
+android/gradle/
+android/local.properties
+android/key.properties
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# APK / AAB / binary outputs
+**/*.apk
+**/*.aab
+**/*.ap_
+**/*.jar
+
+# Symbolication & Obfuscation
+app.*.symbols
+app.*.map.json
+
+# iOS
+ios/Flutter/App.framework
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Flutter/app.flx
+ios/Flutter/app.zip
+ios/Flutter/flutter_assets/
+ios/Flutter/flutter_export_environment.sh
+ios/ServiceDefinitions.json
+ios/Runner/GeneratedPluginRegistrant.*
+*.ipa
+
+# Firebase
+google-services.json
+GoogleService-Info.plist
+lib/firebase_options.dart
+
+# Environment / secrets
+.env
+**/.env
+*.env.*
+
+# macOS
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+!*.xcodeproj/project.xcworkspace/
+
+# Windows
+*.exe
+*.pdb
+
+# Coverage
+coverage/
