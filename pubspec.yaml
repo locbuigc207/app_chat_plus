@@ -91,7 +91,7 @@ dependencies:
   google_mlkit_face_detection: ^0.11.0
 
   google_generative_ai: ^0.4.7
-  flutter_markdown: ^0.7.1
+  flutter_markdown: ^0.7.7+1
   package_info_plus: ^9.0.1
 
   # Giai đoạn 4: Story AR & Nhạc
@@ -100,6 +100,7 @@ dependencies:
   ffmpeg_kit_flutter_min_gpl: ^6.0.3 # Gộp Video và Audio
   file_picker: ^6.1.1 # Chọn file nhạc từ máy
   path_provider: ^2.1.2 # Lấy đường dẫn lưu video tạm
+  cloud_functions: ^6.3.1
 
 dev_dependencies:
   flutter_test:

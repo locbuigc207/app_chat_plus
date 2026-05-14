@@ -19,6 +19,8 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../services/ai_backend_service.dart'; // Bổ sung import AI Service
+
 class ChatPage extends StatefulWidget {
   const ChatPage({
     super.key,
@@ -76,7 +78,6 @@ class ChatPageState extends State<ChatPage>
   late SmartReplyProvider _smartReplyProvider;
   VoiceMessageProvider? _voiceProvider;
   LocationProvider? _locationProvider;
-  TranslationProvider? _translationProvider;
 
   List<DocumentSnapshot> _pinnedMessages = [];
 
@@ -238,7 +239,6 @@ class ChatPageState extends State<ChatPage>
     }
 
     _locationProvider = LocationProvider();
-    _translationProvider = TranslationProvider();
 
     _readLocal();
     _loadPinnedMessages();
@@ -1195,12 +1195,11 @@ class ChatPageState extends State<ChatPage>
   // ==========================================
 
   Future<void> _translateMessage(String content) async {
-    if (_translationProvider == null || resourceManager.isDisposed) return;
+    if (resourceManager.isDisposed) return;
     showDialog(
       context: context,
       builder: (context) => TranslationDialog(
-        originalText: content,
-        translationProvider: _translationProvider!,
+        originalMessage: content,
       ),
     );
   }
@@ -1628,6 +1627,66 @@ class ChatPageState extends State<ChatPage>
   }
 
   // ==========================================
+  // AI CONTEXT ANALYSIS
+  // ==========================================
+
+  void _showAIContextAnalysis() async {
+    if (_listMessage.isEmpty) {
+      Fluttertoast.showToast(msg: 'Chưa có đủ tin nhắn để phân tích');
+      return;
+    }
+
+    // Lấy tối đa 15 tin nhắn gần nhất để làm ngữ cảnh cho AI
+    List<String> recentMessages = _listMessage
+        .take(15)
+        .map((doc) {
+          final msg = MessageChat.fromDocument(doc);
+          final sender = msg.idFrom == _currentUserId
+              ? "Tôi"
+              : widget.arguments.peerNickname;
+          return "$sender: ${msg.content}";
+        })
+        .toList()
+        .reversed
+        .toList();
+
+    showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+                title: const Row(
+                  children: [
+                    Icon(Icons.auto_awesome, color: Colors.purple),
+                    SizedBox(width: 8),
+                    Text('AI Đang Phân Tích...'),
+                  ],
+                ),
+                content: FutureBuilder<String?>(
+                  future: AIBackendService().analyzeChatContext(
+                      recentMessages, 'work', 'extract_tasks'),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const SizedBox(
+                          height: 100,
+                          child: Center(child: CircularProgressIndicator()));
+                    }
+                    if (snapshot.hasError || !snapshot.hasData) {
+                      return const Text('❌ Không thể kết nối với AI lúc này.');
+                    }
+                    return SingleChildScrollView(
+                      child: Text(snapshot.data!,
+                          style: const TextStyle(fontSize: 14, height: 1.5)),
+                    );
+                  },
+                ),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Đóng')),
+                ]));
+  }
+
+  // ==========================================
   // CHAT OPTIONS MENU
   // ==========================================
 
@@ -1648,6 +1707,15 @@ class ChatPageState extends State<ChatPage>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: const Icon(Icons.auto_awesome, color: Colors.purple),
+              title: const Text('AI Assistant'),
+              subtitle: const Text('Tóm tắt & Việc cần làm'),
+              onTap: () {
+                Navigator.pop(context);
+                _showAIContextAnalysis();
+              },
+            ),
             ListTile(
               leading: Icon(Icons.search, color: ColorConstants.primaryColor),
               title: const Text('Search Messages'),

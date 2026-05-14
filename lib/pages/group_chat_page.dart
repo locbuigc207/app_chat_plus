@@ -17,6 +17,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../services/ai_backend_service.dart'; // Thêm AI Backend Service
 import '../utils/resource_manager.dart';
 
 class GroupChatPage extends StatefulWidget {
@@ -99,7 +100,7 @@ class GroupChatPageState extends State<GroupChatPage>
 
     _listScrollController.addListener(_scrollListener);
     resourceManager.addDisposer(
-            () => _listScrollController.removeListener(_scrollListener));
+        () => _listScrollController.removeListener(_scrollListener));
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!resourceManager.isDisposed && mounted) {
@@ -138,7 +139,7 @@ class GroupChatPageState extends State<GroupChatPage>
     } else {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => LoginPage()),
-            (_) => false,
+        (_) => false,
       );
       return;
     }
@@ -194,7 +195,7 @@ class GroupChatPageState extends State<GroupChatPage>
   void _loadPinnedMessages() {
     if (resourceManager.isDisposed) return;
     final sub = _messageProvider.getPinnedMessages(widget.group.id).listen(
-          (snapshot) {
+      (snapshot) {
         if (!mounted || resourceManager.isDisposed) return;
         setState(() => _pinnedMessages = snapshot.docs);
       },
@@ -217,8 +218,7 @@ class GroupChatPageState extends State<GroupChatPage>
       final query = textBefore.substring(atIdx + 1).toLowerCase();
       final suggestions = _memberNames.entries
           .where((e) =>
-      e.key != _currentUserId &&
-          e.value.toLowerCase().contains(query))
+              e.key != _currentUserId && e.value.toLowerCase().contains(query))
           .map((e) => {'userId': e.key, 'name': e.value})
           .toList();
       if (mounted) {
@@ -295,8 +295,7 @@ class GroupChatPageState extends State<GroupChatPage>
     String finalContent = content;
     if (_replyingTo != null) {
       final senderName = _getSenderName(_replyingTo!.idFrom);
-      finalContent =
-      '↪ [$senderName]: ${_replyingTo!.content}\n$finalContent';
+      finalContent = '↪ [$senderName]: ${_replyingTo!.content}\n$finalContent';
     }
 
     _chatInputController.clear();
@@ -491,14 +490,14 @@ class GroupChatPageState extends State<GroupChatPage>
     if (mounted) setState(() => _isLoading = true);
     try {
       final hasPermission =
-      await _locationProvider!.requestLocationPermission();
+          await _locationProvider!.requestLocationPermission();
       if (!hasPermission) {
         if (mounted) setState(() => _isLoading = false);
         Fluttertoast.showToast(msg: '📍 Location permission required');
         return;
       }
       final locationData =
-      await _locationProvider!.getCurrentLocationWithDetails();
+          await _locationProvider!.getCurrentLocationWithDetails();
       if (mounted) setState(() => _isLoading = false);
       if (locationData != null && !resourceManager.isDisposed) {
         await _onSendMessage(
@@ -509,6 +508,64 @@ class GroupChatPageState extends State<GroupChatPage>
     } catch (_) {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  // ── AI Context Analysis ────────────────────────
+  void _showAIContextAnalysis() async {
+    if (_listMessage.isEmpty) {
+      Fluttertoast.showToast(msg: 'Chưa có đủ tin nhắn để phân tích');
+      return;
+    }
+
+    // Lấy tối đa 20 tin nhắn gần nhất của nhóm
+    List<String> recentMessages = _listMessage
+        .take(20)
+        .map((doc) {
+          final msg = MessageChat.fromDocument(doc);
+          final sender = msg.idFrom == _currentUserId
+              ? "Tôi"
+              : (_memberNames[msg.idFrom] ?? "Thành viên");
+          return "$sender: ${msg.content}";
+        })
+        .toList()
+        .reversed
+        .toList();
+
+    showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+                title: const Row(
+                  children: [
+                    Icon(Icons.auto_awesome, color: Colors.purple),
+                    SizedBox(width: 8),
+                    Text('AI Đang Phân Tích...'),
+                  ],
+                ),
+                content: FutureBuilder<String?>(
+                  // GỌI CLOUD FUNCTIONS THÔNG QUA AI Backend Service
+                  future: AIBackendService().analyzeChatContext(
+                      recentMessages, 'work', 'extract_tasks'),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const SizedBox(
+                          height: 100,
+                          child: Center(child: CircularProgressIndicator()));
+                    }
+                    if (snapshot.hasError || !snapshot.hasData) {
+                      return const Text('❌ Không thể kết nối với AI lúc này.');
+                    }
+                    return SingleChildScrollView(
+                      child: Text(snapshot.data!,
+                          style: const TextStyle(fontSize: 14, height: 1.5)),
+                    );
+                  },
+                ),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Đóng')),
+                ]));
   }
 
   // ── Message Actions ────────────────────────────
@@ -565,14 +622,13 @@ class GroupChatPageState extends State<GroupChatPage>
               child: const Text('Cancel')),
           TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete',
-                  style: TextStyle(color: Colors.red))),
+              child: const Text('Delete', style: TextStyle(color: Colors.red))),
         ],
       ),
     );
     if (confirm == true) {
       final ok =
-      await _messageProvider.deleteMessage(widget.group.id, messageId);
+          await _messageProvider.deleteMessage(widget.group.id, messageId);
       if (ok) Fluttertoast.showToast(msg: 'Message deleted');
     }
   }
@@ -626,8 +682,7 @@ class GroupChatPageState extends State<GroupChatPage>
                     context: ctx,
                     initialDate: selected,
                     firstDate: DateTime.now(),
-                    lastDate:
-                    DateTime.now().add(const Duration(days: 365)),
+                    lastDate: DateTime.now().add(const Duration(days: 365)),
                   );
                   if (d != null) {
                     ss(() => selected = DateTime(d.year, d.month, d.day,
@@ -644,8 +699,8 @@ class GroupChatPageState extends State<GroupChatPage>
                       context: ctx,
                       initialTime: TimeOfDay.fromDateTime(selected));
                   if (t != null) {
-                    ss(() => selected = DateTime(selected.year,
-                        selected.month, selected.day, t.hour, t.minute));
+                    ss(() => selected = DateTime(selected.year, selected.month,
+                        selected.day, t.hour, t.minute));
                   }
                 },
               ),
@@ -665,12 +720,10 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   Future<void> _translateMessage(String content) async {
-    if (_translationProvider == null) return;
     showDialog(
       context: context,
       builder: (_) => TranslationDialog(
-        originalText: content,
-        translationProvider: _translationProvider!,
+        originalMessage: content,
       ),
     );
   }
@@ -740,8 +793,7 @@ class GroupChatPageState extends State<GroupChatPage>
     showDialog(
       context: context,
       builder: (_) => Dialog(
-        shape:
-        RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: ReactionPicker(
           onEmojiSelected: (emoji) {
             _reactionProvider.toggleReaction(
@@ -854,8 +906,7 @@ class GroupChatPageState extends State<GroupChatPage>
               child: Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border:
-                  Border.all(color: const Color(0xFFE5E5EA), width: 1),
+                  border: Border.all(color: const Color(0xFFE5E5EA), width: 1),
                 ),
                 child: CircleAvatar(
                   radius: 18,
@@ -865,7 +916,7 @@ class GroupChatPageState extends State<GroupChatPage>
                       : null,
                   child: widget.group.groupPhotoUrl.isEmpty
                       ? const Icon(Icons.group_rounded,
-                      size: 20, color: Color(0xFF8E8E93))
+                          size: 20, color: Color(0xFF8E8E93))
                       : null,
                 ),
               ),
@@ -886,8 +937,8 @@ class GroupChatPageState extends State<GroupChatPage>
                   ),
                   Text(
                     '${widget.group.memberIds.length} members',
-                    style: const TextStyle(
-                        color: Color(0xFF8E8E93), fontSize: 13),
+                    style:
+                        const TextStyle(color: Color(0xFF8E8E93), fontSize: 13),
                   ),
                 ],
               ),
@@ -916,28 +967,34 @@ class GroupChatPageState extends State<GroupChatPage>
         ),
         PopupMenuButton<String>(
           onSelected: _onMenuSelected,
-          icon: const Icon(Icons.more_vert_rounded,
-              color: Color(0xFF007AFF)),
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16)),
+          icon: const Icon(Icons.more_vert_rounded, color: Color(0xFF007AFF)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           itemBuilder: (_) => [
-            const PopupMenuItem(value: 'info', child: Text('Group Info')),
             const PopupMenuItem(
-                value: 'media', child: Text('Media & Files')),
+              value: 'ai_assistant',
+              child: Row(
+                children: [
+                  Icon(Icons.auto_awesome, color: Colors.purple, size: 20),
+                  SizedBox(width: 8),
+                  Text('AI Assistant'),
+                ],
+              ),
+            ),
+            const PopupMenuItem(value: 'info', child: Text('Group Info')),
+            const PopupMenuItem(value: 'media', child: Text('Media & Files')),
             const PopupMenuItem(
                 value: 'search', child: Text('Search Messages')),
             const PopupMenuItem(
                 value: 'mute', child: Text('Mute Notifications')),
             const PopupMenuItem(
                 value: 'autodelete', child: Text('Auto-Delete')),
-            const PopupMenuItem(
-                value: 'clear', child: Text('Clear History')),
+            const PopupMenuItem(value: 'clear', child: Text('Clear History')),
             const PopupMenuItem(
                 value: 'leave',
                 child: Text('Leave Group',
                     style: TextStyle(
-                        color: Colors.red,
-                        fontWeight: FontWeight.w600))),
+                        color: Colors.red, fontWeight: FontWeight.w600))),
           ],
         ),
       ],
@@ -946,6 +1003,9 @@ class GroupChatPageState extends State<GroupChatPage>
 
   void _onMenuSelected(String value) {
     switch (value) {
+      case 'ai_assistant':
+        _showAIContextAnalysis();
+        break;
       case 'info':
         Navigator.push(
           context,
@@ -1006,8 +1066,8 @@ class GroupChatPageState extends State<GroupChatPage>
               child: const Text('Cancel')),
           TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Clear',
-                  style: TextStyle(color: Colors.orange))),
+              child:
+                  const Text('Clear', style: TextStyle(color: Colors.orange))),
         ],
       ),
     );
@@ -1050,16 +1110,14 @@ class GroupChatPageState extends State<GroupChatPage>
               child: const Text('Cancel')),
           TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child:
-              const Text('Leave', style: TextStyle(color: Colors.red))),
+              child: const Text('Leave', style: TextStyle(color: Colors.red))),
         ],
       ),
     );
     if (confirm != true) return;
     try {
-      final newMembers = widget.group.memberIds
-          .where((id) => id != _currentUserId)
-          .toList();
+      final newMembers =
+          widget.group.memberIds.where((id) => id != _currentUserId).toList();
       await FirebaseFirestore.instance
           .collection(FirestoreConstants.pathGroupCollection)
           .doc(widget.group.id)
@@ -1088,8 +1146,8 @@ class GroupChatPageState extends State<GroupChatPage>
       height: 54,
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(
-            bottom: BorderSide(color: Colors.black.withOpacity(0.05))),
+        border:
+            Border(bottom: BorderSide(color: Colors.black.withOpacity(0.05))),
       ),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
@@ -1100,8 +1158,7 @@ class GroupChatPageState extends State<GroupChatPage>
           return Container(
             width: 200,
             margin: const EdgeInsets.only(right: 8),
-            padding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
                 color: const Color(0xFFF2F2F7),
                 borderRadius: BorderRadius.circular(16)),
@@ -1154,8 +1211,8 @@ class GroupChatPageState extends State<GroupChatPage>
                     style: TextStyle(color: Color(0xFF8E8E93))));
           }
           return const Center(
-              child: CircularProgressIndicator(
-                  color: ColorConstants.themeColor));
+              child:
+                  CircularProgressIndicator(color: ColorConstants.themeColor));
         },
       ),
     );
@@ -1215,8 +1272,7 @@ class GroupChatPageState extends State<GroupChatPage>
         if (snap.hasData) {
           try {
             photoUrl =
-                snap.data!.get(FirestoreConstants.photoUrl) as String? ??
-                    '';
+                snap.data!.get(FirestoreConstants.photoUrl) as String? ?? '';
           } catch (_) {}
         }
         return Container(
@@ -1228,12 +1284,11 @@ class GroupChatPageState extends State<GroupChatPage>
             color: const Color(0xFFE5E5EA),
             image: photoUrl.isNotEmpty
                 ? DecorationImage(
-                image: NetworkImage(photoUrl), fit: BoxFit.cover)
+                    image: NetworkImage(photoUrl), fit: BoxFit.cover)
                 : null,
           ),
           child: photoUrl.isEmpty
-              ? const Icon(Icons.person_rounded,
-              size: 20, color: Colors.white)
+              ? const Icon(Icons.person_rounded, size: 20, color: Colors.white)
               : null,
         );
       },
@@ -1248,12 +1303,12 @@ class GroupChatPageState extends State<GroupChatPage>
       margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
       child: Column(
         crossAxisAlignment:
-        isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           if (!isMe && isLastInGroup) _buildSenderInfo(msg.idFrom),
           Row(
             mainAxisAlignment:
-            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+                isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               if (!isMe)
@@ -1274,102 +1329,94 @@ class GroupChatPageState extends State<GroupChatPage>
                     padding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 12),
                     constraints: BoxConstraints(
-                        maxWidth:
-                        MediaQuery.of(context).size.width * 0.72),
+                        maxWidth: MediaQuery.of(context).size.width * 0.72),
                     decoration: BoxDecoration(
                       gradient: isMe
-                          ? const LinearGradient(colors: [
-                        Color(0xFF007AFF),
-                        Color(0xFF0056D6)
-                      ])
+                          ? const LinearGradient(
+                              colors: [Color(0xFF007AFF), Color(0xFF0056D6)])
                           : null,
                       color: isMe ? null : Colors.white,
                       borderRadius: BorderRadius.only(
                         topLeft: const Radius.circular(20),
                         topRight: const Radius.circular(20),
-                        bottomLeft:
-                        Radius.circular(isMe ? 20 : tailRadius),
-                        bottomRight:
-                        Radius.circular(isMe ? tailRadius : 20),
+                        bottomLeft: Radius.circular(isMe ? 20 : tailRadius),
+                        bottomRight: Radius.circular(isMe ? tailRadius : 20),
                       ),
                       boxShadow: isMe
                           ? [
-                        BoxShadow(
-                            color: const Color(0xFF007AFF)
-                                .withOpacity(0.25),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4))
-                      ]
+                              BoxShadow(
+                                  color:
+                                      const Color(0xFF007AFF).withOpacity(0.25),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4))
+                            ]
                           : [
-                        BoxShadow(
-                            color: Colors.black.withOpacity(0.04),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4))
-                      ],
+                              BoxShadow(
+                                  color: Colors.black.withOpacity(0.04),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4))
+                            ],
                     ),
                     child: msg.isDeleted
                         ? Text(
-                      'This message was deleted',
-                      style: TextStyle(
-                          color: isMe
-                              ? Colors.white70
-                              : const Color(0xFF8E8E93),
-                          fontStyle: FontStyle.italic,
-                          fontSize: 15),
-                    )
+                            'This message was deleted',
+                            style: TextStyle(
+                                color: isMe
+                                    ? Colors.white70
+                                    : const Color(0xFF8E8E93),
+                                fontStyle: FontStyle.italic,
+                                fontSize: 15),
+                          )
                         : location != null
-                        ? _buildLocationContent(location, isMe)
-                        : Column(
-                      crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          msg.content,
-                          style: TextStyle(
-                              color: isMe
-                                  ? Colors.white
-                                  : const Color(0xFF111418),
-                              fontSize: 16,
-                              height: 1.3),
-                        ),
-                        if (msg.editedAt != null ||
-                            (isMe && !msg.isDeleted))
-                          Padding(
-                            padding:
-                            const EdgeInsets.only(top: 4),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              mainAxisAlignment:
-                              MainAxisAlignment.end,
-                              children: [
-                                if (msg.editedAt != null)
+                            ? _buildLocationContent(location, isMe)
+                            : Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
                                   Text(
-                                    '(edited)',
+                                    msg.content,
                                     style: TextStyle(
-                                        fontSize: 11,
                                         color: isMe
-                                            ? Colors.white70
-                                            : const Color(
-                                            0xFF8E8E93)),
+                                            ? Colors.white
+                                            : const Color(0xFF111418),
+                                        fontSize: 16,
+                                        height: 1.3),
                                   ),
-                                if (msg.editedAt != null &&
-                                    isMe)
-                                  const SizedBox(width: 4),
-                                if (isMe && !msg.isDeleted)
-                                  Icon(
-                                    msg.isRead
-                                        ? Icons.done_all_rounded
-                                        : Icons.check_rounded,
-                                    size: 14,
-                                    color: msg.isRead
-                                        ? Colors.white
-                                        : Colors.white70,
-                                  ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
+                                  if (msg.editedAt != null ||
+                                      (isMe && !msg.isDeleted))
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.end,
+                                        children: [
+                                          if (msg.editedAt != null)
+                                            Text(
+                                              '(edited)',
+                                              style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: isMe
+                                                      ? Colors.white70
+                                                      : const Color(
+                                                          0xFF8E8E93)),
+                                            ),
+                                          if (msg.editedAt != null && isMe)
+                                            const SizedBox(width: 4),
+                                          if (isMe && !msg.isDeleted)
+                                            Icon(
+                                              msg.isRead
+                                                  ? Icons.done_all_rounded
+                                                  : Icons.check_rounded,
+                                              size: 14,
+                                              color: msg.isRead
+                                                  ? Colors.white
+                                                  : Colors.white70,
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                              ),
                   ),
                 ),
               ),
@@ -1407,8 +1454,7 @@ class GroupChatPageState extends State<GroupChatPage>
         InkWell(
           onTap: () => _openLocationInMaps(location.mapsUrl),
           child: Container(
-            padding:
-            const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: isMe
                   ? Colors.white24
@@ -1420,16 +1466,12 @@ class GroupChatPageState extends State<GroupChatPage>
               children: [
                 Icon(Icons.map,
                     size: 14,
-                    color: isMe
-                        ? Colors.white
-                        : const Color(0xFF007AFF)),
+                    color: isMe ? Colors.white : const Color(0xFF007AFF)),
                 const SizedBox(width: 4),
                 Text('View on Google Maps',
                     style: TextStyle(
                         fontSize: 12,
-                        color: isMe
-                            ? Colors.white
-                            : const Color(0xFF007AFF),
+                        color: isMe ? Colors.white : const Color(0xFF007AFF),
                         decoration: TextDecoration.underline)),
               ],
             ),
@@ -1440,18 +1482,18 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   // ── Image Message ──────────────────────────────
-  Widget _buildImageMessage(DocumentSnapshot doc, MessageChat msg,
-      bool isMe, bool isLastInGroup) {
+  Widget _buildImageMessage(
+      DocumentSnapshot doc, MessageChat msg, bool isMe, bool isLastInGroup) {
     return Container(
       margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
       child: Column(
         crossAxisAlignment:
-        isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           if (!isMe && isLastInGroup) _buildSenderInfo(msg.idFrom),
           Row(
             mainAxisAlignment:
-            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+                isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               if (!isMe)
@@ -1464,8 +1506,7 @@ class GroupChatPageState extends State<GroupChatPage>
                   Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (_) =>
-                              FullPhotoPage(url: msg.content)));
+                          builder: (_) => FullPhotoPage(url: msg.content)));
                 },
                 onLongPress: () {
                   HapticFeedback.heavyImpact();
@@ -1516,16 +1557,15 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   // ── Voice Message ──────────────────────────────
-  Widget _buildVoiceMessage(
-      DocumentSnapshot doc, MessageChat msg, bool isMe) {
+  Widget _buildVoiceMessage(DocumentSnapshot doc, MessageChat msg, bool isMe) {
     return Column(
       crossAxisAlignment:
-      isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
         if (!isMe) _buildSenderInfo(msg.idFrom),
         Row(
           mainAxisAlignment:
-          isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+              isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             if (!isMe) _buildAvatar(msg.idFrom),
@@ -1547,12 +1587,12 @@ class GroupChatPageState extends State<GroupChatPage>
       DocumentSnapshot doc, MessageChat msg, bool isMe) {
     return Column(
       crossAxisAlignment:
-      isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
         if (!isMe) _buildSenderInfo(msg.idFrom),
         Row(
           mainAxisAlignment:
-          isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+              isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
           children: [
             if (!isMe) _buildAvatar(msg.idFrom),
             const SizedBox(width: 4),
@@ -1581,12 +1621,12 @@ class GroupChatPageState extends State<GroupChatPage>
       DocumentSnapshot doc, MessageChat msg, bool isMe) {
     return Column(
       crossAxisAlignment:
-      isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
         if (!isMe) _buildSenderInfo(msg.idFrom),
         Row(
           mainAxisAlignment:
-          isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+              isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
           children: [
             if (!isMe) _buildAvatar(msg.idFrom),
             const SizedBox(width: 4),
@@ -1596,8 +1636,8 @@ class GroupChatPageState extends State<GroupChatPage>
               content: msg.content,
               type: msg.type,
               currentUserId: _currentUserId,
-              isViewed: (doc.data() as Map<String, dynamic>?)?['isViewed'] ??
-                  false,
+              isViewed:
+                  (doc.data() as Map<String, dynamic>?)?['isViewed'] ?? false,
               provider: _viewOnceProvider,
             ),
           ],
@@ -1647,11 +1687,10 @@ class GroupChatPageState extends State<GroupChatPage>
           : DateFormat('MMM dd HH:mm').format(dt);
     } catch (_) {}
     return Padding(
-      padding: EdgeInsets.only(
-          left: isMe ? 0 : 52, right: isMe ? 8 : 0, bottom: 0),
+      padding:
+          EdgeInsets.only(left: isMe ? 0 : 52, right: isMe ? 8 : 0, bottom: 0),
       child: Text(label,
-          style: const TextStyle(
-              fontSize: 11, color: Color(0xFF8E8E93))),
+          style: const TextStyle(fontSize: 11, color: Color(0xFF8E8E93))),
     );
   }
 
@@ -1699,13 +1738,11 @@ class GroupChatPageState extends State<GroupChatPage>
             dense: true,
             leading: CircleAvatar(
               radius: 16,
-              backgroundColor:
-              const Color(0xFF007AFF).withOpacity(0.1),
+              backgroundColor: const Color(0xFF007AFF).withOpacity(0.1),
               child: Text(
                 (m['name'] as String).substring(0, 1).toUpperCase(),
                 style: const TextStyle(
-                    color: Color(0xFF007AFF),
-                    fontWeight: FontWeight.bold),
+                    color: Color(0xFF007AFF), fontWeight: FontWeight.bold),
               ),
             ),
             title: Text('@${m['name']}',
@@ -1725,8 +1762,7 @@ class GroupChatPageState extends State<GroupChatPage>
     return Container(
       decoration: const BoxDecoration(
           border: Border(
-              top: BorderSide(
-                  color: ColorConstants.greyColor2, width: 0.5)),
+              top: BorderSide(color: ColorConstants.greyColor2, width: 0.5)),
           color: Colors.white),
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(
@@ -1736,30 +1772,27 @@ class GroupChatPageState extends State<GroupChatPage>
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: ['mimi1', 'mimi2', 'mimi3']
                 .map((s) => TextButton(
-                onPressed: () =>
-                    _onSendMessage(s, TypeMessage.sticker),
-                child: Image.asset('images/$s.gif',
-                    width: 50, height: 50, fit: BoxFit.cover)))
+                    onPressed: () => _onSendMessage(s, TypeMessage.sticker),
+                    child: Image.asset('images/$s.gif',
+                        width: 50, height: 50, fit: BoxFit.cover)))
                 .toList(),
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: ['mimi4', 'mimi5', 'mimi6']
                 .map((s) => TextButton(
-                onPressed: () =>
-                    _onSendMessage(s, TypeMessage.sticker),
-                child: Image.asset('images/$s.gif',
-                    width: 50, height: 50, fit: BoxFit.cover)))
+                    onPressed: () => _onSendMessage(s, TypeMessage.sticker),
+                    child: Image.asset('images/$s.gif',
+                        width: 50, height: 50, fit: BoxFit.cover)))
                 .toList(),
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: ['mimi7', 'mimi8', 'mimi9']
                 .map((s) => TextButton(
-                onPressed: () =>
-                    _onSendMessage(s, TypeMessage.sticker),
-                child: Image.asset('images/$s.gif',
-                    width: 50, height: 50, fit: BoxFit.cover)))
+                    onPressed: () => _onSendMessage(s, TypeMessage.sticker),
+                    child: Image.asset('images/$s.gif',
+                        width: 50, height: 50, fit: BoxFit.cover)))
                 .toList(),
           ),
         ],
@@ -1774,8 +1807,7 @@ class GroupChatPageState extends State<GroupChatPage>
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: const BoxDecoration(
           color: Colors.white,
-          border: Border(
-              top: BorderSide(color: ColorConstants.greyColor2))),
+          border: Border(top: BorderSide(color: ColorConstants.greyColor2))),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
@@ -1816,16 +1848,14 @@ class GroupChatPageState extends State<GroupChatPage>
       },
       child: Container(
         width: 70,
-        padding:
-        const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, color: const Color(0xFF007AFF), size: 26),
             const SizedBox(height: 4),
             Text(label,
-                style: const TextStyle(
-                    fontSize: 11, color: Color(0xFF007AFF)),
+                style: const TextStyle(fontSize: 11, color: Color(0xFF007AFF)),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center),
@@ -1867,15 +1897,13 @@ class GroupChatPageState extends State<GroupChatPage>
           if (_replyingTo != null)
             Container(
               margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
-                      blurRadius: 8)
+                      color: Colors.black.withOpacity(0.04), blurRadius: 8)
                 ],
               ),
               child: Row(
@@ -1913,15 +1941,13 @@ class GroupChatPageState extends State<GroupChatPage>
           if (_isRecording)
             Container(
               margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
-                      blurRadius: 8)
+                      color: Colors.black.withOpacity(0.04), blurRadius: 8)
                 ],
               ),
               child: Row(
@@ -1931,24 +1957,22 @@ class GroupChatPageState extends State<GroupChatPage>
                   const SizedBox(width: 8),
                   Text('Recording... $_recordingDuration',
                       style: const TextStyle(
-                          color: Colors.red,
-                          fontWeight: FontWeight.bold)),
+                          color: Colors.red, fontWeight: FontWeight.bold)),
                   const Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.delete,
-                        color: Colors.red, size: 20),
+                    icon: const Icon(Icons.delete, color: Colors.red, size: 20),
                     onPressed: _cancelRecording,
                     padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                        minWidth: 36, minHeight: 36),
+                    constraints:
+                        const BoxConstraints(minWidth: 36, minHeight: 36),
                   ),
                   IconButton(
                     icon: const Icon(Icons.send,
                         color: Color(0xFF007AFF), size: 20),
                     onPressed: _stopRecording,
                     padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                        minWidth: 36, minHeight: 36),
+                    constraints:
+                        const BoxConstraints(minWidth: 36, minHeight: 36),
                   ),
                 ],
               ),
@@ -1983,10 +2007,9 @@ class GroupChatPageState extends State<GroupChatPage>
                   IconButton(
                     icon: const Icon(Icons.image_rounded,
                         color: Color(0xFF8E8E93), size: 26),
-                    onPressed: () =>
-                        _pickImage().then((ok) {
-                          if (ok) _uploadFile();
-                        }),
+                    onPressed: () => _pickImage().then((ok) {
+                      if (ok) _uploadFile();
+                    }),
                   ),
                 IconButton(
                   icon: const Icon(Icons.face,
@@ -1995,24 +2018,20 @@ class GroupChatPageState extends State<GroupChatPage>
                 ),
                 Expanded(
                   child: Container(
-                    constraints:
-                    const BoxConstraints(maxHeight: 120),
-                    padding: const EdgeInsets.only(
-                        right: 8, top: 12, bottom: 12),
+                    constraints: const BoxConstraints(maxHeight: 120),
+                    padding:
+                        const EdgeInsets.only(right: 8, top: 12, bottom: 12),
                     child: TextField(
                       controller: _chatInputController,
                       focusNode: _focusNode,
                       style: const TextStyle(
-                          fontSize: 16,
-                          color: Color(0xFF111418)),
+                          fontSize: 16, color: Color(0xFF111418)),
                       maxLines: null,
                       textInputAction: TextInputAction.newline,
                       onTapOutside: (_) => Utilities.closeKeyboard(),
                       decoration: const InputDecoration.collapsed(
-                        hintText:
-                        'Type a message... (@ to mention)',
-                        hintStyle:
-                        TextStyle(color: Color(0xFF8E8E93)),
+                        hintText: 'Type a message... (@ to mention)',
+                        hintStyle: TextStyle(color: Color(0xFF8E8E93)),
                       ),
                       onChanged: _handleTextChange,
                     ),
@@ -2024,8 +2043,7 @@ class GroupChatPageState extends State<GroupChatPage>
                     onTap: () {
                       if (_chatInputController.text.trim().isNotEmpty) {
                         _onSendMessage(
-                            _chatInputController.text,
-                            TypeMessage.text);
+                            _chatInputController.text, TypeMessage.text);
                       } else {
                         _startRecording();
                       }
@@ -2034,17 +2052,13 @@ class GroupChatPageState extends State<GroupChatPage>
                       width: 40,
                       height: 40,
                       decoration: const BoxDecoration(
-                          color: Color(0xFF007AFF),
-                          shape: BoxShape.circle),
+                          color: Color(0xFF007AFF), shape: BoxShape.circle),
                       child: ValueListenableBuilder<TextEditingValue>(
                         valueListenable: _chatInputController,
                         builder: (context, value, child) {
-                          final hasText =
-                              value.text.trim().isNotEmpty;
+                          final hasText = value.text.trim().isNotEmpty;
                           return Icon(
-                            hasText
-                                ? Icons.send_rounded
-                                : Icons.mic_rounded,
+                            hasText ? Icons.send_rounded : Icons.mic_rounded,
                             color: Colors.white,
                             size: 20,
                           );

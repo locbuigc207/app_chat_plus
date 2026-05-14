@@ -2,13 +2,26 @@ const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const {RtcTokenBuilder, RtcRole} = require("agora-access-token");
 const cors = require("cors")({origin: true});
+const {GoogleGenerativeAI} = require("@google/generative-ai");
 
 admin.initializeApp();
 
-// LẤY TỪ AGORA CONSOLE
+// =====================================================
+// CẤU HÌNH AGORA
+// =====================================================
 const APP_ID = "11d7a5c344694ee5ad835a7e0d388871";
 const APP_CERTIFICATE = "aa8c095cf3c248fe876a66b788a37cf4";
 
+// =====================================================
+// CẤU HÌNH GEMINI AI (Dùng process.env thay vì functions.config)
+// =====================================================
+const apiKey = process.env.GEMINI_API_KEY;
+
+if (!apiKey) {
+  console.error("LỖI CỰC KỲ QUAN TRỌNG: Chưa thiết lập GEMINI_API_KEY trong file functions/.env");
+}
+
+const genAI = new GoogleGenerativeAI(apiKey);
 // =====================================================
 // 1. GENERATE AGORA TOKEN
 // =====================================================
@@ -45,7 +58,6 @@ exports.generateAgoraToken = functions.https.onRequest((req, res) => {
     }
   });
 });
-
 // =====================================================
 // 2. AUTO-DELETE EXPIRED MESSAGES (Chạy mỗi 5 phút)
 // =====================================================
@@ -114,7 +126,6 @@ exports.cleanupExpiredMessages = functions.pubsub
       return null;
     }
   });
-
 // =====================================================
 // 3. SCHEDULE MESSAGE DELETION ON CREATE
 // =====================================================
@@ -152,7 +163,6 @@ exports.scheduleMessageDeletion = functions.firestore
       return null;
     }
   });
-
 // =====================================================
 // 4. CLEANUP TYPING STATUS (Chạy mỗi phút)
 // =====================================================
@@ -192,7 +202,6 @@ exports.cleanupTypingStatus = functions.pubsub
       return null;
     }
   });
-
 // =====================================================
 // 5. UPDATE USER LAST SEEN ON OFFLINE
 // =====================================================
@@ -217,7 +226,6 @@ exports.updateUserPresence = functions.firestore
       return null;
     }
   });
-
 // =====================================================
 // 6. SEND PUSH NOTIFICATION ON NEW MESSAGE
 // =====================================================
@@ -274,54 +282,62 @@ exports.sendMessageNotification = functions.firestore
       return null;
     }
   });
-
 // =====================================================
-// 7. CLEANUP OLD DELETED MESSAGES (Chạy hàng ngày)
+// 6. SEND PUSH NOTIFICATION ON NEW MESSAGE
 // =====================================================
-exports.cleanupOldDeletedMessages = functions.pubsub
-  .schedule("every 24 hours")
-  .onRun(async (context) => {
+exports.sendMessageNotification = functions.firestore
+  .document("messages/{conversationId}/{messageId}")
+  .onCreate(async (snap, context) => {
     try {
-      const db = admin.firestore();
-      const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      const messageData = snap.data();
+      const {conversationId} = context.params;
 
-      const query = db
-        .collectionGroup("messages")
-        .where("isDeleted", "==", true)
-        .where("deletedAt", "<", new Date(thirtyDaysAgo));
+      const receiverDoc = await admin
+        .firestore()
+        .collection("users")
+        .doc(messageData.idTo)
+        .get();
 
-      const snapshot = await query.get();
+      if (!receiverDoc.exists) return null;
 
-      if (snapshot.empty) {
-        console.log("No old deleted messages to clean");
-        return null;
-      }
+      const receiverData = receiverDoc.data();
+      const pushToken = receiverData.pushToken;
 
-      const batch = db.batch();
-      let count = 0;
+      if (!pushToken) return null;
 
-      for (const doc of snapshot.docs) {
-        batch.delete(doc.ref);
-        count++;
+      const senderDoc = await admin
+        .firestore()
+        .collection("users")
+        .doc(messageData.idFrom)
+        .get();
 
-        if (count >= 500) {
-          await batch.commit();
-          count = 0;
-        }
-      }
+      const senderName = senderDoc.exists ?
+        senderDoc.data().nickname :
+        "Someone";
 
-      if (count > 0) {
-        await batch.commit();
-      }
+      const payload = {
+        notification: {
+          title: senderName,
+          body:
+            messageData.type === 0 ? messageData.content : "📷 Sent an image",
+          sound: "default",
+        },
+        data: {
+          conversationId: conversationId,
+          senderId: messageData.idFrom,
+          type: "new_message",
+        },
+      };
 
-      console.log(`✅ Deleted ${snapshot.size} old messages`);
+      await admin.messaging().sendToDevice(pushToken, payload);
+
+      console.log(`✅ Notification sent to ${messageData.idTo}`);
       return null;
     } catch (error) {
-      console.error("❌ Error cleaning old messages:", error);
+      console.error("❌ Error sending notification:", error);
       return null;
     }
   });
-
 // =====================================================
 // 8. AUTO-DELETE EXPIRED STORIES (Chạy mỗi giờ)
 // =====================================================
@@ -370,3 +386,66 @@ exports.cleanupExpiredStories = functions.pubsub
       return null;
     }
   });
+// =====================================================
+// 9. TRANSLATE COMMUNICATION STYLE (Gemini AI)
+// =====================================================
+exports.translateCommunication = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Yêu cầu đăng nhập.");
+  }
+
+  const {message, targetAudience} = data;
+
+  try {
+    const model = genAI.getGenerativeModel({model: "gemini-2.0-flash"});
+
+    let prompt = `Bạn là một AI chuyên dịch phong cách giao tiếp. Hãy viết lại câu sau sao cho phù hợp với đối tượng nhận là: ${targetAudience}. Giữ nguyên ý nghĩa cốt lõi, chỉ thay đổi tone giọng, từ vựng.\n\n`;
+    prompt += `Tin nhắn gốc: "${message}"\n`;
+
+    if (targetAudience === "elder") {
+      prompt += "Yêu cầu: Văn phong lễ phép, rõ ràng, dễ hiểu, không dùng tiếng lóng hay viết tắt.";
+    } else if (targetAudience === "student") {
+      prompt += "Yêu cầu: Văn phong trẻ trung, gen Z, casual, có thể dùng từ lóng phổ biến.";
+    } else if (targetAudience === "work") {
+      prompt += "Yêu cầu: Văn phong chuyên nghiệp, súc tích, lịch sự, tập trung vào công việc.";
+    }
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    return {translatedText: response.text().trim()};
+  } catch (error) {
+    console.error("❌ Lỗi khi gọi Gemini AI:", error);
+    throw new functions.https.HttpsError("internal", "Lỗi xử lý AI.");
+  }
+});
+// =====================================================
+// 10. ANALYZE CHAT CONTEXT (Gemini AI)
+// =====================================================
+exports.analyzeChatContext = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Yêu cầu đăng nhập.");
+  }
+
+  const {messages, contextType, action} = data;
+
+  try {
+    const model = genAI.getGenerativeModel({model: "gemini-2.0-flash"});
+
+    let prompt = `Dựa vào đoạn hội thoại sau, hãy thực hiện yêu cầu.\n\nĐoạn hội thoại:\n${messages}\n\n`;
+
+    if (contextType === "work" && action === "extract_tasks") {
+      prompt += "Yêu cầu: Liệt kê các công việc (tasks) và deadline được nhắc đến trong hội thoại dưới dạng danh sách ngắn gọn.";
+    } else if (contextType === "study" && action === "summarize") {
+      prompt += "Yêu cầu: Tóm tắt các kiến thức, bài học chính được trao đổi trong hội thoại.";
+    } else {
+      prompt += "Yêu cầu: Phân tích và tóm tắt ngắn gọn nội dung chính.";
+    }
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    return {analysisResult: response.text().trim()};
+  } catch (error) {
+    console.error("❌ Lỗi khi phân tích Context:", error);
+    throw new functions.https.HttpsError("internal", "Lỗi phân tích AI.");
+  }
+});
