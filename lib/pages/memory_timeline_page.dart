@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/models/message_chat.dart';
 import 'package:flutter_chat_demo/services/ai_backend_service.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:intl/intl.dart';
 
 class MemoryTimelinePage extends StatefulWidget {
   final String peerId;
@@ -23,27 +24,60 @@ class MemoryTimelinePage extends StatefulWidget {
 }
 
 class _MemoryTimelinePageState extends State<MemoryTimelinePage> {
-  bool _isLoading = false;
+  bool _isLoading = true;
   Map<String, dynamic>? _memoryData;
+  DateTime? _lastUpdated;
 
   @override
   void initState() {
     super.initState();
-    // Tạm thời hiển thị nút để người dùng tự bấm phân tích,
-    // Trong thực tế, bạn có thể lưu dữ liệu này xuống Firestore để không phải phân tích lại mỗi lần mở.
+    _fetchCachedMemory();
   }
 
-  Future<void> _analyzeMemory() async {
+  // 1. Kiểm tra Cache trên Firestore trước
+  Future<void> _fetchCachedMemory() async {
+    setState(() => _isLoading = true);
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('relationship_memories')
+          .doc(widget.conversationId)
+          .get();
+
+      if (doc.exists) {
+        final data = doc.data();
+        setState(() {
+          _memoryData = data?['data'];
+          _lastUpdated = (data?['lastUpdated'] as Timestamp?)?.toDate();
+        });
+      }
+    } catch (e) {
+      print("Lỗi đọc cache: $e");
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  // 2. Gọi AI Phân tích & Lưu vào Cache
+  Future<void> _analyzeMemory({bool forceRefresh = false}) async {
+    // Nếu đã có cache và chưa quá 7 ngày, cảnh báo để tránh tốn tiền API
+    if (!forceRefresh && _lastUpdated != null) {
+      final daysSinceUpdate = DateTime.now().difference(_lastUpdated!).inDays;
+      if (daysSinceUpdate < 7) {
+        Fluttertoast.showToast(msg: "Dữ liệu AI đã được cập nhật gần đây.");
+        return;
+      }
+    }
+
     setState(() => _isLoading = true);
 
     try {
-      // 1. Kéo 50 tin nhắn gần nhất để làm ngữ cảnh
+      // Lấy 100 tin nhắn (thay vì 50) để AI phân tích chuẩn hơn
       final querySnapshot = await FirebaseFirestore.instance
           .collection('messages')
           .doc(widget.conversationId)
           .collection(widget.conversationId)
           .orderBy('timestamp', descending: true)
-          .limit(50)
+          .limit(100)
           .get();
 
       if (querySnapshot.docs.isEmpty) {
@@ -64,12 +98,26 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> {
           .reversed
           .toList();
 
-      // 2. Gọi AI Backend
+      // Gọi AI Backend
       final data =
           await AIBackendService().extractRelationshipMemory(chatHistory);
 
       if (data != null) {
-        setState(() => _memoryData = data);
+        // LƯU KẾT QUẢ VÀO FIRESTORE (CACHING)
+        await FirebaseFirestore.instance
+            .collection('relationship_memories')
+            .doc(widget.conversationId)
+            .set({
+          'data': data,
+          'lastUpdated': FieldValue.serverTimestamp(),
+          'participants': [widget.currentUserId, widget.peerId]
+        });
+
+        setState(() {
+          _memoryData = data;
+          _lastUpdated = DateTime.now();
+        });
+        Fluttertoast.showToast(msg: "Đã cập nhật AI mới nhất!");
       } else {
         Fluttertoast.showToast(msg: "Lỗi phân tích AI.");
       }
@@ -92,12 +140,22 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10)],
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)],
       ),
       child: Column(
         children: [
-          const Text("Relationship Health Score",
-              style: TextStyle(fontSize: 16, color: Colors.grey)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("Health Score",
+                  style: TextStyle(fontSize: 16, color: Colors.grey)),
+              if (_lastUpdated != null)
+                Text(
+                  "Cập nhật: ${DateFormat('dd/MM/yyyy').format(_lastUpdated!)}",
+                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+            ],
+          ),
           const SizedBox(height: 8),
           Text(
             "$score/100",
@@ -182,10 +240,18 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF2F2F7),
       appBar: AppBar(
-        title: const Text('Relationship Memory AI',
+        title: const Text('Relationship Memory',
             style: TextStyle(fontSize: 18, color: Colors.black87)),
         backgroundColor: Colors.white,
         iconTheme: const IconThemeData(color: Colors.black87),
+        actions: [
+          if (_memoryData != null)
+            IconButton(
+              icon: const Icon(Icons.refresh, color: Colors.purple),
+              onPressed: () => _analyzeMemory(forceRefresh: true),
+              tooltip: "Cập nhật AI mới nhất",
+            )
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -203,7 +269,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> {
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.purple),
-                        onPressed: _analyzeMemory,
+                        onPressed: () => _analyzeMemory(forceRefresh: true),
                         child: const Text("Khởi chạy AI Memory",
                             style: TextStyle(color: Colors.white)),
                       )
@@ -227,10 +293,16 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> {
                       const SizedBox(height: 24),
                       Center(
                         child: TextButton.icon(
-                          onPressed: () {
-                            setState(() => _memoryData =
-                                null); // Xóa dữ liệu (Privacy focus)
-                            Fluttertoast.showToast(msg: "Đã xóa phân tích AI.");
+                          onPressed: () async {
+                            await FirebaseFirestore.instance
+                                .collection('relationship_memories')
+                                .doc(widget.conversationId)
+                                .delete();
+                            setState(() {
+                              _memoryData = null;
+                              _lastUpdated = null;
+                            });
+                            Fluttertoast.showToast(msg: "Đã xóa dữ liệu AI.");
                           },
                           icon: const Icon(Icons.delete, color: Colors.red),
                           label: const Text("Xóa dữ liệu Memory",

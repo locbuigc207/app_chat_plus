@@ -321,12 +321,30 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     color: ColorConstants.greyColor2,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: ListTile(
-                    leading: const Icon(Icons.psychology, color: Colors.purple),
-                    title: const Text('Relationship Memory AI'),
-                    subtitle: const Text('Xem Health Score & Timeline kỷ niệm'),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: _openMemoryTimeline,
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.purple.withOpacity(0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.psychology,
+                              color: Colors.purple),
+                        ),
+                        title: const Text(
+                          'Relationship Memory AI',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle:
+                            const Text('Xem Health Score & Timeline kỷ niệm'),
+                        trailing: const Icon(Icons.arrow_forward_ios,
+                            size: 16, color: Colors.grey),
+                        onTap: _openMemoryTimeline,
+                      ),
+                      const Divider(height: 1),
+                    ],
                   ),
                 ),
 

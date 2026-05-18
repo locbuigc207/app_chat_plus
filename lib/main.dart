@@ -39,6 +39,19 @@ Future<void> main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+
+    // --- BẮT ĐẦU CẤU HÌNH OFFLINE-FIRST ---
+    try {
+      FirebaseFirestore.instance.settings = const Settings(
+        persistenceEnabled: true, // Cho phép lưu database offline trên thiết bị
+        cacheSizeBytes:
+            Settings.CACHE_SIZE_UNLIMITED, // Không giới hạn dung lượng cache
+      );
+      print('✅ Đã bật Firestore Offline Persistence');
+    } catch (e) {
+      print('⚠️ Không thể bật Offline Persistence (có thể do Web): $e');
+    }
+    // --- KẾT THÚC CẤU HÌNH OFFLINE-FIRST ---
   } catch (e) {
     print('❌ Firebase initialization error: $e');
   }

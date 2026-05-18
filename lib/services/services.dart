@@ -5,6 +5,7 @@ export 'call_service.dart';
 export 'chat_bubble_service.dart';
 export 'contextual_bubble_service.dart';
 export 'database_optimizer.dart';
+export 'encryption_service.dart';
 export 'gemini_service.dart';
 export 'group_call_service.dart';
 export 'notification_service.dart';
