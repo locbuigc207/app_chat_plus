@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
-import 'package:flutter_chat_demo/providers/auth_provider.dart';
-import 'package:flutter_chat_demo/providers/friend_provider.dart';
-import 'package:flutter_chat_demo/providers/home_provider.dart';
+import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:provider/provider.dart';
@@ -61,8 +59,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
 
   Future<void> _handleFriendAction() async {
     if (_areFriends) {
-      // Navigate to chat
-      final conversationId = await _friendProvider.getOrCreateConversation(
+      await _friendProvider.getOrCreateConversation(
         _currentUserId,
         widget.userChat.id,
         false,
@@ -81,7 +78,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
         ),
       );
     } else if (_friendRequestStatus == 'sent') {
-      Fluttertoast.showToast(msg: "Friend request already sent");
+      Fluttertoast.showToast(msg: 'Friend request already sent');
     } else if (_friendRequestStatus != null && _friendRequestStatus != 'sent') {
       // Accept friend request
       setState(() => _isLoading = true);
@@ -93,11 +90,11 @@ class _UserProfilePageState extends State<UserProfilePage> {
       );
 
       if (success) {
-        Fluttertoast.showToast(msg: "Friend request accepted!");
+        Fluttertoast.showToast(msg: 'Friend request accepted!');
         _checkFriendshipStatus();
       } else {
         setState(() => _isLoading = false);
-        Fluttertoast.showToast(msg: "Failed to accept request");
+        Fluttertoast.showToast(msg: 'Failed to accept request');
       }
     } else {
       // Send friend request
@@ -109,22 +106,41 @@ class _UserProfilePageState extends State<UserProfilePage> {
       );
 
       if (success) {
-        Fluttertoast.showToast(msg: "Friend request sent!");
+        Fluttertoast.showToast(msg: 'Friend request sent!');
         _checkFriendshipStatus();
       } else {
         setState(() => _isLoading = false);
-        Fluttertoast.showToast(msg: "Failed to send request");
+        Fluttertoast.showToast(msg: 'Failed to send request');
       }
     }
   }
 
   String _getButtonText() {
-    if (_areFriends) return "Message";
-    if (_friendRequestStatus == 'sent') return "Request Sent";
+    if (_areFriends) return 'Message';
+    if (_friendRequestStatus == 'sent') return 'Request Sent';
     if (_friendRequestStatus != null && _friendRequestStatus != 'sent') {
-      return "Accept Request";
+      return 'Accept Request';
     }
-    return "Add Friend";
+    return 'Add Friend';
+  }
+
+  void _openMemoryTimeline() {
+    final peerId = widget.userChat.id;
+    final conversationId = _currentUserId.compareTo(peerId) > 0
+        ? '$_currentUserId-$peerId'
+        : '$peerId-$_currentUserId';
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MemoryTimelinePage(
+          peerId: peerId,
+          peerNickname: widget.userChat.nickname,
+          currentUserId: _currentUserId,
+          conversationId: conversationId,
+        ),
+      ),
+    );
   }
 
   @override
@@ -151,36 +167,36 @@ class _UserProfilePageState extends State<UserProfilePage> {
                   margin: const EdgeInsets.all(20),
                   child: widget.userChat.photoUrl.isNotEmpty
                       ? ClipRRect(
-                    borderRadius: BorderRadius.circular(45),
-                    child: Image.network(
-                      widget.userChat.photoUrl,
-                      fit: BoxFit.cover,
-                      width: 90,
-                      height: 90,
-                      errorBuilder: (_, __, ___) => const Icon(
-                        Icons.account_circle,
-                        size: 90,
-                        color: ColorConstants.greyColor,
-                      ),
-                      loadingBuilder: (_, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return const SizedBox(
-                          width: 90,
-                          height: 90,
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              color: ColorConstants.themeColor,
+                          borderRadius: BorderRadius.circular(45),
+                          child: Image.network(
+                            widget.userChat.photoUrl,
+                            fit: BoxFit.cover,
+                            width: 90,
+                            height: 90,
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.account_circle,
+                              size: 90,
+                              color: ColorConstants.greyColor,
                             ),
+                            loadingBuilder: (_, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return const SizedBox(
+                                width: 90,
+                                height: 90,
+                                child: Center(
+                                  child: CircularProgressIndicator(
+                                    color: ColorConstants.themeColor,
+                                  ),
+                                ),
+                              );
+                            },
                           ),
-                        );
-                      },
-                    ),
-                  )
+                        )
                       : const Icon(
-                    Icons.account_circle,
-                    size: 90,
-                    color: ColorConstants.greyColor,
-                  ),
+                          Icons.account_circle,
+                          size: 90,
+                          color: ColorConstants.greyColor,
+                        ),
                 ),
 
                 // User Info
@@ -189,7 +205,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
                   children: [
                     // Nickname
                     Container(
-                      margin: const EdgeInsets.only(left: 10, bottom: 5, top: 10),
+                      margin:
+                          const EdgeInsets.only(left: 10, bottom: 5, top: 10),
                       child: const Text(
                         'Nickname',
                         style: TextStyle(
@@ -218,7 +235,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
 
                     // About Me
                     Container(
-                      margin: const EdgeInsets.only(left: 10, top: 30, bottom: 5),
+                      margin:
+                          const EdgeInsets.only(left: 10, top: 30, bottom: 5),
                       child: const Text(
                         'About me',
                         style: TextStyle(
@@ -294,6 +312,22 @@ class _UserProfilePageState extends State<UserProfilePage> {
                         ],
                       ),
                   ],
+                ),
+
+                // Relationship Memory AI
+                Container(
+                  margin: const EdgeInsets.only(top: 30, left: 30, right: 30),
+                  decoration: BoxDecoration(
+                    color: ColorConstants.greyColor2,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: ListTile(
+                    leading: const Icon(Icons.psychology, color: Colors.purple),
+                    title: const Text('Relationship Memory AI'),
+                    subtitle: const Text('Xem Health Score & Timeline kỷ niệm'),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                    onTap: _openMemoryTimeline,
+                  ),
                 ),
 
                 // Action Button

@@ -481,3 +481,45 @@ exports.analyzeScam = functions.https.onCall(async (data, context) => {
     return {status: "ERROR"};
   }
 });
+// =====================================================
+// 12. EXTRACT RELATIONSHIP MEMORY (Giai đoạn 4)
+// =====================================================
+exports.extractRelationshipMemory = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Yêu cầu đăng nhập.");
+  }
+
+  const {messages} = data;
+
+  try {
+    const model = genAI.getGenerativeModel({model: "gemini-2.0-flash"});
+
+    const prompt = `Bạn là một AI chuyên phân tích tâm lý và quan hệ con người. Dựa vào đoạn lịch sử trò chuyện sau, hãy trích xuất các "Kỷ niệm", "Sở thích", "Lời hứa", và đánh giá "Điểm số quan hệ" (từ 0 đến 100).
+
+    Đoạn trò chuyện:
+    ${messages}
+
+    BẮT BUỘC TRẢ VỀ ĐÚNG CHUẨN JSON (Không markdown, không text dư thừa) theo cấu trúc sau:
+    {
+      "healthScore": 85,
+      "summary": "Hai người thường xuyên chia sẻ về công việc và khá quan tâm nhau.",
+      "memories": [
+        { "category": "preference", "content": "Thích uống cà phê không đường" },
+        { "category": "memory", "content": "Đã đi du lịch Đà Lạt tháng trước" },
+        { "category": "promise", "content": "Hứa sẽ gửi file báo cáo vào cuối tuần" }
+      ]
+    }`;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    let text = response.text().trim();
+
+    // Xóa markdown ```json và ``` nếu AI có lỡ thêm vào
+    text = text.replace(/^```json/g, "").replace(/^```/g, "").replace(/```$/g, "").trim();
+
+    return JSON.parse(text);
+  } catch (error) {
+    console.error("❌ Lỗi khi phân tích Relationship Memory:", error);
+    throw new functions.https.HttpsError("internal", "Lỗi phân tích AI.");
+  }
+});

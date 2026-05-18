@@ -63,4 +63,25 @@ class AIBackendService {
       return 'SAFE'; // Mặc định an toàn nếu lỗi mạng để không block UX
     }
   }
+
+  // Gọi API Trích xuất Kỷ niệm & Điểm số quan hệ
+  Future<Map<String, dynamic>?> extractRelationshipMemory(
+      List<String> messages) async {
+    try {
+      final HttpsCallable callable =
+          _functions.httpsCallable('extractRelationshipMemory');
+      final String chatHistory = messages.join('\n');
+
+      final results = await callable.call(<String, dynamic>{
+        'messages': chatHistory,
+      });
+
+      // Map trả về từ JSON của Gemini
+      return Map<String, dynamic>.from(results.data);
+    } catch (e, stackTrace) {
+      ErrorLogger.logError(e, stackTrace,
+          context: 'AIBackendService.extractRelationshipMemory');
+      return null;
+    }
+  }
 }

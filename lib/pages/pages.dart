@@ -14,6 +14,7 @@ export 'home_page.dart';
 export 'incoming_call_page.dart';
 export 'incoming_group_call_page.dart';
 export 'login_page.dart';
+export 'memory_timeline_page.dart';
 export 'my_qr_code_page.dart';
 export 'my_stories_page.dart';
 export 'notifications_page.dart';
