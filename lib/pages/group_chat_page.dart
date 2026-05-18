@@ -9,16 +9,14 @@ import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
-import 'package:flutter_chat_demo/utils/utilities.dart';
+import 'package:flutter_chat_demo/services/services.dart';
+import 'package:flutter_chat_demo/utils/utils.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-
-import '../services/ai_backend_service.dart'; // Thêm AI Backend Service
-import '../utils/resource_manager.dart';
 
 class GroupChatPage extends StatefulWidget {
   const GroupChatPage({super.key, required this.group});
@@ -61,6 +59,9 @@ class GroupChatPageState extends State<GroupChatPage>
 
   // Smart replies
   List<SmartReply> _smartReplies = [];
+
+  // Scam detection results
+  Map<String, String> _scamResults = {};
 
   // Providers
   late ChatProvider _chatProvider;
@@ -394,8 +395,24 @@ class GroupChatPageState extends State<GroupChatPage>
     return false;
   }
 
+  // ── Upload File (with SafeSend confirmation) ───
   Future<void> _uploadFile() async {
     if (_imageFile == null) return;
+
+    // SafeSend: xác nhận trước khi gửi ảnh
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => const SafeSendDialog(
+        title: 'Gửi Hình Ảnh',
+        content: 'Bạn có chắc chắn muốn gửi bức ảnh này cho người khác không?',
+        icon: Icons.image_rounded,
+      ),
+    );
+    if (confirm != true) {
+      if (mounted) setState(() => _isLoading = false);
+      return; // Hủy gửi nếu bấm nhầm
+    }
+
     try {
       final fileName = DateTime.now().millisecondsSinceEpoch.toString();
       final task = _chatProvider.uploadFile(_imageFile!, fileName);
@@ -517,7 +534,6 @@ class GroupChatPageState extends State<GroupChatPage>
       return;
     }
 
-    // Lấy tối đa 20 tin nhắn gần nhất của nhóm
     List<String> recentMessages = _listMessage
         .take(20)
         .map((doc) {
@@ -543,7 +559,6 @@ class GroupChatPageState extends State<GroupChatPage>
                   ],
                 ),
                 content: FutureBuilder<String?>(
-                  // GỌI CLOUD FUNCTIONS THÔNG QUA AI Backend Service
                   future: AIBackendService().analyzeChatContext(
                       recentMessages, 'work', 'extract_tasks'),
                   builder: (context, snapshot) {
@@ -1225,7 +1240,6 @@ class GroupChatPageState extends State<GroupChatPage>
     final data = document.data() as Map<String, dynamic>?;
     final isViewOnce = data?['isViewOnce'] ?? false;
 
-    // Tail radius: flat corner when same sender chains messages
     bool isLastInGroup = true;
     if (index > 0) {
       final prevMsg = MessageChat.fromDocument(_listMessage[index - 1]);
@@ -1295,10 +1309,12 @@ class GroupChatPageState extends State<GroupChatPage>
     );
   }
 
-  // ── Text Message ───────────────────────────────
+  // ── Text Message (with Scam Detection) ────────
   Widget _buildTextMessage(DocumentSnapshot doc, MessageChat msg, bool isMe,
       bool isLastInGroup, double tailRadius) {
     final location = _locationProvider?.parseLocationFromMessage(msg.content);
+    final isMyMessage = isMe;
+
     return Container(
       margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
       child: Column(
@@ -1422,6 +1438,38 @@ class GroupChatPageState extends State<GroupChatPage>
               ),
             ],
           ),
+          // ── Scam Detection (only for incoming text messages) ──
+          if (!isMyMessage && msg.type == TypeMessage.text) ...[
+            if (_scamResults[doc.id] != null && _scamResults[doc.id] != 'SAFE')
+              ScamWarningWidget(status: _scamResults[doc.id]!),
+            if (_scamResults[doc.id] == null)
+              Padding(
+                padding: const EdgeInsets.only(left: 52, top: 4, bottom: 4),
+                child: InkWell(
+                  onTap: () async {
+                    Fluttertoast.showToast(msg: 'AI Đang quét an toàn...');
+                    final status =
+                        await AIBackendService().checkScam(msg.content);
+                    if (mounted) {
+                      setState(() => _scamResults[doc.id] = status);
+                    }
+                    if (status == 'SAFE') {
+                      Fluttertoast.showToast(msg: 'Tin nhắn an toàn!');
+                    }
+                  },
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.shield_outlined,
+                          size: 14, color: Colors.green),
+                      SizedBox(width: 4),
+                      Text('Quét an toàn (AI)',
+                          style: TextStyle(fontSize: 12, color: Colors.green)),
+                    ],
+                  ),
+                ),
+              ),
+          ],
           _buildReactions(doc.id, isMe),
           _buildTimestamp(msg.timestamp, isMe),
         ],

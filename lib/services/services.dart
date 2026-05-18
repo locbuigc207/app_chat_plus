@@ -1,9 +1,11 @@
 export 'agora_rtc_manager.dart';
+export 'ai_backend_service.dart';
 export 'bubble_service_v2.dart';
 export 'call_service.dart';
 export 'chat_bubble_service.dart';
 export 'contextual_bubble_service.dart';
 export 'database_optimizer.dart';
+export 'gemini_service.dart';
 export 'group_call_service.dart';
 export 'notification_service.dart';
 export 'offline_manager.dart';

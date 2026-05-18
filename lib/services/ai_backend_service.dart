@@ -48,4 +48,19 @@ class AIBackendService {
       return null;
     }
   }
+
+  // Gọi API Kiểm tra lừa đảo
+  Future<String> checkScam(String message) async {
+    try {
+      final HttpsCallable callable = _functions.httpsCallable('analyzeScam');
+      final results = await callable.call(<String, dynamic>{
+        'message': message,
+      });
+      return results.data['status'] ?? 'SAFE';
+    } catch (e, stackTrace) {
+      ErrorLogger.logError(e, stackTrace,
+          context: 'AIBackendService.checkScam');
+      return 'SAFE'; // Mặc định an toàn nếu lỗi mạng để không block UX
+    }
+  }
 }

@@ -19,8 +19,6 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../services/ai_backend_service.dart'; // Bổ sung import AI Service
-
 class ChatPage extends StatefulWidget {
   const ChatPage({
     super.key,
@@ -100,6 +98,9 @@ class ChatPageState extends State<ChatPage>
 
   final Map<String, Timer> _scheduledMessages = {};
   final Map<String, String> _scheduledMessageContents = {};
+
+  // [THÊM MỚI] Lưu kết quả quét scam theo messageId
+  Map<String, String> _scamResults = {};
 
   // ==========================================
   // LIFECYCLE
@@ -834,8 +835,25 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
+  // [THÊM MỚI] SafeSendDialog xác nhận trước khi upload ảnh
   Future<void> _uploadFile() async {
     if (_imageFile == null) return;
+
+    // --- BẮT ĐẦU THÊM SAFE SEND ---
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => const SafeSendDialog(
+        title: 'Gửi Hình Ảnh',
+        content: 'Bạn có chắc chắn muốn gửi bức ảnh này cho người khác không?',
+        icon: Icons.image_rounded,
+      ),
+    );
+    if (confirm != true) {
+      if (mounted) setState(() => _isLoading = false);
+      return; // Hủy gửi nếu bấm nhầm
+    }
+    // --- KẾT THÚC THÊM SAFE SEND ---
+
     try {
       final fileName = DateTime.now().millisecondsSinceEpoch.toString();
       final uploadTask = _chatProvider.uploadFile(_imageFile!, fileName);
@@ -2242,6 +2260,44 @@ class ChatPageState extends State<ChatPage>
                 ],
               ],
             ),
+
+            // [THÊM MỚI] Scam check UI – chỉ hiện cho tin nhắn nhận (không phải của mình)
+            if (!isMyMessage && messageChat.type == TypeMessage.text) ...[
+              if (_scamResults[document.id] != null &&
+                  _scamResults[document.id] != 'SAFE')
+                ScamWarningWidget(status: _scamResults[document.id]!),
+              if (_scamResults[document.id] == null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, bottom: 8),
+                  child: InkWell(
+                    onTap: () async {
+                      Fluttertoast.showToast(msg: "AI Đang quét an toàn...");
+                      final status = await AIBackendService()
+                          .checkScam(messageChat.content);
+                      if (mounted) {
+                        setState(() {
+                          _scamResults[document.id] = status;
+                        });
+                        if (status == 'SAFE') {
+                          Fluttertoast.showToast(msg: "Tin nhắn an toàn!");
+                        }
+                      }
+                    },
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.shield_outlined,
+                            size: 14, color: Colors.green),
+                        SizedBox(width: 4),
+                        Text(
+                          "Quét an toàn (AI)",
+                          style: TextStyle(fontSize: 12, color: Colors.green),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
 
             // Reactions display
             StreamBuilder<QuerySnapshot>(

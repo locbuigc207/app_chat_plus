@@ -449,3 +449,35 @@ exports.analyzeChatContext = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("internal", "Lỗi phân tích AI.");
   }
 });
+// =====================================================
+// 11. SCAM DETECTION (Phát hiện lừa đảo bằng AI)
+// =====================================================
+exports.analyzeScam = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Yêu cầu đăng nhập.");
+  }
+
+  const {message} = data;
+
+  try {
+    const model = genAI.getGenerativeModel({model: "gemini-2.0-flash"});
+
+    const prompt = `Bạn là một chuyên gia an ninh mạng. Hãy phân tích tin nhắn sau đây xem có dấu hiệu lừa đảo (scam), phishing (link độc hại), mạo danh nhờ chuyển tiền hay tống tiền không.
+    Tin nhắn: "${message}"
+
+    Hãy trả về CHỈ MỘT TRONG CÁC TỪ KHÓA SAU (không giải thích thêm):
+    - SAFE (nếu tin nhắn hoàn toàn bình thường)
+    - WARNING_MONEY (nếu tin nhắn có nhắc đến việc vay mượn, chuyển tiền)
+    - WARNING_LINK (nếu tin nhắn chứa đường link không rõ nguồn gốc)
+    - DANGER (nếu tin nhắn chắc chắn là lừa đảo, đe dọa)`;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text().trim();
+
+    return {status: text};
+  } catch (error) {
+    console.error("❌ Lỗi khi phân tích Scam:", error);
+    return {status: "ERROR"};
+  }
+});
