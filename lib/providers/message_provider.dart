@@ -6,7 +6,7 @@ class MessageProvider {
 
   MessageProvider({required this.firebaseFirestore});
 
-  // Edit message
+  
   Future<bool> editMessage(
       String groupChatId,
       String messageId,
@@ -23,7 +23,7 @@ class MessageProvider {
         'editedAt': DateTime.now().millisecondsSinceEpoch.toString(),
       });
 
-      // Update conversation last message if it was the latest
+      
       await _updateConversationIfNeeded(groupChatId, messageId, newContent);
 
       return true;
@@ -33,7 +33,7 @@ class MessageProvider {
     }
   }
 
-  // Delete message (soft delete)
+  
   Future<bool> deleteMessage(
       String groupChatId,
       String messageId,
@@ -57,7 +57,7 @@ class MessageProvider {
     }
   }
 
-  // Pin/Unpin message
+  
   Future<bool> togglePinMessage(
       String groupChatId,
       String messageId,
@@ -83,7 +83,7 @@ class MessageProvider {
     }
   }
 
-  // Get pinned messages
+  
   Stream<QuerySnapshot> getPinnedMessages(String groupChatId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathMessageCollection)
@@ -99,7 +99,7 @@ class MessageProvider {
       String messageId,
       String newContent,
       ) async {
-    // Get latest message
+    
     final latestMessage = await firebaseFirestore
         .collection(FirestoreConstants.pathMessageCollection)
         .doc(groupChatId)
@@ -110,7 +110,7 @@ class MessageProvider {
 
     if (latestMessage.docs.isNotEmpty &&
         latestMessage.docs.first.id == messageId) {
-      // This is the latest message, update conversation
+      
       await firebaseFirestore
           .collection(FirestoreConstants.pathConversationCollection)
           .doc(groupChatId)

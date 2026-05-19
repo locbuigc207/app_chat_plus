@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
 class ScamWarningWidget extends StatelessWidget {
-  final String status; // 'WARNING_MONEY', 'WARNING_LINK', 'DANGER'
+  final String status; 
 
-  const ScamWarningWidget({Key? key, required this.status}) : super(key: key);
+  const ScamWarningWidget({super.key, required this.status});
 
   @override
   Widget build(BuildContext context) {
@@ -21,7 +21,7 @@ class ScamWarningWidget extends StatelessWidget {
       color = Colors.red;
       icon = Icons.gpp_bad_rounded;
     } else {
-      return const SizedBox.shrink(); // SAFE
+      return const SizedBox.shrink(); 
     }
 
     return Container(

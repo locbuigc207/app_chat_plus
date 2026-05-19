@@ -1,24 +1,23 @@
-// lib/widgets/bubble_adaptive_ui.dart
-// Contextual Bubble Universe - Adaptive Bubble UI
-// Giao diện bong bóng thích ứng theo Mode ngữ cảnh
+
+
+
 
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/contextual_bubble_service.dart';
 
-// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+
 
 const _kBlue = Color(0xFF2196F3);
 const _kDark = Color(0xFF1A2340);
 const _kSurface = Color(0xFFF8F9FE);
 
-// ─── MAIN ADAPTIVE BUBBLE ─────────────────────────────────────────────────────
 
-/// Lớp bao ngoài MiniChatOverlayWidget, inject adaptive header theo BubbleMode
+
+
 class BubbleAdaptiveHeader extends StatefulWidget {
   final BubbleContext context;
   final String peerName;
@@ -49,10 +48,10 @@ class _BubbleAdaptiveHeaderState extends State<BubbleAdaptiveHeader>
   late AnimationController _pulseAnim;
   BubbleMode _prevMode = BubbleMode.normal;
 
-  // Media player state (giả lập)
+  
   bool _isMediaPlaying = false;
-  Duration _mediaDuration = const Duration(minutes: 3, seconds: 42);
-  Duration _mediaPosition = const Duration(minutes: 1, seconds: 15);
+  final Duration _mediaDuration = const Duration(minutes: 3, seconds: 42);
+  final Duration _mediaPosition = const Duration(minutes: 1, seconds: 15);
   Timer? _mediaTimer;
 
   @override
@@ -86,7 +85,7 @@ class _BubbleAdaptiveHeaderState extends State<BubbleAdaptiveHeader>
     super.dispose();
   }
 
-  // ─── BUILD ────────────────────────────────────────────────────────────────
+  
 
   @override
   Widget build(BuildContext context) {
@@ -159,7 +158,7 @@ class _BubbleAdaptiveHeaderState extends State<BubbleAdaptiveHeader>
   }
 }
 
-// ─── BASE HEADER MIXIN ────────────────────────────────────────────────────────
+
 
 mixin _HeaderActions {
   Widget buildCloseButtons({
@@ -200,7 +199,7 @@ class _HeaderBtn extends StatelessWidget {
   }
 }
 
-// ─── NORMAL MODE HEADER ───────────────────────────────────────────────────────
+
 
 class _NormalModeHeader extends StatelessWidget with _HeaderActions {
   final String peerName;
@@ -251,7 +250,7 @@ class _NormalModeHeader extends StatelessWidget with _HeaderActions {
   }
 }
 
-// ─── WORK MODE HEADER ─────────────────────────────────────────────────────────
+
 
 class _WorkModeHeader extends StatelessWidget with _HeaderActions {
   final String peerName;
@@ -321,7 +320,7 @@ class _WorkModeHeader extends StatelessWidget with _HeaderActions {
             ],
           ),
           const SizedBox(height: 6),
-          // Quick action bar
+          
           Row(
             children: [
               _QuickAction(
@@ -414,7 +413,7 @@ class _QuickAction extends StatelessWidget {
   }
 }
 
-// ─── MEDIA MODE HEADER ────────────────────────────────────────────────────────
+
 
 class _MediaModeHeader extends StatelessWidget with _HeaderActions {
   final String peerName;
@@ -465,7 +464,7 @@ class _MediaModeHeader extends StatelessWidget with _HeaderActions {
                         fontWeight: FontWeight.w700,
                         fontSize: 14)),
               ),
-              // Mini player controls
+              
               GestureDetector(
                 onTap: onPlayPause,
                 child: Container(
@@ -489,7 +488,7 @@ class _MediaModeHeader extends StatelessWidget with _HeaderActions {
             ],
           ),
           const SizedBox(height: 8),
-          // Progress bar
+          
           Row(
             children: [
               Container(
@@ -539,7 +538,7 @@ class _MediaModeHeader extends StatelessWidget with _HeaderActions {
   }
 }
 
-// ─── LOCATION MODE HEADER ─────────────────────────────────────────────────────
+
 
 class _LocationModeHeader extends StatelessWidget with _HeaderActions {
   final String peerName;
@@ -576,7 +575,7 @@ class _LocationModeHeader extends StatelessWidget with _HeaderActions {
       ),
       child: Row(
         children: [
-          // Pulsing location icon
+          
           AnimatedBuilder(
             animation: pulseAnim,
             builder: (_, __) {
@@ -615,7 +614,7 @@ class _LocationModeHeader extends StatelessWidget with _HeaderActions {
               ],
             ),
           ),
-          // Mini map button
+          
           GestureDetector(
             onTap: () => HapticFeedback.lightImpact(),
             child: Container(
@@ -647,7 +646,7 @@ class _LocationModeHeader extends StatelessWidget with _HeaderActions {
   }
 }
 
-// ─── SHARED MODE HEADER ───────────────────────────────────────────────────────
+
 
 class _SharedModeHeader extends StatelessWidget with _HeaderActions {
   final String peerName;
@@ -707,7 +706,7 @@ class _SharedModeHeader extends StatelessWidget with _HeaderActions {
   }
 }
 
-// ─── SECURE MODE HEADER ───────────────────────────────────────────────────────
+
 
 class _SecureModeHeader extends StatelessWidget with _HeaderActions {
   final String peerName;
@@ -783,7 +782,7 @@ class _SecureModeHeader extends StatelessWidget with _HeaderActions {
   }
 }
 
-// ─── AVATAR WIDGET ────────────────────────────────────────────────────────────
+
 
 class _Avatar extends StatelessWidget {
   final String url;

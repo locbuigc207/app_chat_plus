@@ -1,4 +1,4 @@
-// lib/pages/create_group_page.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
@@ -53,7 +53,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
       final memberIds = [_currentUserId, ..._selectedMembers];
       final now = DateTime.now().millisecondsSinceEpoch.toString();
 
-      // System message
+      
       final systemMsg = '${_groupNameController.text.trim()} group created';
 
       final groupDoc = await _firebaseFirestore
@@ -78,7 +78,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
         FirestoreConstants.lastMessageType: TypeMessage.text,
       });
 
-      // System message in chat
+      
       await _firebaseFirestore
           .collection(FirestoreConstants.pathMessageCollection)
           .doc(groupDoc.id)
@@ -144,8 +144,11 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                   return CheckboxListTile(
                     value: isSelected,
                     onChanged: (v) => setState(() {
-                      if (v == true) _selectedMembers.add(friendId);
-                      else _selectedMembers.remove(friendId);
+                      if (v == true) {
+                        _selectedMembers.add(friendId);
+                      } else {
+                        _selectedMembers.remove(friendId);
+                      }
                     }),
                     title: Text(user.nickname,
                         style: const TextStyle(
@@ -203,7 +206,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Group Icon placeholder
+                
                 Center(
                   child: Container(
                     width: 80,
@@ -217,7 +220,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                // Group name
+                
                 const Text('Group Name *',
                     style: TextStyle(
                         color: ColorConstants.primaryColor,
@@ -232,7 +235,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                // Description
+                
                 const Text('Description (optional)',
                     style: TextStyle(
                         color: ColorConstants.primaryColor,
@@ -248,7 +251,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                // Members count indicator
+                
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [

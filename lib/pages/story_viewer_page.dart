@@ -1,15 +1,14 @@
-// lib/pages/story_viewer_page.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import 'package:flutter_chat_demo/models/story_model.dart';
 import 'package:flutter_chat_demo/providers/story_provider.dart';
 
-// ─────────────────────────────────────────────────────────────
-// STORY VIEWER PAGE
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class StoryViewerPage extends StatefulWidget {
   final List<UserStories> allUserStories;
@@ -52,7 +51,7 @@ class _StoryViewerPageState extends State<StoryViewerPage>
 
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-    // Start after first frame so context is ready
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _startCurrentStory();
     });
@@ -67,13 +66,13 @@ class _StoryViewerPageState extends State<StoryViewerPage>
     super.dispose();
   }
 
-  // ── Getters ────────────────────────────────────────────────
+  
 
   UserStories get _currentUser => widget.allUserStories[_userIndex];
   List<Story> get _stories => _currentUser.activeStories;
   Story get _currentStory => _stories[_storyIndex.clamp(0, _stories.length - 1)];
 
-  // ── Progress listener (called once on completion) ──────────
+  
 
   void _onProgressStatus(AnimationStatus status) {
     if (status == AnimationStatus.completed) {
@@ -81,7 +80,7 @@ class _StoryViewerPageState extends State<StoryViewerPage>
     }
   }
 
-  // ── Story control ──────────────────────────────────────────
+  
 
   void _startCurrentStory() {
     if (!mounted || _stories.isEmpty) return;
@@ -187,7 +186,7 @@ class _StoryViewerPageState extends State<StoryViewerPage>
     }
   }
 
-  // ── Build ──────────────────────────────────────────────────
+  
 
   @override
   Widget build(BuildContext context) {
@@ -220,9 +219,9 @@ class _StoryViewerPageState extends State<StoryViewerPage>
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// _UserStoryView — one "card" in the PageView
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _UserStoryView extends StatelessWidget {
   final UserStories userStories;
@@ -260,13 +259,13 @@ class _UserStoryView extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // ── Content ──
+        
         _StoryContent(story: story),
 
-        // ── Gradient overlays ──
+        
         const _Gradients(),
 
-        // ── Progress bars ──
+        
         Positioned(
           top: MediaQuery.of(context).padding.top + 8,
           left: 10,
@@ -278,7 +277,7 @@ class _UserStoryView extends StatelessWidget {
           ),
         ),
 
-        // ── Header ──
+        
         Positioned(
           top: MediaQuery.of(context).padding.top + 26,
           left: 10,
@@ -291,7 +290,7 @@ class _UserStoryView extends StatelessWidget {
           ),
         ),
 
-        // ── Touch zones ──
+        
         Row(
           children: [
             Expanded(
@@ -313,7 +312,7 @@ class _UserStoryView extends StatelessWidget {
           ],
         ),
 
-        // ── Footer ──
+        
         Positioned(
           bottom: 0,
           left: 0,
@@ -325,9 +324,9 @@ class _UserStoryView extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Content
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _StoryContent extends StatelessWidget {
   final Story story;
@@ -356,7 +355,7 @@ class _StoryContent extends StatelessWidget {
       );
     }
 
-    // Text story
+    
     final bg = story.backgroundColor ?? const Color(0xFF1A1A2E);
     return Container(
       decoration: BoxDecoration(
@@ -384,9 +383,9 @@ class _StoryContent extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Gradients overlay
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _Gradients extends StatelessWidget {
   const _Gradients();
@@ -418,9 +417,9 @@ class _Gradients extends StatelessWidget {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// Progress bars
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _ProgressBars extends StatelessWidget {
   final int total;
@@ -472,9 +471,9 @@ class _ProgressBars extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Header
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _Header extends StatelessWidget {
   final Story story;
@@ -493,7 +492,7 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        // Avatar
+        
         Container(
           width: 38,
           height: 38,
@@ -510,7 +509,7 @@ class _Header extends StatelessWidget {
         ),
         const SizedBox(width: 10),
 
-        // Name + time
+        
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -559,9 +558,9 @@ class _Header extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Footer
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _Footer extends StatelessWidget {
   final Story story;
@@ -640,9 +639,9 @@ class _Footer extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Viewers bottom sheet
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _ViewersSheet extends StatelessWidget {
   final List<StoryView> views;
@@ -660,7 +659,7 @@ class _ViewersSheet extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Handle
+          
           Container(
             margin: const EdgeInsets.only(top: 10, bottom: 14),
             width: 36,

@@ -1,10 +1,10 @@
-// lib/widgets/call_control_bar.dart
+
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// Bottom control bar hiển thị trong cuộc gọi active.
+
 class CallControlBar extends StatelessWidget {
   final bool isVideoCall;
   final bool isMuted;
@@ -51,7 +51,7 @@ class CallControlBar extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Micro
+                
                 _ControlButton(
                   icon: isMuted
                       ? Icons.mic_off_rounded
@@ -65,7 +65,7 @@ class CallControlBar extends StatelessWidget {
                 ),
                 const SizedBox(width: 16),
 
-                // Loa ngoài
+                
                 _ControlButton(
                   icon: isSpeakerOn
                       ? Icons.volume_up_rounded
@@ -78,7 +78,7 @@ class CallControlBar extends StatelessWidget {
                   },
                 ),
 
-                // Camera + Flip (video only)
+                
                 if (isVideoCall) ...[
                   const SizedBox(width: 16),
                   _ControlButton(
@@ -106,7 +106,7 @@ class CallControlBar extends StatelessWidget {
 
                 const SizedBox(width: 24),
 
-                // End Call button
+                
                 _EndCallButton(onTap: onEndCall),
               ],
             ),
@@ -117,7 +117,7 @@ class CallControlBar extends StatelessWidget {
   }
 }
 
-// ── Control Button ─────────────────────────────
+
 class _ControlButton extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -166,7 +166,7 @@ class _ControlButton extends StatelessWidget {
   }
 }
 
-// ── End Call Button ────────────────────────────
+
 class _EndCallButton extends StatefulWidget {
   final VoidCallback onTap;
   const _EndCallButton({required this.onTap});

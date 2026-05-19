@@ -1,4 +1,4 @@
-// lib/pages/two_factor_verify_page.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/color_constants.dart';
 import 'package:flutter_chat_demo/pages/home_page.dart';
@@ -9,7 +9,7 @@ import 'package:otp/otp.dart';
 import 'package:provider/provider.dart';
 
 class TwoFactorVerifyPage extends StatefulWidget {
-  const TwoFactorVerifyPage({Key? key}) : super(key: key);
+  const TwoFactorVerifyPage({super.key});
 
   @override
   State<TwoFactorVerifyPage> createState() => _TwoFactorVerifyPageState();
@@ -40,7 +40,7 @@ class _TwoFactorVerifyPageState extends State<TwoFactorVerifyPage> {
         code;
 
     if (isValid) {
-      await authProvider.complete2FALogin(); // Lưu SharedPrefs
+      await authProvider.complete2FALogin(); 
       Navigator.pushReplacement(
           context, MaterialPageRoute(builder: (_) => HomePage()));
     } else {

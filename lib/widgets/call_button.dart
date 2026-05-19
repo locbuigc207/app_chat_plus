@@ -1,4 +1,4 @@
-// lib/widgets/call_button.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -6,7 +6,7 @@ import '../models/call_model.dart';
 import '../pages/outgoing_call_page.dart';
 import '../services/call_service.dart';
 
-/// Hàm dùng chung: tạo nút icon kiểu premium (nền xanh nhạt, hình tròn)
+
 Widget _buildPremiumIconBtn(IconData icon, VoidCallback onTap) {
   return GestureDetector(
     onTap: onTap,
@@ -21,7 +21,7 @@ Widget _buildPremiumIconBtn(IconData icon, VoidCallback onTap) {
   );
 }
 
-/// Widget chứa 2 nút gọi video + thoại, dùng trong AppBar
+
 class CallButtons extends StatelessWidget {
   final String peerId;
   final String peerName;
@@ -104,7 +104,7 @@ class CallButtons extends StatelessWidget {
   }
 }
 
-/// Nút gọi thoại đơn lẻ
+
 class VoiceCallIconButton extends StatelessWidget {
   final String peerId;
   final String peerName;
@@ -144,7 +144,7 @@ class VoiceCallIconButton extends StatelessWidget {
   }
 }
 
-/// Nút gọi video đơn lẻ
+
 class VideoCallIconButton extends StatelessWidget {
   final String peerId;
   final String peerName;

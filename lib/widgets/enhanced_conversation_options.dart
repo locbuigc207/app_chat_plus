@@ -1,4 +1,4 @@
-// lib/widgets/enhanced_conversation_options.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/services/chat_bubble_service.dart';
@@ -40,7 +40,7 @@ class EnhancedConversationOptions extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Handle bar
+          
           Container(
             width: 40,
             height: 4,
@@ -80,7 +80,7 @@ class EnhancedConversationOptions extends StatelessWidget {
 
           Divider(height: 1, thickness: 1),
 
-          // 🎯 NEW: Create Chat Bubble
+          
           _buildOption(
             icon: Icons.bubble_chart,
             label: 'Create Chat Bubble',

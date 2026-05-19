@@ -1,4 +1,4 @@
-// lib/providers/smart_reply_provider.dart
+
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
@@ -13,12 +13,12 @@ class SmartReply {
 }
 
 class SmartReplyProvider {
-  // Rule-based smart replies
+  
   List<SmartReply> getRuleBasedReplies(String message) {
     final lowerMessage = message.toLowerCase().trim();
     final List<SmartReply> replies = [];
 
-    // Greetings
+    
     if (_containsAny(lowerMessage, ['hello', 'hi', 'hey', 'greetings'])) {
       replies.addAll([
         const SmartReply(text: 'Hello! How are you?', confidence: 0.9),
@@ -27,7 +27,7 @@ class SmartReplyProvider {
       ]);
     }
 
-    // Questions about wellbeing
+    
     if (_containsAny(lowerMessage,
         ['how are you', 'how\'s it going', 'what\'s up', 'how do you do'])) {
       replies.addAll([
@@ -37,7 +37,7 @@ class SmartReplyProvider {
       ]);
     }
 
-    // Thanks
+    
     if (_containsAny(lowerMessage,
         ['thank you', 'thanks', 'thx', 'appreciate it', 'grateful'])) {
       replies.addAll([
@@ -47,7 +47,7 @@ class SmartReplyProvider {
       ]);
     }
 
-    // Apologies
+    
     if (_containsAny(lowerMessage, ['sorry', 'apologize', 'my bad', 'excuse me'])) {
       replies.addAll([
         const SmartReply(text: 'No worries!', confidence: 0.9),
@@ -56,7 +56,7 @@ class SmartReplyProvider {
       ]);
     }
 
-    // Questions (general)
+    
     if (lowerMessage.contains('?')) {
       replies.addAll([
         const SmartReply(text: 'Let me check and get back to you', confidence: 0.7),
@@ -65,7 +65,7 @@ class SmartReplyProvider {
       ]);
     }
 
-    // Agreement
+    
     if (_containsAny(lowerMessage, ['yes', 'yeah', 'sure', 'okay', 'ok', 'alright'])) {
       replies.addAll([
         const SmartReply(text: 'Great!', confidence: 0.8),
@@ -74,7 +74,7 @@ class SmartReplyProvider {
       ]);
     }
 
-    // Disagreement
+    
     if (_containsAny(lowerMessage, ['no', 'nope', 'not really', 'don\'t think so'])) {
       replies.addAll([
         const SmartReply(text: 'I understand', confidence: 0.8),
@@ -83,7 +83,7 @@ class SmartReplyProvider {
       ]);
     }
 
-    // Time-related
+    
     if (_containsAny(lowerMessage,
         ['when', 'what time', 'schedule', 'meeting', 'appointment'])) {
       replies.addAll([
@@ -93,7 +93,7 @@ class SmartReplyProvider {
       ]);
     }
 
-    // Location-related
+    
     if (_containsAny(lowerMessage, ['where', 'location', 'place', 'address'])) {
       replies.addAll([
         const SmartReply(text: 'I\'ll send you the location', confidence: 0.7),
@@ -102,7 +102,7 @@ class SmartReplyProvider {
       ]);
     }
 
-    // Farewell
+    
     if (_containsAny(lowerMessage,
         ['bye', 'goodbye', 'see you', 'later', 'talk to you'])) {
       replies.addAll([
@@ -112,7 +112,7 @@ class SmartReplyProvider {
       ]);
     }
 
-    // Work/Business
+    
     if (_containsAny(lowerMessage,
         ['work', 'project', 'deadline', 'meeting', 'presentation'])) {
       replies.addAll([
@@ -122,7 +122,7 @@ class SmartReplyProvider {
       ]);
     }
 
-    // Emergencies
+    
     if (_containsAny(lowerMessage, ['urgent', 'emergency', 'asap', 'important', 'help'])) {
       replies.addAll([
         const SmartReply(text: 'On it right away!', confidence: 0.9),
@@ -131,7 +131,7 @@ class SmartReplyProvider {
       ]);
     }
 
-    // Sort by confidence and return top 3
+    
     replies.sort((a, b) => b.confidence.compareTo(a.confidence));
     return replies.take(3).toList();
   }
@@ -140,14 +140,14 @@ class SmartReplyProvider {
     return keywords.any((keyword) => text.contains(keyword));
   }
 
-  // Context-aware replies based on conversation history
+  
   List<SmartReply> getContextAwareReplies(
       String currentMessage,
       List<String> previousMessages,
       ) {
     final replies = <SmartReply>[];
 
-    // Analyze conversation context
+    
     final context = _analyzeContext(previousMessages);
 
     if (context == 'question') {
@@ -190,14 +190,14 @@ class SmartReplyProvider {
     return 'general';
   }
 
-  // Optional: AI API-based smart replies (requires API key)
+  
   Future<List<SmartReply>> getAIReplies({
     required String message,
     required String apiKey,
     List<String>? conversationHistory,
   }) async {
     try {
-      // Example using OpenAI API (you can replace with any AI service)
+      
       final response = await http.post(
         Uri.parse('https://api.openai.com/v1/chat/completions'),
         headers: {
@@ -240,24 +240,24 @@ class SmartReplyProvider {
       print('Error getting AI replies: $e');
     }
 
-    // Fallback to rule-based
+    
     return getRuleBasedReplies(message);
   }
 
-  // Get smart replies combining multiple approaches
+  
   Future<List<SmartReply>> getSmartReplies({
     required String message,
     List<String>? conversationHistory,
     String? apiKey,
   }) async {
-    // Try rule-based first (instant)
+    
     final ruleReplies = getRuleBasedReplies(message);
 
     if (ruleReplies.isNotEmpty) {
       return ruleReplies;
     }
 
-    // Try context-aware
+    
     if (conversationHistory != null && conversationHistory.isNotEmpty) {
       final contextReplies = getContextAwareReplies(message, conversationHistory);
       if (contextReplies.isNotEmpty) {
@@ -265,7 +265,7 @@ class SmartReplyProvider {
       }
     }
 
-    // Try AI if API key provided
+    
     if (apiKey != null && apiKey.isNotEmpty) {
       return await getAIReplies(
         message: message,
@@ -274,7 +274,7 @@ class SmartReplyProvider {
       );
     }
 
-    // Default fallback replies
+    
     return const [
       SmartReply(text: 'Got it!', confidence: 0.5),
       SmartReply(text: 'Thanks for letting me know', confidence: 0.45),

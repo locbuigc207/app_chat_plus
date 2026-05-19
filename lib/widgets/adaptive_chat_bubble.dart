@@ -9,11 +9,11 @@ class AdaptiveChatBubble extends StatelessWidget {
   final String contextType;
 
   const AdaptiveChatBubble({
-    Key? key,
+    super.key,
     required this.message,
     required this.isMe,
     this.contextType = 'default',
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

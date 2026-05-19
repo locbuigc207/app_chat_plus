@@ -1,4 +1,4 @@
-// lib/providers/view_once_provider.dart (FIXED - Auto Delete Working)
+
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
@@ -8,7 +8,7 @@ class ViewOnceProvider {
 
   ViewOnceProvider({required this.firebaseFirestore});
 
-  // Send view-once message
+  
   Future<bool> sendViewOnceMessage({
     required String groupChatId,
     required String currentUserId,
@@ -44,14 +44,14 @@ class ViewOnceProvider {
     }
   }
 
-  // Mark message as viewed and schedule deletion
+  
   Future<bool> markAsViewed({
     required String groupChatId,
     required String messageId,
     required String userId,
   }) async {
     try {
-      // Mark as viewed
+      
       await firebaseFirestore
           .collection(FirestoreConstants.pathMessageCollection)
           .doc(groupChatId)
@@ -65,7 +65,7 @@ class ViewOnceProvider {
 
       print(' Message marked as viewed, scheduling deletion...');
 
-      // Schedule auto-delete after 10 seconds
+      
       Timer(const Duration(seconds: 10), () async {
         await _deleteViewOnceMessage(groupChatId, messageId);
       });
@@ -77,7 +77,7 @@ class ViewOnceProvider {
     }
   }
 
-  // Delete view-once message
+  
   Future<void> _deleteViewOnceMessage(
       String groupChatId, String messageId) async {
     try {
@@ -98,7 +98,7 @@ class ViewOnceProvider {
     }
   }
 
-  // Check if message is view-once and not viewed
+  
   Future<bool> isViewOnceUnviewed({
     required String groupChatId,
     required String messageId,

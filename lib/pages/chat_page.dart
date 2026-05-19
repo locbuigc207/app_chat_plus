@@ -85,7 +85,7 @@ class ChatPageState extends State<ChatPage>
   MessageChat? _replyingTo;
   bool _conversationLockedChecked = false;
 
-  // Deduplication for message listener
+  
   final Set<String> _processedMessageIds = {};
   bool _isProcessingMessage = false;
 
@@ -99,12 +99,12 @@ class ChatPageState extends State<ChatPage>
   final Map<String, Timer> _scheduledMessages = {};
   final Map<String, String> _scheduledMessageContents = {};
 
-  // Lưu kết quả quét scam theo messageId
-  Map<String, String> _scamResults = {};
+  
+  final Map<String, String> _scamResults = {};
 
-  // ==========================================
-  // LIFECYCLE
-  // ==========================================
+  
+  
+  
 
   @override
   void initState() {
@@ -192,9 +192,9 @@ class ChatPageState extends State<ChatPage>
     super.dispose();
   }
 
-  // ==========================================
-  // INITIALIZATION
-  // ==========================================
+  
+  
+  
 
   void _initializeProviders(BuildContext context) {
     if (resourceManager.isDisposed) return;
@@ -291,9 +291,9 @@ class ChatPageState extends State<ChatPage>
     });
   }
 
-  // ==========================================
-  // SCROLL
-  // ==========================================
+  
+  
+  
 
   void _scrollListener() {
     if (resourceManager.isDisposed || !_listScrollController.hasClients) return;
@@ -305,9 +305,9 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ==========================================
-  // FOCUS & KEYBOARD
-  // ==========================================
+  
+  
+  
 
   void _ensureKeyboardVisibility() {
     if (widget.isMiniChat) {
@@ -330,9 +330,9 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ==========================================
-  // PINNED MESSAGES
-  // ==========================================
+  
+  
+  
 
   void _loadPinnedMessages() {
     if (resourceManager.isDisposed) return;
@@ -349,9 +349,9 @@ class ChatPageState extends State<ChatPage>
     resourceManager.addSubscription(subscription);
   }
 
-  // ==========================================
-  // MESSAGE LISTENER
-  // ==========================================
+  
+  
+  
 
   void _setupIncomingMessageListener() {
     if (resourceManager.isDisposed ||
@@ -479,9 +479,9 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ==========================================
-  // SEND MESSAGE
-  // ==========================================
+  
+  
+  
 
   Future<void> _onSendMessageWithAutoDelete(String content, int type) async {
     if (resourceManager.isDisposed) return;
@@ -557,9 +557,9 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ==========================================
-  // BUBBLE
-  // ==========================================
+  
+  
+  
 
   Future<void> _updateBubbleWithMessage(String content, int type,
       {required bool isFromUser}) async {
@@ -807,9 +807,9 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ==========================================
-  // IMAGE & FILE
-  // ==========================================
+  
+  
+  
 
   Future<bool> _pickImage() async {
     HapticFeedback.lightImpact();
@@ -835,7 +835,7 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // SafeSendDialog xác nhận trước khi upload ảnh
+  
   Future<void> _uploadFile() async {
     if (_imageFile == null) return;
 
@@ -870,9 +870,9 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ==========================================
-  // STICKER
-  // ==========================================
+  
+  
+  
 
   void _getSticker() {
     if (resourceManager.isDisposed) return;
@@ -884,9 +884,9 @@ class ChatPageState extends State<ChatPage>
     });
   }
 
-  // ==========================================
-  // TYPING
-  // ==========================================
+  
+  
+  
 
   void _handleTyping(String text) {
     if (_presenceProvider == null || resourceManager.isDisposed) return;
@@ -924,9 +924,9 @@ class ChatPageState extends State<ChatPage>
     }));
   }
 
-  // ==========================================
-  // MESSAGE OPTIONS
-  // ==========================================
+  
+  
+  
 
   void _showAdvancedMessageOptions(MessageChat message, String messageId) {
     if (resourceManager.isDisposed) return;
@@ -1024,7 +1024,7 @@ class ChatPageState extends State<ChatPage>
   void _setReplyToMessage(MessageChat message) {
     HapticFeedback.selectionClick();
     if (resourceManager.isDisposed || !mounted) return;
-    // message truyền vào đây đã được giải mã từ _buildItemMessage nên an toàn.
+    
     setState(() => _replyingTo = message);
     _focusNode.requestFocus();
   }
@@ -1050,9 +1050,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ==========================================
-  // REMINDER
-  // ==========================================
+  
+  
+  
 
   Future<DateTime?> _pickTimeWithWheel() async {
     if (resourceManager.isDisposed) return null;
@@ -1207,9 +1207,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ==========================================
-  // TRANSLATION
-  // ==========================================
+  
+  
+  
 
   Future<void> _translateMessage(String content) async {
     if (resourceManager.isDisposed) return;
@@ -1221,9 +1221,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ==========================================
-  // CONVERSATION LOCK
-  // ==========================================
+  
+  
+  
 
   Future<void> _checkConversationLock() async {
     if (resourceManager.isDisposed) return;
@@ -1361,9 +1361,9 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ==========================================
-  // SMART REPLIES
-  // ==========================================
+  
+  
+  
 
   Future<void> _loadSmartReplies() async {
     if (_listMessage.isEmpty || resourceManager.isDisposed) return;
@@ -1385,9 +1385,9 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ==========================================
-  // FEATURES MENU
-  // ==========================================
+  
+  
+  
 
   void _toggleFeaturesMenu() {
     HapticFeedback.selectionClick();
@@ -1398,9 +1398,9 @@ class ChatPageState extends State<ChatPage>
     });
   }
 
-  // ==========================================
-  // LOCATION
-  // ==========================================
+  
+  
+  
 
   Future<void> _openLocationInMaps(String mapsUrl) async {
     try {
@@ -1476,9 +1476,9 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ==========================================
-  // SCHEDULE MESSAGE
-  // ==========================================
+  
+  
+  
 
   Future<void> _scheduleMessage() async {
     if (resourceManager.isDisposed) return;
@@ -1525,9 +1525,9 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ==========================================
-  // VOICE RECORDING
-  // ==========================================
+  
+  
+  
 
   Future<void> _startRecording() async {
     if (_voiceProvider == null || resourceManager.isDisposed) {
@@ -1609,9 +1609,9 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ==========================================
-  // NAVIGATION
-  // ==========================================
+  
+  
+  
 
   void _onBackPress() {
     if (_isShowSticker || _showFeaturesMenu) {
@@ -1643,9 +1643,9 @@ class ChatPageState extends State<ChatPage>
     _bubbleChannel.invokeMethod('close');
   }
 
-  // ==========================================
-  // AI CONTEXT ANALYSIS
-  // ==========================================
+  
+  
+  
 
   void _showAIContextAnalysis() async {
     if (_listMessage.isEmpty) {
@@ -1653,15 +1653,15 @@ class ChatPageState extends State<ChatPage>
       return;
     }
 
-    // [SỬA ĐỔI] Giải mã từng tin nhắn trước khi format cho AI
+    
     List<String> recentMessages = _listMessage
         .take(15)
         .map((doc) {
           final rawMsg = MessageChat.fromDocument(doc);
-          // 1. Giải mã trước
+          
           final decryptedContent =
               EncryptionService().decryptMessage(rawMsg.content, _groupChatId);
-          // 2. Format cho AI
+          
           final sender = rawMsg.idFrom == _currentUserId
               ? "Tôi"
               : widget.arguments.peerNickname;
@@ -1707,9 +1707,9 @@ class ChatPageState extends State<ChatPage>
                 ]));
   }
 
-  // ==========================================
-  // CHAT OPTIONS MENU
-  // ==========================================
+  
+  
+  
 
   void _showChatOptionsMenu() {
     if (resourceManager.isDisposed) return;
@@ -1810,9 +1810,9 @@ class ChatPageState extends State<ChatPage>
     ];
   }
 
-  // ==========================================
-  // UI: TYPING INDICATOR
-  // ==========================================
+  
+  
+  
 
   Widget _buildTypingIndicator() {
     if (_presenceProvider == null) return const SizedBox.shrink();
@@ -1835,9 +1835,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ==========================================
-  // UI: PINNED MESSAGES
-  // ==========================================
+  
+  
+  
 
   Widget _buildPinnedMessages() {
     if (_pinnedMessages.isEmpty) return const SizedBox.shrink();
@@ -1888,9 +1888,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ==========================================
-  // UI: MESSAGE LIST
-  // ==========================================
+  
+  
+  
 
   Widget _buildListMessage() {
     return Flexible(
@@ -1937,20 +1937,20 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ==========================================
-  // UI: MESSAGE ITEM
-  // ==========================================
+  
+  
+  
 
   Widget _buildItemMessage(int index, DocumentSnapshot? document) {
     if (document == null) return const SizedBox.shrink();
 
     final rawMessageChat = MessageChat.fromDocument(document);
 
-    // [THÊM MỚI] Giải mã nội dung tin nhắn để hiển thị UI
+    
     final decryptedContent = EncryptionService()
         .decryptMessage(rawMessageChat.content, _groupChatId);
 
-    // Tạo bản copy đã được giải mã để dùng xuyên suốt hàm này
+    
     final messageChat = rawMessageChat.copyWith(content: decryptedContent);
 
     final isMyMessage = messageChat.idFrom == _currentUserId;
@@ -1986,7 +1986,7 @@ class ChatPageState extends State<ChatPage>
       );
     }
 
-    // Voice Message
+    
     if (messageChat.type == 3 && _voiceProvider != null) {
       return Container(
         margin: const EdgeInsets.only(bottom: 6),
@@ -2004,7 +2004,7 @@ class ChatPageState extends State<ChatPage>
       );
     }
 
-    // Text Message
+    
     if (messageChat.type == TypeMessage.text) {
       final location =
           _locationProvider?.parseLocationFromMessage(messageChat.content);
@@ -2023,7 +2023,7 @@ class ChatPageState extends State<ChatPage>
                 GestureDetector(
                   onLongPress: () {
                     HapticFeedback.heavyImpact();
-                    // messageChat đã được giải mã, an toàn để truyền vào options
+                    
                     _showAdvancedMessageOptions(messageChat, document.id);
                   },
                   onDoubleTap: () {
@@ -2209,7 +2209,7 @@ class ChatPageState extends State<ChatPage>
                             ),
                           ),
 
-                        // Edit tag + Read receipt
+                        
                         if (messageChat.editedAt != null ||
                             (isMyMessage && !messageChat.isDeleted))
                           Padding(
@@ -2272,7 +2272,7 @@ class ChatPageState extends State<ChatPage>
               ],
             ),
 
-            // Scam check UI – chỉ hiện cho tin nhắn nhận (không phải của mình)
+            
             if (!isMyMessage && messageChat.type == TypeMessage.text) ...[
               if (_scamResults[document.id] != null &&
                   _scamResults[document.id] != 'SAFE')
@@ -2283,7 +2283,7 @@ class ChatPageState extends State<ChatPage>
                   child: InkWell(
                     onTap: () async {
                       Fluttertoast.showToast(msg: "AI Đang quét an toàn...");
-                      // messageChat.content đã được giải mã, truyền thẳng vào AI
+                      
                       final status = await AIBackendService()
                           .checkScam(messageChat.content);
                       if (mounted) {
@@ -2311,7 +2311,7 @@ class ChatPageState extends State<ChatPage>
                 ),
             ],
 
-            // Reactions display
+            
             StreamBuilder<QuerySnapshot>(
               stream: _reactionProvider.getReactions(_groupChatId, document.id),
               builder: (context, snapshot) {
@@ -2356,7 +2356,7 @@ class ChatPageState extends State<ChatPage>
       );
     }
 
-    // Image Message
+    
     else if (messageChat.type == TypeMessage.image) {
       return Container(
         margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
@@ -2427,7 +2427,7 @@ class ChatPageState extends State<ChatPage>
       );
     }
 
-    // Sticker
+    
     else {
       return Container(
         margin: const EdgeInsets.only(bottom: 10),
@@ -2457,9 +2457,9 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ==========================================
-  // UI: STICKERS
-  // ==========================================
+  
+  
+  
 
   Widget _buildStickers() {
     return Container(
@@ -2516,9 +2516,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ==========================================
-  // UI: FEATURES MENU
-  // ==========================================
+  
+  
+  
 
   Widget _buildFeaturesMenu() {
     if (!_showFeaturesMenu) return const SizedBox.shrink();
@@ -2629,9 +2629,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ==========================================
-  // UI: RECORDING INDICATOR
-  // ==========================================
+  
+  
+  
 
   Widget _buildRecordingIndicator() {
     if (!_isRecording) return const SizedBox.shrink();
@@ -2671,9 +2671,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ==========================================
-  // UI: INPUT BAR
-  // ==========================================
+  
+  
+  
 
   Widget _buildAdvancedInput() {
     final showFullFeatures = !widget.isBubbleMode && !widget.isMiniChat;
@@ -2689,7 +2689,7 @@ class ChatPageState extends State<ChatPage>
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Smart Replies (normal mode only)
+        
         if (_smartReplies.isNotEmpty && showFullFeatures)
           Container(
             constraints: const BoxConstraints(maxHeight: 60),
@@ -2708,10 +2708,10 @@ class ChatPageState extends State<ChatPage>
             ),
           ),
 
-        // Recording indicator
+        
         _buildRecordingIndicator(),
 
-        // Floating Pill Input
+        
         Container(
           margin: EdgeInsets.only(
             bottom: MediaQuery.of(context).padding.bottom + 12,
@@ -2722,7 +2722,7 @@ class ChatPageState extends State<ChatPage>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Reply indicator
+              
               if (_replyingTo != null)
                 Container(
                   margin: const EdgeInsets.only(bottom: 8),
@@ -2770,7 +2770,7 @@ class ChatPageState extends State<ChatPage>
                   ),
                 ),
 
-              // Main pill
+              
               Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -2786,7 +2786,7 @@ class ChatPageState extends State<ChatPage>
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    // More options
+                    
                     if (showFullFeatures)
                       IconButton(
                         icon: Icon(
@@ -2799,7 +2799,7 @@ class ChatPageState extends State<ChatPage>
                         onPressed: _toggleFeaturesMenu,
                       ),
 
-                    // Image picker
+                    
                     if (showFullFeatures && !_showFeaturesMenu)
                       IconButton(
                         icon: const Icon(Icons.image_rounded),
@@ -2810,7 +2810,7 @@ class ChatPageState extends State<ChatPage>
                         }),
                       ),
 
-                    // Sticker button
+                    
                     if (showFullFeatures && !_showFeaturesMenu)
                       IconButton(
                         icon: const Icon(Icons.face_rounded),
@@ -2819,7 +2819,7 @@ class ChatPageState extends State<ChatPage>
                         onPressed: _getSticker,
                       ),
 
-                    // Text field
+                    
                     Expanded(
                       child: Container(
                         constraints: const BoxConstraints(
@@ -2885,7 +2885,7 @@ class ChatPageState extends State<ChatPage>
                       ),
                     ),
 
-                    // Send / Mic button
+                    
                     Padding(
                       padding: const EdgeInsets.all(6.0),
                       child: GestureDetector(
@@ -2938,9 +2938,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ==========================================
-  // UI: HEADERS (Bubble / MiniChat)
-  // ==========================================
+  
+  
+  
 
   Widget _buildBubbleHeader() {
     return Container(
@@ -3059,9 +3059,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ==========================================
-  // UI: CHAT CONTENT
-  // ==========================================
+  
+  
+  
 
   Widget _buildChatContent() {
     return Stack(
@@ -3086,13 +3086,13 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ==========================================
-  // BUILD
-  // ==========================================
+  
+  
+  
 
   @override
   Widget build(BuildContext context) {
-    // Bubble Mode
+    
     if (widget.isBubbleMode) {
       return Scaffold(
         backgroundColor: const Color(0xFFF2F2F7),
@@ -3112,7 +3112,7 @@ class ChatPageState extends State<ChatPage>
       );
     }
 
-    // Mini Chat Mode
+    
     if (widget.isMiniChat) {
       return Scaffold(
         backgroundColor: const Color(0xFFF2F2F7),
@@ -3133,7 +3133,7 @@ class ChatPageState extends State<ChatPage>
       );
     }
 
-    // Normal Mode
+    
     return Scaffold(
       backgroundColor: const Color(0xFFF2F2F7),
       appBar: AppBar(
@@ -3218,9 +3218,9 @@ class ChatPageState extends State<ChatPage>
   }
 }
 
-// ==========================================
-// ChatPageArguments
-// ==========================================
+
+
+
 
 class ChatPageArguments {
   final String peerId;

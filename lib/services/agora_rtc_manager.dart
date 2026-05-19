@@ -1,4 +1,4 @@
-// lib/services/agora_rtc_manager.dart
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -74,13 +74,13 @@ class AgoraRtcManager extends ChangeNotifier {
 
   RtcEngine? _engine;
 
-  // FIX: trim() để tránh lỗi whitespace trong .env
+  
   String get kAgoraAppId => (dotenv.env['AGORA_APP_ID'] ?? '').trim();
 
-  // ─── Token Server ────────────────────────────────────────────────────────────
+  
 
-  /// Gọi lên Render token server để lấy Agora Token bảo mật.
-  /// Có retry logic để xử lý trường hợp server sleep (Render free plan).
+  
+  
   Future<String?> _fetchTokenFromServer(String channelName) async {
     const maxRetries = 3;
 
@@ -97,7 +97,7 @@ class AgoraRtcManager extends ChangeNotifier {
         if (response.statusCode == 200) {
           final Map<String, dynamic> data =
               json.decode(response.body) as Map<String, dynamic>;
-          // Hỗ trợ cả 2 key: 'rtcToken' (Render server) và 'token' (Firebase)
+          
           return (data['rtcToken'] ?? data['token']) as String?;
         } else {
           debugPrint('❌ Lỗi từ Token Server: ${response.body}');
@@ -114,7 +114,7 @@ class AgoraRtcManager extends ChangeNotifier {
     return null;
   }
 
-  // ─── Lifecycle ───────────────────────────────────────────────────────────────
+  
 
   Future<bool> initialize() async {
     if (_initialized) return true;
@@ -141,9 +141,9 @@ class AgoraRtcManager extends ChangeNotifier {
     }
   }
 
-  // ─── Channel ─────────────────────────────────────────────────────────────────
+  
 
-  /// Tham gia kênh, tự động lấy Token từ Render server trước khi join.
+  
   Future<bool> joinChannel({
     required String channelName,
     required bool isVideoCall,
@@ -167,7 +167,7 @@ class AgoraRtcManager extends ChangeNotifier {
       _currentChannel = channelName.trim();
       _setConnectionState(RtcConnectionState.connecting);
 
-      // Lấy Token bảo mật từ Render server
+      
       final token = await _fetchTokenFromServer(_currentChannel!);
 
       if (token == null || token.isEmpty) {
@@ -218,7 +218,7 @@ class AgoraRtcManager extends ChangeNotifier {
     }
   }
 
-  // ─── Controls ────────────────────────────────────────────────────────────────
+  
 
   Future<void> toggleMute() async {
     if (_disposed) return;
@@ -256,7 +256,7 @@ class AgoraRtcManager extends ChangeNotifier {
     _safeNotify();
   }
 
-  // ─── Dispose ─────────────────────────────────────────────────────────────────
+  
 
   @override
   void dispose() {
@@ -276,7 +276,7 @@ class AgoraRtcManager extends ChangeNotifier {
     super.dispose();
   }
 
-  // ─── Private ─────────────────────────────────────────────────────────────────
+  
 
   Future<void> _initAgora() async {
     _engine = createAgoraRtcEngine();
@@ -372,7 +372,7 @@ class AgoraRtcManager extends ChangeNotifier {
   }
 
   Future<void> _requestPermissions({bool video = false}) async {
-    // Web: trình duyệt tự xin quyền, không dùng permission_handler
+    
     if (kIsWeb) return;
 
     final permissions = [Permission.microphone];

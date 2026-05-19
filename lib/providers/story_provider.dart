@@ -1,4 +1,4 @@
-// lib/providers/story_provider.dart
+
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -20,25 +20,25 @@ class StoryProvider extends ChangeNotifier {
     required this.firebaseStorage,
   });
 
-  // ─────────────────────────────────────────────────────────
-  // STREAMS
-  // ─────────────────────────────────────────────────────────
+  
+  
+  
 
-  /// Stream of grouped stories (current user + friends).
-  /// [friendIds] must contain at most 9 entries (whereIn limit = 10).
+  
+  
   Stream<List<UserStories>> getStoriesStream({
     required String currentUserId,
     required List<String> friendIds,
   }) {
-    // Firestore whereIn supports max 10 values
+    
     final ids = [currentUserId, ...friendIds].take(10).toList();
 
     if (ids.isEmpty) {
       return Stream.value([]);
     }
 
-    // NOTE: This query requires the composite index:
-    //   userId ASC + isDeleted ASC + createdAt DESC
+    
+    
     return firebaseFirestore
         .collection(_col)
         .where('userId', whereIn: ids)
@@ -56,7 +56,7 @@ class StoryProvider extends ChangeNotifier {
       for (final doc in snapshot.docs) {
         try {
           final story = Story.fromDocument(doc);
-          // Client-side expiry filter (avoids extra compound index)
+          
           if (!story.isExpired && !story.isDeleted) {
             grouped.putIfAbsent(story.userId, () => []).add(story);
           }
@@ -78,7 +78,7 @@ class StoryProvider extends ChangeNotifier {
         );
       }).toList();
 
-      // My stories first
+      
       result.sort((a, b) {
         if (a.isCurrentUser) return -1;
         if (b.isCurrentUser) return 1;
@@ -89,7 +89,7 @@ class StoryProvider extends ChangeNotifier {
     };
   }
 
-  /// Stream of the current user's own active stories (for My Status page).
+  
   Stream<List<Story>> getMyStoriesStream(String userId) {
     return firebaseFirestore
         .collection(_col)
@@ -111,9 +111,9 @@ class StoryProvider extends ChangeNotifier {
             .toList());
   }
 
-  // ─────────────────────────────────────────────────────────
-  // CREATE
-  // ─────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<String?> createImageStory({
     required String userId,
@@ -128,7 +128,7 @@ class StoryProvider extends ChangeNotifier {
           'stories/${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final ref = firebaseStorage.ref().child(fileName);
 
-      // Có thể thêm SettableMetadata để xác định type rõ ràng
+      
       final metadata = SettableMetadata(contentType: 'image/jpeg');
       final task = await ref.putFile(imageFile, metadata);
       final mediaUrl = await task.ref.getDownloadURL();
@@ -148,7 +148,7 @@ class StoryProvider extends ChangeNotifier {
     }
   }
 
-  // BỔ SUNG: Hàm tạo Video Story (Giai đoạn 4)
+  
   Future<String?> createVideoStory({
     required String userId,
     required String userName,
@@ -158,12 +158,12 @@ class StoryProvider extends ChangeNotifier {
     StoryPrivacy privacy = StoryPrivacy.friends,
   }) async {
     try {
-      // Đặt đuôi file là mp4
+      
       final fileName =
           'stories/${userId}_${DateTime.now().millisecondsSinceEpoch}.mp4';
       final ref = firebaseStorage.ref().child(fileName);
 
-      // Thiết lập metadata là video
+      
       final metadata = SettableMetadata(contentType: 'video/mp4');
       final task = await ref.putFile(videoFile, metadata);
       final mediaUrl = await task.ref.getDownloadURL();
@@ -173,7 +173,7 @@ class StoryProvider extends ChangeNotifier {
         userName: userName,
         userPhotoUrl: userPhotoUrl,
         type: StoryType
-            .video, // Đảm bảo StoryType enum trong story_model.dart có .video
+            .video, 
         mediaUrl: mediaUrl,
         caption: caption,
         privacy: privacy,
@@ -253,9 +253,9 @@ class StoryProvider extends ChangeNotifier {
     return doc.id;
   }
 
-  // ─────────────────────────────────────────────────────────
-  // VIEW TRACKING
-  // ─────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<void> markStoryViewed({
     required String storyId,
@@ -269,8 +269,8 @@ class StoryProvider extends ChangeNotifier {
       if (!snap.exists) return;
 
       final story = Story.fromDocument(snap);
-      if (story.userId == viewerId) return; // owner
-      if (story.isViewedBy(viewerId)) return; // already viewed
+      if (story.userId == viewerId) return; 
+      if (story.isViewedBy(viewerId)) return; 
 
       final viewData = StoryView(
         userId: viewerId,
@@ -287,9 +287,9 @@ class StoryProvider extends ChangeNotifier {
     }
   }
 
-  // ─────────────────────────────────────────────────────────
-  // DELETE
-  // ─────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<bool> deleteStory(String storyId) async {
     try {
@@ -304,9 +304,9 @@ class StoryProvider extends ChangeNotifier {
     }
   }
 
-  // ─────────────────────────────────────────────────────────
-  // HELPERS
-  // ─────────────────────────────────────────────────────────
+  
+  
+  
 
   String formatTimeRemaining(Duration d) {
     if (d.inHours > 0) return '${d.inHours}h remaining';

@@ -1,9 +1,9 @@
-// lib/utils/app_date_utils.dart
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 class AppDateUtils {
-  /// Format message timestamp với localization
+  
   static String formatMessageTime(String timestamp, BuildContext context) {
     try {
       final dateTime = DateTime.fromMillisecondsSinceEpoch(
@@ -32,7 +32,7 @@ class AppDateUtils {
     }
   }
 
-  /// Format last seen time
+  
   static String formatLastSeen(DateTime lastSeen, BuildContext context) {
     final now = DateTime.now();
     final diff = now.difference(lastSeen);
@@ -57,7 +57,7 @@ class AppDateUtils {
     }
   }
 
-  /// Format reminder time
+  
   static String formatReminderTime(String timestamp, BuildContext context) {
     try {
       final dateTime = DateTime.fromMillisecondsSinceEpoch(
@@ -71,7 +71,7 @@ class AppDateUtils {
     }
   }
 
-  /// Check if date is today
+  
   static bool isToday(DateTime date) {
     final now = DateTime.now();
     return date.year == now.year &&
@@ -79,7 +79,7 @@ class AppDateUtils {
         date.day == now.day;
   }
 
-  /// Check if date is yesterday
+  
   static bool isYesterday(DateTime date) {
     final yesterday = DateTime.now().subtract(const Duration(days: 1));
     return date.year == yesterday.year &&

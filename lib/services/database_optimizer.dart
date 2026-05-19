@@ -1,17 +1,17 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
-/// Service để optimize database queries
+
 class DatabaseOptimizer {
   static final DatabaseOptimizer _instance = DatabaseOptimizer._internal();
   factory DatabaseOptimizer() => _instance;
   DatabaseOptimizer._internal();
 
-  // Cache cho frequently accessed data
+  
   final Map<String, CachedData> _cache = {};
   static const _cacheDuration = Duration(minutes: 5);
 
-  /// Get với caching
+  
   Future<DocumentSnapshot?> getCached({
     required String collection,
     required String docId,
@@ -46,14 +46,14 @@ class DatabaseOptimizer {
     }
   }
 
-  /// Batch get multiple documents
+  
   Future<List<DocumentSnapshot>> batchGet({
     required String collection,
     required List<String> docIds,
   }) async {
     if (docIds.isEmpty) return [];
 
-    // Check cache first
+    
     final List<DocumentSnapshot> results = [];
     final List<String> toFetch = [];
 
@@ -76,7 +76,7 @@ class DatabaseOptimizer {
 
     debugPrint('🔄 Fetching ${toFetch.length}/${docIds.length} documents');
 
-    // Batch fetch remaining (max 10 per batch)
+    
     const batchSize = 10;
     for (var i = 0; i < toFetch.length; i += batchSize) {
       final batch = toFetch.skip(i).take(batchSize).toList();
@@ -103,7 +103,7 @@ class DatabaseOptimizer {
     return results;
   }
 
-  /// Query với pagination
+  
   Future<PaginatedResult> queryPaginated({
     required String collection,
     required int limit,
@@ -113,7 +113,7 @@ class DatabaseOptimizer {
   }) async {
     Query query = FirebaseFirestore.instance.collection(collection);
 
-    // Apply filters
+    
     if (filters != null) {
       for (final filter in filters) {
         query = query.where(
@@ -126,7 +126,7 @@ class DatabaseOptimizer {
       }
     }
 
-    // Apply ordering
+    
     if (orderBy != null) {
       query = query.orderBy(
         orderBy.field,
@@ -134,7 +134,7 @@ class DatabaseOptimizer {
       );
     }
 
-    // Apply pagination
+    
     if (startAfter != null) {
       query = query.startAfterDocument(startAfter);
     }
@@ -159,20 +159,20 @@ class DatabaseOptimizer {
     }
   }
 
-  /// Clear cache
+  
   void clearCache() {
     _cache.clear();
     debugPrint('🗑️ Cache cleared');
   }
 
-  /// Clear specific cache entry
+  
   void clearCacheEntry(String collection, String docId) {
     final cacheKey = '$collection/$docId';
     _cache.remove(cacheKey);
     debugPrint('🗑️ Cache entry removed: $cacheKey');
   }
 
-  /// Get cache stats
+  
   Map<String, dynamic> getCacheStats() {
     final now = DateTime.now();
     int validEntries = 0;

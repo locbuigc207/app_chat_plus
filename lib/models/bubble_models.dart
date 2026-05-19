@@ -1,7 +1,7 @@
-// lib/models/bubble_models.dart
-// ✅ SHARED MODELS - Dùng chung cho tất cả bubble services
 
-/// Bubble data model
+
+
+
 class BubbleData {
   final String userId;
   final String userName;
@@ -44,7 +44,7 @@ class BubbleData {
   }
 }
 
-/// Bubble click event
+
 class BubbleClickEvent {
   final String userId;
   final String userName;
@@ -59,7 +59,7 @@ class BubbleClickEvent {
   });
 }
 
-/// Mini chat message event
+
 class MiniChatMessage {
   final String userId;
   final String message;

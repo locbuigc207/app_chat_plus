@@ -1,4 +1,4 @@
-// lib/widgets/group_call_button.dart
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -8,7 +8,7 @@ import '../pages/group_call_page.dart';
 import '../providers/auth_provider.dart';
 import '../services/group_call_service.dart';
 
-/// Video / voice call button for the group chat AppBar.
+
 class GroupVideoCallButton extends StatelessWidget {
   final String groupId;
   final String groupName;
@@ -27,10 +27,10 @@ class GroupVideoCallButton extends StatelessWidget {
 
     final service = GroupCallService();
 
-    // Check if there's already an active call in this group
+    
     final existing = await _getActiveCall(service);
     if (existing != null) {
-      // Join existing call
+      
       final ok = await service.joinCall(existing.callId);
       if (!ok || !context.mounted) return;
       Navigator.of(context).push(
@@ -44,7 +44,7 @@ class GroupVideoCallButton extends StatelessWidget {
       return;
     }
 
-    // Start new call
+    
     final call = await service.initiateCall(
       groupId: groupId,
       groupName: groupName,
@@ -117,7 +117,7 @@ class GroupVideoCallButton extends StatelessWidget {
   }
 }
 
-/// Compact single-icon version that shows call options
+
 class GroupCallIconButton extends StatelessWidget {
   final String groupId;
   final String groupName;
@@ -138,7 +138,7 @@ class GroupCallIconButton extends StatelessWidget {
 
     final service = GroupCallService();
 
-    // Optimistically try existing call first
+    
     GroupCallModel? existing;
     try {
       existing = await service
@@ -171,7 +171,7 @@ class GroupCallIconButton extends StatelessWidget {
       return;
     }
 
-    // New call
+    
     if (!context.mounted) return;
     final call = await service.initiateCall(
       groupId: groupId,
@@ -200,7 +200,7 @@ class GroupCallIconButton extends StatelessWidget {
   }
 }
 
-/// Active-call banner shown inside group chat when a call is ongoing
+
 class ActiveGroupCallBanner extends StatelessWidget {
   final String groupId;
   final String currentUserId;
@@ -225,13 +225,13 @@ class ActiveGroupCallBanner extends StatelessWidget {
         final call = snap.data;
         if (call == null) return const SizedBox.shrink();
 
-        // Check if user is already in this call
+        
         final alreadyIn =
             call.participants.any((p) => p.userId == currentUserId);
 
         return GestureDetector(
           onTap: () async {
-            if (alreadyIn) return; // already in – just navigate
+            if (alreadyIn) return; 
             final ok = await service.joinCall(call.callId);
             if (!ok || !context.mounted) return;
             Navigator.of(context).push(MaterialPageRoute(

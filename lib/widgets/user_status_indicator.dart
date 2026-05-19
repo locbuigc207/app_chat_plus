@@ -1,4 +1,4 @@
-// lib/widgets/user_status_indicator.dart - FIXED OVERFLOW & ADDED textColor
+
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
@@ -9,14 +9,14 @@ class UserStatusIndicator extends StatelessWidget {
   final String userId;
   final double size;
   final bool showText;
-  final Color? textColor; // ✅ Bổ sung tham số textColor
+  final Color? textColor; 
 
   const UserStatusIndicator({
     super.key,
     required this.userId,
     this.size = 12,
     this.showText = false,
-    this.textColor, // ✅ Khai báo trong constructor
+    this.textColor, 
   });
 
   @override
@@ -27,7 +27,7 @@ class UserStatusIndicator extends StatelessWidget {
       stream: presenceProvider.getUserOnlineStatus(userId),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
-          // Trường hợp không có dữ liệu (default to Offline/Grey)
+          
           return _buildIndicator(false, null, showText, textColor);
         }
 
@@ -43,7 +43,7 @@ class UserStatusIndicator extends StatelessWidget {
   Widget _buildIndicator(
       bool isOnline, DateTime? lastSeen, bool showText, Color? textColor) {
     if (showText) {
-      // Logic cho chế độ hiển thị text (sử dụng Flexible để tránh tràn)
+      
       final defaultTextColor =
           isOnline ? Colors.green : ColorConstants.greyColor;
 
@@ -68,7 +68,7 @@ class UserStatusIndicator extends StatelessWidget {
               _getStatusText(isOnline, lastSeen),
               style: TextStyle(
                 fontSize: 11,
-                // ✅ SỬ DỤNG textColor nếu được cung cấp, nếu không dùng default
+                
                 color: textColor ?? defaultTextColor,
                 fontWeight: isOnline ? FontWeight.w500 : FontWeight.normal,
               ),
@@ -80,7 +80,7 @@ class UserStatusIndicator extends StatelessWidget {
       );
     }
 
-    // Logic cho chế độ chỉ hiển thị chấm tròn
+    
     return Container(
       width: size,
       height: size,
@@ -121,7 +121,7 @@ class UserStatusIndicator extends StatelessWidget {
   }
 }
 
-// Avatar with online status
+
 class AvatarWithStatus extends StatelessWidget {
   final String userId;
   final String photoUrl;
@@ -140,7 +140,7 @@ class AvatarWithStatus extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // Avatar
+        
         ClipOval(
           child: photoUrl.isNotEmpty
               ? Image.network(
@@ -177,7 +177,7 @@ class AvatarWithStatus extends StatelessWidget {
                 ),
         ),
 
-        // Online indicator
+        
         Positioned(
           right: 0,
           bottom: 0,

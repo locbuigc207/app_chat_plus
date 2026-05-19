@@ -1,4 +1,4 @@
-// lib/pages/my_stories_page.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/pages/story_creator_page.dart';
 import 'package:flutter_chat_demo/pages/story_viewer_page.dart';
@@ -91,7 +91,7 @@ class MyStoriesPage extends StatelessWidget {
               onDelete: () async {
                 final ok = await _confirmDelete(context);
                 if (ok) {
-                  // ignore: use_build_context_synchronously
+                  
                   await context
                       .read<StoryProvider>()
                       .deleteStory(stories[i].id);
@@ -130,7 +130,7 @@ class MyStoriesPage extends StatelessWidget {
   }
 }
 
-// ── Empty state ───────────────────────────────────────────────
+
 
 class _EmptyState extends StatelessWidget {
   final VoidCallback onAdd;
@@ -183,7 +183,7 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-// ── Story card ────────────────────────────────────────────────
+
 
 class _StoryCard extends StatelessWidget {
   final Story story;
@@ -216,7 +216,7 @@ class _StoryCard extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              // Thumbnail
+              
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
                 child: _Thumbnail(story: story),
@@ -224,7 +224,7 @@ class _StoryCard extends StatelessWidget {
 
               const SizedBox(width: 14),
 
-              // Info
+              
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -284,7 +284,7 @@ class _StoryCard extends StatelessWidget {
                 ),
               ),
 
-              // Delete
+              
               IconButton(
                 icon: const Icon(Icons.delete_outline,
                     color: Colors.redAccent, size: 20),

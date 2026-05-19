@@ -1,4 +1,4 @@
-// lib/widgets/conversation_options_dialog.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
@@ -36,7 +36,7 @@ class ConversationOptionsDialog extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Handle
+          
           Container(
             margin: const EdgeInsets.only(top: 12, bottom: 8),
             width: 36,
@@ -49,7 +49,7 @@ class ConversationOptionsDialog extends StatelessWidget {
             ),
           ),
 
-          // Title
+          
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
             child: Row(
@@ -66,7 +66,7 @@ class ConversationOptionsDialog extends StatelessWidget {
             ),
           ),
 
-          // Options grid
+          
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Wrap(

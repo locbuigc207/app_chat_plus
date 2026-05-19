@@ -1,4 +1,4 @@
-// lib/providers/location_provider.dart - MODERN UPGRADE
+
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -39,7 +39,7 @@ class LocationData {
 }
 
 class LocationProvider {
-  /// Request location permission
+  
   Future<bool> requestLocationPermission() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -73,20 +73,20 @@ class LocationProvider {
     }
   }
 
-  /// Get current location with full details (like Zalo/Messenger)
+  
   Future<LocationData?> getCurrentLocationWithDetails() async {
     try {
-      // Get position
+      
       final position = await getCurrentLocation();
       if (position == null) return null;
 
-      // Get address from coordinates (reverse geocoding)
+      
       final address = await _getAddressFromCoordinates(
         position.latitude,
         position.longitude,
       );
 
-      // Generate Maps URL
+      
       final mapsUrl = generateMapsLink(position);
 
       return LocationData(
@@ -102,7 +102,7 @@ class LocationProvider {
     }
   }
 
-  /// Get current position
+  
   Future<Position?> getCurrentLocation() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -140,7 +140,7 @@ class LocationProvider {
     }
   }
 
-  /// Get address from coordinates (reverse geocoding)
+  
   Future<Map<String, String>> _getAddressFromCoordinates(
     double latitude,
     double longitude,
@@ -161,7 +161,7 @@ class LocationProvider {
 
       final place = placemarks.first;
 
-      // Build full address (like Messenger/Zalo)
+      
       List<String> addressParts = [];
 
       if (place.name != null && place.name!.isNotEmpty) {
@@ -190,7 +190,7 @@ class LocationProvider {
           ? addressParts.join(', ')
           : 'Lat: ${latitude.toStringAsFixed(6)}, Lng: ${longitude.toStringAsFixed(6)}';
 
-      // Build short address (for preview)
+      
       List<String> shortParts = [];
       if (place.name != null && place.name!.isNotEmpty) {
         shortParts.add(place.name!);
@@ -217,12 +217,12 @@ class LocationProvider {
     }
   }
 
-  /// Generate Google Maps link
+  
   String generateMapsLink(Position position) {
     return 'https://www.google.com/maps/search/?api=1&query=${position.latitude},${position.longitude}';
   }
 
-  /// Format location message (modern style like Zalo/Messenger)
+  
   String formatLocationMessage(LocationData locationData) {
     return '''📍 Location
 ${locationData.address}
@@ -231,11 +231,11 @@ ${locationData.address}
 ${locationData.mapsUrl}''';
   }
 
-  /// Parse location from message
-  /// Parse location from message
+  
+  
   LocationData? parseLocationFromMessage(String message) {
     try {
-      // Extract Maps URL first (more reliable)
+      
       final urlPattern = RegExp(
           r'https://www\.google\.com/maps/search/\?api=1&query=([-\d.]+),([-\d.]+)');
       final urlMatch = urlPattern.firstMatch(message);
@@ -247,12 +247,12 @@ ${locationData.mapsUrl}''';
 
       if (lat == null || lng == null) return null;
 
-      // Validate coordinates
+      
       if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
         return null;
       }
 
-      // Extract address (text between 📍 Location and 🗺️)
+      
       String address = 'Location';
       final addressPattern = RegExp(r'📍 Location\n(.*?)\n\n🗺️', dotAll: true);
       final addressMatch = addressPattern.firstMatch(message);
@@ -274,18 +274,18 @@ ${locationData.mapsUrl}''';
     }
   }
 
-  /// Generate Maps link from coordinates
+  
   String generateMapsLinkFromCoords(double lat, double lng) {
     return 'https://www.google.com/maps?q=$lat,$lng';
   }
 
-  /// Check if message contains location
+  
   bool isLocationMessage(String message) {
     return message.contains('📍 Location') &&
         message.contains('🗺️ View on map:');
   }
 
-  /// Calculate distance between two positions
+  
   double calculateDistance(Position start, Position end) {
     return Geolocator.distanceBetween(
       start.latitude,
@@ -295,7 +295,7 @@ ${locationData.mapsUrl}''';
     );
   }
 
-  /// Format distance to human readable string
+  
   String formatDistance(double meters) {
     if (meters < 1000) {
       return '${meters.toStringAsFixed(0)} m';
@@ -306,7 +306,7 @@ ${locationData.mapsUrl}''';
     }
   }
 
-  /// Get nearby places name (simplified)
+  
   Future<String?> getNearbyPlaceName(double latitude, double longitude) async {
     try {
       List<Placemark> placemarks = await placemarkFromCoordinates(
@@ -324,7 +324,7 @@ ${locationData.mapsUrl}''';
     }
   }
 
-  /// Stream location updates
+  
   Stream<Position> getLocationStream({
     int distanceFilter = 10,
     LocationAccuracy accuracy = LocationAccuracy.high,

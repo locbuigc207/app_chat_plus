@@ -1,4 +1,4 @@
-// lib/pages/incoming_call_page.dart
+
 import 'dart:async';
 import 'dart:ui';
 
@@ -129,7 +129,7 @@ class _IncomingCallPageState extends State<IncomingCallPage>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Nền: Avatar phóng to blur mờ (Premium Look)
+          
           if (callerAvatar.isNotEmpty)
             Image.network(callerAvatar, fit: BoxFit.cover),
           BackdropFilter(
@@ -142,7 +142,7 @@ class _IncomingCallPageState extends State<IncomingCallPage>
               children: [
                 const SizedBox(height: 24),
 
-                // Huy hiệu loại cuộc gọi kiểu kính mờ (Glassmorphism)
+                
                 ClipRRect(
                   borderRadius: BorderRadius.circular(20),
                   child: BackdropFilter(
@@ -184,11 +184,11 @@ class _IncomingCallPageState extends State<IncomingCallPage>
 
                 const Spacer(),
 
-                // Avatar với Ripple + Pulse animation
+                
                 Stack(
                   alignment: Alignment.center,
                   children: [
-                    // Ripple rings
+                    
                     ...List.generate(3, (i) {
                       return AnimatedBuilder(
                         animation: _rippleController,
@@ -213,7 +213,7 @@ class _IncomingCallPageState extends State<IncomingCallPage>
                       );
                     }),
 
-                    // Avatar với pulse
+                    
                     AnimatedBuilder(
                       animation: _pulseAnimation,
                       builder: (_, child) => Transform.scale(
@@ -250,7 +250,7 @@ class _IncomingCallPageState extends State<IncomingCallPage>
 
                 const SizedBox(height: 40),
 
-                // Tên người gọi
+                
                 Text(
                   callerName,
                   style: const TextStyle(
@@ -262,7 +262,7 @@ class _IncomingCallPageState extends State<IncomingCallPage>
                 ),
                 const SizedBox(height: 8),
 
-                // Đếm ngược tự động bỏ qua
+                
                 Text(
                   'Tự động bỏ qua sau ${_secondsRemaining}s',
                   style: TextStyle(
@@ -273,7 +273,7 @@ class _IncomingCallPageState extends State<IncomingCallPage>
 
                 const Spacer(),
 
-                // Nút Chấp nhận / Từ chối
+                
                 Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 40, vertical: 48),

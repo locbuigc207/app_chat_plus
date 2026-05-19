@@ -1,4 +1,4 @@
-// lib/main.dart
+
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -32,7 +32,7 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Load environment variables
+  
   await dotenv.load(fileName: ".env");
 
   try {
@@ -40,18 +40,18 @@ Future<void> main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    // --- BẮT ĐẦU CẤU HÌNH OFFLINE-FIRST ---
+    
     try {
       FirebaseFirestore.instance.settings = const Settings(
-        persistenceEnabled: true, // Cho phép lưu database offline trên thiết bị
+        persistenceEnabled: true, 
         cacheSizeBytes:
-            Settings.CACHE_SIZE_UNLIMITED, // Không giới hạn dung lượng cache
+            Settings.CACHE_SIZE_UNLIMITED, 
       );
       print('✅ Đã bật Firestore Offline Persistence');
     } catch (e) {
       print('⚠️ Không thể bật Offline Persistence (có thể do Web): $e');
     }
-    // --- KẾT THÚC CẤU HÌNH OFFLINE-FIRST ---
+    
   } catch (e) {
     print('❌ Firebase initialization error: $e');
   }
@@ -61,7 +61,7 @@ Future<void> main() async {
   tz.setLocalLocation(tz.getLocation('Asia/Ho_Chi_Minh'));
   final prefs = await SharedPreferences.getInstance();
 
-  // Chỉ khởi tạo Local Notifications trên Mobile
+  
   if (!kIsWeb) {
     await _initializeNotifications(flutterLocalNotificationsPlugin);
   }
@@ -79,9 +79,9 @@ Future<void> main() async {
   ));
 }
 
-// ============================================================
-// BubbleChatChannelManager
-// ============================================================
+
+
+
 
 class BubbleChatChannelManager extends StatefulWidget {
   final Widget child;
@@ -183,9 +183,9 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
   Widget build(BuildContext context) => widget.child;
 }
 
-// ============================================================
-// Notification init (Mobile only)
-// ============================================================
+
+
+
 
 Future<void> _initializeNotifications(
   FlutterLocalNotificationsPlugin plugin,
@@ -240,9 +240,9 @@ Future<void> _initializeNotifications(
   }
 }
 
-// ============================================================
-// MyApp
-// ============================================================
+
+
+
 
 class MyApp extends StatelessWidget {
   final SharedPreferences prefs;
@@ -271,7 +271,7 @@ class MyApp extends StatelessWidget {
       child: SplashPage(),
     );
 
-    // Không bọc Native MethodChannels trên Web
+    
     if (!kIsWeb) {
       appTree = BubbleChatChannelManager(
         child: GroupCallListener(
@@ -389,9 +389,9 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// ============================================================
-// AppInitializer
-// ============================================================
+
+
+
 
 class AppInitializer extends StatefulWidget {
   final NotificationService notificationService;
@@ -438,9 +438,9 @@ class _AppInitializerState extends State<AppInitializer>
   }
 }
 
-// ============================================================
-// MiniChatOverlayManager
-// ============================================================
+
+
+
 
 class MiniChatOverlayManager extends StatefulWidget {
   final Widget child;
@@ -530,9 +530,9 @@ class _MiniChatOverlayManagerState extends State<MiniChatOverlayManager> {
   Widget build(BuildContext context) => widget.child;
 }
 
-// ============================================================
-// MiniChatOverlayWidget (Responsive)
-// ============================================================
+
+
+
 
 class MiniChatOverlayWidget extends StatefulWidget {
   final String userId;
@@ -682,9 +682,9 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget> {
   }
 }
 
-// ============================================================
-// BubbleModeDetector
-// ============================================================
+
+
+
 
 class BubbleModeDetector {
   static const MethodChannel _channel = MethodChannel('bubble_chat_channel');

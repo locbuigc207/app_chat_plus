@@ -1,4 +1,4 @@
-// lib/widgets/edit_message_dialog.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 

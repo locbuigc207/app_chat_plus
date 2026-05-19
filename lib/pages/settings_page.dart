@@ -391,7 +391,7 @@ class SettingsPageState extends State<SettingsPage> {
               ),
               trailing: Switch(
                 value: _is2FAEnabled,
-                activeColor: ColorConstants.primaryColor,
+                activeThumbColor: ColorConstants.primaryColor,
                 onChanged: (val) {
                   if (val) {
                     Navigator.push(

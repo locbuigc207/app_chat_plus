@@ -1,22 +1,22 @@
-// lib/services/contextual_bubble_service.dart
-// Contextual Bubble Universe - Core Service
-// Phân tích nội dung tin nhắn và quản lý trạng thái ngữ cảnh của bubble
+
+
+
 
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-/// Các chế độ ngữ cảnh mà bubble có thể hiển thị
+
 enum BubbleMode {
-  normal,    // Chế độ chat thông thường
-  work,      // Chế độ công việc (từ khóa: task, deadline, meeting, ...)
-  media,     // Chế độ media (gửi ảnh, video, nhạc nhiều)
-  location,  // Chế độ vị trí (chia sẻ location)
-  shared,    // Chế độ không gian chung (co-browsing, whiteboard)
-  secure,    // Chế độ bảo mật (view-once + face detection)
+  normal,    
+  work,      
+  media,     
+  location,  
+  shared,    
+  secure,    
 }
 
-/// Dữ liệu context hiện tại của bubble
+
 class BubbleContext {
   final BubbleMode mode;
   final String? detectedTopic;
@@ -43,24 +43,24 @@ class BubbleContext {
       );
 }
 
-/// Service chính phân tích ngữ cảnh và điều phối BubbleMode
+
 class ContextualBubbleService extends ChangeNotifier {
   static final ContextualBubbleService _instance =
   ContextualBubbleService._internal();
   factory ContextualBubbleService() => _instance;
   ContextualBubbleService._internal();
 
-  // Trạng thái hiện tại
+  
   BubbleContext _currentContext = BubbleContext(
     mode: BubbleMode.normal,
     updatedAt: DateTime.now(),
   );
 
-  // Đếm số media được gửi gần đây (để detect Media Mode)
+  
   int _recentMediaCount = 0;
   Timer? _mediaCountResetTimer;
 
-  // Stream controller để broadcast thay đổi context
+  
   final _contextController =
   StreamController<BubbleContext>.broadcast();
 
@@ -68,7 +68,7 @@ class ContextualBubbleService extends ChangeNotifier {
   BubbleContext get currentContext => _currentContext;
   BubbleMode get currentMode => _currentContext.mode;
 
-  // ─── WORK MODE KEYWORDS ──────────────────────────────────────────────────
+  
   static const _workKeywords = [
     'task', 'deadline', 'meeting', 'project', 'report', 'review',
     'sprint', 'ticket', 'jira', 'trello', 'asana', 'figma',
@@ -78,22 +78,22 @@ class ContextualBubbleService extends ChangeNotifier {
     'urgent', 'asap', 'schedule', 'calendar', 'email', 'call',
   ];
 
-  // ─── LOCATION KEYWORDS ──────────────────────────────────────────────────
+  
   static const _locationKeywords = [
     'where are you', 'location', 'maps', 'địa chỉ', 'vị trí',
     'bạn đang ở đâu', 'meet', 'gặp nhau', 'đến đây', 'đường đi',
     'navigate', 'direction', 'ở đây', 'chỗ này', 'nơi này',
   ];
 
-  // ─── CORE ANALYSIS ──────────────────────────────────────────────────────
+  
 
-  /// Phân tích nội dung tin nhắn để xác định mode
+  
   void analyzeMessage({
     required String content,
-    required int messageType, // 0=text, 1=image, 3=voice, location=4
+    required int messageType, 
     bool isFromCurrentUser = true,
   }) {
-    // Media mode: nhiều ảnh/voice
+    
     if (messageType == 1 || messageType == 3) {
       _recentMediaCount++;
       _mediaCountResetTimer?.cancel();
@@ -107,7 +107,7 @@ class ContextualBubbleService extends ChangeNotifier {
       }
     }
 
-    // Location mode
+    
     if (messageType == 0 && _isLocationMessage(content)) {
       _updateMode(BubbleMode.location, extraData: {
         'mapsUrl': _extractMapsUrl(content),
@@ -115,33 +115,33 @@ class ContextualBubbleService extends ChangeNotifier {
       return;
     }
 
-    // Work mode: phân tích từ khóa text
+    
     if (messageType == 0 && _containsWorkKeywords(content)) {
       final topic = _extractWorkTopic(content);
       _updateMode(BubbleMode.work, detectedTopic: topic);
       return;
     }
 
-    // Nếu không match gì đặc biệt → về normal sau 10 phút idle
+    
     _scheduleNormalReset();
   }
 
-  /// Kích hoạt Shared Space mode thủ công
+  
   void activateSharedMode({Map<String, dynamic>? extraData}) {
     _updateMode(BubbleMode.shared, extraData: extraData);
   }
 
-  /// Kích hoạt Secure mode (anti-shoulder-surf)
+  
   void activateSecureMode() {
     _updateMode(BubbleMode.secure);
   }
 
-  /// Reset về Normal mode
+  
   void resetToNormal() {
     _updateMode(BubbleMode.normal);
   }
 
-  /// Cập nhật location data khi nhận được vị trí mới
+  
   void updateLocationData({
     required double myLat,
     required double myLng,
@@ -163,7 +163,7 @@ class ContextualBubbleService extends ChangeNotifier {
     }
   }
 
-  // ─── PRIVATE HELPERS ─────────────────────────────────────────────────────
+  
 
   void _updateMode(
       BubbleMode mode, {
@@ -221,7 +221,7 @@ class ContextualBubbleService extends ChangeNotifier {
 
   double _calculateDistance(
       double lat1, double lon1, double lat2, double lon2) {
-    const earthRadius = 6371.0; // km
+    const earthRadius = 6371.0; 
     final dLat = _toRad(lat2 - lat1);
     final dLon = _toRad(lon2 - lon1);
     final a = (dLat / 2 * dLat / 2) +
@@ -234,7 +234,7 @@ class ContextualBubbleService extends ChangeNotifier {
 
   double _toRad(double deg) => deg * 3.14159265 / 180;
 
-  // ─── DISPOSE ──────────────────────────────────────────────────────────────
+  
 
   @override
   void dispose() {

@@ -33,12 +33,12 @@ class PhoneAuthProvider extends ChangeNotifier {
   PhoneAuthStatus get status => _status;
   String? get verificationId => _verificationId;
 
-  // Generate unique QR code for user
+  
   String _generateQRCode(String userId) {
     return 'CHATAPP_${userId}_${DateTime.now().millisecondsSinceEpoch}';
   }
 
-  // Send OTP to phone number
+  
   Future<void> sendOTP(String phoneNumber) async {
     _status = PhoneAuthStatus.authenticating;
     notifyListeners();
@@ -46,7 +46,7 @@ class PhoneAuthProvider extends ChangeNotifier {
     await firebaseAuth.verifyPhoneNumber(
       phoneNumber: phoneNumber,
       verificationCompleted: (firebase_auth.PhoneAuthCredential credential) async {
-        // Auto-verification on Android
+        
         await _signInWithCredential(credential, phoneNumber);
       },
       verificationFailed: (firebase_auth.FirebaseAuthException e) {
@@ -68,7 +68,7 @@ class PhoneAuthProvider extends ChangeNotifier {
     );
   }
 
-  // Verify OTP code
+  
   Future<bool> verifyOTP(String smsCode, String phoneNumber) async {
     try {
       _status = PhoneAuthStatus.authenticating;
@@ -88,7 +88,7 @@ class PhoneAuthProvider extends ChangeNotifier {
     }
   }
 
-  // Sign in with credential
+  
   Future<bool> _signInWithCredential(
       firebase_auth.PhoneAuthCredential credential,
       String phoneNumber,
@@ -103,7 +103,7 @@ class PhoneAuthProvider extends ChangeNotifier {
         return false;
       }
 
-      // Check if user exists in Firestore
+      
       final result = await firebaseFirestore
           .collection(FirestoreConstants.pathUserCollection)
           .where(FirestoreConstants.id, isEqualTo: firebaseUser.uid)
@@ -112,10 +112,10 @@ class PhoneAuthProvider extends ChangeNotifier {
       final documents = result.docs;
 
       if (documents.isEmpty) {
-        // Generate QR code for new user
+        
         final qrCode = _generateQRCode(firebaseUser.uid);
 
-        // Create new user document
+        
         await firebaseFirestore
             .collection(FirestoreConstants.pathUserCollection)
             .doc(firebaseUser.uid)
@@ -131,7 +131,7 @@ class PhoneAuthProvider extends ChangeNotifier {
           FirestoreConstants.aboutMe: '',
         });
 
-        // Save to local storage
+        
         await prefs.setString(FirestoreConstants.id, firebaseUser.uid);
         await prefs.setString(FirestoreConstants.nickname, phoneNumber);
         await prefs.setString(FirestoreConstants.phoneNumber, phoneNumber);
@@ -139,11 +139,11 @@ class PhoneAuthProvider extends ChangeNotifier {
         await prefs.setString(FirestoreConstants.photoUrl, '');
         await prefs.setString(FirestoreConstants.aboutMe, '');
       } else {
-        // User exists, get data
+        
         final documentSnapshot = documents.first;
         final userChat = UserChat.fromDocument(documentSnapshot);
 
-        // Check if user has QR code, if not generate one
+        
         if (userChat.qrCode.isEmpty) {
           final qrCode = _generateQRCode(firebaseUser.uid);
           await firebaseFirestore
@@ -156,7 +156,7 @@ class PhoneAuthProvider extends ChangeNotifier {
           await prefs.setString(FirestoreConstants.qrCode, userChat.qrCode);
         }
 
-        // Save to local storage
+        
         await prefs.setString(FirestoreConstants.id, userChat.id);
         await prefs.setString(FirestoreConstants.nickname, userChat.nickname);
         await prefs.setString(FirestoreConstants.photoUrl, userChat.photoUrl);

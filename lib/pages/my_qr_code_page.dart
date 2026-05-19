@@ -50,7 +50,7 @@ class _MyQRCodePageState extends State<MyQRCodePage> {
           children: [
             const SizedBox(height: 20),
 
-            // Title
+            
             Text(
               'Share your QR code',
               style: TextStyle(
@@ -72,7 +72,7 @@ class _MyQRCodePageState extends State<MyQRCodePage> {
 
             const SizedBox(height: 40),
 
-            // QR Code
+            
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -108,7 +108,7 @@ class _MyQRCodePageState extends State<MyQRCodePage> {
 
             const SizedBox(height: 40),
 
-            // User Info
+            
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -190,7 +190,7 @@ class _MyQRCodePageState extends State<MyQRCodePage> {
 
             const SizedBox(height: 20),
 
-            // QR Code ID
+            
             Text(
               'QR Code ID: ${_qrCode.substring(0, _qrCode.length > 20 ? 20 : _qrCode.length)}...',
               style: TextStyle(

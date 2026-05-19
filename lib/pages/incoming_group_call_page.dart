@@ -1,4 +1,4 @@
-// lib/pages/incoming_group_call_page.dart
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -133,7 +133,7 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
           child: Column(
             children: [
               const SizedBox(height: 24),
-              // Call type badge
+              
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -156,7 +156,7 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
                 ),
               ),
               const Spacer(),
-              // Group avatar + ripple
+              
               Stack(
                 alignment: Alignment.center,
                 children: [
@@ -205,7 +205,7 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
                 ],
               ),
               const SizedBox(height: 28),
-              // Group name
+              
               Text(widget.call.groupName,
                   style: const TextStyle(
                       color: Colors.white,
@@ -230,21 +230,21 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
                         color: Colors.white.withOpacity(0.7), fontSize: 12)),
               ),
               const Spacer(),
-              // Buttons
+              
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 48, vertical: 40),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    // Decline
+                    
                     _callBtn(
                       icon: Icons.call_end,
                       label: 'Decline',
                       color: const Color(0xFFE53935),
                       onTap: _decline,
                     ),
-                    // Accept
+                    
                     _callBtn(
                       icon: isVideo ? Icons.videocam : Icons.call,
                       label: 'Join',

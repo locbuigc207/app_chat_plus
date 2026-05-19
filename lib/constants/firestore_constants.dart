@@ -20,22 +20,22 @@ class FirestoreConstants {
   static const content = "content";
   static const type = "type";
 
-  // Friend request fields
+  
   static const status = "status";
   static const requesterId = "requesterId";
   static const receiverId = "receiverId";
 
-  // Friendship fields
+  
   static const userId1 = "userId1";
   static const userId2 = "userId2";
 
-  // Group fields
+  
   static const groupName = "groupName";
   static const groupPhotoUrl = "groupPhotoUrl";
   static const adminId = "adminId";
   static const memberIds = "memberIds";
 
-  // Conversation fields
+  
   static const conversationId = "conversationId";
   static const isGroup = "isGroup";
   static const participants = "participants";

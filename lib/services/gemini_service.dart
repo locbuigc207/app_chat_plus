@@ -4,7 +4,7 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 import '../constants/constants.dart';
 
 class GeminiService {
-  // Free tier limits: 15 RPM, 1M TPM, 1500 req/day (gemini-2.0-flash)
+  
   static const String _model = 'gemini-2.0-flash';
   static const int _maxRetries = 2;
   static const Duration _retryDelay = Duration(seconds: 5);
@@ -22,7 +22,7 @@ class GeminiService {
         model: _model,
         apiKey: apiKey,
         generationConfig: GenerationConfig(
-          maxOutputTokens: 1024, // Giới hạn để tiết kiệm quota free tier
+          maxOutputTokens: 1024, 
           temperature: 0.7,
         ),
         systemInstruction: Content.system(
@@ -32,7 +32,7 @@ class GeminiService {
         ),
       );
 
-      // Gemini yêu cầu history phải xen kẽ user/model, bắt đầu bằng user
+      
       final List<Content> chatHistory = _buildValidHistory(historyRaw);
 
       return await _sendWithRetry(model, chatHistory, message);
@@ -41,7 +41,7 @@ class GeminiService {
     }
   }
 
-  /// Đảm bảo history hợp lệ: xen kẽ user/model, bắt đầu bằng user
+  
   List<Content> _buildValidHistory(List<Map<String, dynamic>> historyRaw) {
     final List<Content> contents = [];
 
@@ -51,13 +51,13 @@ class GeminiService {
       final content = msg['content']?.toString() ?? '';
       if (content.isEmpty) continue;
 
-      // Bỏ qua nếu role trùng với phần tử cuối (tránh consecutive same role)
+      
       if (contents.isNotEmpty && contents.last.role == role) continue;
 
       contents.add(Content(role, [TextPart(content)]));
     }
 
-    // History không được bắt đầu bằng 'model'
+    
     if (contents.isNotEmpty && contents.first.role == 'model') {
       contents.removeAt(0);
     }
@@ -85,7 +85,7 @@ class GeminiService {
 
         if (isRateLimit && attempt < _maxRetries) {
           attempt++;
-          // Tăng delay theo số lần retry (5s, 10s)
+          
           await Future.delayed(_retryDelay * attempt);
           continue;
         }

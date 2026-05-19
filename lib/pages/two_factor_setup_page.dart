@@ -1,4 +1,4 @@
-// lib/pages/two_factor_setup_page.dart
+
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -11,7 +11,7 @@ import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 class TwoFactorSetupPage extends StatefulWidget {
-  const TwoFactorSetupPage({Key? key}) : super(key: key);
+  const TwoFactorSetupPage({super.key});
 
   @override
   State<TwoFactorSetupPage> createState() => _TwoFactorSetupPageState();
@@ -30,7 +30,7 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage> {
   }
 
   void _generateSecret() {
-    // Generate valid Base32 secret (16 chars)
+    
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
     final rnd = Random.secure();
     _secret =
@@ -39,7 +39,7 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage> {
     final nickname =
         context.read<SettingProvider>().getPref(FirestoreConstants.nickname) ??
             'User';
-    // Format URI for Authenticator apps
+    
     _qrUri =
         'otpauth://totp/AppChatPlus:$nickname?secret=$_secret&issuer=AppChatPlus';
   }

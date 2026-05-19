@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class AppThemes {
-  // ── Spacing System ─────────────────────────────────────────
+  
   static const double spaceXS = 4.0;
   static const double spaceSM = 8.0;
   static const double spaceMD = 16.0;
@@ -9,14 +9,14 @@ class AppThemes {
   static const double spaceXL = 32.0;
   static const double spaceXXL = 48.0;
 
-  // ── Border Radius ──────────────────────────────────────────
+  
   static const double radiusSM = 8.0;
   static const double radiusMD = 12.0;
   static const double radiusLG = 16.0;
   static const double radiusXL = 24.0;
   static const double radiusFull = 100.0;
 
-  // ── Elevation / Shadow ─────────────────────────────────────
+  
   static List<BoxShadow> shadowSM(Color color) => [
         BoxShadow(
           color: color.withOpacity(0.08),
@@ -41,7 +41,7 @@ class AppThemes {
         ),
       ];
 
-  // ── Premium Soft Shadow ────────────────────────────────────
+  
   static List<BoxShadow> get softShadow => [
         BoxShadow(
           color: Colors.black.withOpacity(0.04),
@@ -57,7 +57,7 @@ class AppThemes {
         ),
       ];
 
-  // ── Light Theme ────────────────────────────────────────────
+  
   static ThemeData lightTheme(Color primaryColor) {
     final colorScheme = ColorScheme.fromSeed(
       seedColor: primaryColor,
@@ -74,7 +74,7 @@ class AppThemes {
       scaffoldBackgroundColor: const Color(0xFFF0F2F8),
       fontFamily: 'Inter',
 
-      // AppBar
+      
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
@@ -92,7 +92,7 @@ class AppThemes {
         actionsIconTheme: IconThemeData(color: primaryColor, size: 22),
       ),
 
-      // Card
+      
       cardTheme: CardThemeData(
         color: Colors.white,
         surfaceTintColor: Colors.transparent,
@@ -104,14 +104,14 @@ class AppThemes {
         margin: EdgeInsets.zero,
       ),
 
-      // Bottom Navigation
+      
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
         backgroundColor: Colors.white,
         elevation: 0,
         type: BottomNavigationBarType.fixed,
       ),
 
-      // Bottom Sheet
+      
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(
@@ -119,7 +119,7 @@ class AppThemes {
         ),
       ),
 
-      // Input
+      
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: const Color(0xFFF0F2F8),
@@ -146,26 +146,26 @@ class AppThemes {
         ),
       ),
 
-      // Divider
+      
       dividerTheme: DividerThemeData(
         color: const Color(0xFF8E8E93).withOpacity(0.15),
         thickness: 1,
         space: 1,
       ),
 
-      // ListTile
+      
       listTileTheme: const ListTileThemeData(
         contentPadding:
             EdgeInsets.symmetric(horizontal: spaceMD, vertical: spaceXS),
         minVerticalPadding: spaceXS,
       ),
 
-      // Text
+      
       textTheme: _buildTextTheme(const Color(0xFF1A1D2E)),
     );
   }
 
-  // ── Dark Theme ─────────────────────────────────────────────
+  
   static ThemeData darkTheme(Color primaryColor) {
     final colorScheme = ColorScheme.fromSeed(
       seedColor: primaryColor,

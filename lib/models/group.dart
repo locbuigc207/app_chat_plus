@@ -1,4 +1,4 @@
-// lib/models/group.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
@@ -6,9 +6,9 @@ class Group {
   final String id;
   final String groupName;
   final String groupPhotoUrl;
-  final String adminId; // Giữ lại cho tương thích ngược
+  final String adminId; 
   final List<String> memberIds;
-  final Map<String, dynamic> roles; // Map chứa Role của các thành viên
+  final Map<String, dynamic> roles; 
   final String createdAt;
 
   const Group({
@@ -42,8 +42,8 @@ class Group {
     try {
       parsedRoles = Map<String, dynamic>.from(doc.get('roles'));
     } catch (_) {
-      // Tương thích ngược với các Group cũ chưa có trường 'roles'
-      // Tự động gán adminId thành 'owner'
+      
+      
       final oldAdminId = doc.get(FirestoreConstants.adminId) as String?;
       if (oldAdminId != null && oldAdminId.isNotEmpty) {
         parsedRoles[oldAdminId] = 'owner';

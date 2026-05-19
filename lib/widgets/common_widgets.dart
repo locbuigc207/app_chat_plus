@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
 
-// ── LOADING VIEW ──────────────────────────────────────────────────────────────
+
 class LoadingView extends StatelessWidget {
   final String? message;
 
@@ -58,7 +58,7 @@ class LoadingView extends StatelessWidget {
   }
 }
 
-// ── IMPROVED REACTION PICKER ──────────────────────────────────────────────────
+
 class ReactionPicker extends StatelessWidget {
   final Function(String emoji) onEmojiSelected;
 
@@ -158,7 +158,7 @@ class _EmojiBtnState extends State<_EmojiBtn>
   }
 }
 
-// ── MESSAGE REACTIONS DISPLAY ─────────────────────────────────────────────────
+
 class MessageReactionsDisplay extends StatelessWidget {
   final Map<String, int> reactions;
   final String currentUserId;
@@ -226,7 +226,7 @@ class MessageReactionsDisplay extends StatelessWidget {
   }
 }
 
-// ── SMART REPLY WIDGET ────────────────────────────────────────────────────────
+
 class SmartReplyWidget extends StatelessWidget {
   final List<SmartReply> replies;
   final Function(String) onReplySelected;
@@ -294,7 +294,7 @@ class SmartReplyWidget extends StatelessWidget {
   }
 }
 
-// ── TYPING INDICATOR ──────────────────────────────────────────────────────────
+
 class TypingIndicator extends StatefulWidget {
   final String userName;
   const TypingIndicator({super.key, required this.userName});
@@ -386,7 +386,7 @@ class _TypingIndicatorState extends State<TypingIndicator>
   }
 }
 
-// ── READ RECEIPT WIDGET ───────────────────────────────────────────────────────
+
 class ReadReceiptWidget extends StatelessWidget {
   final bool isRead;
   final bool isSent;
@@ -412,7 +412,7 @@ class ReadReceiptWidget extends StatelessWidget {
   }
 }
 
-// ── ONLINE FRIENDS BAR AVATAR ─────────────────────────────────────────────────
+
 class UserAvatarWidget extends StatelessWidget {
   final String photoUrl;
   final String name;

@@ -6,10 +6,10 @@ class FriendProvider {
 
   FriendProvider({required this.firebaseFirestore});
 
-  // Send friend request
+  
   Future<bool> sendFriendRequest(String requesterId, String receiverId) async {
     try {
-      // Check if request already exists
+      
       final existingRequest = await firebaseFirestore
           .collection(FirestoreConstants.pathFriendRequestCollection)
           .where(FirestoreConstants.requesterId, isEqualTo: requesterId)
@@ -17,10 +17,10 @@ class FriendProvider {
           .get();
 
       if (existingRequest.docs.isNotEmpty) {
-        return false; // Request already exists
+        return false; 
       }
 
-      // Check reverse request
+      
       final reverseRequest = await firebaseFirestore
           .collection(FirestoreConstants.pathFriendRequestCollection)
           .where(FirestoreConstants.requesterId, isEqualTo: receiverId)
@@ -28,10 +28,10 @@ class FriendProvider {
           .get();
 
       if (reverseRequest.docs.isNotEmpty) {
-        return false; // Already received request from this user
+        return false; 
       }
 
-      // Create friend request
+      
       await firebaseFirestore
           .collection(FirestoreConstants.pathFriendRequestCollection)
           .add({
@@ -49,16 +49,16 @@ class FriendProvider {
     }
   }
 
-  // Accept friend request
+  
   Future<bool> acceptFriendRequest(String requestId, String userId1, String userId2) async {
     try {
-      // Update request status
+      
       await firebaseFirestore
           .collection(FirestoreConstants.pathFriendRequestCollection)
           .doc(requestId)
           .update({FirestoreConstants.status: 'accepted'});
 
-      // Create friendship
+      
       final friendshipId = userId1.compareTo(userId2) < 0
           ? '$userId1-$userId2'
           : '$userId2-$userId1';
@@ -80,7 +80,7 @@ class FriendProvider {
     }
   }
 
-  // Check if users are friends
+  
   Future<bool> areFriends(String userId1, String userId2) async {
     try {
       final friendshipId = userId1.compareTo(userId2) < 0
@@ -99,10 +99,10 @@ class FriendProvider {
     }
   }
 
-  // Check if friend request exists
+  
   Future<String?> checkFriendRequest(String userId1, String userId2) async {
     try {
-      // Check if current user sent request
+      
       final sentRequest = await firebaseFirestore
           .collection(FirestoreConstants.pathFriendRequestCollection)
           .where(FirestoreConstants.requesterId, isEqualTo: userId1)
@@ -114,7 +114,7 @@ class FriendProvider {
         return 'sent';
       }
 
-      // Check if received request from other user
+      
       final receivedRequest = await firebaseFirestore
           .collection(FirestoreConstants.pathFriendRequestCollection)
           .where(FirestoreConstants.requesterId, isEqualTo: userId2)
@@ -123,7 +123,7 @@ class FriendProvider {
           .get();
 
       if (receivedRequest.docs.isNotEmpty) {
-        return receivedRequest.docs.first.id; // Return request ID to accept
+        return receivedRequest.docs.first.id; 
       }
 
       return null;
@@ -133,7 +133,7 @@ class FriendProvider {
     }
   }
 
-  // Get friends list
+  
   Stream<QuerySnapshot> getFriendsList(String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathFriendshipCollection)
@@ -148,7 +148,7 @@ class FriendProvider {
         .snapshots();
   }
 
-  // Get conversations (friends and groups)
+  
   Stream<QuerySnapshot> getConversations(String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathConversationCollection)
@@ -157,7 +157,7 @@ class FriendProvider {
         .snapshots();
   }
 
-  // Update conversation last message
+  
   Future<void> updateConversationLastMessage(
       String conversationId,
       String message,
@@ -178,7 +178,7 @@ class FriendProvider {
     }
   }
 
-  // Create or get conversation
+  
   Future<String> getOrCreateConversation(
       String userId1,
       String userId2,
@@ -186,7 +186,7 @@ class FriendProvider {
       ) async {
     try {
       if (!isGroup) {
-        // For 1-1 chat, use consistent ID
+        
         final conversationId = userId1.compareTo(userId2) < 0
             ? '$userId1-$userId2'
             : '$userId2-$userId1';

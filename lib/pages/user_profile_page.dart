@@ -80,7 +80,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
     } else if (_friendRequestStatus == 'sent') {
       Fluttertoast.showToast(msg: 'Friend request already sent');
     } else if (_friendRequestStatus != null && _friendRequestStatus != 'sent') {
-      // Accept friend request
+      
       setState(() => _isLoading = true);
 
       final success = await _friendProvider.acceptFriendRequest(
@@ -97,7 +97,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
         Fluttertoast.showToast(msg: 'Failed to accept request');
       }
     } else {
-      // Send friend request
+      
       setState(() => _isLoading = true);
 
       final success = await _friendProvider.sendFriendRequest(
@@ -162,7 +162,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
               children: [
                 const SizedBox(height: 40),
 
-                // Avatar
+                
                 Container(
                   margin: const EdgeInsets.all(20),
                   child: widget.userChat.photoUrl.isNotEmpty
@@ -199,11 +199,11 @@ class _UserProfilePageState extends State<UserProfilePage> {
                         ),
                 ),
 
-                // User Info
+                
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Nickname
+                    
                     Container(
                       margin:
                           const EdgeInsets.only(left: 10, bottom: 5, top: 10),
@@ -233,7 +233,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                       ),
                     ),
 
-                    // About Me
+                    
                     Container(
                       margin:
                           const EdgeInsets.only(left: 10, top: 30, bottom: 5),
@@ -265,7 +265,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                       ),
                     ),
 
-                    // Phone Number
+                    
                     if (widget.userChat.phoneNumber.isNotEmpty)
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -314,7 +314,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                   ],
                 ),
 
-                // Relationship Memory AI
+                
                 Container(
                   margin: const EdgeInsets.only(top: 30, left: 30, right: 30),
                   decoration: BoxDecoration(
@@ -348,7 +348,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                   ),
                 ),
 
-                // Action Button
+                
                 Container(
                   margin: const EdgeInsets.only(top: 50, bottom: 50),
                   child: TextButton(
@@ -373,7 +373,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
             ),
           ),
 
-          // Loading Overlay
+          
           Positioned(
             child: _isLoading ? LoadingView() : const SizedBox.shrink(),
           ),

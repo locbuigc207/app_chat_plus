@@ -1,4 +1,4 @@
-// lib/pages/login_page.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
@@ -7,6 +7,8 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:provider/provider.dart';
 
 class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
+
   @override
   State<LoginPage> createState() => _LoginPageState();
 }
@@ -85,7 +87,7 @@ class _LoginPageState extends State<LoginPage>
     return Scaffold(
       body: Stack(
         children: [
-          // Gradient nền toàn màn hình
+          
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -96,7 +98,7 @@ class _LoginPageState extends State<LoginPage>
             ),
           ),
 
-          // Nội dung chính căn giữa, giới hạn chiều rộng (web/tablet friendly)
+          
           SafeArea(
             child: Center(
               child: ConstrainedBox(
@@ -118,7 +120,7 @@ class _LoginPageState extends State<LoginPage>
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Logo & Brand
+                          
                           FadeTransition(
                             opacity: _fadeAnim,
                             child: ScaleTransition(
@@ -181,18 +183,18 @@ class _LoginPageState extends State<LoginPage>
 
                           SizedBox(height: size.height * 0.06),
 
-                          // Sign in buttons
+                          
                           SlideTransition(
                             position: _slideAnim,
                             child: FadeTransition(
                               opacity: _fadeAnim,
                               child: Column(
                                 children: [
-                                  // Google Sign In
+                                  
                                   _buildGoogleSignInBtn(authProvider, isDark),
                                   const SizedBox(height: 14),
 
-                                  // Divider
+                                  
                                   Row(
                                     children: [
                                       Expanded(
@@ -227,7 +229,7 @@ class _LoginPageState extends State<LoginPage>
                                   ),
                                   const SizedBox(height: 14),
 
-                                  // Phone Sign In
+                                  
                                   _buildPhoneSignInBtn(isDark),
                                 ],
                               ),
@@ -236,7 +238,7 @@ class _LoginPageState extends State<LoginPage>
 
                           const SizedBox(height: 28),
 
-                          // Footer
+                          
                           FadeTransition(
                             opacity: _fadeAnim,
                             child: Center(
@@ -261,7 +263,7 @@ class _LoginPageState extends State<LoginPage>
             ),
           ),
 
-          // Loading overlay
+          
           if (authProvider.status == Status.authenticating)
             Positioned.fill(
               child: Container(
@@ -426,27 +428,27 @@ class _GoogleLogoPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..style = PaintingStyle.fill;
 
-    // Red
+    
     paint.color = const Color(0xFFEA4335);
     canvas.drawArc(
         Rect.fromLTWH(0, 0, size.width, size.height), -1.57, 2.0, true, paint);
 
-    // Blue
+    
     paint.color = const Color(0xFF4285F4);
     canvas.drawArc(
         Rect.fromLTWH(0, 0, size.width, size.height), 0.43, 1.65, true, paint);
 
-    // Yellow
+    
     paint.color = const Color(0xFFFBBC05);
     canvas.drawArc(
         Rect.fromLTWH(0, 0, size.width, size.height), 2.08, 0.93, true, paint);
 
-    // Green
+    
     paint.color = const Color(0xFF34A853);
     canvas.drawArc(
         Rect.fromLTWH(0, 0, size.width, size.height), 3.01, 0.71, true, paint);
 
-    // White center
+    
     paint.color = Colors.white;
     canvas.drawCircle(
         Offset(size.width / 2, size.height / 2), size.width * 0.35, paint);

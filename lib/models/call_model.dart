@@ -1,34 +1,34 @@
-// lib/models/call_model.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum CallType { voice, video }
 
 enum CallStatus {
-  dialing, // Caller đang quay số (tương đương 'calling')
-  calling, // Caller đang chờ bắt máy
-  ringing, // Callee đang nhận cuộc gọi
-  accepted, // Callee đã chấp nhận (tương đương 'connected')
-  connected, // Cả hai đã kết nối
-  rejected, // Callee từ chối (tương đương 'declined')
-  declined, // Callee từ chối
-  ended, // Cuộc gọi kết thúc bình thường
-  missed, // Không được nghe máy
-  failed, // Cuộc gọi thất bại do lỗi
+  dialing, 
+  calling, 
+  ringing, 
+  accepted, 
+  connected, 
+  rejected, 
+  declined, 
+  ended, 
+  missed, 
+  failed, 
 }
 
 class CallModel {
-  final String callId; // doc ID phía Firestore / id phía Realtime
+  final String callId; 
   final String callerId;
   final String callerName;
-  final String callerAvatar; // callerPic
-  final String calleeId; // receiverId
-  final String calleeName; // receiverName
-  final String calleeAvatar; // receiverPic
-  final String channelName; // channelId – Agora channel
-  final CallType callType; // isVideo → video : voice
+  final String callerAvatar; 
+  final String calleeId; 
+  final String calleeName; 
+  final String calleeAvatar; 
+  final String channelName; 
+  final CallType callType; 
   final CallStatus status;
-  final String? token; // Agora token (null = no-auth mode)
-  final DateTime createdAt; // timestamp
+  final String? token; 
+  final DateTime createdAt; 
   final DateTime? connectedAt;
   final DateTime? endedAt;
   final int? durationSeconds;
@@ -59,15 +59,15 @@ class CallModel {
                 ? DateTime.fromMillisecondsSinceEpoch(timestamp)
                 : DateTime.now());
 
-  // ─── Serialization ───────────────────────────────────────────────────────────
+  
 
-  /// Dùng cho Firestore (DocumentSnapshot)
+  
   factory CallModel.fromDocument(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     return CallModel.fromJson(data);
   }
 
-  /// Dùng cho Firestore / JSON
+  
   factory CallModel.fromJson(Map<String, dynamic> data) {
     return CallModel(
       callId: data['callId'] ?? data['id'] ?? '',
@@ -94,11 +94,11 @@ class CallModel {
     );
   }
 
-  /// Dùng cho Realtime Database / toMap()
+  
   factory CallModel.fromMap(Map<String, dynamic> map) =>
       CallModel.fromJson(map);
 
-  /// Xuất ra Firestore
+  
   Map<String, dynamic> toJson() => {
         'callId': callId,
         'callerId': callerId,
@@ -109,20 +109,20 @@ class CallModel {
         'calleeAvatar': calleeAvatar,
         'channelName': channelName,
         'callType': callType.name,
-        'isVideo': isVideoCall, // backward-compat
+        'isVideo': isVideoCall, 
         'status': status.name,
         'token': token,
         'createdAt': createdAt.millisecondsSinceEpoch.toString(),
-        'timestamp': createdAt.millisecondsSinceEpoch, // backward-compat
+        'timestamp': createdAt.millisecondsSinceEpoch, 
         'connectedAt': connectedAt?.millisecondsSinceEpoch.toString(),
         'endedAt': endedAt?.millisecondsSinceEpoch.toString(),
         'durationSeconds': durationSeconds,
       };
 
-  /// Alias cho Realtime Database
+  
   Map<String, dynamic> toMap() => toJson();
 
-  // ─── CopyWith ────────────────────────────────────────────────────────────────
+  
 
   CallModel copyWith({
     String? callId,
@@ -152,7 +152,7 @@ class CallModel {
     );
   }
 
-  // ─── Helpers ─────────────────────────────────────────────────────────────────
+  
 
   bool get isVideoCall => callType == CallType.video;
   bool get isVoiceCall => callType == CallType.voice;
@@ -171,7 +171,7 @@ class CallModel {
     return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 
-  // ─── Private ─────────────────────────────────────────────────────────────────
+  
 
   static CallStatus _parseStatus(String? s) {
     switch (s) {

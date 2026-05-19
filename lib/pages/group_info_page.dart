@@ -1,4 +1,4 @@
-// lib/pages/group_info_page.dart
+
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -46,7 +46,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
   void _checkRoles() {
     String myRole = _group.roles[widget.currentUserId] ?? 'member';
     if (_group.adminId == widget.currentUserId && myRole == 'member') {
-      myRole = 'owner'; // Tương thích ngược
+      myRole = 'owner'; 
     }
     _isOwner = myRole == 'owner';
     _isAdmin = myRole == 'admin' || _isOwner;
@@ -182,7 +182,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
       final newList = [..._group.memberIds, ...selected];
       Map<String, dynamic> newRoles = Map.from(_group.roles);
       for (String id in selected) {
-        newRoles[id] = 'member'; // Mặc định là member khi mới vào
+        newRoles[id] = 'member'; 
       }
 
       await FirebaseFirestore.instance
@@ -251,7 +251,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
   Future<void> _removeMember(String userId) async {
     if (!_isAdmin || userId == widget.currentUserId) return;
 
-    // Check hierarchy: Admin cannot remove Owner or another Admin
+    
     final targetRole = _getUserRole(userId);
     if (!_isOwner && (targetRole == 'owner' || targetRole == 'admin')) {
       Fluttertoast.showToast(
@@ -364,7 +364,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
             child: Column(
               children: [
                 const SizedBox(height: 24),
-                // Group avatar
+                
                 GestureDetector(
                   onTap: _isAdmin ? _changeGroupPhoto : null,
                   child: Stack(
@@ -376,11 +376,11 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
                           backgroundImage: _group.groupPhotoUrl.isNotEmpty
                               ? NetworkImage(_group.groupPhotoUrl)
                               : null,
+                          backgroundColor: ColorConstants.primaryColor,
                           child: _group.groupPhotoUrl.isEmpty
                               ? const Icon(Icons.group,
                                   size: 56, color: Colors.white)
                               : null,
-                          backgroundColor: ColorConstants.primaryColor,
                         ),
                       ),
                       if (_isAdmin)
@@ -400,7 +400,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                // Group name
+                
                 GestureDetector(
                   onTap: _isAdmin ? _editGroupName : null,
                   child: Row(
@@ -424,7 +424,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
                     style: const TextStyle(
                         color: ColorConstants.greyColor, fontSize: 13)),
                 const SizedBox(height: 24),
-                // Media & Files shortcut
+                
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Card(
@@ -450,7 +450,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                // Members section header
+                
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Row(
@@ -470,7 +470,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
                     ],
                   ),
                 ),
-                // Members list: Owner -> Admin -> Member
+                
                 ..._buildSortedMemberList(),
                 const SizedBox(height: 32),
               ],
@@ -513,10 +513,10 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
         backgroundImage: user?.photoUrl.isNotEmpty == true
             ? NetworkImage(user!.photoUrl)
             : null,
+        backgroundColor: ColorConstants.primaryColor.withOpacity(0.7),
         child: user?.photoUrl.isEmpty != false
             ? const Icon(Icons.person, color: Colors.white)
             : null,
-        backgroundColor: ColorConstants.primaryColor.withOpacity(0.7),
       ),
       title: Row(
         children: [

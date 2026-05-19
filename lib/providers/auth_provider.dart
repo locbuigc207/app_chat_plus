@@ -1,4 +1,4 @@
-// lib/providers/auth_provider.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -42,7 +42,7 @@ class AuthProvider extends ChangeNotifier {
 
   String? get userFirebaseId => prefs.getString(FirestoreConstants.id);
 
-  // Lưu tạm thông tin người dùng đang chờ xác thực 2FA
+  
   UserChat? tempUserChat;
 
   Future<bool> isLoggedIn() async {
@@ -58,12 +58,12 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // Generate unique QR code for user
+  
   String _generateQRCode(String userId) {
     return 'CHATAPP_${userId}_${DateTime.now().millisecondsSinceEpoch}';
   }
 
-  // Trả về 'success', 'requires_2fa', 'canceled', hoặc 'error'
+  
   Future<String> handleSignIn() async {
     _status = Status.authenticating;
     notifyListeners();
@@ -104,7 +104,7 @@ class AuthProvider extends ChangeNotifier {
       final documents = result.docs;
 
       if (documents.isEmpty) {
-        // Tạo user mới
+        
         final qrCode = _generateQRCode(firebaseUser.uid);
 
         await firebaseFirestore
@@ -139,7 +139,7 @@ class AuthProvider extends ChangeNotifier {
         notifyListeners();
         return 'success';
       } else {
-        // Load user đã tồn tại
+        
         final documentSnapshot = documents.first;
         final userChat = UserChat.fromDocument(documentSnapshot);
 
@@ -152,9 +152,9 @@ class AuthProvider extends ChangeNotifier {
               .update({FirestoreConstants.qrCode: qrCode});
         }
 
-        // Kiểm tra 2FA
+        
         if (userChat.is2FAEnabled) {
-          // Chưa lưu Prefs, gán vào tempUserChat chờ xác thực 2FA
+          
           tempUserChat = userChat;
           _status = Status.uninitialized;
           notifyListeners();
@@ -183,7 +183,7 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // Hoàn tất đăng nhập sau khi 2FA xác thực thành công
+  
   Future<void> complete2FALogin() async {
     if (tempUserChat != null) {
       await _saveUserToPrefs(

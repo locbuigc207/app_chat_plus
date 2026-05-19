@@ -1,4 +1,4 @@
-// lib/pages/story_creator_page.dart
+
 import 'dart:convert';
 import 'dart:io';
 
@@ -17,9 +17,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
-// ─────────────────────────────────────────────────────────────
-// STORY CREATOR PAGE  (3 tabs: Photo · Text · Video)
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class StoryCreatorPage extends StatefulWidget {
   final String userId;
@@ -63,7 +63,7 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
       backgroundColor: Colors.black,
       body: Column(
         children: [
-          // ── Top bar ──────────────────────────────────
+          
           SafeArea(
             bottom: false,
             child: Padding(
@@ -76,7 +76,7 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
                   ),
                   const Spacer(),
 
-                  // Tab selector
+                  
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.white12,
@@ -115,18 +115,18 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
                   ),
 
                   const Spacer(),
-                  const SizedBox(width: 48), // balance close button
+                  const SizedBox(width: 48), 
                 ],
               ),
             ),
           ),
 
-          // ── Tab content ──────────────────────────────
+          
           Expanded(
             child: TabBarView(
               controller: _tab,
               physics:
-                  const NeverScrollableScrollPhysics(), // prevent swipe into camera
+                  const NeverScrollableScrollPhysics(), 
               children: [
                 _PhotoCreator(
                   userId: widget.userId,
@@ -152,9 +152,9 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// TAB BUTTON
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _TabBtn extends StatelessWidget {
   final String label;
@@ -188,9 +188,9 @@ class _TabBtn extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// PHOTO CREATOR
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _PhotoCreator extends StatefulWidget {
   final String userId;
@@ -263,18 +263,18 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
   Widget build(BuildContext context) {
     if (_image == null) return _PickerPrompt(onPick: _pick);
 
-    // Lấy chiều cao của bàn phím
+    
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
     return GestureDetector(
       onTap: () =>
-          FocusScope.of(context).unfocus(), // Chạm ra ngoài để ẩn bàn phím
+          FocusScope.of(context).unfocus(), 
       child: Stack(
         fit: StackFit.expand,
         children: [
           Image.file(_image!, fit: BoxFit.cover),
 
-          // Side tools
+          
           Positioned(
             top: 16,
             right: 16,
@@ -305,7 +305,7 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
             ),
           ),
 
-          // Caption – nảy lên khi có bàn phím
+          
           Positioned(
             bottom: bottomInset > 0 ? bottomInset + 16 : 96,
             left: 16,
@@ -331,7 +331,7 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
             ),
           ),
 
-          // Ẩn nút Publish khi đang gõ để đỡ rối
+          
           Positioned(
             bottom: 32,
             left: 16,
@@ -346,9 +346,9 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// PICKER PROMPT
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _PickerPrompt extends StatelessWidget {
   final void Function(ImageSource) onPick;
@@ -432,9 +432,9 @@ class _BigPickBtn extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// TEXT CREATOR
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _TextCreator extends StatefulWidget {
   final String userId;
@@ -527,7 +527,7 @@ class _TextCreatorState extends State<_TextCreator> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Background gradient
+        
         AnimatedContainer(
           duration: const Duration(milliseconds: 300),
           decoration: BoxDecoration(
@@ -539,7 +539,7 @@ class _TextCreatorState extends State<_TextCreator> {
           ),
         ),
 
-        // Text input
+        
         Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -569,7 +569,7 @@ class _TextCreatorState extends State<_TextCreator> {
           ),
         ),
 
-        // Side tools
+        
         Positioned(
           top: 16,
           right: 16,
@@ -605,7 +605,7 @@ class _TextCreatorState extends State<_TextCreator> {
           ),
         ),
 
-        // Bottom controls
+        
         Positioned(
           bottom: 96,
           left: 0,
@@ -613,7 +613,7 @@ class _TextCreatorState extends State<_TextCreator> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Font size slider
+              
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Row(
@@ -644,7 +644,7 @@ class _TextCreatorState extends State<_TextCreator> {
               ),
               const SizedBox(height: 10),
 
-              // Background swatches
+              
               SizedBox(
                 height: 44,
                 child: ListView.builder(
@@ -695,37 +695,37 @@ class _TextCreatorState extends State<_TextCreator> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// AR FILTER MODEL
-// ─────────────────────────────────────────────────────────────
 
-/// Đại diện cho một hiệu ứng DeepAR đọc động từ AssetManifest.
+
+
+
+
 class _ArFilter {
-  /// Tên hiển thị trên UI, lấy từ tên file (không có đuôi .deepar).
+  
   final String displayName;
 
-  /// Asset path đầy đủ, ví dụ: "assets/effects/flower_face.deepar".
-  /// Null = không dùng hiệu ứng (slot "None").
+  
+  
   final String? assetPath;
 
   const _ArFilter({required this.displayName, this.assetPath});
 
-  /// Slot đặc biệt "Không hiệu ứng"
+  
   static const _ArFilter none = _ArFilter(displayName: 'None');
 
-  /// Chuyển asset path thành display name đẹp hơn.
-  /// "assets/effects/flower_face.deepar" → "Flower Face"
+  
+  
   static String _toDisplayName(String assetPath) {
-    final fileName = assetPath.split('/').last; // "flower_face.deepar"
-    final withoutExt = fileName.replaceAll('.deepar', ''); // "flower_face"
+    final fileName = assetPath.split('/').last; 
+    final withoutExt = fileName.replaceAll('.deepar', ''); 
     return withoutExt
         .split('_')
         .map((w) => w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}')
-        .join(' '); // "Flower Face"
+        .join(' '); 
   }
 
-  /// Load toàn bộ filter từ AssetManifest ở runtime.
-  /// Luôn đặt slot "None" ở đầu danh sách.
+  
+  
   static Future<List<_ArFilter>> loadAll() async {
     final manifestJson = await rootBundle.loadString('AssetManifest.json');
     final manifest = json.decode(manifestJson) as Map<String, dynamic>;
@@ -734,7 +734,7 @@ class _ArFilter {
         .where((key) =>
             key.startsWith('assets/effects/') && key.endsWith('.deepar'))
         .toList()
-      ..sort(); // Sắp xếp theo tên file để thứ tự nhất quán
+      ..sort(); 
 
     final filters = [
       _ArFilter.none,
@@ -750,9 +750,9 @@ class _ArFilter {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// VIDEO CREATOR  (DeepAR + AR filters động + background music)
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _VideoCreator extends StatefulWidget {
   final String userId;
@@ -770,7 +770,7 @@ class _VideoCreator extends StatefulWidget {
 }
 
 class _VideoCreatorState extends State<_VideoCreator> {
-  // Thay bằng license key thực của bạn
+  
   static const _androidKey =
       '694aafc68314126d55d03f1cb2b23ce05f57467994107fb3895aab7f7060c2a5863a6c28f29a341b';
   static const _iosKey = 'YOUR_IOS_DEEPAR_KEY_HERE';
@@ -783,7 +783,7 @@ class _VideoCreatorState extends State<_VideoCreator> {
   bool _isProcessing = false;
   String? _selectedAudioPath;
 
-  /// Danh sách filter đọc động từ AssetManifest
+  
   List<_ArFilter> _filters = [];
   int _currentFilterIndex = 0;
 
@@ -793,13 +793,13 @@ class _VideoCreatorState extends State<_VideoCreator> {
     _initAll();
   }
 
-  /// Khởi tạo song song: load filter list + xin quyền + init DeepAR
+  
   Future<void> _initAll() async {
-    // Load filter list trước (không cần quyền)
+    
     final filters = await _ArFilter.loadAll();
     if (mounted) setState(() => _filters = filters);
 
-    // Xin quyền Camera & Mic
+    
     await _initDeepAr();
   }
 
@@ -922,10 +922,10 @@ class _VideoCreatorState extends State<_VideoCreator> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // DeepAR camera preview
+        
         Positioned.fill(child: DeepArPreviewPlus(_deepArController)),
 
-        // Music button (top-right)
+        
         Positioned(
           top: 16,
           right: 16,
@@ -939,7 +939,7 @@ class _VideoCreatorState extends State<_VideoCreator> {
           ),
         ),
 
-        // Processing overlay
+        
         if (_isProcessing)
           Container(
             color: Colors.black87,
@@ -956,7 +956,7 @@ class _VideoCreatorState extends State<_VideoCreator> {
             ),
           ),
 
-        // Bottom controls
+        
         if (!_isProcessing)
           Positioned(
             bottom: 32,
@@ -965,7 +965,7 @@ class _VideoCreatorState extends State<_VideoCreator> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // ── AR filter picker (dynamic) ─────────────
+                
                 if (_filters.isNotEmpty)
                   SizedBox(
                     height: 80,
@@ -1011,7 +1011,7 @@ class _VideoCreatorState extends State<_VideoCreator> {
 
                 const SizedBox(height: 20),
 
-                // ── Record button ─────────────────────────
+                
                 GestureDetector(
                   onLongPressStart: (_) => _startRecording(),
                   onLongPressEnd: (_) => _stopRecording(),
@@ -1043,9 +1043,9 @@ class _VideoCreatorState extends State<_VideoCreator> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// SHARED WIDGETS
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _SideBtn extends StatelessWidget {
   final IconData icon;

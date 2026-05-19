@@ -100,7 +100,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
           .get(),
       builder: (_, userSnapshot) {
         if (userSnapshot.connectionState == ConnectionState.waiting) {
-          // Hiển thị khi đang tải dữ liệu người gửi
+          
           return Container(
             margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
             padding: const EdgeInsets.all(12),
@@ -154,7 +154,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
           ),
           child: Row(
             children: [
-              // Avatar
+              
               ClipOval(
                 child: requester.photoUrl.isNotEmpty
                     ? Image.network(
@@ -176,7 +176,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
               ),
               const SizedBox(width: 12),
 
-              // User info
+              
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -201,7 +201,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 ),
               ),
 
-              // Action buttons
+              
               if (request.status == 'pending') ...[
                 IconButton(
                   icon: const Icon(
@@ -358,7 +358,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
             },
           ),
 
-          // Loading overlay
+          
           if (_isLoading)
             Positioned.fill(
               child: LoadingView(),

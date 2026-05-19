@@ -1,6 +1,6 @@
-// lib/widgets/shared_space_widget.dart
-// Contextual Bubble Universe - Shared Space (Micro-Collaboration)
-// Bảng vẽ cộng tác + Co-browsing trong cửa sổ mini
+
+
+
 
 import 'dart:async';
 
@@ -8,12 +8,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-// ─── DATA MODELS ─────────────────────────────────────────────────────────────
+
 
 class DrawPoint {
   final double x;
   final double y;
-  final bool isStart; // true = bắt đầu nét mới
+  final bool isStart; 
   final int color;
   final double strokeWidth;
 
@@ -43,7 +43,7 @@ class DrawPoint {
       );
 }
 
-// ─── PAINTER ─────────────────────────────────────────────────────────────────
+
 
 class WhiteboardPainter extends CustomPainter {
   final List<DrawPoint> points;
@@ -52,13 +52,13 @@ class WhiteboardPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Nền trắng với grid mờ
+    
     canvas.drawRect(
       Rect.fromLTWH(0, 0, size.width, size.height),
       Paint()..color = const Color(0xFFFAFAFA),
     );
 
-    // Grid dots
+    
     final gridPaint = Paint()
       ..color = const Color(0xFFDDE3EE)
       ..strokeWidth = 1;
@@ -69,13 +69,13 @@ class WhiteboardPainter extends CustomPainter {
       }
     }
 
-    // Vẽ các nét
+    
     Paint? currentPaint;
     Path? currentPath;
 
     for (final point in points) {
       if (point.isStart) {
-        // Flush nét trước
+        
         if (currentPath != null && currentPaint != null) {
           canvas.drawPath(currentPath, currentPaint);
         }
@@ -101,7 +101,7 @@ class WhiteboardPainter extends CustomPainter {
   bool shouldRepaint(WhiteboardPainter old) => old.points != points;
 }
 
-// ─── SHARED SPACE WIDGET ──────────────────────────────────────────────────────
+
 
 class SharedSpaceWidget extends StatefulWidget {
   final String conversationId;
@@ -121,10 +121,10 @@ class SharedSpaceWidget extends StatefulWidget {
 
 class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
     with TickerProviderStateMixin {
-  // Tab: 0=Whiteboard, 1=Co-browse
+  
   int _activeTab = 0;
 
-  // Whiteboard
+  
   final List<DrawPoint> _localPoints = [];
   Color _selectedColor = const Color(0xFF2196F3);
   double _strokeWidth = 3.0;
@@ -132,27 +132,27 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
   StreamSubscription? _drawSub;
   final _boardKey = GlobalKey();
 
-  // Co-browse
+  
   final _urlController = TextEditingController();
   String? _sharedUrl;
 
-  // Animations
+  
   late AnimationController _tabAnim;
   late AnimationController _toolAnim;
 
-  // Firestore ref cho whiteboard data
+  
   late final DocumentReference _boardRef;
 
-  // Màu sắc palette
+  
   final _palette = const [
-    Color(0xFF2196F3), // Blue
-    Color(0xFFE91E63), // Pink
-    Color(0xFF4CAF50), // Green
-    Color(0xFFFF9800), // Orange
-    Color(0xFF9C27B0), // Purple
-    Color(0xFF00BCD4), // Cyan
-    Color(0xFF212121), // Black
-    Color(0xFFFFFFFF), // White (eraser visual)
+    Color(0xFF2196F3), 
+    Color(0xFFE91E63), 
+    Color(0xFF4CAF50), 
+    Color(0xFFFF9800), 
+    Color(0xFF9C27B0), 
+    Color(0xFF00BCD4), 
+    Color(0xFF212121), 
+    Color(0xFFFFFFFF), 
   ];
 
   @override
@@ -174,7 +174,7 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
     _listenToBoard();
   }
 
-  // Lắng nghe thay đổi từ Firestore (real-time sync)
+  
   void _listenToBoard() {
     _drawSub = _boardRef.snapshots().listen((snap) {
       if (!snap.exists) return;
@@ -201,7 +201,7 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
     });
   }
 
-  // Ghi nét vẽ lên Firestore
+  
   Future<void> _syncPoint(DrawPoint point) async {
     try {
       await _boardRef.set({
@@ -224,8 +224,8 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
   }
 
   Future<void> _saveAsMessage() async {
-    // Capture canvas as image và gửi vào tin nhắn
-    // TODO: implement nếu muốn tích hợp với ChatProvider
+    
+    
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: const Text('✅ Đã lưu bản vẽ vào tin nhắn!'),
@@ -359,7 +359,7 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
     );
   }
 
-  // ─── WHITEBOARD ──────────────────────────────────────────────────────────
+  
 
   Widget _buildWhiteboard() {
     return Column(
@@ -438,23 +438,23 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
       ),
       child: Row(
         children: [
-          // Palette
+          
           ...List.generate(
-            _palette.length - 1, // Skip white (eraser visual)
+            _palette.length - 1, 
             (i) => _buildColorDot(_palette[i]),
           ),
           const SizedBox(width: 6),
-          // Eraser
+          
           _buildToolBtn(
             icon: Icons.auto_fix_high_rounded,
             active: _isEraser,
             onTap: () => setState(() => _isEraser = !_isEraser),
             tooltip: 'Tẩy',
           ),
-          // Brush size
+          
           _buildStrokeSlider(),
           const Spacer(),
-          // Clear
+          
           _buildToolBtn(
             icon: Icons.delete_outline_rounded,
             active: false,
@@ -463,7 +463,7 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
             color: const Color(0xFFE53935),
           ),
           const SizedBox(width: 4),
-          // Save as message
+          
           _buildToolBtn(
             icon: Icons.send_rounded,
             active: false,
@@ -555,7 +555,7 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
     );
   }
 
-  // ─── CO-BROWSE ────────────────────────────────────────────────────────────
+  
 
   Widget _buildCoBrowse() {
     return Column(
@@ -645,7 +645,7 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
       ),
       child: Column(
         children: [
-          // Header
+          
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: const BoxDecoration(
@@ -700,7 +700,7 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
             ),
           ),
 
-          // Body
+          
           Expanded(
             child: Center(
               child: Column(

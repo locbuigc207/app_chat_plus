@@ -1,9 +1,9 @@
-// lib/services/chat_bubble_service.dart
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart'; // ✅ Thêm import này
+import 'package:flutter/foundation.dart'; 
 import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/models/bubble_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,7 +22,7 @@ class ChatBubbleService {
     });
   }
 
-  // Controllers
+  
   final _activeBubblesController =
       StreamController<Map<String, BubbleData>>.broadcast();
   Stream<Map<String, BubbleData>> get activeBubblesStream =>
@@ -47,12 +47,12 @@ class ChatBubbleService {
   SharedPreferences? _prefs;
   static const _storageKey = 'active_bubbles';
 
-  // ========================================
-  // SETUP
-  // ========================================
+  
+  
+  
 
   void _setupEventListener() {
-    if (_isInitialized || kIsWeb) return; // ✅ Thêm kIsWeb vào đây
+    if (_isInitialized || kIsWeb) return; 
 
     try {
       _eventSubscription?.cancel();
@@ -110,9 +110,9 @@ class ChatBubbleService {
     }
   }
 
-  // ========================================
-  // PERSISTENCE
-  // ========================================
+  
+  
+  
 
   Future<void> _initPrefs() async {
     _prefs ??= await SharedPreferences.getInstance();
@@ -134,7 +134,7 @@ class ChatBubbleService {
   }
 
   Future<void> _restoreBubbles() async {
-    // ✅ Kiểm tra kIsWeb
+    
     if (kIsWeb || !Platform.isAndroid) return;
 
     try {
@@ -197,9 +197,9 @@ class ChatBubbleService {
     }
   }
 
-  // ========================================
-  // RATE LIMITING
-  // ========================================
+  
+  
+  
 
   Future<void> _waitForRateLimit() async {
     if (_lastBubbleOperation != null) {
@@ -211,12 +211,12 @@ class ChatBubbleService {
     _lastBubbleOperation = DateTime.now();
   }
 
-  // ========================================
-  // PERMISSIONS
-  // ========================================
+  
+  
+  
 
   Future<bool> requestOverlayPermission() async {
-    // ✅ Kiểm tra kIsWeb
+    
     if (kIsWeb || !Platform.isAndroid) return false;
     try {
       await _waitForRateLimit();
@@ -230,7 +230,7 @@ class ChatBubbleService {
   }
 
   Future<bool> hasOverlayPermission() async {
-    // ✅ Kiểm tra kIsWeb
+    
     if (kIsWeb || !Platform.isAndroid) return false;
     try {
       final bool result = await _channel.invokeMethod('hasPermission');
@@ -241,9 +241,9 @@ class ChatBubbleService {
     }
   }
 
-  // ========================================
-  // BUBBLE OPERATIONS
-  // ========================================
+  
+  
+  
 
   Future<bool> showChatBubble({
     required String userId,
@@ -252,7 +252,7 @@ class ChatBubbleService {
     String? lastMessage,
     int maxRetries = 2,
   }) async {
-    // ✅ Kiểm tra kIsWeb
+    
     if (kIsWeb || !Platform.isAndroid) return false;
 
     try {
@@ -307,7 +307,7 @@ class ChatBubbleService {
   }
 
   Future<bool> hideChatBubble(String userId) async {
-    // ✅ Kiểm tra kIsWeb
+    
     if (kIsWeb || !Platform.isAndroid) return false;
     try {
       await _waitForRateLimit();
@@ -330,7 +330,7 @@ class ChatBubbleService {
   }
 
   Future<void> hideAllBubbles() async {
-    // ✅ Kiểm tra kIsWeb
+    
     if (kIsWeb || !Platform.isAndroid) return;
     try {
       await _waitForRateLimit();
@@ -350,7 +350,7 @@ class ChatBubbleService {
     required String userName,
     required String avatarUrl,
   }) async {
-    // ✅ Kiểm tra kIsWeb
+    
     if (kIsWeb || !Platform.isAndroid) return false;
     try {
       await _waitForRateLimit();
@@ -371,7 +371,7 @@ class ChatBubbleService {
   }
 
   Future<bool> hideMiniChat() async {
-    // ✅ Kiểm tra kIsWeb
+    
     if (kIsWeb || !Platform.isAndroid) return false;
     try {
       await _waitForRateLimit();
@@ -404,18 +404,18 @@ class ChatBubbleService {
     }
   }
 
-  // ========================================
-  // QUERY
-  // ========================================
+  
+  
+  
 
   bool isBubbleActive(String userId) => _activeBubbles.containsKey(userId);
   Map<String, BubbleData> get activeBubbles => Map.unmodifiable(_activeBubbles);
   bool get isSupported =>
-      !kIsWeb && Platform.isAndroid; // ✅ Đã cập nhật isSupported
+      !kIsWeb && Platform.isAndroid; 
 
-  // ========================================
-  // DISPOSE
-  // ========================================
+  
+  
+  
 
   void dispose() {
     _eventSubscription?.cancel();

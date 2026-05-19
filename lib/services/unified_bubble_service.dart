@@ -1,8 +1,8 @@
-// lib/services/unified_bubble_service.dart
+
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart'; // ✅ Thêm import này
+import 'package:flutter/foundation.dart'; 
 import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/models/bubble_models.dart';
 import 'package:flutter_chat_demo/services/bubble_service_v2.dart'
@@ -23,9 +23,9 @@ class UnifiedBubbleService {
     _initialize();
   }
 
-  // ========================================
-  // STATE
-  // ========================================
+  
+  
+  
 
   bool _isInitialized = false;
   Completer<void>? _initCompleter;
@@ -58,9 +58,9 @@ class UnifiedBubbleService {
     }
   }
 
-  // ========================================
-  // INITIALIZATION
-  // ========================================
+  
+  
+  
 
   Future<void> _initialize() async {
     if (_isInitialized) return;
@@ -85,7 +85,7 @@ class UnifiedBubbleService {
   }
 
   Future<BubbleImplementation> _detectBestImplementation() async {
-    // ✅ Trả về none ngay nếu là Web hoặc không phải Android
+    
     if (kIsWeb || !Platform.isAndroid) return BubbleImplementation.none;
 
     final supportsBubbleApi = await _bubbleApiService.checkBubbleApiSupport();
@@ -94,9 +94,9 @@ class UnifiedBubbleService {
         : BubbleImplementation.windowManager;
   }
 
-  // ========================================
-  // STREAM FORWARDING
-  // ========================================
+  
+  
+  
 
   void _setupStreamForwarding() {
     for (final sub in _streamSubscriptions) {
@@ -158,9 +158,9 @@ class UnifiedBubbleService {
     }
   }
 
-  // ========================================
-  // PERMISSIONS
-  // ========================================
+  
+  
+  
 
   Future<bool> hasOverlayPermission() async {
     if (_currentImplementation == BubbleImplementation.bubbleApi) return true;
@@ -172,9 +172,9 @@ class UnifiedBubbleService {
     return _windowManagerService.requestOverlayPermission();
   }
 
-  // ========================================
-  // BUBBLE OPERATIONS
-  // ========================================
+  
+  
+  
 
   Future<bool> showChatBubble({
     required String userId,
@@ -267,9 +267,9 @@ class UnifiedBubbleService {
         false;
   }
 
-  // ========================================
-  // MIGRATION
-  // ========================================
+  
+  
+  
 
   Future<bool> migrateToModernApi() async {
     if (_currentImplementation == BubbleImplementation.bubbleApi) return true;
@@ -304,9 +304,9 @@ class UnifiedBubbleService {
         false;
   }
 
-  // ========================================
-  // MESSAGING
-  // ========================================
+  
+  
+  
 
   Future<bool> sendMessage({
     required String userId,
@@ -371,9 +371,9 @@ class UnifiedBubbleService {
     } catch (_) {}
   }
 
-  // ========================================
-  // QUERY
-  // ========================================
+  
+  
+  
 
   bool isBubbleActive(String userId) {
     if (_currentImplementation == BubbleImplementation.bubbleApi) {
@@ -427,7 +427,9 @@ class UnifiedBubbleService {
       default:
         if (content.contains('maps.google.com') ||
             content.contains('Location:') ||
-            content.contains('📍')) return 'location';
+            content.contains('📍')) {
+          return 'location';
+        }
         return 'text';
     }
   }
@@ -447,9 +449,9 @@ class UnifiedBubbleService {
         messageType: _getMessageType(message, typeCode),
       );
 
-  // ========================================
-  // OPERATION QUEUE
-  // ========================================
+  
+  
+  
 
   Future<T?> _queueOperation<T>(Future<T> Function() operation) {
     final completer = Completer<T?>();
@@ -487,9 +489,9 @@ class UnifiedBubbleService {
     }
   }
 
-  // ========================================
-  // DISPOSE
-  // ========================================
+  
+  
+  
 
   void dispose() {
     for (final sub in _streamSubscriptions) {

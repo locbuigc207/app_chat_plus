@@ -1,19 +1,19 @@
-// lib/utils/bubble_testing_utils.dart
-// ✅ GIAI ĐOẠN 5: TESTING & DEBUGGING UTILITIES
+
+
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// 🧪 Testing utilities cho Bubble functionality
+
 class BubbleTestingUtils {
   static const MethodChannel _bubbleChannel =
       MethodChannel('bubble_chat_channel');
 
-  // ========================================
-  // BUBBLE STATE CHECKS
-  // ========================================
+  
+  
+  
 
-  /// Check if app is running in bubble mode
+  
   static Future<bool> isRunningInBubble() async {
     try {
       final result = await _bubbleChannel.invokeMethod<bool>('getBubbleMode');
@@ -24,7 +24,7 @@ class BubbleTestingUtils {
     }
   }
 
-  /// Get current user info from bubble
+  
   static Future<Map<String, dynamic>?> getBubbleUserInfo() async {
     try {
       final result = await _bubbleChannel.invokeMethod<Map>('getUserInfo');
@@ -35,11 +35,11 @@ class BubbleTestingUtils {
     }
   }
 
-  // ========================================
-  // TEST ACTIONS
-  // ========================================
+  
+  
+  
 
-  /// Test minimize action
+  
   static Future<bool> testMinimize() async {
     try {
       debugPrint('🧪 Testing minimize...');
@@ -52,7 +52,7 @@ class BubbleTestingUtils {
     }
   }
 
-  /// Test close action
+  
   static Future<bool> testClose() async {
     try {
       debugPrint('🧪 Testing close...');
@@ -65,11 +65,11 @@ class BubbleTestingUtils {
     }
   }
 
-  // ========================================
-  // DEBUG WIDGETS
-  // ========================================
+  
+  
+  
 
-  /// Show bubble debug overlay
+  
   static Widget buildDebugOverlay(BuildContext context) {
     return Positioned(
       top: 60,
@@ -117,7 +117,7 @@ class BubbleTestingUtils {
     );
   }
 
-  /// Show test buttons overlay
+  
   static Widget buildTestButtonsOverlay() {
     return Positioned(
       bottom: 80,
@@ -129,16 +129,16 @@ class BubbleTestingUtils {
             heroTag: 'test_minimize',
             onPressed: testMinimize,
             backgroundColor: Colors.blue,
-            child: Icon(Icons.remove, size: 20),
             tooltip: 'Test Minimize',
+            child: Icon(Icons.remove, size: 20),
           ),
           SizedBox(height: 8),
           FloatingActionButton.small(
             heroTag: 'test_close',
             onPressed: testClose,
             backgroundColor: Colors.red,
-            child: Icon(Icons.close, size: 20),
             tooltip: 'Test Close',
+            child: Icon(Icons.close, size: 20),
           ),
           SizedBox(height: 8),
           FloatingActionButton.small(
@@ -148,8 +148,8 @@ class BubbleTestingUtils {
               debugPrint('📋 User info: $info');
             },
             backgroundColor: Colors.green,
-            child: Icon(Icons.info, size: 20),
             tooltip: 'Get Info',
+            child: Icon(Icons.info, size: 20),
           ),
         ],
       ),
@@ -157,35 +157,35 @@ class BubbleTestingUtils {
   }
 }
 
-// ========================================
-// USAGE EXAMPLE IN CHATPAGE
-// ========================================
 
-/// Add to ChatPage build method for testing:
-///
-/// ```dart
-/// @override
-/// Widget build(BuildContext context) {
-///   return Stack(
-///     children: [
-///       // Existing ChatPage UI
-///       _buildExistingUI(),
-///
-///       // ✅ Debug overlay (only in debug mode)
-///       if (kDebugMode) ...[
-///         BubbleTestingUtils.buildDebugOverlay(context),
-///         BubbleTestingUtils.buildTestButtonsOverlay(),
-///       ],
-///     ],
-///   );
-/// }
-/// ```
 
-// ========================================
-// LOG FORMATTER
-// ========================================
 
-/// Pretty print logs for bubble operations
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class BubbleLogger {
   static const String _prefix = '🎈 BUBBLE';
 
@@ -220,11 +220,11 @@ class BubbleLogger {
   }
 }
 
-// ========================================
-// BUBBLE MODE DETECTOR WIDGET
-// ========================================
 
-/// Widget that adapts based on bubble mode
+
+
+
+
 class BubbleModeAware extends StatefulWidget {
   final Widget Function(BuildContext context, bool isBubble) builder;
 
@@ -261,32 +261,32 @@ class _BubbleModeAwareState extends State<BubbleModeAware> {
   }
 }
 
-// ========================================
-// EXAMPLE USAGE
-// ========================================
 
-/// Example: Show different UI based on bubble mode
-///
-/// ```dart
-/// BubbleModeAware(
-///   builder: (context, isBubble) {
-///     return Container(
-///       padding: isBubble
-///         ? EdgeInsets.all(8)  // Compact in bubble
-///         : EdgeInsets.all(16), // Spacious in normal
-///       child: Text(
-///         isBubble ? 'Bubble Mode' : 'Normal Mode',
-///       ),
-///     );
-///   },
-/// )
-/// ```
 
-// ========================================
-// PERFORMANCE MONITOR
-// ========================================
 
-/// Monitor bubble performance
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class BubblePerformanceMonitor {
   static final Stopwatch _stopwatch = Stopwatch();
 

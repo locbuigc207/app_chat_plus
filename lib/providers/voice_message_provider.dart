@@ -1,4 +1,4 @@
-// lib/providers/voice_message_provider.dart - COMPLETE FIXED
+
 import 'dart:async';
 import 'dart:io';
 
@@ -16,7 +16,7 @@ class VoiceMessageProvider {
   bool _isPlayerInitialized = false;
   String? _currentRecordingPath;
 
-  // Stream controllers for playback progress
+  
   final _playbackProgressController =
       StreamController<PlaybackProgress>.broadcast();
   Stream<PlaybackProgress> get playbackProgressStream =>
@@ -31,17 +31,17 @@ class VoiceMessageProvider {
     if (_isRecorderInitialized) return true;
 
     try {
-      // Request microphone permission
+      
       final status = await Permission.microphone.request();
       if (!status.isGranted) {
         print('❌ Microphone permission denied');
         return false;
       }
 
-      // Open recorder
+      
       await _recorder?.openRecorder();
 
-      // Set subscription duration for progress updates
+      
       await _recorder
           ?.setSubscriptionDuration(const Duration(milliseconds: 100));
 
@@ -79,7 +79,7 @@ class VoiceMessageProvider {
         if (!initialized) return false;
       }
 
-      // Check if already recording
+      
       if (_recorder?.isRecording ?? false) {
         print('⚠️ Already recording');
         return false;
@@ -159,7 +159,7 @@ class VoiceMessageProvider {
       final snapshot = await uploadTask;
       final url = await snapshot.ref.getDownloadURL();
 
-      // Clean up local file
+      
       try {
         await file.delete();
       } catch (_) {}
@@ -179,7 +179,7 @@ class VoiceMessageProvider {
         if (!initialized) return;
       }
 
-      // Stop any current playback
+      
       if (_player?.isPlaying ?? false) {
         await _player?.stopPlayer();
       }
@@ -196,7 +196,7 @@ class VoiceMessageProvider {
         },
       );
 
-      // Listen to progress
+      
       _player?.onProgress?.listen((event) {
         _playbackProgressController.add(PlaybackProgress(
           position: event.position,

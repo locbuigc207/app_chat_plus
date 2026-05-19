@@ -5,10 +5,10 @@ class ResponsiveLayout extends StatelessWidget {
   final Widget webLayout;
 
   const ResponsiveLayout({
-    Key? key,
+    super.key,
     required this.mobileLayout,
     required this.webLayout,
-  }) : super(key: key);
+  });
 
   static bool isMobile(BuildContext context) =>
       MediaQuery.of(context).size.width < 600;

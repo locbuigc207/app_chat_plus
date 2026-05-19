@@ -9,7 +9,7 @@ import 'chat_page.dart';
 import 'group_chat_page.dart';
 
 class ArchivedChatsPage extends StatelessWidget {
-  const ArchivedChatsPage({Key? key}) : super(key: key);
+  const ArchivedChatsPage({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -77,7 +77,7 @@ class ArchivedChatsPage extends StatelessWidget {
               final conversation =
                   Conversation.fromDocument(archivedConversations[index]);
 
-              // Dùng lại Logic hiển thị của Home Page để vẽ item
+              
               if (conversation.isGroup) {
                 return FutureBuilder<DocumentSnapshot>(
                   future: FirebaseFirestore.instance

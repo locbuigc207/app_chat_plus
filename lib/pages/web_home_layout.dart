@@ -1,11 +1,11 @@
-// lib/pages/web_home_layout.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/color_constants.dart';
 import 'package:flutter_chat_demo/pages/chat_page.dart';
 import 'package:flutter_chat_demo/pages/home_page.dart';
 
 class WebHomeLayout extends StatefulWidget {
-  const WebHomeLayout({Key? key}) : super(key: key);
+  const WebHomeLayout({super.key});
 
   @override
   State<WebHomeLayout> createState() => _WebHomeLayoutState();
@@ -25,7 +25,7 @@ class _WebHomeLayoutState extends State<WebHomeLayout> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final screenWidth = MediaQuery.of(context).size.width;
 
-    // Responsive sidebar: rộng hơn trên màn hình lớn, có min/max
+    
     double sidebarWidth = screenWidth > 1200 ? 400 : 320;
     if (sidebarWidth > 400) sidebarWidth = 400;
     if (sidebarWidth < 280) sidebarWidth = 280;
@@ -33,7 +33,7 @@ class _WebHomeLayoutState extends State<WebHomeLayout> {
     return Scaffold(
       body: Row(
         children: [
-          // Sidebar: Danh sách chat
+          
           Container(
             width: sidebarWidth,
             decoration: BoxDecoration(
@@ -51,7 +51,7 @@ class _WebHomeLayoutState extends State<WebHomeLayout> {
             ),
           ),
 
-          // Vùng hiển thị nội dung chat
+          
           Expanded(
             child: Container(
               color: isDark ? ColorConstants.backgroundDark : Colors.white,

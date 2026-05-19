@@ -1,4 +1,4 @@
-// lib/widgets/schedule_message_dialog.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:intl/intl.dart';
@@ -73,7 +73,7 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent> {
       return;
     }
 
-    // ✅ Return data và đóng dialog
+    
     Navigator.of(context).pop({
       'message': _messageController.text.trim(),
       'time': _scheduledTime,

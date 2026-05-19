@@ -1,11 +1,11 @@
-// lib/widgets/offline_indicator.dart
+
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/services/offline_manager.dart';
 
-/// Widget hiển thị banner offline phía trên cùng.
-/// Có thể đặt trực tiếp vào Column (như trong chat_page.dart).
-/// Kết hợp cả hai nguồn: OfflineManager stream (Firestore) và Connectivity stream (Hệ thống mạng).
+
+
+
 class OfflineIndicator extends StatefulWidget {
   const OfflineIndicator({super.key});
 
@@ -20,7 +20,7 @@ class _OfflineIndicatorState extends State<OfflineIndicator> {
   @override
   void initState() {
     super.initState();
-    // Lắng nghe từ OfflineManager (Trạng thái kết nối của Firestore)
+    
     try {
       _offlineManager.onlineStream.listen((isOnline) {
         if (mounted) {
@@ -34,15 +34,15 @@ class _OfflineIndicatorState extends State<OfflineIndicator> {
 
   @override
   Widget build(BuildContext context) {
-    // Lắng nghe thêm từ connectivity_plus để bắt trạng thái mạng thiết bị (Wifi/4G)
+    
     return StreamBuilder<List<ConnectivityResult>>(
       stream: Connectivity().onConnectivityChanged,
       builder: (context, snapshot) {
-        // Kiểm tra xem thiết bị có thực sự mất toàn bộ mạng không
+        
         final connectivityOffline = snapshot.hasData &&
             snapshot.data!.contains(ConnectivityResult.none);
 
-        // Hiển thị banner cảnh báo nếu Firestore mất kết nối HOẶC thiết bị tắt mạng
+        
         final showBanner = !_isOnline || connectivityOffline;
 
         if (!showBanner) return const SizedBox.shrink();

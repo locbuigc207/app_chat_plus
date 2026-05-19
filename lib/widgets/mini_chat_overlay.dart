@@ -1,8 +1,8 @@
-// lib/widgets/mini_chat_overlay.dart - COMPLETELY FIXED
+
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/pages/chat_page.dart';
 
-/// ✅ Mini Chat: Render ChatPage trong overlay nhỏ với bounds validation
+
 class MiniChatOverlay extends StatelessWidget {
   final String peerId;
   final String peerNickname;
@@ -21,7 +21,7 @@ class MiniChatOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ FIX: Get safe screen dimensions
+    
     final screenSize = MediaQuery.of(context).size;
     final safeWidth = (screenSize.width * 0.85).clamp(280.0, 400.0);
     final safeHeight = (screenSize.height * 0.7).clamp(400.0, 650.0);
@@ -42,10 +42,10 @@ class MiniChatOverlay extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // ✅ Custom header với minimize/close
+          
           _buildHeader(context),
 
-          // ✅ RENDER CHATPAGE (reuse toàn bộ logic)
+          
           Expanded(
             child: ClipRRect(
               borderRadius: BorderRadius.vertical(
@@ -111,7 +111,7 @@ class MiniChatOverlay extends StatelessWidget {
   }
 }
 
-/// ✅ FIXED: Draggable Mini Chat Overlay Widget with proper bounds validation
+
 class MiniChatOverlayWidget extends StatefulWidget {
   final String peerId;
   final String peerNickname;
@@ -141,7 +141,7 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget> {
   @override
   void initState() {
     super.initState();
-    // ✅ Initialize with safe defaults
+    
     _x = 40.0;
     _y = 100.0;
     _width = 320.0;
@@ -152,18 +152,18 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget> {
   void didChangeDependencies() {
     super.didChangeDependencies();
 
-    // ✅ FIX: Calculate safe dimensions after context is available
+    
     final screenSize = MediaQuery.of(context).size;
 
-    // Ensure width/height fit in screen
+    
     _width = (_width).clamp(280.0, screenSize.width * 0.9);
     _height = (_height).clamp(400.0, screenSize.height * 0.8);
 
-    // ✅ FIX: Safe position calculation with proper validation
+    
     final maxX = (screenSize.width - _width).clamp(0.0, double.infinity);
     final maxY = (screenSize.height - _height).clamp(0.0, double.infinity);
 
-    // Center if possible, otherwise clamp to safe bounds
+    
     _x = ((screenSize.width - _width) / 2).clamp(0.0, maxX);
     _y = ((screenSize.height - _height) / 2).clamp(0.0, maxY);
 
@@ -175,11 +175,11 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget> {
 
   void _onPanUpdate(DragUpdateDetails details, Size screenSize) {
     setState(() {
-      // ✅ FIX: Update position with safe bounds
+      
       _x += details.delta.dx;
       _y += details.delta.dy;
 
-      // ✅ FIX: Proper bounds validation
+      
       final maxX = (screenSize.width - _width).clamp(0.0, double.infinity);
       final maxY = (screenSize.height - _height).clamp(0.0, double.infinity);
 
@@ -194,13 +194,13 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget> {
       builder: (context, constraints) {
         final screenSize = Size(constraints.maxWidth, constraints.maxHeight);
 
-        // ✅ FIX: Validate dimensions before render
+        
         if (_width > screenSize.width || _height > screenSize.height) {
           print('⚠️ Mini Chat too large for screen, adjusting...');
           _width = (screenSize.width * 0.85).clamp(280.0, 400.0);
           _height = (screenSize.height * 0.7).clamp(400.0, 650.0);
 
-          // Recalculate position
+          
           final maxX = (screenSize.width - _width).clamp(0.0, double.infinity);
           final maxY =
               (screenSize.height - _height).clamp(0.0, double.infinity);
@@ -231,10 +231,10 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget> {
                     ),
                     child: Column(
                       children: [
-                        // Drag handle header
+                        
                         _buildDragHandle(),
 
-                        // Chat content
+                        
                         Expanded(
                           child: ClipRRect(
                             borderRadius: BorderRadius.vertical(
@@ -272,7 +272,7 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget> {
       ),
       child: Row(
         children: [
-          // Drag indicator
+          
           Container(
             width: 40,
             height: 4,
@@ -283,7 +283,7 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget> {
             ),
           ),
 
-          // Avatar
+          
           CircleAvatar(
             radius: 14,
             backgroundImage: widget.peerAvatar.isNotEmpty
@@ -294,7 +294,7 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget> {
           ),
           SizedBox(width: 8),
 
-          // Name
+          
           Expanded(
             child: Text(
               widget.peerNickname,
@@ -308,7 +308,7 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget> {
             ),
           ),
 
-          // Minimize button
+          
           IconButton(
             icon: Icon(Icons.remove, color: Colors.white, size: 18),
             onPressed: widget.onMinimize,
@@ -316,7 +316,7 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget> {
             constraints: BoxConstraints(minWidth: 32, minHeight: 32),
           ),
 
-          // Close button
+          
           IconButton(
             icon: Icon(Icons.close, color: Colors.white, size: 18),
             onPressed: widget.onClose,

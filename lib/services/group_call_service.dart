@@ -1,4 +1,4 @@
-// lib/services/group_call_service.dart
+
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -15,7 +15,7 @@ class GroupCallService {
 
   String get _uid => _auth.currentUser?.uid ?? '';
 
-  // ─── Initiate a group call ────────────────────────────────────────
+  
   Future<GroupCallModel?> initiateCall({
     required String groupId,
     required String groupName,
@@ -26,7 +26,7 @@ class GroupCallService {
       final initiator = _auth.currentUser;
       if (initiator == null) return null;
 
-      // Get initiator info
+      
       final initiatorDoc =
           await _db.collection('users').doc(initiator.uid).get();
       final initiatorData = initiatorDoc.data() ?? {};
@@ -68,7 +68,7 @@ class GroupCallService {
     }
   }
 
-  // ─── Join call ────────────────────────────────────────────────────
+  
   Future<bool> joinCall(String callId) async {
     try {
       final userDoc = await _db.collection('users').doc(_uid).get();
@@ -94,7 +94,7 @@ class GroupCallService {
     }
   }
 
-  // ─── Leave call ───────────────────────────────────────────────────
+  
   Future<void> leaveCall(String callId) async {
     try {
       final doc = await _db.collection(_collection).doc(callId).get();
@@ -105,7 +105,7 @@ class GroupCallService {
           call.participants.where((p) => p.userId != _uid).toList();
 
       if (remaining.isEmpty) {
-        // Last person – end the call
+        
         final duration = DateTime.now().difference(call.createdAt).inSeconds;
         await _db.collection(_collection).doc(callId).update({
           'status': GroupCallStatus.ended.name,
@@ -124,7 +124,7 @@ class GroupCallService {
     }
   }
 
-  // ─── End call (admin only) ────────────────────────────────────────
+  
   Future<void> endCallForAll(String callId, DateTime startTime) async {
     try {
       final duration = DateTime.now().difference(startTime).inSeconds;
@@ -140,7 +140,7 @@ class GroupCallService {
     }
   }
 
-  // ─── Update own mute/camera state ────────────────────────────────
+  
   Future<void> updateParticipantState({
     required String callId,
     required bool isMuted,
@@ -166,7 +166,7 @@ class GroupCallService {
     }
   }
 
-  // ─── Watch call ───────────────────────────────────────────────────
+  
   Stream<GroupCallModel?> watchCall(String callId) {
     return _db
         .collection(_collection)
@@ -175,7 +175,7 @@ class GroupCallService {
         .map((doc) => doc.exists ? GroupCallModel.fromDocument(doc) : null);
   }
 
-  // ─── Incoming calls for this user (in a group) ───────────────────
+  
   Stream<GroupCallModel?> incomingGroupCallStream(String userId) {
     return _db
         .collection(_collection)
@@ -194,7 +194,7 @@ class GroupCallService {
     });
   }
 
-  // ─── Active call for a group ──────────────────────────────────────
+  
   Stream<GroupCallModel?> activeCallForGroup(String groupId) {
     return _db
         .collection(_collection)
@@ -216,7 +216,7 @@ class GroupCallService {
         });
   }
 
-  // ─── Decline (remove self from invited list) ─────────────────────
+  
   Future<void> declineCall(String callId) async {
     try {
       await _db.collection(_collection).doc(callId).update({
@@ -227,7 +227,7 @@ class GroupCallService {
     }
   }
 
-  // ─── Timeout if nobody joins ──────────────────────────────────────
+  
   void scheduleCallTimeout(String callId, {int seconds = 30}) {
     Timer(Duration(seconds: seconds), () async {
       final doc = await _db.collection(_collection).doc(callId).get();
@@ -244,7 +244,7 @@ class GroupCallService {
     });
   }
 
-  // ─── Get call history for a group ────────────────────────────────
+  
   Future<List<GroupCallModel>> getGroupCallHistory(String groupId,
       {int limit = 20}) async {
     try {

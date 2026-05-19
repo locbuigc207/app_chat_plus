@@ -1,4 +1,4 @@
-// lib/pages/friends_page.dart - NEW FRIENDS PAGE
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
@@ -84,7 +84,7 @@ class _FriendsPageState extends State<FriendsPage>
   }
 }
 
-// 🎯 TAB 1: My Friends
+
 class MyFriendsTab extends StatelessWidget {
   final String currentUserId;
   final FriendProvider friendProvider;
@@ -205,7 +205,7 @@ class MyFriendsTab extends StatelessWidget {
             ),
             child: Row(
               children: [
-                // Avatar with online status
+                
                 AvatarWithStatus(
                   userId: userChat.id,
                   photoUrl: userChat.photoUrl,
@@ -214,7 +214,7 @@ class MyFriendsTab extends StatelessWidget {
                 ),
                 const SizedBox(width: 15),
 
-                // User info
+                
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -251,7 +251,7 @@ class MyFriendsTab extends StatelessWidget {
                   ),
                 ),
 
-                // Action button
+                
                 IconButton(
                   icon: const Icon(
                     Icons.message,
@@ -281,7 +281,7 @@ class MyFriendsTab extends StatelessWidget {
   }
 }
 
-// 🎯 TAB 2: Friend Suggestions (Based on mutual friends)
+
 class SuggestionsTab extends StatefulWidget {
   final String currentUserId;
   final FriendProvider friendProvider;
@@ -313,7 +313,7 @@ class _SuggestionsTabState extends State<SuggestionsTab> {
     setState(() => _isLoading = true);
 
     try {
-      // Get my friends
+      
       final friendships1 = await widget.firebaseFirestore
           .collection(FirestoreConstants.pathFriendshipCollection)
           .where(FirestoreConstants.userId1, isEqualTo: widget.currentUserId)
@@ -338,11 +338,11 @@ class _SuggestionsTabState extends State<SuggestionsTab> {
 
       _myFriendIds = myFriends.toList();
 
-      // Find mutual friends for suggestions
+      
       final mutualFriendsMap = <String, List<String>>{};
 
       for (var friendId in _myFriendIds) {
-        // Get friends of my friend
+        
         final friendFriendships1 = await widget.firebaseFirestore
             .collection(FirestoreConstants.pathFriendshipCollection)
             .where(FirestoreConstants.userId1, isEqualTo: friendId)
@@ -428,7 +428,7 @@ class _SuggestionsTabState extends State<SuggestionsTab> {
       );
     }
 
-    // Sort by number of mutual friends (descending)
+    
     final sortedSuggestions = _mutualFriendsMap.entries.toList()
       ..sort((a, b) => b.value.length.compareTo(a.value.length));
 
@@ -496,7 +496,7 @@ class _SuggestionsTabState extends State<SuggestionsTab> {
             ),
             child: Row(
               children: [
-                // Avatar
+                
                 ClipOval(
                   child: userChat.photoUrl.isNotEmpty
                       ? Image.network(
@@ -518,7 +518,7 @@ class _SuggestionsTabState extends State<SuggestionsTab> {
                 ),
                 const SizedBox(width: 15),
 
-                // User info
+                
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -566,7 +566,7 @@ class _SuggestionsTabState extends State<SuggestionsTab> {
                   ),
                 ),
 
-                // Add friend button
+                
                 IconButton(
                   icon: const Icon(
                     Icons.person_add,
@@ -586,7 +586,7 @@ class _SuggestionsTabState extends State<SuggestionsTab> {
                           backgroundColor: Colors.green,
                         ),
                       );
-                      // Refresh suggestions
+                      
                       _loadSuggestions();
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(

@@ -1,11 +1,11 @@
-// lib/pages/group_call_page.dart
+
 import 'dart:async';
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
-import 'package:flutter/foundation.dart'; // Bổ sung để check kIsWeb
+import 'package:flutter/foundation.dart'; 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart'; // Bổ sung để lấy AGORA_APP_ID
+import 'package:flutter_dotenv/flutter_dotenv.dart'; 
 import 'package:permission_handler/permission_handler.dart';
 
 import '../models/group_call_model.dart';
@@ -30,11 +30,11 @@ class GroupCallPage extends StatefulWidget {
 
 class _GroupCallPageState extends State<GroupCallPage>
     with WidgetsBindingObserver {
-  // ── Services ─────────────────────────────────────────────────────
+  
   final _callService = GroupCallService();
   late RtcEngine _engine;
 
-  // ── State ─────────────────────────────────────────────────────────
+  
   bool _engineInitialized = false;
   bool _isMuted = false;
   bool _isCameraOff = false;
@@ -45,23 +45,23 @@ class _GroupCallPageState extends State<GroupCallPage>
   bool _isConnected = false;
   bool _showParticipantsList = false;
 
-  // Agora remote UIDs
+  
   final Set<int> _remoteUids = {};
 
-  // Call metadata
+  
   late GroupCallModel _callModel;
   DateTime? _connectedAt;
 
-  // Streams
+  
   StreamSubscription? _callSub;
   Timer? _controlsHideTimer;
   Timer? _statsTimer;
 
-  // Stats
+  
   RtcCallStats _stats = const RtcCallStats();
 
-  // Selected speaker (for spotlight)
-  int? _spotlightUid; // null = grid layout
+  
+  int? _spotlightUid; 
 
   @override
   void initState() {
@@ -75,7 +75,7 @@ class _GroupCallPageState extends State<GroupCallPage>
     _scheduleControlsHide();
   }
 
-  // ─── Init Agora ────────────────────────────────────────────────────
+  
   Future<void> _initCall() async {
     await _requestPermissions();
     await _initEngine();
@@ -83,7 +83,7 @@ class _GroupCallPageState extends State<GroupCallPage>
   }
 
   Future<void> _requestPermissions() async {
-    // FIX: Bỏ qua permission_handler trên nền tảng Web vì trình duyệt tự quản lý
+    
     if (kIsWeb) return;
 
     final perms = [Permission.microphone];
@@ -94,7 +94,7 @@ class _GroupCallPageState extends State<GroupCallPage>
   Future<void> _initEngine() async {
     _engine = createAgoraRtcEngine();
 
-    // FIX LỖI: Lấy kAgoraAppId từ biến môi trường
+    
     final String agoraAppId = dotenv.env['AGORA_APP_ID'] ?? '';
     if (agoraAppId.isEmpty) {
       debugPrint('❌ LỖI: AGORA_APP_ID chưa được cài đặt trong file .env');
@@ -122,7 +122,7 @@ class _GroupCallPageState extends State<GroupCallPage>
             if (_spotlightUid == uid) _spotlightUid = null;
           });
         }
-        // If all remote left and we're not the initiator, end
+        
         if (_remoteUids.isEmpty && !widget.isInitiator && mounted) {
           _hangUp();
         }
@@ -168,7 +168,7 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
-  // ─── Watch Firestore ───────────────────────────────────────────────
+  
   void _watchCall() {
     _callSub = _callService.watchCall(widget.call.callId).listen((call) {
       if (call == null || _callEnded) return;
@@ -197,7 +197,7 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
-  // ─── Controls ─────────────────────────────────────────────────────
+  
   void _scheduleControlsHide() {
     _controlsHideTimer?.cancel();
     if (widget.call.isVideo) {
@@ -243,13 +243,13 @@ class _GroupCallPageState extends State<GroupCallPage>
     setState(() => _isFrontCamera = !_isFrontCamera);
   }
 
-  // ─── Hang up ───────────────────────────────────────────────────────
+  
   Future<void> _hangUp() async {
     if (_callEnded) return;
     _callEnded = true;
 
     if (widget.isInitiator) {
-      // End for everyone
+      
       await _callService.endCallForAll(
           widget.call.callId, _connectedAt ?? DateTime.now());
     } else {
@@ -271,15 +271,15 @@ class _GroupCallPageState extends State<GroupCallPage>
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
 
-  // ─── Spotlight / Grid toggle ──────────────────────────────────────
+  
   void _setSpotlight(int? uid) {
     setState(() => _spotlightUid = uid);
   }
 
-  // ─── Build ─────────────────────────────────────────────────────────
+  
   @override
   Widget build(BuildContext context) {
-    // FIX LỖI: Chuyển WillPopScope (bị Deprecated) thành PopScope chuẩn mới
+    
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
@@ -294,33 +294,33 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
-  // ─── Video UI ──────────────────────────────────────────────────────
+  
   Widget _buildVideoUI() {
     return GestureDetector(
       onTap: _onTapScreen,
       behavior: HitTestBehavior.opaque,
       child: Stack(
         children: [
-          // Main video area
+          
           _remoteUids.isEmpty ? _buildWaitingScreen() : _buildVideoGrid(),
 
-          // Gradient overlays
+          
           _buildGradients(),
 
-          // Top bar
+          
           if (_showControls) _buildVideoTopBar(),
 
-          // Quality indicator
+          
           Positioned(
             top: MediaQuery.of(context).padding.top + 60,
             right: 16,
             child: CallQualityIndicator(stats: _stats),
           ),
 
-          // Participants panel
+          
           if (_showParticipantsList) _buildParticipantsPanel(),
 
-          // Bottom controls - AnimatedOpacity đã chuyển vào trong _buildBottomControls
+          
           _buildBottomControls(),
         ],
       ),
@@ -368,12 +368,12 @@ class _GroupCallPageState extends State<GroupCallPage>
 
     final allUids = _remoteUids.toList();
 
-    // Spotlight mode: one big, rest small
+    
     if (_spotlightUid != null && allUids.contains(_spotlightUid)) {
       return _buildSpotlightLayout(allUids);
     }
 
-    // Grid layout
+    
     return _buildGridLayout(allUids);
   }
 
@@ -381,7 +381,7 @@ class _GroupCallPageState extends State<GroupCallPage>
     final others = allUids.where((u) => u != _spotlightUid).toList();
     return Column(
       children: [
-        // Big spotlight view
+        
         Expanded(
           flex: 3,
           child: GestureDetector(
@@ -389,7 +389,7 @@ class _GroupCallPageState extends State<GroupCallPage>
             child: _buildRemoteVideoTile(_spotlightUid!, big: true),
           ),
         ),
-        // Strip of others + local
+        
         SizedBox(
           height: 110,
           child: ListView(
@@ -409,7 +409,7 @@ class _GroupCallPageState extends State<GroupCallPage>
     final count = allUids.length;
 
     if (count == 1) {
-      // 1 remote: remote full + local PIP
+      
       return Stack(
         children: [
           GestureDetector(
@@ -425,7 +425,7 @@ class _GroupCallPageState extends State<GroupCallPage>
       );
     }
 
-    // 2+ remotes: grid
+    
     return Column(
       children: [
         Expanded(
@@ -436,7 +436,7 @@ class _GroupCallPageState extends State<GroupCallPage>
               crossAxisSpacing: 2,
               mainAxisSpacing: 2,
             ),
-            itemCount: allUids.length + 1, // +1 for local
+            itemCount: allUids.length + 1, 
             itemBuilder: (_, i) {
               if (i == 0) return _buildLocalTile();
               final uid = allUids[i - 1];
@@ -458,7 +458,7 @@ class _GroupCallPageState extends State<GroupCallPage>
 
     return Stack(
       children: [
-        // Video
+        
         ClipRRect(
           borderRadius: BorderRadius.circular(big ? 0 : 8),
           child: AgoraVideoView(
@@ -469,7 +469,7 @@ class _GroupCallPageState extends State<GroupCallPage>
             ),
           ),
         ),
-        // Muted indicator
+        
         if (participant?.isMuted == true)
           Positioned(
             bottom: 8,
@@ -482,7 +482,7 @@ class _GroupCallPageState extends State<GroupCallPage>
               child: const Icon(Icons.mic_off, color: Colors.white, size: 16),
             ),
           ),
-        // Camera off overlay
+        
         if (participant?.isCameraOff == true)
           Container(
             color: Colors.black87,
@@ -702,7 +702,7 @@ class _GroupCallPageState extends State<GroupCallPage>
                   ],
                 ),
               ),
-              // Participants count
+              
               GestureDetector(
                 onTap: () => setState(
                     () => _showParticipantsList = !_showParticipantsList),
@@ -737,7 +737,7 @@ class _GroupCallPageState extends State<GroupCallPage>
       bottom: 0,
       width: 220,
       child: GestureDetector(
-        onTap: () {}, // Consume taps
+        onTap: () {}, 
         child: Container(
           color: Colors.black.withOpacity(0.85),
           child: SafeArea(
@@ -818,14 +818,14 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
-  // ─── Bottom Controls ───────────────────────────────────────────────
+  
   Widget _buildBottomControls() {
     return Positioned(
       bottom: 0,
       left: 0,
       right: 0,
       child: AnimatedOpacity(
-        // ✅ AnimatedOpacity chuyển vào đây, bỏ wrapper bên ngoài
+        
         opacity: _showControls ? 1.0 : 0.0,
         duration: const Duration(milliseconds: 300),
         child: SafeArea(
@@ -834,7 +834,7 @@ class _GroupCallPageState extends State<GroupCallPage>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Secondary controls row
+                
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
@@ -875,7 +875,7 @@ class _GroupCallPageState extends State<GroupCallPage>
                   ],
                 ),
                 const SizedBox(height: 20),
-                // End call
+                
                 GestureDetector(
                   onTap: _hangUp,
                   child: Container(
@@ -936,7 +936,7 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
-  // ─── Voice-only UI ─────────────────────────────────────────────────
+  
   Widget _buildVoiceUI() {
     return Container(
       decoration: const BoxDecoration(
@@ -949,7 +949,7 @@ class _GroupCallPageState extends State<GroupCallPage>
       child: SafeArea(
         child: Column(
           children: [
-            // Top bar
+            
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
@@ -977,10 +977,10 @@ class _GroupCallPageState extends State<GroupCallPage>
               ),
             ),
             const Spacer(),
-            // Participants circles
+            
             _buildVoiceParticipantsGrid(),
             const Spacer(),
-            // Controls
+            
             _buildVoiceControls(),
             const SizedBox(height: 24),
           ],
@@ -1051,7 +1051,7 @@ class _GroupCallPageState extends State<GroupCallPage>
               label: _isMuted ? 'Mở Mic' : 'Tắt Mic',
               active: _isMuted,
               onTap: _toggleMute),
-          // End call
+          
           GestureDetector(
             onTap: _hangUp,
             child: Container(

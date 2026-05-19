@@ -60,16 +60,16 @@ class ChatProvider {
         .collection(groupChatId)
         .doc(DateTime.now().millisecondsSinceEpoch.toString());
 
-    // BẢO MẬT: Mã hóa tin nhắn trước khi lưu lên Firestore
+    
     final String secureContent = type == TypeMessage.text
         ? EncryptionService().encryptMessage(content, groupChatId)
-        : content; // Không mã hóa nếu là ảnh/file (lưu URL gốc)
+        : content; 
 
     final messageChat = MessageChat(
       idFrom: currentUserId,
       idTo: peerId,
       timestamp: DateTime.now().millisecondsSinceEpoch.toString(),
-      content: secureContent, // Sử dụng nội dung đã mã hóa
+      content: secureContent, 
       type: type,
     );
 
@@ -80,10 +80,10 @@ class ChatProvider {
       );
     });
 
-    // Cập nhật tin nhắn cuối cùng trong conversation (dùng content gốc để hiển thị preview)
+    
     _updateConversationLastMessage(groupChatId, content, type);
 
-    // Xử lý tự động phản hồi nếu nhắn tin với Bot
+    
     if (peerId == AppConstants.aiAssistantId && type == TypeMessage.text) {
       _handleAiResponse(content, groupChatId, currentUserId);
     }
@@ -111,7 +111,7 @@ class ChatProvider {
           FirestoreConstants.lastMessageType: messageType,
         });
       } else {
-        // Nếu conversation chưa tồn tại thì tạo mới
+        
         final participants = conversationId.split('-');
         await firebaseFirestore
             .collection(FirestoreConstants.pathConversationCollection)
@@ -132,10 +132,10 @@ class ChatProvider {
 
   Future<void> _handleAiResponse(
       String userMessage, String groupChatId, String currentUserId) async {
-    // Gọi API của Gemini (truyền nội dung gốc, không mã hóa)
+    
     final String aiReply = await _geminiService.sendMessage(userMessage, []);
 
-    // BẢO MẬT: Mã hóa phản hồi của AI trước khi lưu
+    
     final String secureAiReply =
         EncryptionService().encryptMessage(aiReply, groupChatId);
 
@@ -149,7 +149,7 @@ class ChatProvider {
       idFrom: AppConstants.aiAssistantId,
       idTo: currentUserId,
       timestamp: DateTime.now().millisecondsSinceEpoch.toString(),
-      content: secureAiReply, // Lưu phản hồi AI đã mã hóa
+      content: secureAiReply, 
       type: TypeMessage.text,
     );
 
@@ -157,7 +157,7 @@ class ChatProvider {
       transaction.set(aiDocRef, aiMessage.toJson());
     });
 
-    // Cập nhật preview conversation với nội dung gốc (chưa mã hóa)
+    
     _updateConversationLastMessage(groupChatId, aiReply, TypeMessage.text);
   }
 }

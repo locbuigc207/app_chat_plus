@@ -6,7 +6,7 @@ class ReactionProvider {
 
   ReactionProvider({required this.firebaseFirestore});
 
-  // Add or remove reaction
+  
   Future<void> toggleReaction(
       String groupChatId,
       String messageId,
@@ -20,17 +20,17 @@ class ReactionProvider {
         .doc(messageId)
         .collection('reactions');
 
-    // Check if user already reacted with this emoji
+    
     final existingReaction = await reactionsRef
         .where('userId', isEqualTo: userId)
         .where('emoji', isEqualTo: emoji)
         .get();
 
     if (existingReaction.docs.isNotEmpty) {
-      // Remove reaction
+      
       await reactionsRef.doc(existingReaction.docs.first.id).delete();
     } else {
-      // Add reaction (first remove any other reaction from this user)
+      
       final userReactions = await reactionsRef
           .where('userId', isEqualTo: userId)
           .get();
@@ -39,7 +39,7 @@ class ReactionProvider {
         await doc.reference.delete();
       }
 
-      // Add new reaction
+      
       await reactionsRef.add({
         'userId': userId,
         'emoji': emoji,
@@ -48,7 +48,7 @@ class ReactionProvider {
     }
   }
 
-  // Get reactions for a message
+  
   Stream<QuerySnapshot> getReactions(String groupChatId, String messageId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathMessageCollection)
@@ -59,7 +59,7 @@ class ReactionProvider {
         .snapshots();
   }
 
-  // Get aggregated reactions
+  
   Future<Map<String, int>> getAggregatedReactions(
       String groupChatId,
       String messageId,
@@ -81,7 +81,7 @@ class ReactionProvider {
     return reactions;
   }
 
-  // Check if current user reacted
+  
   Future<Map<String, bool>> getUserReactions(
       String groupChatId,
       String messageId,

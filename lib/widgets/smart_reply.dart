@@ -1,4 +1,4 @@
-// lib/widgets/smart_reply.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
@@ -23,7 +23,7 @@ class SmartReplyWidget extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Gradient AI icon
+          
           Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
@@ -51,7 +51,7 @@ class SmartReplyWidget extends StatelessWidget {
 
           const SizedBox(width: 12),
 
-          // Horizontally scrollable chips
+          
           Expanded(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,

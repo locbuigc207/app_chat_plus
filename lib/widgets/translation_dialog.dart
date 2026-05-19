@@ -6,9 +6,9 @@ class TranslationDialog extends StatefulWidget {
   final String originalMessage;
 
   const TranslationDialog({
-    Key? key,
+    super.key,
     required this.originalMessage,
-  }) : super(key: key);
+  });
 
   @override
   _TranslationDialogState createState() => _TranslationDialogState();
@@ -56,7 +56,7 @@ class _TranslationDialogState extends State<TranslationDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Title
+            
             Row(
               children: [
                 Icon(Icons.auto_awesome, color: ColorConstants.primaryColor),
@@ -74,7 +74,7 @@ class _TranslationDialogState extends State<TranslationDialog> {
 
             const SizedBox(height: 16),
 
-            // Mode selector
+            
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
@@ -99,7 +99,7 @@ class _TranslationDialogState extends State<TranslationDialog> {
 
             const SizedBox(height: 16),
 
-            // Original text
+            
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
@@ -130,7 +130,7 @@ class _TranslationDialogState extends State<TranslationDialog> {
 
             const SizedBox(height: 12),
 
-            // Translated text
+            
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
@@ -183,7 +183,7 @@ class _TranslationDialogState extends State<TranslationDialog> {
 
             const SizedBox(height: 16),
 
-            // Actions
+            
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [

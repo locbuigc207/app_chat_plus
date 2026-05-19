@@ -1,4 +1,4 @@
-// lib/services/call_service.dart
+
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -14,14 +14,14 @@ class CallService {
   static const String _callsCollection = 'calls';
   static const int _callTimeoutSeconds = 30;
 
-  /// Shorthand reference để tương thích với cách dùng callCollection.doc(...)
+  
   CollectionReference get callCollection =>
       _firestore.collection(_callsCollection);
 
-  // ── Incoming calls stream (theo uid đang đăng nhập) ───────────────────────
+  
 
-  /// Lắng nghe cuộc gọi đến theo uid của user hiện tại (Firestore Auth).
-  /// FIX: Bỏ .orderBy('createdAt') để tránh lỗi yêu cầu composite index.
+  
+  
   Stream<CallModel?> get incomingCallStream {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return Stream.value(null);
@@ -43,12 +43,12 @@ class CallService {
         });
   }
 
-  // ── Incoming calls stream (theo userId truyền vào) ────────────────────────
+  
 
-  /// Lắng nghe cuộc gọi đến cho một userId cụ thể.
-  /// Hỗ trợ cả field 'receiverId' (schema cũ) và 'calleeId' (schema mới).
+  
+  
   Stream<CallModel?> listenToIncomingCall(String userId) {
-    // Ưu tiên 'receiverId' để backward-compat với schema cũ
+    
     return callCollection
         .where('receiverId', isEqualTo: userId)
         .where('status', isEqualTo: 'dialing')
@@ -65,7 +65,7 @@ class CallService {
     });
   }
 
-  // ── Watch specific call ───────────────────────────────────────────────────
+  
 
   Stream<CallModel?> watchCall(String callId) {
     return _firestore
@@ -83,9 +83,9 @@ class CallService {
     });
   }
 
-  // ── Initiate call (full flow với Firestore Auth) ──────────────────────────
+  
 
-  /// Tạo cuộc gọi mới, tự lấy thông tin caller từ Firestore.
+  
   Future<CallModel?> initiateCall({
     required String calleeId,
     required String calleeName,
@@ -96,7 +96,7 @@ class CallService {
       final caller = _auth.currentUser;
       if (caller == null) throw Exception('Chưa đăng nhập');
 
-      // Lấy thông tin caller từ Firestore
+      
       final callerDoc =
           await _firestore.collection('users').doc(caller.uid).get();
       final callerData = callerDoc.data() ?? {};
@@ -104,7 +104,7 @@ class CallService {
           callerData['nickname'] as String? ?? caller.displayName ?? 'User';
       final callerAvatarUrl = callerData['photoUrl'] as String? ?? '';
 
-      // Kiểm tra callee có đang trong cuộc gọi không
+      
       final existingCall = await _getActiveCallForUser(calleeId);
       if (existingCall != null) {
         debugPrint('⚠️ Callee đang trong cuộc gọi khác');
@@ -137,7 +137,7 @@ class CallService {
 
       debugPrint('✅ Cuộc gọi được tạo: $callId');
 
-      // Auto-timeout nếu không có phản hồi
+      
       _scheduleCallTimeout(callId);
 
       return call;
@@ -147,15 +147,15 @@ class CallService {
     }
   }
 
-  // ── Make call (truyền thẳng CallModel — schema cũ) ───────────────────────
+  
 
-  /// Tạo cuộc gọi bằng cách truyền thẳng CallModel.
-  /// Tương thích với schema cũ dùng call.id và toMap().
+  
+  
   Future<void> makeCall(CallModel call) async {
     await callCollection.doc(call.callId).set(call.toMap());
   }
 
-  // ── Answer call ───────────────────────────────────────────────────────────
+  
 
   Future<bool> answerCall(String callId) async {
     try {
@@ -171,7 +171,7 @@ class CallService {
     }
   }
 
-  // ── Decline call ──────────────────────────────────────────────────────────
+  
 
   Future<bool> declineCall(String callId) async {
     try {
@@ -187,17 +187,17 @@ class CallService {
     }
   }
 
-  // ── Update call status (tổng quát) ───────────────────────────────────────
+  
 
-  /// Cập nhật trạng thái cuộc gọi. Dùng được cho cả schema cũ và mới.
+  
   Future<void> updateCallStatus(String callId, String status) async {
     await callCollection.doc(callId).update({'status': status});
   }
 
-  // ── End call ──────────────────────────────────────────────────────────────
+  
 
-  /// Kết thúc cuộc gọi.
-  /// [deleteAfter]: xóa document sau 2 giây (hữu ích khi dùng schema đơn giản).
+  
+  
   Future<bool> endCall(
     String callId, {
     int? durationSeconds,
@@ -228,7 +228,7 @@ class CallService {
     }
   }
 
-  // ── Mark missed ───────────────────────────────────────────────────────────
+  
 
   Future<void> markCallMissed(String callId) async {
     try {
@@ -249,9 +249,9 @@ class CallService {
     }
   }
 
-  // ── Call history ──────────────────────────────────────────────────────────
+  
 
-  /// FIX: Tách thành 2 query riêng để tránh cần composite index.
+  
   Stream<List<CallModel>> getCallHistory({int limit = 30}) {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return Stream.value([]);
@@ -290,7 +290,7 @@ class CallService {
     });
   }
 
-  // ── Get single call ───────────────────────────────────────────────────────
+  
 
   Future<CallModel?> getCall(String callId) async {
     try {
@@ -303,7 +303,7 @@ class CallService {
     }
   }
 
-  // ── Private helpers ───────────────────────────────────────────────────────
+  
 
   Future<CallModel?> _getActiveCallForUser(String userId) async {
     try {
@@ -361,10 +361,10 @@ class CallService {
   }
 }
 
-// ── StreamZip helper ──────────────────────────────────────────────────────────
 
-/// Merge nhiều streams thành 1 stream phát ra List chứa giá trị mới nhất
-/// của từng stream mỗi khi bất kỳ stream nào phát ra giá trị mới.
+
+
+
 class StreamZip<T> extends StreamView<List<T>> {
   StreamZip(List<Stream<T>> streams) : super(_buildStream(streams));
 

@@ -1,4 +1,4 @@
-// lib/services/ai_backend_service.dart
+
 
 import 'package:cloud_functions/cloud_functions.dart';
 
@@ -7,13 +7,13 @@ import '../utils/utils.dart';
 class AIBackendService {
   final FirebaseFunctions _functions = FirebaseFunctions.instance;
 
-  // Gọi API Dịch phong cách giao tiếp
+  
   Future<String?> translateCommunication(
     String message,
     String targetAudience,
   ) async {
     try {
-      // BẢO MẬT: Che dữ liệu nhạy cảm
+      
       final safeMessage = DataMaskingUtils.maskSensitiveData(message);
 
       final HttpsCallable callable =
@@ -30,14 +30,14 @@ class AIBackendService {
     }
   }
 
-  // Gọi API Phân tích Context
+  
   Future<String?> analyzeChatContext(
     List<String> messages,
     String contextType,
     String action,
   ) async {
     try {
-      // BẢO MẬT: Che toàn bộ lịch sử trò chuyện
+      
       final safeMessages = DataMaskingUtils.maskMessageList(messages);
       final String chatHistory = safeMessages.join('\n');
 
@@ -56,11 +56,11 @@ class AIBackendService {
     }
   }
 
-  // Gọi API Kiểm tra lừa đảo
+  
   Future<String> checkScam(String message) async {
     try {
-      // Đối với Scam Detection, che số tài khoản nhưng giữ lại link
-      // để AI nhận diện URL độc hại. Điều chỉnh logic trong DataMasking nếu cần.
+      
+      
       final safeMessage = DataMaskingUtils.maskSensitiveData(message);
 
       final HttpsCallable callable = _functions.httpsCallable('analyzeScam');
@@ -71,15 +71,15 @@ class AIBackendService {
     } catch (e, stackTrace) {
       ErrorLogger.logError(e, stackTrace,
           context: 'AIBackendService.checkScam');
-      return 'SAFE'; // Mặc định an toàn nếu lỗi mạng để không block UX
+      return 'SAFE'; 
     }
   }
 
-  // Gọi API Trích xuất Kỷ niệm & Điểm số quan hệ
+  
   Future<Map<String, dynamic>?> extractRelationshipMemory(
       List<String> messages) async {
     try {
-      // BẢO MẬT: Che toàn bộ lịch sử trò chuyện
+      
       final safeMessages = DataMaskingUtils.maskMessageList(messages);
       final String chatHistory = safeMessages.join('\n');
 
@@ -89,7 +89,7 @@ class AIBackendService {
         'messages': chatHistory,
       });
 
-      // Map trả về từ JSON của Gemini
+      
       return Map<String, dynamic>.from(results.data);
     } catch (e, stackTrace) {
       ErrorLogger.logError(e, stackTrace,

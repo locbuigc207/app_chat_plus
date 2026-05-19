@@ -1,6 +1,6 @@
-// lib/widgets/contextual_mini_chat_overlay.dart
-// Contextual Bubble Universe - Main Integration Widget
-// Thay thế/bổ sung cho MiniChatOverlayWidget hiện tại
+
+
+
 
 import 'dart:async';
 
@@ -12,17 +12,17 @@ import 'bubble_adaptive_ui.dart';
 import 'secure_view_once_widget.dart';
 import 'shared_space_widget.dart';
 
-// ─── CONTEXTUAL MINI CHAT OVERLAY ─────────────────────────────────────────────
 
-/// Widget overlay mini chat với đầy đủ tính năng Contextual Bubble Universe
-/// Drop-in replacement / wrapper cho MiniChatOverlayWidget
+
+
+
 class ContextualMiniChatOverlay extends StatefulWidget {
   final String userId;
   final String userName;
   final String avatarUrl;
   final String conversationId;
   final String currentUserId;
-  final Widget chatContent; // Truyền vào ChatPage hiện có
+  final Widget chatContent; 
   final VoidCallback onMinimize;
   final VoidCallback onClose;
 
@@ -47,7 +47,7 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     with TickerProviderStateMixin {
   final _contextService = ContextualBubbleService();
 
-  // Layout
+  
   Offset _position = const Offset(20, 100);
   bool _isDragging = false;
   bool _isExpanded = true;
@@ -59,13 +59,13 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
   static const double _expandedHeight = 520;
   static const double _sharedSpaceHeight = 480;
 
-  // Animations
+  
   late AnimationController _expandAnim;
   late AnimationController _sharedSpaceAnim;
   late AnimationController _slideInAnim;
   late Animation<double> _expandCurve;
 
-  // Context
+  
   BubbleContext _context = BubbleContext(
     mode: BubbleMode.normal,
     updatedAt: DateTime.now(),
@@ -110,7 +110,7 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     super.dispose();
   }
 
-  // ─── LAYOUT ────────────────────────────────────────────────────────────────
+  
 
   void _toggleExpand() {
     setState(() => _isExpanded = !_isExpanded);
@@ -152,7 +152,7 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     return _expandedHeight;
   }
 
-  // ─── BUILD ─────────────────────────────────────────────────────────────────
+  
 
   @override
   Widget build(BuildContext context) {
@@ -215,7 +215,7 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
           ),
           child: Column(
             children: [
-              // ── Adaptive Header ──────────────────────────────────────────
+              
               BubbleAdaptiveHeader(
                 context: _context,
                 peerName: widget.userName,
@@ -226,15 +226,15 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
                 onClose: widget.onClose,
               ),
 
-              // ── Feature Bar ──────────────────────────────────────────────
+              
               if (_isExpanded) _buildFeatureBar(),
 
-              // ── Content ──────────────────────────────────────────────────
+              
               Expanded(
                 child: _buildContent(),
               ),
 
-              // ── Bottom bar ───────────────────────────────────────────────
+              
               if (_isExpanded) _buildBottomBar(),
             ],
           ),
@@ -243,7 +243,7 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     );
   }
 
-  // ─── FEATURE BAR ──────────────────────────────────────────────────────────
+  
 
   Widget _buildFeatureBar() {
     return Container(
@@ -272,10 +272,10 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
             onTap: _toggleSharedSpace,
           ),
           const Spacer(),
-          // Mode indicator
+          
           _buildModeChip(),
           const SizedBox(width: 6),
-          // Secure toggle
+          
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: SecureModeToggle(
@@ -394,7 +394,7 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     }
   }
 
-  // ─── CONTENT ──────────────────────────────────────────────────────────────
+  
 
   Widget _buildContent() {
     if (!_isExpanded) {
@@ -440,7 +440,7 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     );
   }
 
-  // ─── BOTTOM BAR ───────────────────────────────────────────────────────────
+  
 
   Widget _buildBottomBar() {
     return Container(
@@ -454,7 +454,7 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
       child: Row(
         children: [
           const SizedBox(width: 10),
-          // Collapse toggle
+          
           GestureDetector(
             onTap: _toggleExpand,
             child: Container(
@@ -483,7 +483,7 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
             ),
           ),
           const Spacer(),
-          // Quick context switch buttons
+          
           _buildQuickModeBtn(
             Icons.work_outline_rounded,
             BubbleMode.work,
@@ -518,7 +518,7 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
           if (isActive) {
             _contextService.resetToNormal();
           } else {
-            // Activate mode manually for demo
+            
             _contextService.analyzeMessage(
               content: tooltip.toLowerCase(),
               messageType: 0,
@@ -548,7 +548,7 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
   }
 }
 
-// ─── HELPER ──────────────────────────────────────────────────────────────────
+
 
 class _ModeData {
   final IconData icon;

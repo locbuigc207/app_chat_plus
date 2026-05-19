@@ -5,7 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 class LinkPreviewWidget extends StatelessWidget {
   final String url;
 
-  const LinkPreviewWidget({Key? key, required this.url}) : super(key: key);
+  const LinkPreviewWidget({super.key, required this.url});
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +18,7 @@ class LinkPreviewWidget extends StatelessWidget {
         backgroundColor: Theme.of(context).brightness == Brightness.dark
             ? const Color(0xFF252A3D)
             : Colors.grey[200],
-        errorWidget: const SizedBox.shrink(), // Ẩn nếu không lấy được meta
+        errorWidget: const SizedBox.shrink(), 
         errorImage: "https://via.placeholder.com/150",
         borderRadius: 12,
         removeElevation: true,

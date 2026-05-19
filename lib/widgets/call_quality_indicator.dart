@@ -35,7 +35,7 @@ class CallQualityIndicator extends StatelessWidget {
   }
 
   int _qualityLevel() {
-    if (stats.rtt == 0 && stats.txBitrate == 0) return 4; // unknown = show full
+    if (stats.rtt == 0 && stats.txBitrate == 0) return 4; 
     if (stats.rtt < 100 && stats.txPacketLoss < 3) return 4;
     if (stats.rtt < 200 && stats.txPacketLoss < 8) return 3;
     if (stats.rtt < 400 && stats.txPacketLoss < 15) return 2;

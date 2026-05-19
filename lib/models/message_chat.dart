@@ -1,4 +1,4 @@
-// lib/models/message_chat.dart (FIXED - Handle Timestamp properly)
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
@@ -42,7 +42,7 @@ class MessageChat {
     };
   }
 
-  // ✅ FIX: Properly handle Timestamp conversion
+  
   factory MessageChat.fromDocument(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>?;
 
@@ -50,10 +50,11 @@ class MessageChat {
       throw Exception('Document data is null');
     }
 
-    // ✅ Helper function to convert Timestamp to String
+    
     String getStringValue(dynamic value) {
-      if (value == null)
+      if (value == null) {
         return DateTime.now().millisecondsSinceEpoch.toString();
+      }
       if (value is String) return value;
       if (value is Timestamp) return value.millisecondsSinceEpoch.toString();
       if (value is int) return value.toString();

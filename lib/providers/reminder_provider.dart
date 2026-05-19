@@ -36,9 +36,10 @@ class MessageReminder {
       throw Exception('Reminder document data is null');
     }
 
-    String _getStringValue(dynamic value) {
-      if (value == null)
+    String getStringValue(dynamic value) {
+      if (value == null) {
         return DateTime.now().millisecondsSinceEpoch.toString();
+      }
       if (value is String) return value;
       if (value is Timestamp) return value.millisecondsSinceEpoch.toString();
       if (value is int) return value.toString();
@@ -49,7 +50,7 @@ class MessageReminder {
       id: doc.id,
       messageId: data['messageId'] ?? '',
       conversationId: data['conversationId'] ?? '',
-      reminderTime: _getStringValue(data['reminderTime']),
+      reminderTime: getStringValue(data['reminderTime']),
       message: data['message'] ?? '',
       isCompleted: data['isCompleted'] ?? false,
     );
@@ -65,7 +66,7 @@ class ReminderProvider {
     required this.notificationsPlugin,
   });
 
-  // Schedule reminder with proper notification
+  
   Future<bool> scheduleReminder({
     required String userId,
     required String messageId,
@@ -74,13 +75,13 @@ class ReminderProvider {
     required String message,
   }) async {
     try {
-      // Ensure reminderTime is in the future
+      
       if (reminderTime.isBefore(DateTime.now())) {
         print('Reminder time is in the past');
         return false;
       }
 
-      // Create reminder document
+      
       final reminderDoc = await firebaseFirestore.collection('reminders').add({
         'userId': userId,
         'messageId': messageId,
@@ -91,7 +92,7 @@ class ReminderProvider {
         'createdAt': DateTime.now().millisecondsSinceEpoch.toString(),
       });
 
-      // Schedule local notification
+      
       await _scheduleNotification(
         id: reminderDoc.id.hashCode,
         title: 'Message Reminder',
@@ -107,7 +108,7 @@ class ReminderProvider {
     }
   }
 
-  // Schedule notification with timezone support
+  
   Future<void> _scheduleNotification({
     required int id,
     required String title,
@@ -115,7 +116,7 @@ class ReminderProvider {
     required DateTime scheduledDate,
   }) async {
     try {
-      // Convert to TZ DateTime
+      
       final tz.TZDateTime scheduledTZ = tz.TZDateTime.from(
         scheduledDate,
         tz.local,
@@ -156,7 +157,7 @@ class ReminderProvider {
     }
   }
 
-  // Get user reminders
+  
   Stream<QuerySnapshot> getUserReminders(String userId) {
     return firebaseFirestore
         .collection('reminders')
@@ -166,7 +167,7 @@ class ReminderProvider {
         .snapshots();
   }
 
-  // Complete reminder
+  
   Future<bool> completeReminder(String reminderId) async {
     try {
       await firebaseFirestore
@@ -174,7 +175,7 @@ class ReminderProvider {
           .doc(reminderId)
           .update({'isCompleted': true});
 
-      // Cancel notification
+      
       await notificationsPlugin.cancel(reminderId.hashCode);
 
       print(' Reminder completed');
@@ -185,7 +186,7 @@ class ReminderProvider {
     }
   }
 
-  // Delete reminder
+  
   Future<bool> deleteReminder(String reminderId) async {
     try {
       await firebaseFirestore.collection('reminders').doc(reminderId).delete();
@@ -199,7 +200,7 @@ class ReminderProvider {
     }
   }
 
-  // Check and clean expired reminders
+  
   Future<void> checkExpiredReminders(String userId) async {
     try {
       final now = DateTime.now();
@@ -215,7 +216,7 @@ class ReminderProvider {
           int.parse(reminder.reminderTime),
         );
 
-        // Auto-complete if time has passed
+        
         if (reminderTime.isBefore(now)) {
           await completeReminder(reminder.id);
         }

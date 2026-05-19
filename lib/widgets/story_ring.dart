@@ -1,24 +1,24 @@
-// lib/widgets/story_ring.dart
+
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
 import 'package:flutter_chat_demo/models/story_model.dart';
 
-// ─────────────────────────────────────────────────────────────
-// STORY RING WIDGET
-// ─────────────────────────────────────────────────────────────
 
-/// Animated gradient ring around an avatar that has unseen stories.
-/// Pass [hasUnseenStories] = false to show a grey "already seen" ring.
-/// Pass [isCurrentUser] = true to show a static blue ring (Add Story).
+
+
+
+
+
+
 class StoryRing extends StatefulWidget {
   final Widget child;
   final bool hasUnseenStories;
   final bool isCurrentUser;
-  /// Thickness of the ring stroke
+  
   final double ringWidth;
-  /// Gap between ring and child
+  
   final double gap;
 
   const StoryRing({
@@ -55,7 +55,7 @@ class _StoryRingState extends State<StoryRing>
 
   @override
   Widget build(BuildContext context) {
-    // No ring needed: no stories and not current user
+    
     if (!widget.hasUnseenStories && !widget.isCurrentUser) {
       return widget.child;
     }
@@ -116,7 +116,7 @@ class _RingPainter extends CustomPainter {
       return;
     }
 
-    // Animated gradient ring for unseen stories
+    
     paint.shader = SweepGradient(
       startAngle: -math.pi / 2 + progress * 2 * math.pi,
       endAngle:    3 * math.pi / 2 + progress * 2 * math.pi,
@@ -140,9 +140,9 @@ class _RingPainter extends CustomPainter {
           old.isCurrentUser != isCurrentUser;
 }
 
-// ─────────────────────────────────────────────────────────────
-// STORIES BAR  (horizontal strip in home page)
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class StoriesBar extends StatelessWidget {
   final List<UserStories> storiesList;
@@ -160,7 +160,7 @@ class StoriesBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Find my stories (nullable — may not exist yet)
+    
     UserStories? myStories;
     final others = <UserStories>[];
 
@@ -189,7 +189,7 @@ class StoriesBar extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         children: [
-          // ── My Status tile ──────────────────────────
+          
           _MyStatusTile(
             myStories: myStories,
             onAdd: onAddStory,
@@ -198,7 +198,7 @@ class StoriesBar extends StatelessWidget {
                 : null,
           ),
 
-          // Vertical divider
+          
           if (others.isNotEmpty)
             Container(
               width: 0.5,
@@ -207,7 +207,7 @@ class StoriesBar extends StatelessWidget {
               color: Theme.of(context).dividerColor,
             ),
 
-          // ── Friends' stories ─────────────────────────
+          
           for (final us in others)
             _FriendTile(
               userStories: us,
@@ -220,7 +220,7 @@ class StoriesBar extends StatelessWidget {
   }
 }
 
-// ── My Status Tile ────────────────────────────────────────────
+
 
 class _MyStatusTile extends StatelessWidget {
   final UserStories? myStories;
@@ -264,7 +264,7 @@ class _MyStatusTile extends StatelessWidget {
                     ),
                   ),
                 ),
-                // + badge
+                
                 Positioned(
                   right: -2,
                   bottom: -2,
@@ -306,7 +306,7 @@ class _MyStatusTile extends StatelessWidget {
   }
 }
 
-// ── Friend Tile ───────────────────────────────────────────────
+
 
 class _FriendTile extends StatelessWidget {
   final UserStories userStories;
@@ -364,7 +364,7 @@ class _FriendTile extends StatelessWidget {
   }
 }
 
-// ── Shared avatar helper ──────────────────────────────────────
+
 
 class _AvatarContent extends StatelessWidget {
   final String photoUrl;

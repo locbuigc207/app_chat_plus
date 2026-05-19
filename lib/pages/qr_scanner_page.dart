@@ -57,7 +57,7 @@ class _QRScannerPageState extends State<QRScannerPage> {
       ),
       body: Stack(
         children: [
-          // ✅ FIX: errorBuilder must match signature exactly
+          
           MobileScanner(
             controller: controller,
             onDetect: _onDetect,

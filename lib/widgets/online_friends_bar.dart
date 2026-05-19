@@ -1,4 +1,4 @@
-// lib/widgets/online_friends_bar.dart - COMPLETELY FIXED
+
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
@@ -24,7 +24,7 @@ class _OnlineFriendsBarState extends State<OnlineFriendsBar>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // Required for AutomaticKeepAliveClientMixin
+    super.build(context); 
 
     final presenceProvider = context.read<UserPresenceProvider>();
 
@@ -43,7 +43,7 @@ class _OnlineFriendsBarState extends State<OnlineFriendsBar>
       child: StreamBuilder<List<Map<String, dynamic>>>(
         stream: presenceProvider.getOnlineFriends(widget.currentUserId),
         builder: (context, snapshot) {
-          // ✅ FIX: Better loading state
+          
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
               child: SizedBox(
@@ -57,7 +57,7 @@ class _OnlineFriendsBarState extends State<OnlineFriendsBar>
             );
           }
 
-          // ✅ FIX: Handle errors gracefully
+          
           if (snapshot.hasError) {
             return Center(
               child: Text(
@@ -99,16 +99,16 @@ class _OnlineFriendsBarState extends State<OnlineFriendsBar>
             );
           }
 
-          // ✅ FIX: Use ListView.builder with proper constraints
+          
           return ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             itemCount: onlineFriends.length,
-            // ✅ FIX: Add item extent for better performance
-            itemExtent: 78, // Fixed width per item
+            
+            itemExtent: 78, 
             addAutomaticKeepAlives: true,
             addRepaintBoundaries: true,
-            cacheExtent: 400, // Cache nearby items
+            cacheExtent: 400, 
             itemBuilder: (context, index) {
               return _OnlineFriendItem(
                 key: ValueKey(onlineFriends[index]['id']),
@@ -122,7 +122,7 @@ class _OnlineFriendsBarState extends State<OnlineFriendsBar>
   }
 }
 
-// ✅ FIX: Optimized friend item with RepaintBoundary
+
 class _OnlineFriendItem extends StatelessWidget {
   final Map<String, dynamic> friend;
 
@@ -133,7 +133,7 @@ class _OnlineFriendItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ FIX: Wrap in RepaintBoundary to prevent unnecessary repaints
+    
     return RepaintBoundary(
       child: GestureDetector(
         onTap: () {
@@ -151,18 +151,18 @@ class _OnlineFriendItem extends StatelessWidget {
           );
         },
         child: Container(
-          width: 70, // ✅ FIX: Fixed width
+          width: 70, 
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Avatar with status
+              
               SizedBox(
                 width: 60,
                 height: 60,
                 child: Stack(
                   children: [
-                    // Avatar with Hero animation
+                    
                     Hero(
                       tag: 'avatar_${friend['id']}',
                       child: Container(
@@ -181,7 +181,7 @@ class _OnlineFriendItem extends StatelessWidget {
                       ),
                     ),
 
-                    // Online indicator
+                    
                     Positioned(
                       right: 2,
                       bottom: 2,
@@ -204,7 +204,7 @@ class _OnlineFriendItem extends StatelessWidget {
 
               const SizedBox(height: 4),
 
-              // Name with proper overflow handling
+              
               SizedBox(
                 width: 70,
                 child: Text(
@@ -225,7 +225,7 @@ class _OnlineFriendItem extends StatelessWidget {
     );
   }
 
-  // ✅ FIX: Optimized avatar loading
+  
   Widget _buildAvatar() {
     final photoUrl = friend['photoUrl']?.toString() ?? '';
 
@@ -240,10 +240,10 @@ class _OnlineFriendItem extends StatelessWidget {
     return Image.network(
       photoUrl,
       fit: BoxFit.cover,
-      // ✅ FIX: Add cache dimensions to reduce memory usage
-      cacheWidth: 120, // 2x for retina displays
+      
+      cacheWidth: 120, 
       cacheHeight: 120,
-      // ✅ FIX: Add loading builder
+      
       loadingBuilder: (context, child, loadingProgress) {
         if (loadingProgress == null) return child;
         return Center(

@@ -1,4 +1,4 @@
-// lib/widgets/pin_input_dialog.dart (WITH CONFIRM BUTTON)
+
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
@@ -78,7 +78,7 @@ class _PINInputDialogState extends State<PINInputDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Lock Icon
+            
             Icon(
               Icons.lock_outline,
               size: 48,
@@ -86,7 +86,7 @@ class _PINInputDialogState extends State<PINInputDialog> {
             ),
             const SizedBox(height: 16),
 
-            // Title
+            
             Text(
               widget.title,
               style: const TextStyle(
@@ -96,7 +96,7 @@ class _PINInputDialogState extends State<PINInputDialog> {
               ),
             ),
 
-            // Error Message
+            
             if (widget.errorMessage != null) ...[
               const SizedBox(height: 12),
               Container(
@@ -124,7 +124,7 @@ class _PINInputDialogState extends State<PINInputDialog> {
               ),
             ],
 
-            // Remaining Attempts
+            
             if (widget.remainingAttempts != null) ...[
               const SizedBox(height: 8),
               Text(
@@ -141,7 +141,7 @@ class _PINInputDialogState extends State<PINInputDialog> {
 
             const SizedBox(height: 32),
 
-            // PIN Display (dots)
+            
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: List.generate(_pinLength, (index) {
@@ -167,7 +167,7 @@ class _PINInputDialogState extends State<PINInputDialog> {
 
             const SizedBox(height: 32),
 
-            // Number Pad
+            
             GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -193,7 +193,7 @@ class _PINInputDialogState extends State<PINInputDialog> {
 
             const SizedBox(height: 24),
 
-            // Confirm Button
+            
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
@@ -231,7 +231,7 @@ class _PINInputDialogState extends State<PINInputDialog> {
 
             const SizedBox(height: 12),
 
-            // Cancel button
+            
             TextButton(
               onPressed: _isLoading ? null : () => Navigator.pop(context),
               child: const Text(

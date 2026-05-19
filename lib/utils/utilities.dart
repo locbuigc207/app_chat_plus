@@ -5,7 +5,7 @@ class Utilities {
     return MediaQuery.of(context).viewInsets.bottom > 0;
   }
 
-  static closeKeyboard() {
+  static void closeKeyboard() {
     FocusManager.instance.primaryFocus?.unfocus();
   }
 }

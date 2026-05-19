@@ -1,4 +1,4 @@
-// lib/widgets/voice_message_widget.dart
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -6,9 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
 
-// ──────────────────────────────────────────────
-// VoiceMessageWidget
-// ──────────────────────────────────────────────
+
+
+
 class VoiceMessageWidget extends StatefulWidget {
   final String voiceUrl;
   final bool isMyMessage;
@@ -56,7 +56,7 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget> {
             _currentPosition = event.position.inMilliseconds.toDouble();
             _totalDuration = event.duration.inMilliseconds.toDouble();
 
-            // Detect playback finished
+            
             if (_totalDuration > 0 &&
                 _currentPosition >= _totalDuration - 100) {
               _isPlaying = false;
@@ -151,7 +151,7 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Play / Pause button
+          
           _isLoading
               ? SizedBox(
                   width: 36,
@@ -189,7 +189,7 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget> {
 
           const SizedBox(width: 12),
 
-          // Waveform + duration
+          
           Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -243,9 +243,9 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget> {
   }
 }
 
-// ──────────────────────────────────────────────
-// WaveformPainter
-// ──────────────────────────────────────────────
+
+
+
 class WaveformPainter extends CustomPainter {
   final double progress;
   final Color activeColor;
@@ -288,9 +288,9 @@ class WaveformPainter extends CustomPainter {
   }
 }
 
-// ──────────────────────────────────────────────
-// VoiceRecordingIndicator
-// ──────────────────────────────────────────────
+
+
+
 class VoiceRecordingIndicator extends StatefulWidget {
   final String duration;
   final VoidCallback onCancel;
@@ -335,7 +335,7 @@ class _VoiceRecordingIndicatorState extends State<VoiceRecordingIndicator>
       color: Colors.red.withOpacity(0.1),
       child: Row(
         children: [
-          // Animated red dot
+          
           AnimatedBuilder(
             animation: _animationController,
             builder: (context, child) {
@@ -354,7 +354,7 @@ class _VoiceRecordingIndicatorState extends State<VoiceRecordingIndicator>
 
           const SizedBox(width: 12),
 
-          // Duration label
+          
           Text(
             'Recording... ${widget.duration}',
             style: const TextStyle(
@@ -365,14 +365,14 @@ class _VoiceRecordingIndicatorState extends State<VoiceRecordingIndicator>
 
           const Spacer(),
 
-          // Cancel
+          
           IconButton(
             icon: const Icon(Icons.delete, color: Colors.red),
             onPressed: widget.onCancel,
             tooltip: 'Cancel recording',
           ),
 
-          // Send
+          
           IconButton(
             icon: Icon(Icons.send, color: ColorConstants.primaryColor),
             onPressed: widget.onSend,

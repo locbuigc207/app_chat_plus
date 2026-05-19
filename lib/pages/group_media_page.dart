@@ -1,4 +1,4 @@
-// lib/pages/group_media_page.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
@@ -209,7 +209,7 @@ class _GroupMediaPageState extends State<GroupMediaPage>
       itemBuilder: (_, i) {
         final data = _links[i].data() as Map<String, dynamic>? ?? {};
         final content = data['content'] as String? ?? '';
-        // Extract URL
+        
         final urlReg = RegExp(r'https?://[^\s]+');
         final match = urlReg.firstMatch(content);
         final url = match?.group(0) ?? content;

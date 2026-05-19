@@ -2,14 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-/// Quản lý lifecycle của resources để tránh memory leaks
+
 class ResourceManager {
   final List<StreamSubscription> _subscriptions = [];
   final List<Timer> _timers = [];
   final List<VoidCallback> _disposers = [];
   bool _isDisposed = false;
 
-  /// Add subscription để auto-cancel khi dispose
+  
   void addSubscription(StreamSubscription subscription) {
     if (_isDisposed) {
       subscription.cancel();
@@ -18,7 +18,7 @@ class ResourceManager {
     _subscriptions.add(subscription);
   }
 
-  /// Add timer để auto-cancel khi dispose
+  
   void addTimer(Timer timer) {
     if (_isDisposed) {
       timer.cancel();
@@ -27,7 +27,7 @@ class ResourceManager {
     _timers.add(timer);
   }
 
-  /// Add custom disposer
+  
   void addDisposer(VoidCallback disposer) {
     if (_isDisposed) {
       disposer();
@@ -36,12 +36,12 @@ class ResourceManager {
     _disposers.add(disposer);
   }
 
-  /// Dispose tất cả resources
+  
   Future<void> dispose() async {
     if (_isDisposed) return;
     _isDisposed = true;
 
-    // Cancel all subscriptions
+    
     for (var subscription in _subscriptions) {
       try {
         await subscription.cancel();
@@ -51,7 +51,7 @@ class ResourceManager {
     }
     _subscriptions.clear();
 
-    // Cancel all timers
+    
     for (var timer in _timers) {
       try {
         timer.cancel();
@@ -61,7 +61,7 @@ class ResourceManager {
     }
     _timers.clear();
 
-    // Call custom disposers
+    
     for (var disposer in _disposers) {
       try {
         disposer();
@@ -75,7 +75,7 @@ class ResourceManager {
   bool get isDisposed => _isDisposed;
 }
 
-/// Mixin để tự động quản lý resources
+
 mixin ResourceManagerMixin<T extends StatefulWidget> on State<T> {
   final ResourceManager _resourceManager = ResourceManager();
 

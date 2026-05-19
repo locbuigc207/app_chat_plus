@@ -1,4 +1,4 @@
-// lib/widgets/conversation_item.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
@@ -35,7 +35,7 @@ class ConversationItem extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                // Avatar
+                
                 Stack(
                   children: [
                     const CircleAvatar(
@@ -67,7 +67,7 @@ class ConversationItem extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
 
-                // Content
+                
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

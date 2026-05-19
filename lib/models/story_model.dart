@@ -1,22 +1,22 @@
-// lib/models/story_model.dart
-// ignore_for_file: depend_on_referenced_packages
+
+
 
 import 'dart:ui' show Color;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-// ─────────────────────────────────────────────────────────────
-// ENUMS
-// ─────────────────────────────────────────────────────────────
 
-// BỔ SUNG: Thêm 'video' vào StoryType
+
+
+
+
 enum StoryType { image, text, video }
 
 enum StoryPrivacy { everyone, friends }
 
-// ─────────────────────────────────────────────────────────────
-// STORY VIEW  (who viewed this story)
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class StoryView {
   final String userId;
@@ -48,9 +48,9 @@ class StoryView {
       );
 }
 
-// ─────────────────────────────────────────────────────────────
-// STORY
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class Story {
   final String id;
@@ -91,7 +91,7 @@ class Story {
     this.isDeleted = false,
   });
 
-  // ── Computed properties ──────────────────────────────────
+  
 
   bool get isExpired => DateTime.now().isAfter(expiresAt);
   bool get isActive => !isExpired && !isDeleted;
@@ -102,7 +102,7 @@ class Story {
   Duration get remainingTime =>
       isExpired ? Duration.zero : expiresAt.difference(DateTime.now());
 
-  // ── Serialization ────────────────────────────────────────
+  
 
   Map<String, dynamic> toJson() => {
         'userId': userId,
@@ -129,25 +129,25 @@ class Story {
   }
 
   factory Story.fromJson(Map<String, dynamic> data, String id) {
-    // Safe Color parsing
-    Color? _parseColor(dynamic raw) {
+    
+    Color? parseColor(dynamic raw) {
       if (raw == null) return null;
       if (raw is int) return Color(raw);
-      // Firestore sometimes returns as double
+      
       if (raw is double) return Color(raw.toInt());
       return null;
     }
 
-    // Safe int parsing for timestamp strings
-    int _parseTs(dynamic raw) => int.tryParse(raw?.toString() ?? '0') ?? 0;
+    
+    int parseTs(dynamic raw) => int.tryParse(raw?.toString() ?? '0') ?? 0;
 
-    // Safe enum index
-    int _safeIdx(dynamic raw, int maxIdx) {
+    
+    int safeIdx(dynamic raw, int maxIdx) {
       final i = raw is int ? raw : int.tryParse(raw?.toString() ?? '0') ?? 0;
       return i.clamp(0, maxIdx);
     }
 
-    // Parse views array
+    
     final List<StoryView> views = [];
     final rawViews = data['views'];
     if (rawViews is List) {
@@ -166,21 +166,21 @@ class Story {
       userName: data['userName']?.toString() ?? '',
       userPhotoUrl: data['userPhotoUrl']?.toString() ?? '',
       type:
-          StoryType.values[_safeIdx(data['type'], StoryType.values.length - 1)],
+          StoryType.values[safeIdx(data['type'], StoryType.values.length - 1)],
       mediaUrl: data['mediaUrl']?.toString(),
       textContent: data['textContent']?.toString(),
       caption: data['caption']?.toString(),
-      backgroundColor: _parseColor(data['backgroundColor']),
-      textColor: _parseColor(data['textColor']),
+      backgroundColor: parseColor(data['backgroundColor']),
+      textColor: parseColor(data['textColor']),
       fontFamily: data['fontFamily']?.toString(),
       fontSize: (data['fontSize'] as num?)?.toDouble() ?? 28.0,
       createdAt:
-          DateTime.fromMillisecondsSinceEpoch(_parseTs(data['createdAt'])),
+          DateTime.fromMillisecondsSinceEpoch(parseTs(data['createdAt'])),
       expiresAt:
-          DateTime.fromMillisecondsSinceEpoch(_parseTs(data['expiresAt'])),
+          DateTime.fromMillisecondsSinceEpoch(parseTs(data['expiresAt'])),
       views: views,
       privacy: StoryPrivacy
-          .values[_safeIdx(data['privacy'], StoryPrivacy.values.length - 1)],
+          .values[safeIdx(data['privacy'], StoryPrivacy.values.length - 1)],
       isDeleted: data['isDeleted'] == true,
     );
   }
@@ -211,9 +211,9 @@ class Story {
       );
 }
 
-// ─────────────────────────────────────────────────────────────
-// USER STORIES  (all stories for one user)
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class UserStories {
   final String userId;

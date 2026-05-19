@@ -1,12 +1,12 @@
-// lib/widgets/view_once_message_widget.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
 
-// ==========================================
-// ViewOnceMessageWidget
-// ==========================================
+
+
+
 
 class ViewOnceMessageWidget extends StatefulWidget {
   final String groupChatId;
@@ -36,22 +36,22 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget> {
   bool _isRevealed = false;
 
   void _revealMessage() async {
-    HapticFeedback.heavyImpact(); // Rung mạnh cảnh báo xem 1 lần
+    HapticFeedback.heavyImpact(); 
     setState(() => _isRevealed = true);
 
-    // Mark as viewed and schedule auto-delete (10 seconds)
+    
     await widget.provider.markAsViewed(
       groupChatId: widget.groupChatId,
       messageId: widget.messageId,
       userId: widget.currentUserId,
     );
 
-    // Message will be auto-deleted by the provider after 10 seconds
+    
   }
 
   @override
   Widget build(BuildContext context) {
-    // Already viewed and not revealed = show "opened" message
+    
     if (widget.isViewed && !_isRevealed) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -79,7 +79,7 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget> {
       );
     }
 
-    // Not yet viewed = show "tap to view" button
+    
     if (!_isRevealed) {
       return GestureDetector(
         onTap: _revealMessage,
@@ -118,7 +118,7 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget> {
       );
     }
 
-    // Revealed = show actual message content (will auto-delete after 10s)
+    
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -159,9 +159,9 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget> {
   }
 }
 
-// ==========================================
-// SendViewOnceDialog
-// ==========================================
+
+
+
 
 class SendViewOnceDialog extends StatefulWidget {
   final Function(String content, int type) onSend;

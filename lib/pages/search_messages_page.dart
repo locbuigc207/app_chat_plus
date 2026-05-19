@@ -54,10 +54,10 @@ class _SearchMessagesPageState extends State<SearchMessagesPage> {
           .doc(widget.groupChatId)
           .collection(widget.groupChatId)
           .orderBy(FirestoreConstants.timestamp, descending: true)
-          .limit(1000) // Limit for performance
+          .limit(1000) 
           .get();
 
-      // Filter messages locally (Firestore doesn't support full-text search)
+      
       final results = snapshot.docs.where((doc) {
         final message = MessageChat.fromDocument(doc);
         return message.type == TypeMessage.text &&
@@ -103,7 +103,7 @@ class _SearchMessagesPageState extends State<SearchMessagesPage> {
       ),
       body: Column(
         children: [
-          // Search Bar
+          
           Container(
             padding: const EdgeInsets.all(16),
             color: Colors.white,
@@ -144,7 +144,7 @@ class _SearchMessagesPageState extends State<SearchMessagesPage> {
             ),
           ),
 
-          // Results Count
+          
           if (_searchQuery.isNotEmpty && !_isSearching)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -159,7 +159,7 @@ class _SearchMessagesPageState extends State<SearchMessagesPage> {
               ),
             ),
 
-          // Search Results
+          
           Expanded(
             child: _isSearching
                 ? const Center(
@@ -229,7 +229,7 @@ class _SearchMessagesPageState extends State<SearchMessagesPage> {
       int.parse(message.timestamp),
     );
 
-    // Highlight search query in content
+    
     final content = message.content;
     final queryIndex = content.toLowerCase().indexOf(_searchQuery);
 
@@ -281,7 +281,7 @@ class _SearchMessagesPageState extends State<SearchMessagesPage> {
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
-            Navigator.pop(context, doc.id); // Return message ID to scroll to it
+            Navigator.pop(context, doc.id); 
           },
           borderRadius: BorderRadius.circular(12),
           child: Container(

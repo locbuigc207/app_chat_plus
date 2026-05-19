@@ -1,4 +1,4 @@
-// lib/providers/conversation_lock_provider.dart
+
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -129,27 +129,27 @@ class ConversationLockProvider {
     }
   }
 
-  /// FIX #3b: Batch reuse bug — tạo batch MỚI sau mỗi 500 operations.
-  ///
-  /// Trước (BUG):
-  ///   final batch = db.batch();  // tạo 1 lần
-  ///   ...
-  ///   if (count >= 500) {
-  ///     await batch.commit();    // commit lần 1 OK
-  ///     count = 0;               // reset count nhưng dùng lại batch cũ!
-  ///   }
-  ///   if (count > 0) {
-  ///     await batch.commit();    // commit lần 2 trên batch đã commit → CRASH
-  ///   }
-  ///
-  /// Sau (FIX):
-  ///   WriteBatch currentBatch = db.batch();  // tái tạo batch khi cần
-  ///   ...
-  ///   if (count >= 500) {
-  ///     await currentBatch.commit();
-  ///     currentBatch = db.batch();  // tạo INSTANCE MỚI
-  ///     count = 0;
-  ///   }
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   Future<void> autoDeleteMessagesAfterFailedAttempts({
     required String conversationId,
   }) async {
@@ -169,7 +169,7 @@ class ConversationLockProvider {
 
       print('🗑️ Deleting ${messagesSnapshot.docs.length} messages');
 
-      // FIX: Dùng WriteBatch variable, tái tạo sau mỗi 500 ops
+      
       WriteBatch currentBatch = firebaseFirestore.batch();
       int count = 0;
       int totalDeleted = 0;
@@ -185,14 +185,14 @@ class ConversationLockProvider {
 
         if (count >= 500) {
           await currentBatch.commit();
-          // FIX: Tạo INSTANCE MỚI, không reuse instance đã committed
+          
           currentBatch = firebaseFirestore.batch();
           count = 0;
-          print('✅ Committed batch (${totalDeleted} total so far)');
+          print('✅ Committed batch ($totalDeleted total so far)');
         }
       }
 
-      // Commit remaining operations trong batch cuối
+      
       if (count > 0) {
         await currentBatch.commit();
         print('✅ Committed final batch');

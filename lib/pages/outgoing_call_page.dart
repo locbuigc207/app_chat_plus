@@ -1,4 +1,4 @@
-// lib/pages/outgoing_call_page.dart
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -79,8 +79,8 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.of(context).pop(); // close dialog
-              Navigator.of(context).pop(); // close outgoing page
+              Navigator.of(context).pop(); 
+              Navigator.of(context).pop(); 
             },
             child: const Text('OK'),
           ),
@@ -130,7 +130,7 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
               children: [
                 const SizedBox(height: 24),
 
-                // Badge
+                
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -157,7 +157,7 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
 
                 const Spacer(),
 
-                // Animated avatar
+                
                 _AnimatedCallingAvatar(
                   controller: _waveController,
                   avatarUrl: avatar,
@@ -165,7 +165,7 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
                 ),
                 const SizedBox(height: 32),
 
-                // Name
+                
                 Text(name,
                     style: const TextStyle(
                         color: Colors.white,
@@ -173,12 +173,12 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
                         fontWeight: FontWeight.bold)),
                 const SizedBox(height: 10),
 
-                // Status dots
+                
                 _RingingDotsText(label: 'Đang đổ chuông'),
 
                 const Spacer(),
 
-                // Cancel button
+                
                 Padding(
                   padding: const EdgeInsets.only(bottom: 56),
                   child: Column(
@@ -220,7 +220,7 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
   }
 }
 
-// ── Animated caller avatar ──────────────────────────────────────
+
 
 class _AnimatedCallingAvatar extends StatelessWidget {
   final Animation<double> controller;
@@ -293,7 +293,7 @@ class _AnimatedCallingAvatar extends StatelessWidget {
   }
 }
 
-// ── Ringing dots ────────────────────────────────────────────────
+
 
 class _RingingDotsText extends StatefulWidget {
   final String label;

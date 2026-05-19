@@ -1,4 +1,4 @@
-// lib/providers/translation_provider.dart - COMPLETE FIXED
+
 import 'dart:async';
 
 import 'package:translator/translator.dart';
@@ -22,7 +22,7 @@ class TranslationProvider {
     }
   }
 
-  /// Translate text to target language
+  
   Future<String?> translateText({
     required String text,
     required String targetLanguage,
@@ -30,15 +30,15 @@ class TranslationProvider {
   }) async {
     if (!_isInitialized || _translator == null) {
       print('⚠️ Translator not initialized');
-      return text; // Return original text
+      return text; 
     }
 
-    // Validate input
+    
     if (text.trim().isEmpty) {
       return null;
     }
 
-    // Validate target language
+    
     if (!languages.containsKey(targetLanguage)) {
       print('⚠️ Invalid target language: $targetLanguage');
       return text;
@@ -68,12 +68,12 @@ class TranslationProvider {
       return null;
     } catch (e) {
       print('❌ Translation error: $e');
-      // Return original text if translation fails
+      
       return null;
     }
   }
 
-  /// Detect language of text
+  
   Future<String?> detectLanguage(String text) async {
     if (!_isInitialized || _translator == null) {
       return null;
@@ -97,10 +97,10 @@ class TranslationProvider {
     }
   }
 
-  /// Check if translation is available
+  
   bool get isAvailable => _isInitialized;
 
-  /// Popular language codes with full names
+  
   static const Map<String, String> languages = {
     'en': 'English',
     'vi': 'Tiếng Việt',
@@ -137,12 +137,12 @@ class TranslationProvider {
     'te': 'తెలుగు',
   };
 
-  /// Get language name from code
+  
   String getLanguageName(String code) {
     return languages[code] ?? code.toUpperCase();
   }
 
-  /// Get most common languages (for quick selection)
+  
   static List<MapEntry<String, String>> get commonLanguages {
     return [
       MapEntry('en', 'English'),
@@ -156,7 +156,7 @@ class TranslationProvider {
     ];
   }
 
-  /// Translate with auto-retry
+  
   Future<String?> translateWithRetry({
     required String text,
     required String targetLanguage,

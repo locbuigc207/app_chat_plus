@@ -18,7 +18,7 @@ class _PhoneLoginPageState extends State<PhoneLoginPage> {
   final _otpController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
-  String _selectedCountryCode = '+84'; // Vietnam default
+  String _selectedCountryCode = '+84'; 
 
   @override
   void dispose() {
@@ -77,7 +77,7 @@ class _PhoneLoginPageState extends State<PhoneLoginPage> {
                 children: [
                   SizedBox(height: 40),
 
-                  // Logo or Icon
+                  
                   Icon(
                     Icons.phone_android,
                     size: 100,
@@ -85,7 +85,7 @@ class _PhoneLoginPageState extends State<PhoneLoginPage> {
                   ),
                   SizedBox(height: 40),
 
-                  // Phone Number Input
+                  
                   Text(
                     'Enter your phone number',
                     style: TextStyle(
@@ -98,7 +98,7 @@ class _PhoneLoginPageState extends State<PhoneLoginPage> {
 
                   Row(
                     children: [
-                      // Country Code Dropdown
+                      
                       Container(
                         padding: EdgeInsets.symmetric(horizontal: 12),
                         decoration: BoxDecoration(
@@ -123,7 +123,7 @@ class _PhoneLoginPageState extends State<PhoneLoginPage> {
                       ),
                       SizedBox(width: 12),
 
-                      // Phone Number Field
+                      
                       Expanded(
                         child: TextFormField(
                           controller: _phoneController,
@@ -153,7 +153,7 @@ class _PhoneLoginPageState extends State<PhoneLoginPage> {
                   ),
                   SizedBox(height: 24),
 
-                  // Send OTP Button
+                  
                   if (phoneAuthProvider.status != PhoneAuthStatus.codeSent)
                     ElevatedButton(
                       onPressed: phoneAuthProvider.status == PhoneAuthStatus.authenticating
@@ -175,7 +175,7 @@ class _PhoneLoginPageState extends State<PhoneLoginPage> {
                       ),
                     ),
 
-                  // OTP Input Section
+                  
                   if (phoneAuthProvider.status == PhoneAuthStatus.codeSent) ...[
                     SizedBox(height: 24),
                     Text(
@@ -205,7 +205,7 @@ class _PhoneLoginPageState extends State<PhoneLoginPage> {
                     ),
                     SizedBox(height: 16),
 
-                    // Verify OTP Button
+                    
                     ElevatedButton(
                       onPressed: phoneAuthProvider.status == PhoneAuthStatus.authenticating
                           ? null
@@ -226,7 +226,7 @@ class _PhoneLoginPageState extends State<PhoneLoginPage> {
                       ),
                     ),
 
-                    // Resend OTP
+                    
                     SizedBox(height: 16),
                     TextButton(
                       onPressed: _sendOTP,
@@ -244,7 +244,7 @@ class _PhoneLoginPageState extends State<PhoneLoginPage> {
             ),
           ),
 
-          // Loading Overlay
+          
           if (phoneAuthProvider.status == PhoneAuthStatus.authenticating)
             Positioned.fill(
               child: LoadingView(),

@@ -1,4 +1,4 @@
-// lib/utils/network_utils.dart
+
 import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -6,17 +6,17 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 class NetworkUtils {
   static final Connectivity _connectivity = Connectivity();
 
-  /// Kiểm tra kết nối internet
+  
   static Future<bool> hasConnection() async {
     try {
-      // Check connectivity status
+      
       final connectivityResult = await _connectivity.checkConnectivity();
 
       if (connectivityResult.contains(ConnectivityResult.none)) {
         return false;
       }
 
-      // Double check with actual connection
+      
       final result = await InternetAddress.lookup('google.com')
           .timeout(const Duration(seconds: 5));
 
@@ -26,7 +26,7 @@ class NetworkUtils {
     }
   }
 
-  /// Retry operation với exponential backoff
+  
   static Future<T?> retryOperation<T>(
     Future<T> Function() operation, {
     int maxRetries = 3,
@@ -42,7 +42,7 @@ class NetworkUtils {
           rethrow;
         }
 
-        // Exponential backoff: 1s, 2s, 4s
+        
         final delay = initialDelay * (1 << i);
         print('⏳ Retrying in ${delay.inSeconds}s...');
         await Future.delayed(delay);
@@ -51,7 +51,7 @@ class NetworkUtils {
     return null;
   }
 
-  /// Listen to connectivity changes
+  
   static Stream<bool> get connectivityStream {
     return _connectivity.onConnectivityChanged.asyncMap((_) async {
       return await hasConnection();

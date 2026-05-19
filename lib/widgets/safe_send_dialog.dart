@@ -7,11 +7,11 @@ class SafeSendDialog extends StatelessWidget {
   final IconData icon;
 
   const SafeSendDialog({
-    Key? key,
+    super.key,
     required this.title,
     required this.content,
     required this.icon,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

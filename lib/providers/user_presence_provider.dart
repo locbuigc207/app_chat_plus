@@ -1,4 +1,4 @@
-// lib/providers/user_presence_provider.dart
+
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -12,7 +12,7 @@ class UserPresenceProvider {
 
   UserPresenceProvider({required this.firebaseFirestore});
 
-  // Set user online status
+  
   Future<void> setUserOnline(String userId) async {
     try {
       await firebaseFirestore
@@ -23,7 +23,7 @@ class UserPresenceProvider {
         'lastSeen': FieldValue.serverTimestamp(),
       });
 
-      // Start heartbeat to maintain online status
+      
       _startHeartbeat(userId);
 
       print('✅ User set online: $userId');
@@ -32,7 +32,7 @@ class UserPresenceProvider {
     }
   }
 
-  // Set user offline status
+  
   Future<void> setUserOffline(String userId) async {
     try {
       await firebaseFirestore
@@ -65,7 +65,7 @@ class UserPresenceProvider {
     }
   }
 
-  // Start heartbeat to update online status every 30 seconds
+  
   void _startHeartbeat(String userId) {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(
@@ -85,14 +85,14 @@ class UserPresenceProvider {
     );
   }
 
-  // Set typing status
+  
   Future<void> setTypingStatus({
     required String conversationId,
     required String userId,
     required bool isTyping,
   }) async {
     try {
-      // ✅ FIX: Cancel existing timer
+      
       _typingTimers[conversationId]?.cancel();
 
       await firebaseFirestore
@@ -105,7 +105,7 @@ class UserPresenceProvider {
         },
       }, SetOptions(merge: true));
 
-      // ✅ FIX: Auto-reset sau 5 giây nếu không có update
+      
       if (isTyping) {
         _typingTimers[conversationId] = Timer(Duration(seconds: 5), () {
           setTypingStatus(
@@ -122,7 +122,7 @@ class UserPresenceProvider {
     }
   }
 
-  // Get typing status stream
+  
   Stream<Map<String, bool>> getTypingStatus(String conversationId) {
     return firebaseFirestore
         .collection('typing_status')
@@ -139,7 +139,7 @@ class UserPresenceProvider {
           final isTyping = value['isTyping'] as bool? ?? false;
           final timestamp = value['timestamp'] as Timestamp?;
 
-          // Only consider typing if updated in last 5 seconds
+          
           if (timestamp != null && isTyping) {
             final now = DateTime.now();
             final diff = now.difference(timestamp.toDate()).inSeconds;
@@ -154,7 +154,7 @@ class UserPresenceProvider {
     });
   }
 
-  // Mark messages as read
+  
   Future<void> markMessagesAsRead({
     required String conversationId,
     required String userId,
@@ -185,7 +185,7 @@ class UserPresenceProvider {
     }
   }
 
-  // Get unread count
+  
   Stream<int> getUnreadCount(String conversationId, String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathMessageCollection)
@@ -197,7 +197,7 @@ class UserPresenceProvider {
         .map((snapshot) => snapshot.docs.length);
   }
 
-  // Get user online status
+  
   Stream<Map<String, dynamic>> getUserOnlineStatus(String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathUserCollection)
@@ -215,7 +215,7 @@ class UserPresenceProvider {
       final isOnline = data['isOnline'] as bool? ?? false;
       final lastSeen = data['lastSeen'] as Timestamp?;
 
-      // Consider user offline if last seen > 1 minute ago
+      
       if (lastSeen != null) {
         final diff = DateTime.now().difference(lastSeen.toDate()).inMinutes;
         if (diff > 1) {
@@ -233,7 +233,7 @@ class UserPresenceProvider {
     });
   }
 
-  // Get all online friends
+  
   Stream<List<Map<String, dynamic>>> getOnlineFriends(String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathUserCollection)
@@ -256,7 +256,7 @@ class UserPresenceProvider {
   void dispose() {
     _heartbeatTimer?.cancel();
 
-    // ✅ FIX: Cancel all typing timers
+    
     for (var timer in _typingTimers.values) {
       timer.cancel();
     }

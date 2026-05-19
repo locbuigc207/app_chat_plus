@@ -1,4 +1,4 @@
-// lib/pages/home_page.dart
+
 import 'dart:async';
 import 'dart:io';
 
@@ -307,7 +307,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
     }
   }
 
-  // ── BUILD ───────────────────────────────────────────────────
+  
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -325,7 +325,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
               physics: const BouncingScrollPhysics(
                   parent: AlwaysScrollableScrollPhysics()),
               slivers: [
-                // ── Premium Sticky Header ──
+                
                 SliverAppBar(
                   expandedHeight: 110.0,
                   floating: true,
@@ -371,10 +371,10 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
                             ],
                           ),
                         ),
-                        // ── Notification badge ──
+                        
                         _buildNotificationBadge(isDark),
                         const SizedBox(width: 4),
-                        // ── Archive button ──
+                        
                         _HeaderIconButton(
                           icon: Icons.archive_outlined,
                           isDark: isDark,
@@ -385,7 +385,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
                           ),
                         ),
                         const SizedBox(width: 4),
-                        // ── Menu button ──
+                        
                         _buildMenuButton(isDark),
                         const SizedBox(width: 4),
                       ],
@@ -396,7 +396,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
                   ),
                 ),
 
-                // ── Search Bar ──
+                
                 SliverToBoxAdapter(
                   child: Container(
                     color: isDark ? ColorConstants.surfaceDark : Colors.white,
@@ -405,7 +405,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
                   ),
                 ),
 
-                // ── Stories + Online Friends ──
+                
                 if (_textSearch.isEmpty) ...[
                   SliverToBoxAdapter(
                     child: _buildStoriesSection(provider, isDark),
@@ -415,7 +415,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
                   ),
                 ],
 
-                // ── Conversation / Search list wrapped in card ──
+                
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                   sliver: SliverToBoxAdapter(
@@ -469,7 +469,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
-  // ── PREMIUM SEARCH BAR ──────────────────────────────────────
+  
   Widget _buildPremiumSearchBar(bool isDark) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
@@ -564,7 +564,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
-  // ── NOTIFICATION BADGE ──────────────────────────────────────
+  
   Widget _buildNotificationBadge(bool isDark) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -616,7 +616,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
-  // ── MENU BUTTON ─────────────────────────────────────────────
+  
   Widget _buildMenuButton(bool isDark) {
     return PopupMenuButton<MenuSetting>(
       onSelected: _onItemMenuPress,
@@ -687,7 +687,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
-  // ── STORIES SECTION ────────────────────────────────────────
+  
   Widget _buildStoriesSection(StoryProvider provider, bool isDark) {
     return Container(
       color: isDark ? ColorConstants.surfaceDark : Colors.white,
@@ -751,7 +751,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
-  // ── ONLINE FRIENDS SECTION ──────────────────────────────────
+  
   Widget _buildOnlineFriendsSection(bool isDark) {
     return Container(
       color: isDark ? ColorConstants.surfaceDark : Colors.white,
@@ -784,7 +784,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
-  // ── CONVERSATION LIST ──────────────────────────────────────
+  
   Widget _buildConversationList(bool isDark) {
     return StreamBuilder<List<QueryDocumentSnapshot>>(
       stream: _conversationProvider.getConversationsWithPinned(_currentUserId),
@@ -793,7 +793,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
           return _buildListSkeleton(isDark);
         }
 
-        // Lọc cuộc hội thoại: Chỉ hiện những cái mà user hiện tại CHƯA lưu trữ
+        
         final allDocs = snapshot.data ?? [];
         final activeConversations = allDocs.where((doc) {
           final conv = Conversation.fromDocument(doc);
@@ -823,7 +823,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
-  // ── AI ASSISTANT TILE ───────────────────────────────────────
+  
   Widget _buildAiAssistantTile(bool isDark) {
     return _ConversationTile(
       id: AppConstants.aiAssistantId,
@@ -1036,7 +1036,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
-  // ── SEARCH RESULTS ─────────────────────────────────────────
+  
   Widget _buildSearchResults(bool isDark) {
     final query = _textSearch.trim();
     final isPhoneNumber = RegExp(r'^[+\d][\d\s-]*$').hasMatch(query);
@@ -1189,7 +1189,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
-  // ── CONVERSATION OPTIONS ────────────────────────────────────
+  
   void _showConversationOptions(Conversation conversation) {
     showModalBottomSheet(
       context: context,
@@ -1256,7 +1256,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 }
 
-// ── SUPPORTING WIDGETS ─────────────────────────────────────────────────────
+
 
 class _HeaderIconButton extends StatelessWidget {
   final IconData icon;
@@ -1337,7 +1337,7 @@ class _ConversationTile extends StatelessWidget {
           ),
           child: Row(
             children: [
-              // Avatar
+              
               Stack(
                 clipBehavior: Clip.none,
                 children: [
@@ -1375,7 +1375,7 @@ class _ConversationTile extends StatelessWidget {
               ),
               const SizedBox(width: 14),
 
-              // Content
+              
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

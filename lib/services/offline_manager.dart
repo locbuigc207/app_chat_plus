@@ -24,9 +24,9 @@ class OfflineManager {
   bool _isOnline = true;
   bool get isOnline => _isOnline;
 
-  // =========================================================
-  // INITIALIZE
-  // =========================================================
+  
+  
+  
 
   Future<void> initialize() async {
     await _initDatabase();
@@ -94,9 +94,9 @@ class OfflineManager {
     });
   }
 
-  // =========================================================
-  // MESSAGE CACHE
-  // =========================================================
+  
+  
+  
 
   String _generateMessageId(MessageChat message) {
     return "${message.idFrom}_${message.timestamp}";
@@ -165,9 +165,9 @@ class OfflineManager {
     debugPrint("📝 Pending message stored");
   }
 
-  // =========================================================
-  // CONVERSATION CACHE
-  // =========================================================
+  
+  
+  
 
   Future<void> cacheConversations(List<Conversation> conversations) async {
     if (_database == null) return;
@@ -209,9 +209,9 @@ class OfflineManager {
     }).toList();
   }
 
-  // =========================================================
-  // SYNC
-  // =========================================================
+  
+  
+  
 
   Future<void> syncPendingOperations() async {
     if (_database == null || !_isOnline) return;
@@ -261,12 +261,12 @@ class OfflineManager {
 
     debugPrint("📤 Sync message ${data["content"]}");
 
-    // TODO: Firestore send here
+    
   }
 
-  // =========================================================
-  // CACHE CLEANUP
-  // =========================================================
+  
+  
+  
 
   Future<void> clearCache() async {
     if (_database == null) return;
@@ -295,9 +295,9 @@ class OfflineManager {
     return {"messages": msg, "conversations": conv, "pending": pending};
   }
 
-  // =========================================================
-  // DISPOSE
-  // =========================================================
+  
+  
+  
 
   Future<void> dispose() async {
     await _connectivitySubscription?.cancel();

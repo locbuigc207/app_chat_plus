@@ -1,4 +1,4 @@
-// lib/widgets/enhanced_message_options_dialog.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -49,7 +49,7 @@ class EnhancedMessageOptionsDialog extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Drag handle
+          
           Container(
             width: 48,
             height: 5,

@@ -1,4 +1,4 @@
-// lib/pages/enhanced_photo_viewer.dart
+
 import 'package:flutter/material.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
@@ -36,7 +36,7 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Photo Gallery
+          
           PhotoViewGallery.builder(
             pageController: _pageController,
             itemCount: widget.imageUrls.length,
@@ -68,7 +68,7 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer> {
             ),
           ),
 
-          // Top Bar
+          
           Positioned(
             top: 0,
             left: 0,
@@ -108,13 +108,13 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer> {
                   IconButton(
                     icon: const Icon(Icons.share, color: Colors.white),
                     onPressed: () {
-                      // Implement share functionality
+                      
                     },
                   ),
                   IconButton(
                     icon: const Icon(Icons.download, color: Colors.white),
                     onPressed: () {
-                      // Implement download functionality
+                      
                     },
                   ),
                 ],
@@ -122,7 +122,7 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer> {
             ),
           ),
 
-          // Bottom Thumbnails (if multiple images)
+          
           if (widget.imageUrls.length > 1)
             Positioned(
               bottom: 0,

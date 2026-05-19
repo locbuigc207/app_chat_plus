@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-/// Live call duration counter.
+
 class CallTimerWidget extends StatefulWidget {
   final DateTime startTime;
   final TextStyle? style;

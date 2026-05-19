@@ -1,13 +1,13 @@
-// ============================================================
-// IMPROVED CHAT WIDGETS
-// 1. Modern message bubbles with tail, soft shadows
-// 2. Improved input bar with smooth animations
-// 3. Beautiful date separators
-// 4. Read receipts with blue ticks
-// 5. Smooth scroll-to-bottom FAB
-// 6. Message reactions display improved
-// 7. Link preview support in bubbles
-// ============================================================
+
+
+
+
+
+
+
+
+
+
 
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
@@ -16,7 +16,7 @@ import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/widgets/link_preview_widget.dart';
 import 'package:provider/provider.dart';
 
-// ── MESSAGE BUBBLE ────────────────────────────────────────────────────────────
+
 class ImprovedMessageBubble extends StatelessWidget {
   final String content;
   final bool isMe;
@@ -120,7 +120,7 @@ class _BubbleBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Regex tìm URL trong nội dung tin nhắn
+    
     final RegExp exp =
         RegExp(r'(?:(?:https?|ftp):\/\/)?[\w/\-?=%.]+\.[\w/\-?=%.]+');
     final Iterable<RegExpMatch> matches = exp.allMatches(content);
@@ -128,7 +128,7 @@ class _BubbleBody extends StatelessWidget {
         ? content.substring(matches.first.start, matches.first.end)
         : null;
 
-    // Thêm 'https://' nếu url chưa có để LinkPreviewWidget hoạt động chuẩn
+    
     if (firstUrl != null && !firstUrl.startsWith('http')) {
       firstUrl = 'https://$firstUrl';
     }
@@ -155,7 +155,7 @@ class _BubbleBody extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Pinned indicator
+          
           if (isPinned) ...[
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -179,7 +179,7 @@ class _BubbleBody extends StatelessWidget {
             const SizedBox(height: 4),
           ],
 
-          // Content
+          
           if (isDeleted)
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -201,7 +201,7 @@ class _BubbleBody extends StatelessWidget {
               ],
             )
           else
-            // FIX: Gộp text + link preview vào Column
+            
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -219,7 +219,7 @@ class _BubbleBody extends StatelessWidget {
 
           const SizedBox(height: 4),
 
-          // Timestamp + read receipt
+          
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -267,7 +267,7 @@ class _BubbleBody extends StatelessWidget {
   }
 }
 
-// ── DATE SEPARATOR ────────────────────────────────────────────────────────────
+
 class DateSeparator extends StatelessWidget {
   final String label;
   final bool isDark;
@@ -347,7 +347,7 @@ class DateSeparator extends StatelessWidget {
   }
 }
 
-// ── IMPROVED CHAT INPUT BAR ───────────────────────────────────────────────────
+
 class ImprovedChatInput extends StatefulWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
@@ -445,20 +445,20 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Reply preview
+          
           if (widget.replyingTo != null) _buildReplyPreview(),
 
-          // Recording bar
+          
           if (widget.isRecording) _buildRecordingBar(),
 
-          // Main input row
+          
           if (!widget.isRecording)
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  // Feature toggle
+                  
                   if (showFull)
                     _InputIconBtn(
                       icon: widget.showFeatures
@@ -469,7 +469,7 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
                       filled: widget.showFeatures,
                     ),
 
-                  // Text field container
+                  
                   Expanded(
                     child: Container(
                       constraints: const BoxConstraints(
@@ -531,7 +531,7 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
                               ),
                             ),
                           ),
-                          // Sticker btn (only full mode)
+                          
                           if (showFull)
                             Padding(
                               padding:
@@ -552,7 +552,7 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
                     ),
                   ),
 
-                  // Send / Image / Voice — animated switch
+                  
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 200),
                     transitionBuilder: (child, anim) => ScaleTransition(
@@ -805,7 +805,7 @@ class _PulsingDotState extends State<_PulsingDot>
   }
 }
 
-// ── CHAT APP BAR ──────────────────────────────────────────────────────────────
+
 class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String peerName;
   final String peerAvatar;
@@ -969,7 +969,7 @@ class _OnlineStatus extends StatelessWidget {
   }
 }
 
-// ── SCROLL TO BOTTOM BUTTON ───────────────────────────────────────────────────
+
 class ScrollToBottomButton extends StatelessWidget {
   final VoidCallback onTap;
   final bool isDark;

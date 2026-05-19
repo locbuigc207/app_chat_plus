@@ -18,7 +18,7 @@ class ThemeSettingsPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Theme Mode Section
+          
           _buildSectionTitle('Theme Mode'),
           Card(
             child: Column(
@@ -52,7 +52,7 @@ class ThemeSettingsPage extends StatelessWidget {
 
           const SizedBox(height: 32),
 
-          // Theme Color Section
+          
           _buildSectionTitle('Theme Color'),
           Card(
             child: Padding(
@@ -103,7 +103,7 @@ class ThemeSettingsPage extends StatelessWidget {
 
           const SizedBox(height: 32),
 
-          // Preview Section
+          
           _buildSectionTitle('Preview'),
           Card(
             child: Padding(

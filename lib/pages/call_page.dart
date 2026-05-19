@@ -1,4 +1,4 @@
-// lib/pages/call_page.dart
+
 import 'dart:async';
 import 'dart:ui';
 
@@ -63,7 +63,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     _scheduleControlsHide();
   }
 
-  // ── Init ───────────────────────────────────────
+  
   Future<void> _initCall() async {
     _errorSub = _rtcManager.errorStream.listen((error) {
       if (mounted) {
@@ -99,7 +99,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     }
 
     if (widget.call.channelName.isNotEmpty) {
-      // FIX: Bỏ tham số 'token' — joinChannel tự lấy token từ server
+      
       final joined = await _rtcManager.joinChannel(
         channelName: widget.call.channelName,
         isVideoCall: widget.call.isVideoCall,
@@ -116,14 +116,14 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     if (mounted) setState(() => _isInitializing = false);
   }
 
-  // ── Watch Call Status ──────────────────────────
+  
   void _watchCallStatus() {
     _callStatusSub = _callService.watchCall(widget.call.callId).listen((call) {
       if (call == null || _callEnded) return;
 
       if (mounted) setState(() => _callStatus = call.status);
 
-      // FIX: Bắt cả 'accepted' như 'connected'
+      
       if ((call.status == CallStatus.connected ||
               call.status == CallStatus.accepted) &&
           _callConnectedAt == null) {
@@ -140,7 +140,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     });
   }
 
-  // ── End Call ───────────────────────────────────
+  
   Future<void> _endCall({bool remote = false}) async {
     if (_callEnded) return;
     _callEnded = true;
@@ -160,7 +160,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     }
   }
 
-  // ── Error Dialog ───────────────────────────────
+  
   void _showErrorDialog(String message) {
     if (!mounted) return;
     showDialog(
@@ -188,7 +188,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
-  // ── Controls Hide ──────────────────────────────
+  
   void _scheduleControlsHide() {
     _controlsHideTimer?.cancel();
     if (widget.call.isVideoCall) {
@@ -228,7 +228,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  // ── BUILD ──────────────────────────────────────
+  
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -247,7 +247,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
-  // ── Error State ────────────────────────────────
+  
   Widget _buildErrorState() {
     return Container(
       decoration: const BoxDecoration(
@@ -293,20 +293,20 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
-  // ── Video Call UI ──────────────────────────────
+  
   Widget _buildVideoCallUI() {
     return GestureDetector(
       onTap: _onTapScreen,
       behavior: HitTestBehavior.opaque,
       child: Stack(
         children: [
-          // Remote video (full screen)
+          
           _buildRemoteVideoView(),
 
-          // Local PiP
+          
           if (_isConnectedStatus(_callStatus)) _buildLocalVideoPip(),
 
-          // Gradient overlays
+          
           Positioned(
             top: 0,
             left: 0,
@@ -342,7 +342,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
             ),
           ),
 
-          // Initializing indicator
+          
           if (_isInitializing)
             const Center(
               child: Column(
@@ -359,10 +359,10 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
               ),
             ),
 
-          // Top bar
+          
           if (_showControls) _buildVideoTopBar(),
 
-          // Quality indicator
+          
           Positioned(
             top: MediaQuery.of(context).padding.top + 56,
             right: 16,
@@ -373,7 +373,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
             ),
           ),
 
-          // Control bar
+          
           AnimatedOpacity(
             opacity: _showControls ? 1 : 0,
             duration: const Duration(milliseconds: 300),
@@ -553,7 +553,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
-  // ── Voice Call UI ──────────────────────────────
+  
   Widget _buildVoiceCallUI() {
     final peerName =
         widget.isOutgoing ? widget.call.calleeName : widget.call.callerName;
@@ -575,7 +575,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
         SafeArea(
           child: Column(
             children: [
-              // Quality indicator
+              
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -642,7 +642,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
-  // ── Control Bar ────────────────────────────────
+  
   Widget _buildControlBar() {
     return ListenableBuilder(
       listenable: _rtcManager,
@@ -663,10 +663,10 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
-  // ── Helpers ────────────────────────────────────
+  
 
-  /// Trả về true nếu trạng thái hiện tại tương đương "đã kết nối".
-  /// Bao gồm cả 'accepted' (schema cũ) và 'connected' (schema mới).
+  
+  
   bool _isConnectedStatus(CallStatus s) =>
       s == CallStatus.connected || s == CallStatus.accepted;
 
@@ -714,7 +714,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     return _StatusDotsWidget(label: _statusLabel());
   }
 
-  // FIX: Exhaustive switch — bao gồm tất cả các case của CallStatus
+  
   String _statusLabel() {
     switch (_callStatus) {
       case CallStatus.dialing:
@@ -739,7 +739,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
   }
 }
 
-// ── Animated Status Dots ───────────────────────
+
 class _StatusDotsWidget extends StatefulWidget {
   final String label;
   const _StatusDotsWidget({required this.label});

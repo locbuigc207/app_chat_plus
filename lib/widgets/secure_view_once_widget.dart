@@ -1,6 +1,6 @@
-// lib/widgets/secure_view_once_widget.dart
-// Contextual Bubble Universe - Secure Mode + Anti-Shoulder-Surf
-// Làm mờ tin nhắn khi phát hiện khuôn mặt thứ hai qua camera trước
+
+
+
 
 import 'dart:async';
 import 'dart:ui' as ui;
@@ -10,10 +10,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-/// Trạng thái bảo mật hiện tại
+
 enum SecureState { disabled, monitoring, warning, blurred }
 
-// ─── SECURE OVERLAY MANAGER ──────────────────────────────────────────────────
+
 
 class SecureOverlayManager extends StatefulWidget {
   final Widget child;
@@ -98,8 +98,8 @@ class _SecureOverlayManagerState extends State<SecureOverlayManager>
     }
   }
 
-  // PRODUCTION: Replace with ML Kit face detection
-  // See SETUP_GUIDE.yaml for google_mlkit_face_detection integration
+  
+  
   void _analyzeFrame(CameraImage image) {
     _updateSecureState(isSuspicious: false);
   }
@@ -268,7 +268,7 @@ class _SecureOverlayManagerState extends State<SecureOverlayManager>
   }
 }
 
-// ─── SECURE MODE TOGGLE ───────────────────────────────────────────────────────
+
 
 class SecureModeToggle extends StatefulWidget {
   final bool isActive;

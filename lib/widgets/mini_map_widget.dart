@@ -1,13 +1,13 @@
-// lib/widgets/mini_map_widget.dart
-// Contextual Bubble Universe - Mini Map Widget
-// Bản đồ mini hiển thị khoảng cách thời gian thực khi ở Location Mode
+
+
+
 
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// Widget bản đồ thu nhỏ hiển thị trong bubble khi Location Mode
+
 class MiniMapWidget extends StatefulWidget {
   final double? myLat;
   final double? myLng;
@@ -62,9 +62,11 @@ class _MiniMapWidgetState extends State<MiniMapWidget>
     if (widget.myLat == null ||
         widget.myLng == null ||
         widget.peerLat == null ||
-        widget.peerLng == null) return null;
+        widget.peerLng == null) {
+      return null;
+    }
 
-    // Haversine formula
+    
     const R = 6371.0;
     final dLat = _toRad(widget.peerLat! - widget.myLat!);
     final dLon = _toRad(widget.peerLng! - widget.myLng!);
@@ -111,11 +113,11 @@ class _MiniMapWidgetState extends State<MiniMapWidget>
         borderRadius: BorderRadius.circular(14),
         child: Stack(
           children: [
-            // Map background (styled grid)
+            
             _buildMapBackground(),
-            // Distance info
+            
             _buildDistanceInfo(),
-            // Open map button
+            
             Positioned(
               top: 8,
               right: 8,
@@ -184,7 +186,7 @@ class _MiniMapWidgetState extends State<MiniMapWidget>
         ),
         child: Row(
           children: [
-            // My location ping
+            
             AnimatedBuilder(
               animation: _pingAnim,
               builder: (_, __) {
@@ -196,7 +198,7 @@ class _MiniMapWidgetState extends State<MiniMapWidget>
               },
             ),
             const SizedBox(width: 12),
-            // Distance
+            
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -228,7 +230,7 @@ class _MiniMapWidgetState extends State<MiniMapWidget>
                 ],
               ),
             ),
-            // Peer location ping
+            
             AnimatedBuilder(
               animation: _pingAnim,
               builder: (_, __) {
@@ -246,7 +248,7 @@ class _MiniMapWidgetState extends State<MiniMapWidget>
   }
 }
 
-// ─── LOCATION PING ────────────────────────────────────────────────────────────
+
 
 class _LocationPing extends StatelessWidget {
   final Color color;
@@ -267,7 +269,7 @@ class _LocationPing extends StatelessWidget {
         Stack(
           alignment: Alignment.center,
           children: [
-            // Ping ring
+            
             Opacity(
               opacity: (1 - pingProgress).clamp(0, 1),
               child: Container(
@@ -282,7 +284,7 @@ class _LocationPing extends StatelessWidget {
                 ),
               ),
             ),
-            // Pin
+            
             Container(
               width: 26,
               height: 26,
@@ -321,7 +323,7 @@ class _LocationPing extends StatelessWidget {
   }
 }
 
-// ─── MAP GRID PAINTER ─────────────────────────────────────────────────────────
+
 
 class _MapGridPainter extends CustomPainter {
   @override
@@ -329,19 +331,19 @@ class _MapGridPainter extends CustomPainter {
     final bgPaint = Paint()..color = const Color(0xFF2E7D32);
     canvas.drawRect(Offset.zero & size, bgPaint);
 
-    // Roads (horizontal)
+    
     final roadPaint = Paint()
       ..color = Colors.white.withOpacity(0.12)
       ..strokeWidth = 2;
     for (double y = 0; y < size.height; y += 30) {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), roadPaint);
     }
-    // Roads (vertical)
+    
     for (double x = 0; x < size.width; x += 40) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), roadPaint);
     }
 
-    // Main road
+    
     final mainRoadPaint = Paint()
       ..color = Colors.white.withOpacity(0.2)
       ..strokeWidth = 4;
@@ -356,7 +358,7 @@ class _MapGridPainter extends CustomPainter {
       mainRoadPaint,
     );
 
-    // Block fills
+    
     final blockPaint = Paint()..color = Colors.white.withOpacity(0.05);
     final blocks = [
       Rect.fromLTWH(50, 10, 60, 50),

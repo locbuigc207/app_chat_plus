@@ -1,10 +1,10 @@
-// lib/models/group_call_model.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum GroupCallStatus {
-  calling, // Initiator just created call
-  ongoing, // At least 2 people connected
-  ended, // Call finished
+  calling, 
+  ongoing, 
+  ended, 
 }
 
 enum GroupCallType { video, voice }

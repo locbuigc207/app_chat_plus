@@ -1,4 +1,4 @@
-// lib/providers/conversation_provider.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
@@ -7,9 +7,9 @@ class ConversationProvider {
 
   ConversationProvider({required this.firebaseFirestore});
 
-  // ── Pin / Unpin ─────────────────────────────────────────────────────────────
+  
 
-  /// Pin hoặc unpin một conversation.
+  
   Future<bool> togglePinConversation(
       String conversationId, bool currentStatus) async {
     try {
@@ -29,9 +29,9 @@ class ConversationProvider {
     }
   }
 
-  // ── Mute / Unmute ───────────────────────────────────────────────────────────
+  
 
-  /// Mute hoặc unmute thông báo của một conversation.
+  
   Future<bool> toggleMuteConversation(
       String conversationId, bool currentStatus) async {
     try {
@@ -48,10 +48,10 @@ class ConversationProvider {
     }
   }
 
-  // ── Archive / Unarchive ─────────────────────────────────────────────────────
+  
 
-  /// Archive hoặc unarchive conversation cho một user cụ thể.
-  /// Dùng arrayUnion/arrayRemove để hỗ trợ nhiều user archive độc lập.
+  
+  
   Future<bool> toggleArchiveConversation(
       String conversationId, String currentUserId, bool isArchiving) async {
     try {
@@ -70,10 +70,10 @@ class ConversationProvider {
     }
   }
 
-  // ── Clear History ───────────────────────────────────────────────────────────
+  
 
-  /// Xóa toàn bộ tin nhắn trong conversation, giữ nguyên trạng thái bạn bè.
-  /// Batch delete theo từng chunk 500 (giới hạn Firestore).
+  
+  
   Future<bool> clearConversationHistory(String conversationId) async {
     try {
       final messagesSnapshot = await firebaseFirestore
@@ -101,7 +101,7 @@ class ConversationProvider {
         await batch.commit();
       }
 
-      // Reset lastMessage sau khi xóa
+      
       await firebaseFirestore
           .collection(FirestoreConstants.pathConversationCollection)
           .doc(conversationId)
@@ -119,10 +119,10 @@ class ConversationProvider {
     }
   }
 
-  // ── Streams ─────────────────────────────────────────────────────────────────
+  
 
-  /// Stream danh sách conversation của user, pinned lên đầu,
-  /// sau đó sắp xếp theo lastMessageTime giảm dần.
+  
+  
   Stream<List<QueryDocumentSnapshot>> getConversationsWithPinned(
       String userId) {
     return firebaseFirestore

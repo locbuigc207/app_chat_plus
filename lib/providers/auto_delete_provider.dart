@@ -1,4 +1,4 @@
-// lib/providers/auto_delete_provider.dart (FIXED - Working Auto Delete)
+
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
@@ -19,7 +19,7 @@ class AutoDeleteProvider {
     _startCleanupTimer();
   }
 
-  // Start periodic cleanup timer (runs every 5 minutes)
+  
   void _startCleanupTimer() {
     _cleanupTimer?.cancel();
     _cleanupTimer = Timer.periodic(
@@ -29,12 +29,12 @@ class AutoDeleteProvider {
     print(' Auto-delete cleanup timer started');
   }
 
-  // Run cleanup for all conversations
+  
   Future<void> _runGlobalCleanup() async {
     try {
       print(' Running global auto-delete cleanup...');
 
-      // Get all conversations with auto-delete enabled
+      
       final conversations = await firebaseFirestore
           .collection(FirestoreConstants.pathConversationCollection)
           .where('autoDeleteEnabled', isEqualTo: true)
@@ -55,7 +55,7 @@ class AutoDeleteProvider {
     }
   }
 
-  // Set auto-delete for conversation
+  
   Future<bool> setAutoDelete({
     required String conversationId,
     required AutoDeleteDuration duration,
@@ -95,7 +95,7 @@ class AutoDeleteProvider {
 
       print(' Auto-delete set: ${duration.name}, ${deleteAfterMillis}ms');
 
-      // Run immediate cleanup after setting
+      
       if (deleteAfterMillis != null) {
         await deleteExpiredMessages(conversationId);
       }
@@ -107,7 +107,7 @@ class AutoDeleteProvider {
     }
   }
 
-  // Mark message for auto-deletion when sent
+  
   Future<void> markMessageForDeletion({
     required String groupChatId,
     required String messageId,
@@ -131,12 +131,12 @@ class AutoDeleteProvider {
     }
   }
 
-  // Check and delete expired messages for a conversation
+  
   Future<void> deleteExpiredMessages(String groupChatId) async {
     try {
       final now = DateTime.now().millisecondsSinceEpoch;
 
-      // Get all messages with autoDeleteAt timestamp
+      
       final expiredMessages = await firebaseFirestore
           .collection(FirestoreConstants.pathMessageCollection)
           .doc(groupChatId)
@@ -153,7 +153,7 @@ class AutoDeleteProvider {
       final batch = firebaseFirestore.batch();
 
       for (var doc in expiredMessages.docs) {
-        // Soft delete
+        
         batch.update(doc.reference, {
           'isDeleted': true,
           'content': 'This message was automatically deleted',
@@ -168,7 +168,7 @@ class AutoDeleteProvider {
     }
   }
 
-  // Get auto-delete settings for conversation
+  
   Future<Map<String, dynamic>?> getAutoDeleteSettings(
       String conversationId) async {
     try {
@@ -194,7 +194,7 @@ class AutoDeleteProvider {
     }
   }
 
-  // Schedule message deletion on send
+  
   Future<void> scheduleMessageDeletion({
     required String groupChatId,
     required String messageId,
@@ -212,7 +212,7 @@ class AutoDeleteProvider {
           deleteAfterMillis: settings['duration'] as int,
         );
 
-        // Schedule immediate check after duration
+        
         final duration = settings['duration'] as int;
         Timer(Duration(milliseconds: duration + 5000), () {
           deleteExpiredMessages(groupChatId);
@@ -223,7 +223,7 @@ class AutoDeleteProvider {
     }
   }
 
-  // Cleanup timer
+  
   void dispose() {
     _cleanupTimer?.cancel();
   }

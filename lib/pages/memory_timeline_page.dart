@@ -12,12 +12,12 @@ class MemoryTimelinePage extends StatefulWidget {
   final String conversationId;
 
   const MemoryTimelinePage({
-    Key? key,
+    super.key,
     required this.peerId,
     required this.peerNickname,
     required this.currentUserId,
     required this.conversationId,
-  }) : super(key: key);
+  });
 
   @override
   _MemoryTimelinePageState createState() => _MemoryTimelinePageState();
@@ -34,7 +34,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> {
     _fetchCachedMemory();
   }
 
-  // 1. Kiểm tra Cache trên Firestore trước
+  
   Future<void> _fetchCachedMemory() async {
     setState(() => _isLoading = true);
     try {
@@ -57,9 +57,9 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> {
     }
   }
 
-  // 2. Gọi AI Phân tích & Lưu vào Cache
+  
   Future<void> _analyzeMemory({bool forceRefresh = false}) async {
-    // Nếu đã có cache và chưa quá 7 ngày, cảnh báo để tránh tốn tiền API
+    
     if (!forceRefresh && _lastUpdated != null) {
       final daysSinceUpdate = DateTime.now().difference(_lastUpdated!).inDays;
       if (daysSinceUpdate < 7) {
@@ -71,7 +71,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> {
     setState(() => _isLoading = true);
 
     try {
-      // Lấy 100 tin nhắn (thay vì 50) để AI phân tích chuẩn hơn
+      
       final querySnapshot = await FirebaseFirestore.instance
           .collection('messages')
           .doc(widget.conversationId)
@@ -98,12 +98,12 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> {
           .reversed
           .toList();
 
-      // Gọi AI Backend
+      
       final data =
           await AIBackendService().extractRelationshipMemory(chatHistory);
 
       if (data != null) {
-        // LƯU KẾT QUẢ VÀO FIRESTORE (CACHING)
+        
         await FirebaseFirestore.instance
             .collection('relationship_memories')
             .doc(widget.conversationId)
@@ -131,9 +131,9 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> {
   Widget _buildHealthScore() {
     final score = _memoryData?['healthScore'] ?? 0;
     Color scoreColor = Colors.green;
-    if (score < 50)
+    if (score < 50) {
       scoreColor = Colors.red;
-    else if (score < 75) scoreColor = Colors.orange;
+    } else if (score < 75) scoreColor = Colors.orange;
 
     return Container(
       padding: const EdgeInsets.all(20),

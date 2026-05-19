@@ -1,23 +1,23 @@
-// lib/widgets/contextual_bubble_universe_manager.dart
-// Contextual Bubble Universe - Root Manager
-// Thay thế / bổ sung cho MiniChatOverlayManager trong main.dart
+
+
+
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../pages/chat_page.dart'; // import từ project gốc
+import '../pages/chat_page.dart'; 
 import '../services/contextual_bubble_service.dart';
 import 'contextual_mini_chat_overlay.dart';
 
-/// Manager widget cho toàn bộ Contextual Bubble Universe system.
-/// Đặt bên trong MaterialApp như MiniChatOverlayManager.
-///
-/// Usage trong main.dart:
-/// ```dart
-/// home: ContextualBubbleUniverseManager(
-///   child: /* existing widgets */,
-/// ),
-/// ```
+
+
+
+
+
+
+
+
+
 class ContextualBubbleUniverseManager extends StatefulWidget {
   final Widget child;
 
@@ -40,7 +40,7 @@ class ContextualBubbleUniverseManagerState
 
   OverlayEntry? _overlayEntry;
 
-  // Current chat state
+  
   String? _currentUserId;
   String? _currentUserName;
   String? _currentAvatarUrl;
@@ -85,7 +85,7 @@ class ContextualBubbleUniverseManagerState
     });
   }
 
-  /// Hiện overlay với ContextualMiniChatOverlay
+  
   void _showContextualOverlay({
     required String userId,
     required String userName,
@@ -132,7 +132,7 @@ class ContextualBubbleUniverseManagerState
   }
 
   Widget _buildChatContent() {
-    // Sử dụng ChatPage từ project gốc với isMiniChat = true
+    
     return ChatPage(
       arguments: ChatPageArguments(
         peerId: _currentUserId!,
@@ -155,7 +155,7 @@ class ContextualBubbleUniverseManagerState
     return ids.join('-');
   }
 
-  /// Public method để trigger overlay từ bên ngoài
+  
   void showOverlay({
     required String userId,
     required String userName,
@@ -174,13 +174,13 @@ class ContextualBubbleUniverseManagerState
   Widget build(BuildContext context) => widget.child;
 }
 
-// ─── CONTEXT AWARE CHAT PAGE WRAPPER ─────────────────────────────────────────
 
-/// Mixin cho ChatPage để tự động báo context service khi gửi tin nhắn
+
+
 mixin ContextualBubbleMixin<T extends StatefulWidget> on State<T> {
   final _contextService = ContextualBubbleService();
 
-  /// Gọi khi gửi tin nhắn để cập nhật context
+  
   void reportMessageToContext({
     required String content,
     required int messageType,
@@ -193,7 +193,7 @@ mixin ContextualBubbleMixin<T extends StatefulWidget> on State<T> {
     );
   }
 
-  /// Gọi khi nhận tin nhắn từ peer
+  
   void reportIncomingMessage({
     required String content,
     required int messageType,

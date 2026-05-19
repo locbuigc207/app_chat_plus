@@ -1,8 +1,8 @@
-// lib/widgets/bubble_manager.dart - COMPLETE FIXED VERSION
+
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart'; // ✅ Thêm import này
+import 'package:flutter/foundation.dart'; 
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
@@ -39,7 +39,7 @@ class _BubbleManagerState extends State<BubbleManager>
   }
 
   void _initializeBubbleService() {
-    // ✅ Bỏ qua ngay lập tức nếu là Web
+    
     if (kIsWeb || !Platform.isAndroid) return;
 
     try {
@@ -99,7 +99,7 @@ class _BubbleManagerState extends State<BubbleManager>
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
-                // Hide bubble and open full chat
+                
                 _bubbleService?.hideChatBubble(event.userId);
                 Navigator.of(context).push(
                   MaterialPageRoute(
@@ -118,7 +118,7 @@ class _BubbleManagerState extends State<BubbleManager>
             TextButton(
               onPressed: () async {
                 Navigator.pop(context);
-                // Hide bubble and show mini chat
+                
                 await _bubbleService?.hideChatBubble(event.userId);
                 await Future.delayed(Duration(milliseconds: 200));
                 await _bubbleService?.showMiniChat(

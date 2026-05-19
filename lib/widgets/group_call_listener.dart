@@ -1,7 +1,7 @@
-// lib/widgets/group_call_listener.dart
+
 import 'dart:async';
 
-import 'package:firebase_auth/firebase_auth.dart'; // Thêm dòng này
+import 'package:firebase_auth/firebase_auth.dart'; 
 import 'package:flutter/material.dart';
 
 import '../models/group_call_model.dart';
@@ -19,7 +19,7 @@ class GroupCallListener extends StatefulWidget {
 class _GroupCallListenerState extends State<GroupCallListener> {
   final _service = GroupCallService();
   StreamSubscription? _sub;
-  StreamSubscription? _authSub; // Thêm biến này
+  StreamSubscription? _authSub; 
   String? _activeCallId;
 
   @override

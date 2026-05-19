@@ -5,7 +5,7 @@ import 'package:flutter_chat_demo/providers/auth_provider.dart';
 import 'package:provider/provider.dart';
 
 class SplashPage extends StatefulWidget {
-  SplashPage({super.key});
+  const SplashPage({super.key});
 
   @override
   SplashPageState createState() => SplashPageState();
@@ -16,7 +16,7 @@ class SplashPageState extends State<SplashPage> {
   void initState() {
     super.initState();
     Future.delayed(Duration(seconds: 1), () {
-      // just delay for showing this slash page clearer because it's too fast
+      
       _checkSignedIn();
     });
   }
@@ -50,7 +50,7 @@ class SplashPageState extends State<SplashPage> {
               height: 100,
             ),
             SizedBox(height: 20),
-            Container(
+            SizedBox(
               width: 20,
               height: 20,
               child: CircularProgressIndicator(color: ColorConstants.themeColor),
