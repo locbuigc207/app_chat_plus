@@ -31,7 +31,7 @@ class AppModeProvider with ChangeNotifier {
   ThemeData getThemeData() {
     switch (_currentMode) {
       case AppMode.elder:
-        // Chế độ người lớn tuổi: Font chữ rất to, icon lớn, màu sắc tương phản cao, dễ nhìn
+        
         return ThemeData(
           useMaterial3: true,
           colorScheme: ColorScheme.fromSeed(
@@ -64,7 +64,7 @@ class AppModeProvider with ChangeNotifier {
         );
 
       case AppMode.work:
-        // Chế độ công việc: Thiết kế phẳng, màu sắc tối giản (BlueGrey), font chữ tiêu chuẩn, tập trung không gian
+        
         return ThemeData(
           useMaterial3: true,
           colorScheme: ColorScheme.fromSeed(
@@ -85,11 +85,11 @@ class AppModeProvider with ChangeNotifier {
 
       case AppMode.student:
       default:
-        // Chế độ sinh viên/mặc định: Trẻ trung, màu sắc nổi bật, bo góc mềm mại
+        
         return ThemeData(
           useMaterial3: true,
           colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF007AFF), // Apple Blue style
+            seedColor: const Color(0xFF007AFF), 
             brightness: Brightness.light,
           ),
           textTheme: const TextTheme(

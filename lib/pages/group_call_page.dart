@@ -1,4 +1,4 @@
-// lib/pages/group_call_page.dart
+
 import 'dart:async';
 import 'dart:ui';
 
@@ -35,11 +35,11 @@ class GroupCallPage extends StatefulWidget {
 
 class _GroupCallPageState extends State<GroupCallPage>
     with WidgetsBindingObserver {
-  // ── Services ───────────────────────────────────
+  
   final _callService = GroupCallService();
   late RtcEngine _engine;
 
-  // ── UI State ───────────────────────────────────
+  
   bool _engineInitialized = false;
   bool _isMuted = false;
   bool _isCameraOff = false;
@@ -51,25 +51,25 @@ class _GroupCallPageState extends State<GroupCallPage>
   bool _showParticipantsList = false;
   bool _isLiveCaptionEnabled = false;
 
-  // ── Remote Participants ────────────────────────
+  
   final Set<int> _remoteUids = {};
 
-  // ── Call Data ──────────────────────────────────
+  
   late GroupCallModel _callModel;
   DateTime? _connectedAt;
 
-  // ── Subscriptions & Timers ─────────────────────
+  
   StreamSubscription? _callSub;
   Timer? _controlsHideTimer;
   Timer? _statsTimer;
 
-  // ── Stats ──────────────────────────────────────
+  
   RtcCallStats _stats = const RtcCallStats();
 
-  // ── Spotlight ──────────────────────────────────
+  
   int? _spotlightUid;
 
-  // ── Lifecycle ──────────────────────────────────
+  
   @override
   void initState() {
     super.initState();
@@ -107,7 +107,7 @@ class _GroupCallPageState extends State<GroupCallPage>
     super.dispose();
   }
 
-  // ── Init ───────────────────────────────────────
+  
   Future<void> _initCall() async {
     await _requestPermissions();
     await _initEngine();
@@ -196,7 +196,7 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
-  // ── Watch Call Status ──────────────────────────
+  
   void _watchCall() {
     _callSub = _callService.watchCall(widget.call.callId).listen((call) {
       if (call == null || _callEnded) return;
@@ -225,7 +225,7 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
-  // ── Controls Visibility ────────────────────────
+  
   void _scheduleControlsHide() {
     _controlsHideTimer?.cancel();
     if (widget.call.isVideo) {
@@ -243,7 +243,7 @@ class _GroupCallPageState extends State<GroupCallPage>
     _scheduleControlsHide();
   }
 
-  // ── Controls Actions ───────────────────────────
+  
   Future<void> _toggleMute() async {
     final next = !_isMuted;
     await _engine.muteLocalAudioStream(next);
@@ -278,7 +278,7 @@ class _GroupCallPageState extends State<GroupCallPage>
         msg: _isLiveCaptionEnabled ? 'Đã bật phụ đề AI' : 'Đã tắt phụ đề AI');
   }
 
-  // ── Hang Up ────────────────────────────────────
+  
   Future<void> _hangUp() async {
     if (_callEnded) return;
     _callEnded = true;
@@ -309,7 +309,7 @@ class _GroupCallPageState extends State<GroupCallPage>
     setState(() => _spotlightUid = uid);
   }
 
-  // ── BUILD ──────────────────────────────────────
+  
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -324,40 +324,40 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
-  // ── Video Call UI ──────────────────────────────
+  
   Widget _buildVideoUI() {
     return GestureDetector(
       onTap: _onTapScreen,
       behavior: HitTestBehavior.opaque,
       child: Stack(
         children: [
-          // 1. Video Grid / Spotlight / Waiting
+          
           _remoteUids.isEmpty ? _buildWaitingScreen() : _buildVideoGrid(),
 
-          // 2. Gradient overlays
+          
           _buildGradients(),
 
-          // 3. Top bar (group name, timer, participants count)
+          
           if (_showControls) _buildVideoTopBar(),
 
-          // 4. AI Shield (top-left)
+          
           Positioned(
             top: MediaQuery.of(context).padding.top + 60,
             left: 16,
             child: const AICallShield(),
           ),
 
-          // 5. Call Quality Indicator (top-right)
+          
           Positioned(
             top: MediaQuery.of(context).padding.top + 60,
             right: 16,
             child: CallQualityIndicator(stats: _stats),
           ),
 
-          // 6. Participants panel (slide-in from right)
+          
           if (_showParticipantsList) _buildParticipantsPanel(),
 
-          // 7. Live Caption overlay
+          
           if (_isLiveCaptionEnabled)
             Positioned(
               bottom: 140,
@@ -366,7 +366,7 @@ class _GroupCallPageState extends State<GroupCallPage>
               child: const LiveCaptionOverlay(),
             ),
 
-          // 8. Bottom controls
+          
           _buildBottomControls(),
         ],
       ),
@@ -476,7 +476,7 @@ class _GroupCallPageState extends State<GroupCallPage>
               crossAxisSpacing: 2,
               mainAxisSpacing: 2,
             ),
-            itemCount: allUids.length + 1, // +1 for local tile
+            itemCount: allUids.length + 1, 
             itemBuilder: (_, i) {
               if (i == 0) return _buildLocalTile();
               final uid = allUids[i - 1];
@@ -799,7 +799,7 @@ class _GroupCallPageState extends State<GroupCallPage>
       bottom: 0,
       width: 260,
       child: GestureDetector(
-        onTap: () {}, // absorb taps to prevent closing grid
+        onTap: () {}, 
         child: ClipRect(
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
@@ -900,7 +900,7 @@ class _GroupCallPageState extends State<GroupCallPage>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Live Caption toggle (top-right of controls area)
+              
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
@@ -927,7 +927,7 @@ class _GroupCallPageState extends State<GroupCallPage>
                 ],
               ),
 
-              // Main control row + hang-up button
+              
               Padding(
                 padding: const EdgeInsets.only(bottom: 20, left: 16, right: 16),
                 child: Column(
@@ -1037,7 +1037,7 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
-  // ── Voice Call UI ──────────────────────────────
+  
   Widget _buildVoiceUI() {
     return Container(
       decoration: const BoxDecoration(
@@ -1050,7 +1050,7 @@ class _GroupCallPageState extends State<GroupCallPage>
       child: SafeArea(
         child: Column(
           children: [
-            // Top bar: AI Shield + Quality Indicator
+            
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               child: Row(
@@ -1063,7 +1063,7 @@ class _GroupCallPageState extends State<GroupCallPage>
               ),
             ),
 
-            // Group name + timer
+            
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
@@ -1088,19 +1088,19 @@ class _GroupCallPageState extends State<GroupCallPage>
 
             const Spacer(),
 
-            // Participants grid
+            
             _buildVoiceParticipantsGrid(),
 
             const Spacer(),
 
-            // Live Caption overlay
+            
             if (_isLiveCaptionEnabled)
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 20, vertical: 20),
                 child: LiveCaptionOverlay(),
               ),
 
-            // Live Caption toggle button
+            
             Container(
               margin: const EdgeInsets.only(bottom: 24),
               decoration: BoxDecoration(
@@ -1118,7 +1118,7 @@ class _GroupCallPageState extends State<GroupCallPage>
               ),
             ),
 
-            // Control buttons
+            
             _buildVoiceControls(),
             const SizedBox(height: 32),
           ],
@@ -1205,7 +1205,7 @@ class _GroupCallPageState extends State<GroupCallPage>
               active: _isMuted,
               onTap: _toggleMute),
 
-          // Hang-up button
+          
           GestureDetector(
             onTap: _hangUp,
             child: Container(

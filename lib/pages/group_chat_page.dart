@@ -300,7 +300,7 @@ class GroupChatPageState extends State<GroupChatPage>
           label: 'BẬT (Elder Mode)',
           textColor: Colors.amberAccent,
           onPressed: () {
-            // Tích hợp Provider để kích hoạt Elder Mode
+            
             try {
               context.read<AppModeProvider>().setMode(AppMode.elder);
               Fluttertoast.showToast(

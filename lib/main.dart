@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -36,6 +37,12 @@ Future<void> main() async {
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
+    );
+
+    
+    await FirebaseAppCheck.instance.activate(
+      androidProvider: AndroidProvider.playIntegrity,
+      appleProvider: AppleProvider.appAttest,
     );
 
     try {
@@ -364,7 +371,6 @@ class MyApp extends StatelessWidget {
         Provider<ChatBubbleService>(create: (_) => chatBubbleService),
         Provider<UnifiedBubbleService>(create: (_) => unifiedBubbleService),
         Provider<NotificationService>(create: (_) => notificationService),
-        
         ChangeNotifierProvider<TelemetryProvider>(
           create: (_) => TelemetryProvider(),
         ),

@@ -907,7 +907,7 @@ class ChatPageState extends State<ChatPage>
           label: 'BẬT (Elder Mode)',
           textColor: Colors.amberAccent,
           onPressed: () {
-            // Tích hợp Provider để kích hoạt Elder Mode
+            
             try {
               context.read<AppModeProvider>().setMode(AppMode.elder);
               Fluttertoast.showToast(
@@ -1888,7 +1888,7 @@ class ChatPageState extends State<ChatPage>
     final isViewOnce = data?['isViewOnce'] ?? false;
     final isViewed = data?['isViewed'] ?? false;
 
-    // --- PROACTIVE AI ---
+    
     final bool isScamWarning = data?['scamWarning'] ?? false;
     final String scamReason = data?['scamReason'] ?? '';
     final bool hasReminder = data?['hasReminder'] ?? false;
@@ -2002,7 +2002,7 @@ class ChatPageState extends State<ChatPage>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // 1. UI CẢNH BÁO LỪA ĐẢO TỰ ĐỘNG (BACKGROUND AI)
+                        
                         if (!isMyMessage && isScamWarning)
                           Container(
                             margin: const EdgeInsets.only(bottom: 8),
@@ -2030,7 +2030,7 @@ class ChatPageState extends State<ChatPage>
                             ),
                           ),
 
-                        // 2. UI ĐỀ XUẤT NHẮC NHỞ TỰ ĐỘNG (BACKGROUND AI)
+                        
                         if (!isMyMessage && hasReminder)
                           Container(
                             margin: const EdgeInsets.only(bottom: 8),
@@ -2268,7 +2268,7 @@ class ChatPageState extends State<ChatPage>
                   _scamResults[document.id] != 'SAFE')
                 ScamWarningWidget(status: _scamResults[document.id]!),
 
-              // ĐÃ FIX: Chỉ hiện tùy chọn quét rủi ro thủ công nếu hệ thống ngầm chưa bắt được lỗi lừa đảo
+              
               if (_scamResults[document.id] == null && !isScamWarning)
                 Padding(
                   padding: const EdgeInsets.only(top: 4, bottom: 8),

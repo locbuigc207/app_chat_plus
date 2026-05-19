@@ -28,7 +28,7 @@ class RealtimeAIService {
   String _currentTranscript = "";
   Timer? _aiAnalysisTimer;
 
-  // Bộ từ khóa cục bộ để phản ứng tức thì (Local Keyword Spotting)
+  
   final List<String> _redFlags = [
     "chuyển tiền",
     "ngân hàng",
@@ -59,7 +59,7 @@ class RealtimeAIService {
     _isListening = true;
     _securityController.add(SecurityStatus.safe);
 
-    // Lắng nghe giọng nói
+    
     _speech.listen(
       onResult: (result) {
         _currentTranscript = result.recognizedWords;
@@ -71,7 +71,7 @@ class RealtimeAIService {
       partialResults: true,
     );
 
-    // Chạy AI Cloud định kỳ mỗi 15 giây để quét sâu ngữ cảnh
+    
     _aiAnalysisTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (_currentTranscript.length > 20) {
         _runCloudAIAnalysis(peerId, conversationId);
@@ -79,7 +79,7 @@ class RealtimeAIService {
     });
   }
 
-  // Quét cục bộ (Tốc độ 0.1s)
+  
   void _localKeywordScan(String text) {
     final lowerText = text.toLowerCase();
     for (var flag in _redFlags) {
@@ -92,7 +92,7 @@ class RealtimeAIService {
     }
   }
 
-  // Quét Cloud (AI Gemini)
+  
   Future<void> _runCloudAIAnalysis(String peerId, String conversationId) async {
     _securityController.add(SecurityStatus.scanning);
     try {
@@ -111,10 +111,10 @@ class RealtimeAIService {
             .add(data['warningMessage'] ?? "Cảnh báo Lừa đảo / Deepfake!");
       } else {
         _securityController.add(SecurityStatus.safe);
-        _warningMsgController.add(""); // Xóa cảnh báo
+        _warningMsgController.add(""); 
       }
 
-      // Reset transcript sau khi phân tích để tránh text quá dài
+      
       _currentTranscript = "";
     } catch (e) {
       _securityController.add(SecurityStatus.safe);

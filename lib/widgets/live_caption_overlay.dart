@@ -3,15 +3,16 @@ import 'package:flutter/material.dart';
 import '../services/realtime_ai_service.dart';
 
 class LiveCaptionOverlay extends StatelessWidget {
-  const LiveCaptionOverlay({Key? key}) : super(key: key);
+  const LiveCaptionOverlay({super.key});
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<String>(
         stream: RealtimeAIService().captionStream,
         builder: (context, snapshot) {
-          if (!snapshot.hasData || snapshot.data!.isEmpty)
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return const SizedBox.shrink();
+          }
 
           return Container(
             width: MediaQuery.of(context).size.width * 0.85,

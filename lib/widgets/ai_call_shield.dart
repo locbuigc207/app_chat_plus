@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/realtime_ai_service.dart';
 
 class AICallShield extends StatelessWidget {
-  const AICallShield({Key? key}) : super(key: key);
+  const AICallShield({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -35,14 +35,15 @@ class AICallShield extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Banner chữ đỏ nếu nguy hiểm
+              
               if (status == SecurityStatus.danger ||
                   status == SecurityStatus.warning)
                 StreamBuilder<String>(
                     stream: RealtimeAIService().warningMsgStream,
                     builder: (context, msgSnapshot) {
-                      if (!msgSnapshot.hasData || msgSnapshot.data!.isEmpty)
+                      if (!msgSnapshot.hasData || msgSnapshot.data!.isEmpty) {
                         return const SizedBox.shrink();
+                      }
                       return Container(
                         margin: const EdgeInsets.only(bottom: 8),
                         padding: const EdgeInsets.symmetric(
@@ -61,7 +62,7 @@ class AICallShield extends StatelessWidget {
                       );
                     }),
 
-              // Icon Khiên
+              
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
