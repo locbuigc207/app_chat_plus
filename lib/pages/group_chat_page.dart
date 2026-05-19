@@ -86,6 +86,9 @@ class GroupChatPageState extends State<GroupChatPage>
   final Map<String, Timer> _scheduledMessages = {};
   final Map<String, String> _scheduledMessageContents = {};
 
+  // Convenience getter for group chat id
+  String get _groupChatId => widget.group.id;
+
   @override
   void initState() {
     super.initState();
@@ -862,30 +865,42 @@ class GroupChatPageState extends State<GroupChatPage>
             if (didPop) return;
             _onBackPress();
           },
-          child: Stack(
+          child: Column(
             children: [
-              Column(
-                children: [
-                  ActiveGroupCallBanner(
-                    groupId: widget.group.id,
-                    currentUserId: _currentUserId,
-                    memberIds: widget.group.memberIds,
-                    groupName: widget.group.groupName,
-                  ),
-                  if (_pinnedMessages.isNotEmpty) _buildPinnedMessages(),
-                  _buildListMessage(),
-                  _buildTypingIndicator(),
-                  if (_showMentionSuggestions) _buildMentionSuggestions(),
-                  if (_isShowSticker) _buildStickers(),
-                  if (_showFeaturesMenu) _buildFeaturesMenu(),
-                  _buildInput(),
-                ],
+              ActiveGroupCallBanner(
+                groupId: widget.group.id,
+                currentUserId: _currentUserId,
+                memberIds: widget.group.memberIds,
+                groupName: widget.group.groupName,
               ),
-              if (_isLoading) const LoadingView(),
+              if (_showMentionSuggestions) _buildMentionSuggestions(),
+              Expanded(child: _buildChatContent()),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  // ── Chat Content ───────────────────────────────
+  Widget _buildChatContent() {
+    return Stack(
+      children: [
+        Column(
+          children: [
+            const OfflineIndicator(),
+            if (_pinnedMessages.isNotEmpty) _buildPinnedMessages(),
+            _buildListMessage(),
+            _buildTypingIndicator(),
+            if (_isShowSticker) _buildStickers(),
+            if (_showFeaturesMenu) _buildFeaturesMenu(),
+            _buildInput(),
+          ],
+        ),
+        Positioned(
+          child: _isLoading ? const LoadingView() : const SizedBox.shrink(),
+        ),
+      ],
     );
   }
 
@@ -1234,8 +1249,17 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   // ── Single Message ─────────────────────────────
-  Widget _buildItemMessage(int index, DocumentSnapshot document) {
-    final msg = MessageChat.fromDocument(document);
+  Widget _buildItemMessage(int index, DocumentSnapshot? document) {
+    if (document == null) return const SizedBox.shrink();
+    final rawMessageChat = MessageChat.fromDocument(document);
+
+    // Giải mã nội dung tin nhắn trước khi hiển thị
+    final decryptedContent = EncryptionService()
+        .decryptMessage(rawMessageChat.content, _groupChatId);
+
+    // Tạo bản sao đã được giải mã để dùng trong UI
+    final msg = rawMessageChat.copyWith(content: decryptedContent);
+
     final isMe = msg.idFrom == _currentUserId;
     final data = document.data() as Map<String, dynamic>?;
     final isViewOnce = data?['isViewOnce'] ?? false;

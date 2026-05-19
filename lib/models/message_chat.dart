@@ -51,7 +51,7 @@ class MessageChat {
     }
 
     // ✅ Helper function to convert Timestamp to String
-    String _getStringValue(dynamic value) {
+    String getStringValue(dynamic value) {
       if (value == null)
         return DateTime.now().millisecondsSinceEpoch.toString();
       if (value is String) return value;
@@ -60,7 +60,7 @@ class MessageChat {
       return DateTime.now().millisecondsSinceEpoch.toString();
     }
 
-    String? _getOptionalStringValue(dynamic value) {
+    String? getOptionalStringValue(dynamic value) {
       if (value == null) return null;
       if (value is String) return value;
       if (value is Timestamp) return value.millisecondsSinceEpoch.toString();
@@ -71,14 +71,35 @@ class MessageChat {
     return MessageChat(
       idFrom: data[FirestoreConstants.idFrom] ?? '',
       idTo: data[FirestoreConstants.idTo] ?? '',
-      timestamp: _getStringValue(data[FirestoreConstants.timestamp]),
+      timestamp: getStringValue(data[FirestoreConstants.timestamp]),
       content: data[FirestoreConstants.content] ?? '',
       type: data[FirestoreConstants.type] ?? 0,
       isDeleted: data['isDeleted'] ?? false,
-      editedAt: _getOptionalStringValue(data['editedAt']),
+      editedAt: getOptionalStringValue(data['editedAt']),
       isPinned: data['isPinned'] ?? false,
       isRead: data['isRead'] ?? false,
-      readAt: _getOptionalStringValue(data['readAt']),
+      readAt: getOptionalStringValue(data['readAt']),
+    );
+  }
+
+  MessageChat copyWith({
+    String? content,
+    String? editedAt,
+    bool? isPinned,
+    bool? isRead,
+    String? readAt,
+  }) {
+    return MessageChat(
+      idFrom: idFrom,
+      idTo: idTo,
+      timestamp: timestamp,
+      content: content ?? this.content,
+      type: type,
+      isDeleted: isDeleted,
+      editedAt: editedAt ?? this.editedAt,
+      isPinned: isPinned ?? this.isPinned,
+      isRead: isRead ?? this.isRead,
+      readAt: readAt ?? this.readAt,
     );
   }
 }

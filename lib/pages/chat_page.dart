@@ -99,7 +99,7 @@ class ChatPageState extends State<ChatPage>
   final Map<String, Timer> _scheduledMessages = {};
   final Map<String, String> _scheduledMessageContents = {};
 
-  // [THÊM MỚI] Lưu kết quả quét scam theo messageId
+  // Lưu kết quả quét scam theo messageId
   Map<String, String> _scamResults = {};
 
   // ==========================================
@@ -835,11 +835,10 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // [THÊM MỚI] SafeSendDialog xác nhận trước khi upload ảnh
+  // SafeSendDialog xác nhận trước khi upload ảnh
   Future<void> _uploadFile() async {
     if (_imageFile == null) return;
 
-    // --- BẮT ĐẦU THÊM SAFE SEND ---
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => const SafeSendDialog(
@@ -850,9 +849,8 @@ class ChatPageState extends State<ChatPage>
     );
     if (confirm != true) {
       if (mounted) setState(() => _isLoading = false);
-      return; // Hủy gửi nếu bấm nhầm
+      return;
     }
-    // --- KẾT THÚC THÊM SAFE SEND ---
 
     try {
       final fileName = DateTime.now().millisecondsSinceEpoch.toString();
@@ -1026,6 +1024,7 @@ class ChatPageState extends State<ChatPage>
   void _setReplyToMessage(MessageChat message) {
     HapticFeedback.selectionClick();
     if (resourceManager.isDisposed || !mounted) return;
+    // message truyền vào đây đã được giải mã từ _buildItemMessage nên an toàn.
     setState(() => _replyingTo = message);
     _focusNode.requestFocus();
   }
@@ -1654,15 +1653,19 @@ class ChatPageState extends State<ChatPage>
       return;
     }
 
-    // Lấy tối đa 15 tin nhắn gần nhất để làm ngữ cảnh cho AI
+    // [SỬA ĐỔI] Giải mã từng tin nhắn trước khi format cho AI
     List<String> recentMessages = _listMessage
         .take(15)
         .map((doc) {
-          final msg = MessageChat.fromDocument(doc);
-          final sender = msg.idFrom == _currentUserId
+          final rawMsg = MessageChat.fromDocument(doc);
+          // 1. Giải mã trước
+          final decryptedContent =
+              EncryptionService().decryptMessage(rawMsg.content, _groupChatId);
+          // 2. Format cho AI
+          final sender = rawMsg.idFrom == _currentUserId
               ? "Tôi"
               : widget.arguments.peerNickname;
-          return "$sender: ${msg.content}";
+          return "$sender: $decryptedContent";
         })
         .toList()
         .reversed
@@ -1833,7 +1836,7 @@ class ChatPageState extends State<ChatPage>
   }
 
   // ==========================================
-  // UI: PINNED MESSAGES (Premium)
+  // UI: PINNED MESSAGES
   // ==========================================
 
   Widget _buildPinnedMessages() {
@@ -1935,19 +1938,26 @@ class ChatPageState extends State<ChatPage>
   }
 
   // ==========================================
-  // UI: MESSAGE ITEM (Premium Bubbles)
+  // UI: MESSAGE ITEM
   // ==========================================
 
   Widget _buildItemMessage(int index, DocumentSnapshot? document) {
     if (document == null) return const SizedBox.shrink();
 
-    final messageChat = MessageChat.fromDocument(document);
+    final rawMessageChat = MessageChat.fromDocument(document);
+
+    // [THÊM MỚI] Giải mã nội dung tin nhắn để hiển thị UI
+    final decryptedContent = EncryptionService()
+        .decryptMessage(rawMessageChat.content, _groupChatId);
+
+    // Tạo bản copy đã được giải mã để dùng xuyên suốt hàm này
+    final messageChat = rawMessageChat.copyWith(content: decryptedContent);
+
     final isMyMessage = messageChat.idFrom == _currentUserId;
     final data = document.data() as Map<String, dynamic>?;
     final isViewOnce = data?['isViewOnce'] ?? false;
     final isViewed = data?['isViewed'] ?? false;
 
-    // Dynamic border radius based on grouping
     bool isLastInGroup = true;
     if (index > 0) {
       final prevMsg = MessageChat.fromDocument(_listMessage[index - 1]);
@@ -2013,6 +2023,7 @@ class ChatPageState extends State<ChatPage>
                 GestureDetector(
                   onLongPress: () {
                     HapticFeedback.heavyImpact();
+                    // messageChat đã được giải mã, an toàn để truyền vào options
                     _showAdvancedMessageOptions(messageChat, document.id);
                   },
                   onDoubleTap: () {
@@ -2261,7 +2272,7 @@ class ChatPageState extends State<ChatPage>
               ],
             ),
 
-            // [THÊM MỚI] Scam check UI – chỉ hiện cho tin nhắn nhận (không phải của mình)
+            // Scam check UI – chỉ hiện cho tin nhắn nhận (không phải của mình)
             if (!isMyMessage && messageChat.type == TypeMessage.text) ...[
               if (_scamResults[document.id] != null &&
                   _scamResults[document.id] != 'SAFE')
@@ -2272,6 +2283,7 @@ class ChatPageState extends State<ChatPage>
                   child: InkWell(
                     onTap: () async {
                       Fluttertoast.showToast(msg: "AI Đang quét an toàn...");
+                      // messageChat.content đã được giải mã, truyền thẳng vào AI
                       final status = await AIBackendService()
                           .checkScam(messageChat.content);
                       if (mounted) {
@@ -2660,7 +2672,7 @@ class ChatPageState extends State<ChatPage>
   }
 
   // ==========================================
-  // UI: INPUT BAR (Premium Pill)
+  // UI: INPUT BAR
   // ==========================================
 
   Widget _buildAdvancedInput() {
@@ -3056,6 +3068,7 @@ class ChatPageState extends State<ChatPage>
       children: [
         Column(
           children: [
+            const OfflineIndicator(),
             _buildPinnedMessages(),
             _buildListMessage(),
             _buildTypingIndicator(),

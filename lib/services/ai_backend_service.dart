@@ -1,6 +1,8 @@
+// lib/services/ai_backend_service.dart
+
 import 'package:cloud_functions/cloud_functions.dart';
 
-import '../utils/error_logger.dart';
+import '../utils/utils.dart';
 
 class AIBackendService {
   final FirebaseFunctions _functions = FirebaseFunctions.instance;
@@ -11,10 +13,13 @@ class AIBackendService {
     String targetAudience,
   ) async {
     try {
+      // BẢO MẬT: Che dữ liệu nhạy cảm
+      final safeMessage = DataMaskingUtils.maskSensitiveData(message);
+
       final HttpsCallable callable =
           _functions.httpsCallable('translateCommunication');
       final results = await callable.call(<String, dynamic>{
-        'message': message,
+        'message': safeMessage,
         'targetAudience': targetAudience,
       });
       return results.data['translatedText'];
@@ -32,10 +37,12 @@ class AIBackendService {
     String action,
   ) async {
     try {
+      // BẢO MẬT: Che toàn bộ lịch sử trò chuyện
+      final safeMessages = DataMaskingUtils.maskMessageList(messages);
+      final String chatHistory = safeMessages.join('\n');
+
       final HttpsCallable callable =
           _functions.httpsCallable('analyzeChatContext');
-      final String chatHistory = messages.join('\n');
-
       final results = await callable.call(<String, dynamic>{
         'messages': chatHistory,
         'contextType': contextType,
@@ -52,9 +59,13 @@ class AIBackendService {
   // Gọi API Kiểm tra lừa đảo
   Future<String> checkScam(String message) async {
     try {
+      // Đối với Scam Detection, che số tài khoản nhưng giữ lại link
+      // để AI nhận diện URL độc hại. Điều chỉnh logic trong DataMasking nếu cần.
+      final safeMessage = DataMaskingUtils.maskSensitiveData(message);
+
       final HttpsCallable callable = _functions.httpsCallable('analyzeScam');
       final results = await callable.call(<String, dynamic>{
-        'message': message,
+        'message': safeMessage,
       });
       return results.data['status'] ?? 'SAFE';
     } catch (e, stackTrace) {
@@ -68,10 +79,12 @@ class AIBackendService {
   Future<Map<String, dynamic>?> extractRelationshipMemory(
       List<String> messages) async {
     try {
+      // BẢO MẬT: Che toàn bộ lịch sử trò chuyện
+      final safeMessages = DataMaskingUtils.maskMessageList(messages);
+      final String chatHistory = safeMessages.join('\n');
+
       final HttpsCallable callable =
           _functions.httpsCallable('extractRelationshipMemory');
-      final String chatHistory = messages.join('\n');
-
       final results = await callable.call(<String, dynamic>{
         'messages': chatHistory,
       });

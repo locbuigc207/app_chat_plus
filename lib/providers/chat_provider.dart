@@ -4,17 +4,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
+import 'package:flutter_chat_demo/services/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-// Import thêm các thành phần của Gemini AI Assistant
-import '../services/gemini_service.dart';
 
 class ChatProvider {
   final SharedPreferences prefs;
   final FirebaseFirestore firebaseFirestore;
   final FirebaseStorage firebaseStorage;
 
-  // Khởi tạo instance của Gemini Service
   final GeminiService _geminiService = GeminiService();
 
   ChatProvider({
@@ -63,11 +60,16 @@ class ChatProvider {
         .collection(groupChatId)
         .doc(DateTime.now().millisecondsSinceEpoch.toString());
 
+    // BẢO MẬT: Mã hóa tin nhắn trước khi lưu lên Firestore
+    final String secureContent = type == TypeMessage.text
+        ? EncryptionService().encryptMessage(content, groupChatId)
+        : content; // Không mã hóa nếu là ảnh/file (lưu URL gốc)
+
     final messageChat = MessageChat(
       idFrom: currentUserId,
       idTo: peerId,
       timestamp: DateTime.now().millisecondsSinceEpoch.toString(),
-      content: content,
+      content: secureContent, // Sử dụng nội dung đã mã hóa
       type: type,
     );
 
@@ -78,7 +80,7 @@ class ChatProvider {
       );
     });
 
-    // Update conversation last message
+    // Cập nhật tin nhắn cuối cùng trong conversation (dùng content gốc để hiển thị preview)
     _updateConversationLastMessage(groupChatId, content, type);
 
     // Xử lý tự động phản hồi nếu nhắn tin với Bot
@@ -109,7 +111,7 @@ class ChatProvider {
           FirestoreConstants.lastMessageType: messageType,
         });
       } else {
-        // If conversation doesn't exist, create it
+        // Nếu conversation chưa tồn tại thì tạo mới
         final participants = conversationId.split('-');
         await firebaseFirestore
             .collection(FirestoreConstants.pathConversationCollection)
@@ -130,30 +132,32 @@ class ChatProvider {
 
   Future<void> _handleAiResponse(
       String userMessage, String groupChatId, String currentUserId) async {
-    // Gọi API của Gemini
-    String aiReply = await _geminiService.sendMessage(userMessage, []);
+    // Gọi API của Gemini (truyền nội dung gốc, không mã hóa)
+    final String aiReply = await _geminiService.sendMessage(userMessage, []);
 
-    // Lưu câu trả lời của AI vào lại Firestore
-    DocumentReference aiDocRef = firebaseFirestore
+    // BẢO MẬT: Mã hóa phản hồi của AI trước khi lưu
+    final String secureAiReply =
+        EncryptionService().encryptMessage(aiReply, groupChatId);
+
+    final DocumentReference aiDocRef = firebaseFirestore
         .collection(FirestoreConstants.pathMessageCollection)
         .doc(groupChatId)
         .collection(groupChatId)
         .doc(DateTime.now().millisecondsSinceEpoch.toString());
 
-    MessageChat aiMessage = MessageChat(
+    final MessageChat aiMessage = MessageChat(
       idFrom: AppConstants.aiAssistantId,
       idTo: currentUserId,
       timestamp: DateTime.now().millisecondsSinceEpoch.toString(),
-      content: aiReply,
-      type: TypeMessage
-          .text, // Có thể chỉnh thành TypeMessage.text để tương thích UI hiện tại của bạn
+      content: secureAiReply, // Lưu phản hồi AI đã mã hóa
+      type: TypeMessage.text,
     );
 
     firebaseFirestore.runTransaction((transaction) async {
       transaction.set(aiDocRef, aiMessage.toJson());
     });
 
-    // Cập nhật lại tin nhắn cuối cùng bên ngoài màn danh sách (của AI)
+    // Cập nhật preview conversation với nội dung gốc (chưa mã hóa)
     _updateConversationLastMessage(groupChatId, aiReply, TypeMessage.text);
   }
 }
