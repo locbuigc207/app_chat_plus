@@ -31,30 +31,75 @@ class AppModeProvider with ChangeNotifier {
   ThemeData getThemeData() {
     switch (_currentMode) {
       case AppMode.elder:
+        // Chế độ người lớn tuổi: Font chữ rất to, icon lớn, màu sắc tương phản cao, dễ nhìn
         return ThemeData(
-          primarySwatch: Colors.blue,
-          textTheme: const TextTheme(
-            bodyLarge: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            bodyMedium: TextStyle(fontSize: 22),
+          useMaterial3: true,
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: Colors.blue,
+            brightness: Brightness.light,
           ),
-          iconTheme: const IconThemeData(size: 40),
+          textTheme: const TextTheme(
+            bodyLarge: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87),
+            bodyMedium: TextStyle(fontSize: 22, color: Colors.black87),
+            labelLarge: TextStyle(fontSize: 24, fontWeight: FontWeight.w600),
+          ),
+          iconTheme: const IconThemeData(size: 38, color: Colors.blue),
+          appBarTheme: const AppBarTheme(
+            iconTheme: IconThemeData(size: 38, color: Colors.blue),
+            titleTextStyle: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87),
+          ),
+          elevatedButtonTheme: ElevatedButtonThemeData(
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+              textStyle:
+                  const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+          ),
         );
+
       case AppMode.work:
+        // Chế độ công việc: Thiết kế phẳng, màu sắc tối giản (BlueGrey), font chữ tiêu chuẩn, tập trung không gian
         return ThemeData(
-          brightness: Brightness.dark,
-          primaryColor: Colors.blueGrey,
+          useMaterial3: true,
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: Colors.blueGrey,
+            brightness: Brightness.light,
+          ),
           textTheme: const TextTheme(
-            bodyLarge: TextStyle(fontSize: 14),
-            bodyMedium: TextStyle(fontSize: 14),
+            bodyLarge: TextStyle(fontSize: 15, color: Colors.black87),
+            bodyMedium: TextStyle(fontSize: 14, color: Colors.black87),
+          ),
+          appBarTheme: const AppBarTheme(
+            elevation: 1,
+            centerTitle: false,
+            backgroundColor: Colors.white,
+            foregroundColor: Colors.black87,
           ),
         );
+
       case AppMode.student:
       default:
+        // Chế độ sinh viên/mặc định: Trẻ trung, màu sắc nổi bật, bo góc mềm mại
         return ThemeData(
-          primarySwatch: Colors.purple,
+          useMaterial3: true,
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFF007AFF), // Apple Blue style
+            brightness: Brightness.light,
+          ),
           textTheme: const TextTheme(
-            bodyLarge: TextStyle(fontSize: 16),
-            bodyMedium: TextStyle(fontSize: 16),
+            bodyLarge: TextStyle(fontSize: 16, color: Colors.black87),
+            bodyMedium: TextStyle(fontSize: 15, color: Colors.black87),
+          ),
+          appBarTheme: const AppBarTheme(
+            elevation: 0,
+            backgroundColor: Colors.white,
+            foregroundColor: Colors.black87,
           ),
         );
     }

@@ -3,6 +3,7 @@ const admin = require("firebase-admin");
 const {RtcTokenBuilder, RtcRole} = require("agora-access-token");
 const cors = require("cors")({origin: true});
 const {GoogleGenerativeAI} = require("@google/generative-ai");
+const crypto = require("crypto");
 
 admin.initializeApp();
 
@@ -13,15 +14,47 @@ const APP_ID = "11d7a5c344694ee5ad835a7e0d388871";
 const APP_CERTIFICATE = "aa8c095cf3c248fe876a66b788a37cf4";
 
 // =====================================================
-// CẤU HÌNH GEMINI AI (Dùng process.env thay vì functions.config)
+// CẤU HÌNH GEMINI AI
 // =====================================================
 const apiKey = process.env.GEMINI_API_KEY;
 
 if (!apiKey) {
-  console.error("LỖI CỰC KỲ QUAN TRỌNG: Chưa thiết lập GEMINI_API_KEY trong file functions/.env");
+  console.error("LỖI: Chưa thiết lập GEMINI_API_KEY trong file functions/.env");
 }
 
 const genAI = new GoogleGenerativeAI(apiKey);
+
+// =====================================================
+// HELPER: Giải mã AES-256-CBC (khớp với EncryptionService Flutter)
+// =====================================================
+function decryptMessageHelper(encryptedText, conversationId) {
+  if (!encryptedText || !encryptedText.includes(":")) {
+    return encryptedText;
+  }
+  try {
+    const parts = encryptedText.split(":");
+    if (parts.length !== 2) return encryptedText;
+
+    const iv = Buffer.from(parts[0], "base64");
+    const ciphertext = Buffer.from(parts[1], "base64");
+
+    const salt = "APP_CHAT_PLUS_SECURE_SALT_2026";
+    const key = crypto
+      .createHash("sha256")
+      .update(conversationId + salt, "utf-8")
+      .digest();
+
+    const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+    let decrypted = decipher.update(ciphertext, "binary", "utf8");
+    decrypted += decipher.final("utf8");
+
+    return decrypted;
+  } catch (error) {
+    console.error("❌ Lỗi giải mã trong Cloud Function:", error);
+    return encryptedText;
+  }
+}
+
 // =====================================================
 // 1. GENERATE AGORA TOKEN
 // =====================================================
@@ -53,11 +86,12 @@ exports.generateAgoraToken = functions.https.onRequest((req, res) => {
       );
       return res.status(200).json({token});
     } catch (error) {
-      console.error("Lỗi khi tạo Token:", error);
+      console.error("❌ Lỗi khi tạo Token:", error);
       return res.status(500).json({error: "Internal Server Error"});
     }
   });
 });
+
 // =====================================================
 // 2. AUTO-DELETE EXPIRED MESSAGES (Chạy mỗi 5 phút)
 // =====================================================
@@ -126,6 +160,7 @@ exports.cleanupExpiredMessages = functions.pubsub
       return null;
     }
   });
+
 // =====================================================
 // 3. SCHEDULE MESSAGE DELETION ON CREATE
 // =====================================================
@@ -163,6 +198,7 @@ exports.scheduleMessageDeletion = functions.firestore
       return null;
     }
   });
+
 // =====================================================
 // 4. CLEANUP TYPING STATUS (Chạy mỗi phút)
 // =====================================================
@@ -202,6 +238,7 @@ exports.cleanupTypingStatus = functions.pubsub
       return null;
     }
   });
+
 // =====================================================
 // 5. UPDATE USER LAST SEEN ON OFFLINE
 // =====================================================
@@ -226,6 +263,7 @@ exports.updateUserPresence = functions.firestore
       return null;
     }
   });
+
 // =====================================================
 // 6. SEND PUSH NOTIFICATION ON NEW MESSAGE
 // =====================================================
@@ -282,64 +320,9 @@ exports.sendMessageNotification = functions.firestore
       return null;
     }
   });
+
 // =====================================================
-// 6. SEND PUSH NOTIFICATION ON NEW MESSAGE
-// =====================================================
-exports.sendMessageNotification = functions.firestore
-  .document("messages/{conversationId}/{messageId}")
-  .onCreate(async (snap, context) => {
-    try {
-      const messageData = snap.data();
-      const {conversationId} = context.params;
-
-      const receiverDoc = await admin
-        .firestore()
-        .collection("users")
-        .doc(messageData.idTo)
-        .get();
-
-      if (!receiverDoc.exists) return null;
-
-      const receiverData = receiverDoc.data();
-      const pushToken = receiverData.pushToken;
-
-      if (!pushToken) return null;
-
-      const senderDoc = await admin
-        .firestore()
-        .collection("users")
-        .doc(messageData.idFrom)
-        .get();
-
-      const senderName = senderDoc.exists ?
-        senderDoc.data().nickname :
-        "Someone";
-
-      const payload = {
-        notification: {
-          title: senderName,
-          body:
-            messageData.type === 0 ? messageData.content : "📷 Sent an image",
-          sound: "default",
-        },
-        data: {
-          conversationId: conversationId,
-          senderId: messageData.idFrom,
-          type: "new_message",
-        },
-      };
-
-      await admin.messaging().sendToDevice(pushToken, payload);
-
-      console.log(`✅ Notification sent to ${messageData.idTo}`);
-      return null;
-    } catch (error) {
-      console.error("❌ Error sending notification:", error);
-      return null;
-    }
-  });
-// =====================================================
-// 8. AUTO-DELETE EXPIRED STORIES (Chạy mỗi giờ)
+// 7. AUTO-DELETE EXPIRED STORIES (Chạy mỗi giờ)
 // =====================================================
 exports.cleanupExpiredStories = functions.pubsub
   .schedule("every 1 hours")
@@ -386,8 +369,9 @@ exports.cleanupExpiredStories = functions.pubsub
       return null;
     }
   });
+
 // =====================================================
-// 9. TRANSLATE COMMUNICATION STYLE (Gemini AI)
+// 8. TRANSLATE COMMUNICATION STYLE (Gemini AI)
 // =====================================================
 exports.translateCommunication = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
@@ -418,8 +402,9 @@ exports.translateCommunication = functions.https.onCall(async (data, context) =>
     throw new functions.https.HttpsError("internal", "Lỗi xử lý AI.");
   }
 });
+
 // =====================================================
-// 10. ANALYZE CHAT CONTEXT (Gemini AI)
+// 9. ANALYZE CHAT CONTEXT (Gemini AI)
 // =====================================================
 exports.analyzeChatContext = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
@@ -449,8 +434,9 @@ exports.analyzeChatContext = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("internal", "Lỗi phân tích AI.");
   }
 });
+
 // =====================================================
-// 11. SCAM DETECTION (Phát hiện lừa đảo bằng AI)
+// 10. SCAM DETECTION (Phát hiện lừa đảo bằng AI)
 // =====================================================
 exports.analyzeScam = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
@@ -481,8 +467,9 @@ exports.analyzeScam = functions.https.onCall(async (data, context) => {
     return {status: "ERROR"};
   }
 });
+
 // =====================================================
-// 12. EXTRACT RELATIONSHIP MEMORY (Giai đoạn 4)
+// 11. EXTRACT RELATIONSHIP MEMORY
 // =====================================================
 exports.extractRelationshipMemory = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
@@ -511,10 +498,8 @@ exports.extractRelationshipMemory = functions.https.onCall(async (data, context)
     }`;
 
     const result = await model.generateContent(prompt);
-    const response = await result.response;
-    let text = response.text().trim();
+    let text = result.response.text().trim();
 
-    // Xóa markdown ```json và ``` nếu AI có lỡ thêm vào
     text = text.replace(/^```json/g, "").replace(/^```/g, "").replace(/```$/g, "").trim();
 
     return JSON.parse(text);
@@ -523,8 +508,10 @@ exports.extractRelationshipMemory = functions.https.onCall(async (data, context)
     throw new functions.https.HttpsError("internal", "Lỗi phân tích AI.");
   }
 });
+
 // =====================================================
-// 13. PROACTIVE AI AGENT (Chạy ngầm phân tích tin nhắn mới)
+// 12. PROACTIVE AI AGENT — Phân tích tin nhắn mới tự động
+// Có giải mã AES-256-CBC và hỗ trợ cả group chat lẫn private chat
 // =====================================================
 exports.proactiveMessageAnalyzer = functions.firestore
   .document("messages/{conversationId}/{messageId}")
@@ -532,15 +519,21 @@ exports.proactiveMessageAnalyzer = functions.firestore
     const messageData = snap.data();
     const {conversationId, messageId} = context.params;
 
-    // Chỉ phân tích tin nhắn text và bỏ qua tin nhắn do chính AI gửi
+    // Chỉ phân tích tin nhắn text, bỏ qua tin nhắn do AI gửi
     if (messageData.type !== 0 || messageData.idFrom === "AI_ASSISTANT") {
       return null;
     }
 
     try {
+      // Giải mã nội dung trước khi gửi lên AI
+      const plainTextContent = decryptMessageHelper(
+        messageData.content,
+        conversationId,
+      );
+
       const model = genAI.getGenerativeModel({model: "gemini-2.0-flash"});
 
-      const prompt = `Phân tích tin nhắn này: "${messageData.content}".
+      const prompt = `Phân tích tin nhắn này: "${plainTextContent}".
       Trả về kết quả DƯỚI DẠNG JSON (chỉ JSON, không markdown, không giải thích) theo cấu trúc sau:
       {
         "isScam": boolean (true nếu có dấu hiệu lừa đảo, chuyển tiền, link độc hại),
@@ -552,44 +545,78 @@ exports.proactiveMessageAnalyzer = functions.firestore
 
       const result = await model.generateContent(prompt);
       let text = result.response.text().trim();
-      text = text.replace(/^```json/g, "").replace(/^```/g, "").replace(/```$/g, "").trim();
+      text = text
+        .replace(/^```json/g, "")
+        .replace(/^```/g, "")
+        .replace(/```$/g, "")
+        .trim();
 
       const analysis = JSON.parse(text);
       const updates = {};
 
-      // 1. NẾU LÀ LỪA ĐẢO -> Gắn cờ cảnh báo trực tiếp vào tin nhắn
+      // 1. PHÁT HIỆN LỪA ĐẢO → Gắn cờ cảnh báo lên message document
       if (analysis.isScam) {
         updates.scamWarning = true;
         updates.scamReason = analysis.scamReason;
-        console.log(`🚨 Phát hiện lừa đảo trong tin nhắn ${messageId}`);
+        console.log(`🚨 [Proactive AI] Phát hiện lừa đảo trong tin nhắn: ${messageId}`);
       }
 
-      // 2. NẾU CÓ NHẮC NHỞ -> Tạo một Record Reminder ngầm
+      // 2. PHÁT HIỆN NHẮC NHỞ → Tạo reminder cho người nhận
       if (analysis.hasReminder) {
         updates.hasReminder = true;
 
-        // Lưu vào bảng reminders của người nhận
-        await admin.firestore().collection("reminders").add({
-          userId: messageData.idTo,
-          conversationId: conversationId,
-          messageId: messageId,
-          task: analysis.reminderTask,
-          timeHint: analysis.reminderTime,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          isCompleted: false,
-          isAutoGenerated: true, // Đánh dấu do AI tạo
-        });
-        console.log(`⏰ Đã tạo nhắc nhở tự động cho tin nhắn ${messageId}`);
+        const convDoc = await admin
+          .firestore()
+          .collection("conversations")
+          .doc(conversationId)
+          .get();
+
+        if (convDoc.exists && convDoc.data().isGroup === true) {
+          // GROUP CHAT: Tạo reminder cho tất cả thành viên (trừ người gửi)
+          const participants = convDoc.data().participants || [];
+          const reminderPromises = participants
+            .filter(
+              (uid) =>
+                uid !== "AI_ASSISTANT" && uid !== messageData.idFrom,
+            )
+            .map((uid) =>
+              admin.firestore().collection("reminders").add({
+                userId: uid,
+                conversationId: conversationId,
+                messageId: messageId,
+                task: analysis.reminderTask,
+                timeHint: analysis.reminderTime,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                isCompleted: false,
+                isAutoGenerated: true,
+              }),
+            );
+
+          await Promise.all(reminderPromises);
+          console.log(`⏰ [Group] Đã tạo reminder cho các thành viên từ tin nhắn ${messageId}`);
+        } else {
+          // PRIVATE CHAT: Tạo reminder cho người nhận
+          await admin.firestore().collection("reminders").add({
+            userId: messageData.idTo,
+            conversationId: conversationId,
+            messageId: messageId,
+            task: analysis.reminderTask,
+            timeHint: analysis.reminderTime,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            isCompleted: false,
+            isAutoGenerated: true,
+          });
+          console.log(`⏰ [Private] Đã tạo reminder cho người dùng ${messageData.idTo}`);
+        }
       }
 
-      // Cập nhật lại document tin nhắn nếu có thay đổi
       if (Object.keys(updates).length > 0) {
         await snap.ref.update(updates);
       }
 
       return null;
     } catch (error) {
-      console.error("❌ Lỗi Proactive AI:", error);
+      console.error("❌ Lỗi Proactive AI Agent:", error);
       return null;
     }
   });
