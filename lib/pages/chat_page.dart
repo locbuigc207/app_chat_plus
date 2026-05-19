@@ -74,6 +74,7 @@ class ChatPageState extends State<ChatPage>
   late ConversationLockProvider _lockProvider;
   late ViewOnceProvider _viewOnceProvider;
   late SmartReplyProvider _smartReplyProvider;
+  late TelemetryProvider _telemetryProvider;
   VoiceMessageProvider? _voiceProvider;
   LocationProvider? _locationProvider;
 
@@ -210,6 +211,7 @@ class ChatPageState extends State<ChatPage>
     _smartReplyProvider = context.read<SmartReplyProvider>();
     _presenceProvider = context.read<UserPresenceProvider>();
     _unifiedBubbleService = context.read<UnifiedBubbleService>();
+    _telemetryProvider = context.read<TelemetryProvider>();
 
     final miniChatSub = _unifiedBubbleService?.bubbleClickStream.listen(
       (event) {
@@ -891,6 +893,15 @@ class ChatPageState extends State<ChatPage>
   void _handleTyping(String text) {
     if (_presenceProvider == null || resourceManager.isDisposed) return;
 
+    
+    _telemetryProvider.recordTextChange(text);
+
+    
+    if (_telemetryProvider.shouldSuggestElderMode) {
+      _showAdaptiveUISuggestion();
+      _telemetryProvider.markAsHandled();
+    }
+
     if (text.isEmpty) {
       if (_isTyping) {
         _isTyping = false;
@@ -922,6 +933,40 @@ class ChatPageState extends State<ChatPage>
         );
       }
     }));
+  }
+
+  
+  
+  
+
+  void _showAdaptiveUISuggestion() {
+    if (resourceManager.isDisposed || !mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Row(
+          children: [
+            Icon(Icons.accessibility_new, color: Colors.white),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                  'Bạn đang gặp khó khăn khi gõ chữ? Đổi sang giao diện lớn hơn nhé?'),
+            ),
+          ],
+        ),
+        duration: const Duration(seconds: 8),
+        backgroundColor: Colors.blueGrey,
+        action: SnackBarAction(
+          label: 'BẬT (Elder Mode)',
+          textColor: Colors.amberAccent,
+          onPressed: () {
+            
+            Fluttertoast.showToast(
+                msg: 'Đã chuyển sang giao diện người lớn tuổi!');
+          },
+        ),
+      ),
+    );
   }
 
   
@@ -1958,6 +2003,11 @@ class ChatPageState extends State<ChatPage>
     final isViewOnce = data?['isViewOnce'] ?? false;
     final isViewed = data?['isViewed'] ?? false;
 
+    
+    final bool isScamWarning = data?['scamWarning'] ?? false;
+    final String scamReason = data?['scamReason'] ?? '';
+    final bool hasReminder = data?['hasReminder'] ?? false;
+
     bool isLastInGroup = true;
     if (index > 0) {
       final prevMsg = MessageChat.fromDocument(_listMessage[index - 1]);
@@ -2070,6 +2120,67 @@ class ChatPageState extends State<ChatPage>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        
+                        if (!isMyMessage && isScamWarning)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.red),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.warning,
+                                    color: Colors.red, size: 16),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'CẢNH BÁO AI: $scamReason',
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.red,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                        
+                        if (!isMyMessage && hasReminder)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.alarm_add,
+                                    color: Colors.blue, size: 16),
+                                const SizedBox(width: 8),
+                                const Expanded(
+                                  child: Text(
+                                    'AI: Phát hiện có công việc cần lưu!',
+                                    style: TextStyle(
+                                        fontSize: 12, color: Colors.blue),
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: () => _showReminders(),
+                                  style: TextButton.styleFrom(
+                                      padding: EdgeInsets.zero,
+                                      minimumSize: const Size(40, 24)),
+                                  child: const Text('XEM',
+                                      style: TextStyle(fontSize: 12)),
+                                ),
+                              ],
+                            ),
+                          ),
+
                         if (messageChat.isDeleted)
                           Text(
                             messageChat.content,

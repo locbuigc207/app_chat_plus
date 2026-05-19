@@ -14,6 +14,7 @@ export 'reminder_provider.dart';
 export 'setting_provider.dart';
 export 'smart_reply_provider.dart';
 export 'story_provider.dart';
+export 'telemetry_provider.dart';
 export 'theme_provider.dart';
 export 'translation_provider.dart';
 export 'user_presence_provider.dart';

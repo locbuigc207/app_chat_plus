@@ -1,4 +1,3 @@
-
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -32,7 +31,6 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  
   await dotenv.load(fileName: ".env");
 
   try {
@@ -40,18 +38,15 @@ Future<void> main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    
     try {
       FirebaseFirestore.instance.settings = const Settings(
-        persistenceEnabled: true, 
-        cacheSizeBytes:
-            Settings.CACHE_SIZE_UNLIMITED, 
+        persistenceEnabled: true,
+        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
       );
       print('✅ Đã bật Firestore Offline Persistence');
     } catch (e) {
       print('⚠️ Không thể bật Offline Persistence (có thể do Web): $e');
     }
-    
   } catch (e) {
     print('❌ Firebase initialization error: $e');
   }
@@ -61,7 +56,6 @@ Future<void> main() async {
   tz.setLocalLocation(tz.getLocation('Asia/Ho_Chi_Minh'));
   final prefs = await SharedPreferences.getInstance();
 
-  
   if (!kIsWeb) {
     await _initializeNotifications(flutterLocalNotificationsPlugin);
   }
@@ -271,7 +265,6 @@ class MyApp extends StatelessWidget {
       child: SplashPage(),
     );
 
-    
     if (!kIsWeb) {
       appTree = BubbleChatChannelManager(
         child: GroupCallListener(
@@ -371,6 +364,10 @@ class MyApp extends StatelessWidget {
         Provider<ChatBubbleService>(create: (_) => chatBubbleService),
         Provider<UnifiedBubbleService>(create: (_) => unifiedBubbleService),
         Provider<NotificationService>(create: (_) => notificationService),
+        
+        ChangeNotifierProvider<TelemetryProvider>(
+          create: (_) => TelemetryProvider(),
+        ),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {

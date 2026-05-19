@@ -1,4 +1,3 @@
-
 import 'dart:async';
 import 'dart:io';
 
@@ -28,7 +27,6 @@ class GroupChatPage extends StatefulWidget {
 
 class GroupChatPageState extends State<GroupChatPage>
     with WidgetsBindingObserver, ResourceManagerMixin {
-  
   late String _currentUserId;
   List<QueryDocumentSnapshot> _listMessage = [];
   int _limit = 20;
@@ -41,29 +39,26 @@ class GroupChatPageState extends State<GroupChatPage>
   int _recordingSeconds = 0;
   Timer? _recordingTimer;
 
-  
   MessageChat? _replyingTo;
   String? _replyingToSenderName;
 
-  
   List<DocumentSnapshot> _pinnedMessages = [];
 
-  
   bool _showMentionSuggestions = false;
   List<Map<String, dynamic>> _memberSuggestions = [];
   Map<String, String> _memberNames = {};
 
-  
   File? _imageFile;
   String _imageUrl = '';
 
-  
   List<SmartReply> _smartReplies = [];
 
-  
   final Map<String, String> _scamResults = {};
 
   
+  
+  
+
   late ChatProvider _chatProvider;
   late AuthProvider _authProvider;
   late MessageProvider _messageProvider;
@@ -72,22 +67,24 @@ class GroupChatPageState extends State<GroupChatPage>
   late AutoDeleteProvider _autoDeleteProvider;
   late ViewOnceProvider _viewOnceProvider;
   late SmartReplyProvider _smartReplyProvider;
+  late TelemetryProvider _telemetryProvider; 
   UserPresenceProvider? _presenceProvider;
   TranslationProvider? _translationProvider;
   VoiceMessageProvider? _voiceProvider;
   LocationProvider? _locationProvider;
 
-  
   late TextEditingController _chatInputController;
   late ScrollController _listScrollController;
   late FocusNode _focusNode;
 
-  
   final Map<String, Timer> _scheduledMessages = {};
   final Map<String, String> _scheduledMessageContents = {};
 
-  
   String get _groupChatId => widget.group.id;
+
+  
+  
+  
 
   @override
   void initState() {
@@ -125,6 +122,7 @@ class GroupChatPageState extends State<GroupChatPage>
     _smartReplyProvider = context.read<SmartReplyProvider>();
     _presenceProvider = context.read<UserPresenceProvider>();
     _translationProvider = context.read<TranslationProvider>();
+    _telemetryProvider = context.read<TelemetryProvider>(); 
     _locationProvider = LocationProvider();
 
     try {
@@ -170,7 +168,32 @@ class GroupChatPageState extends State<GroupChatPage>
     }
   }
 
+  @override
+  void dispose() {
+    _recordingTimer?.cancel();
+    _scheduledMessages.forEach((_, t) => t.cancel());
+    _scheduledMessages.clear();
+    _scheduledMessageContents.clear();
+    try {
+      _presenceProvider?.setTypingStatus(
+          conversationId: widget.group.id,
+          userId: _currentUserId,
+          isTyping: false);
+    } catch (_) {}
+    try {
+      _voiceProvider?.dispose();
+    } catch (_) {}
+    _chatInputController.dispose();
+    _listScrollController.dispose();
+    _focusNode.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
   
+  
+  
+
   Future<void> _loadMemberNames() async {
     final names = <String, String>{};
     for (final uid in widget.group.memberIds) {
@@ -196,6 +219,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   void _loadPinnedMessages() {
     if (resourceManager.isDisposed) return;
     final sub = _messageProvider.getPinnedMessages(widget.group.id).listen(
@@ -209,9 +235,19 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   void _handleTextChange(String text) {
     if (resourceManager.isDisposed) return;
     _handleTyping(text);
+
+    
+    _telemetryProvider.recordTextChange(text);
+    if (_telemetryProvider.shouldSuggestElderMode) {
+      _showAdaptiveUISuggestion();
+      _telemetryProvider.markAsHandled();
+    }
 
     final cursorPos = _chatInputController.selection.baseOffset;
     if (cursorPos < 0) return;
@@ -255,7 +291,6 @@ class GroupChatPageState extends State<GroupChatPage>
     if (mounted) setState(() => _showMentionSuggestions = false);
   }
 
-  
   void _handleTyping(String text) {
     if (_presenceProvider == null || resourceManager.isDisposed) return;
     _presenceProvider!.setTypingStatus(
@@ -266,6 +301,43 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
+  void _showAdaptiveUISuggestion() {
+    if (resourceManager.isDisposed || !mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Row(
+          children: [
+            Icon(Icons.accessibility_new, color: Colors.white),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                  'Bạn đang gặp khó khăn khi gõ chữ? Đổi sang giao diện lớn hơn nhé?'),
+            ),
+          ],
+        ),
+        duration: const Duration(seconds: 8),
+        backgroundColor: Colors.blueGrey,
+        action: SnackBarAction(
+          label: 'BẬT (Elder Mode)',
+          textColor: Colors.amberAccent,
+          onPressed: () {
+            
+            Fluttertoast.showToast(
+                msg: 'Đã chuyển sang giao diện người lớn tuổi!');
+          },
+        ),
+      ),
+    );
+  }
+
+  
+  
+  
+
   Future<void> _markMessagesAsRead() async {
     if (resourceManager.isDisposed) return;
     try {
@@ -287,6 +359,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   Future<void> _onSendMessage(String content, int type) async {
     if (resourceManager.isDisposed) return;
     if (content.trim().isEmpty) {
@@ -378,6 +453,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   Future<bool> _pickImage() async {
     HapticFeedback.lightImpact();
     try {
@@ -398,11 +476,9 @@ class GroupChatPageState extends State<GroupChatPage>
     return false;
   }
 
-  
   Future<void> _uploadFile() async {
     if (_imageFile == null) return;
 
-    
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => const SafeSendDialog(
@@ -413,7 +489,7 @@ class GroupChatPageState extends State<GroupChatPage>
     );
     if (confirm != true) {
       if (mounted) setState(() => _isLoading = false);
-      return; 
+      return;
     }
 
     try {
@@ -434,6 +510,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   Future<void> _startRecording() async {
     if (_voiceProvider == null || resourceManager.isDisposed) {
       Fluttertoast.showToast(msg: 'Voice recording not available');
@@ -505,6 +584,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   Future<void> _shareLocation() async {
     if (_locationProvider == null || resourceManager.isDisposed) return;
     if (mounted) setState(() => _isLoading = true);
@@ -530,21 +612,36 @@ class GroupChatPageState extends State<GroupChatPage>
     }
   }
 
+  Future<void> _openLocationInMaps(String mapsUrl) async {
+    try {
+      final uri = Uri.parse(mapsUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    } catch (_) {}
+  }
+
   
+  
+  
+
   void _showAIContextAnalysis() async {
     if (_listMessage.isEmpty) {
       Fluttertoast.showToast(msg: 'Chưa có đủ tin nhắn để phân tích');
       return;
     }
 
+    
     List<String> recentMessages = _listMessage
         .take(20)
         .map((doc) {
-          final msg = MessageChat.fromDocument(doc);
-          final sender = msg.idFrom == _currentUserId
+          final rawMsg = MessageChat.fromDocument(doc);
+          final decryptedContent =
+              EncryptionService().decryptMessage(rawMsg.content, _groupChatId);
+          final sender = rawMsg.idFrom == _currentUserId
               ? "Tôi"
-              : (_memberNames[msg.idFrom] ?? "Thành viên");
-          return "$sender: ${msg.content}";
+              : (_memberNames[rawMsg.idFrom] ?? "Thành viên");
+          return "$sender: $decryptedContent";
         })
         .toList()
         .reversed
@@ -587,6 +684,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   void _showMessageOptions(MessageChat message, String messageId) {
     if (resourceManager.isDisposed) return;
     HapticFeedback.heavyImpact();
@@ -660,6 +760,7 @@ class GroupChatPageState extends State<GroupChatPage>
   void _setReply(MessageChat message) {
     HapticFeedback.selectionClick();
     if (resourceManager.isDisposed || !mounted) return;
+    
     setState(() {
       _replyingTo = message;
       _replyingToSenderName = _getSenderName(message.idFrom);
@@ -740,13 +841,14 @@ class GroupChatPageState extends State<GroupChatPage>
   Future<void> _translateMessage(String content) async {
     showDialog(
       context: context,
-      builder: (_) => TranslationDialog(
-        originalMessage: content,
-      ),
+      builder: (_) => TranslationDialog(originalMessage: content),
     );
   }
 
   
+  
+  
+
   Future<void> _scheduleMessage() async {
     if (resourceManager.isDisposed) return;
     final result = await showDialog<Map<String, dynamic>>(
@@ -777,6 +879,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   void _sendViewOnce() {
     showDialog(
       context: context,
@@ -795,6 +900,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   void _showAutoDeleteSettings() {
     showDialog(
       context: context,
@@ -806,6 +914,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   void _showReactionPicker(String messageId) {
     HapticFeedback.mediumImpact();
     showDialog(
@@ -824,16 +935,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
-  Future<void> _openLocationInMaps(String mapsUrl) async {
-    try {
-      final uri = Uri.parse(mapsUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
-    } catch (_) {}
-  }
-
   
+  
+
   void _getSticker() {
     HapticFeedback.selectionClick();
     _focusNode.unfocus();
@@ -853,6 +957,21 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
+  void _onBackPress() {
+    _presenceProvider?.setTypingStatus(
+        conversationId: widget.group.id,
+        userId: _currentUserId,
+        isTyping: false);
+    Navigator.pop(context);
+  }
+
+  
+  
+  
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -883,6 +1002,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   Widget _buildChatContent() {
     return Stack(
       children: [
@@ -905,6 +1027,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
       backgroundColor: Colors.white.withOpacity(0.95),
@@ -1162,15 +1287,10 @@ class GroupChatPageState extends State<GroupChatPage>
     }
   }
 
-  void _onBackPress() {
-    _presenceProvider?.setTypingStatus(
-        conversationId: widget.group.id,
-        userId: _currentUserId,
-        isTyping: false);
-    Navigator.pop(context);
-  }
-
   
+  
+  
+
   Widget _buildPinnedMessages() {
     return Container(
       height: 54,
@@ -1217,6 +1337,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   Widget _buildListMessage() {
     return Flexible(
       child: StreamBuilder<QuerySnapshot>(
@@ -1249,6 +1372,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   Widget _buildItemMessage(int index, DocumentSnapshot? document) {
     if (document == null) return const SizedBox.shrink();
     final rawMessageChat = MessageChat.fromDocument(document);
@@ -1263,6 +1389,11 @@ class GroupChatPageState extends State<GroupChatPage>
     final isMe = msg.idFrom == _currentUserId;
     final data = document.data() as Map<String, dynamic>?;
     final isViewOnce = data?['isViewOnce'] ?? false;
+
+    
+    final bool isScamWarning = data?['scamWarning'] ?? false;
+    final String scamReason = data?['scamReason'] ?? '';
+    final bool hasReminder = data?['hasReminder'] ?? false;
 
     bool isLastInGroup = true;
     if (index > 0) {
@@ -1281,7 +1412,8 @@ class GroupChatPageState extends State<GroupChatPage>
     if (msg.type == TypeMessage.sticker) {
       return _buildStickerMessage(document, msg, isMe);
     }
-    return _buildTextMessage(document, msg, isMe, isLastInGroup, tailRadius);
+    return _buildTextMessage(document, msg, isMe, isLastInGroup, tailRadius,
+        isScamWarning, scamReason, hasReminder);
   }
 
   Widget _buildSenderInfo(String senderId) {
@@ -1334,10 +1466,19 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
-  Widget _buildTextMessage(DocumentSnapshot doc, MessageChat msg, bool isMe,
-      bool isLastInGroup, double tailRadius) {
+  
+  
+
+  Widget _buildTextMessage(
+      DocumentSnapshot doc,
+      MessageChat msg,
+      bool isMe,
+      bool isLastInGroup,
+      double tailRadius,
+      bool isScamWarning,
+      String scamReason,
+      bool hasReminder) {
     final location = _locationProvider?.parseLocationFromMessage(msg.content);
-    final isMyMessage = isMe;
 
     return Container(
       margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
@@ -1397,8 +1538,73 @@ class GroupChatPageState extends State<GroupChatPage>
                                   offset: const Offset(0, 4))
                             ],
                     ),
-                    child: msg.isDeleted
-                        ? Text(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        
+                        if (!isMe && isScamWarning)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.red),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.warning,
+                                    color: Colors.red, size: 16),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'CẢNH BÁO AI: $scamReason',
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.red,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                        
+                        if (!isMe && hasReminder)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.alarm_add,
+                                    color: Colors.blue, size: 16),
+                                const SizedBox(width: 8),
+                                const Expanded(
+                                  child: Text(
+                                    'AI: Phát hiện có công việc cần lưu!',
+                                    style: TextStyle(
+                                        fontSize: 12, color: Colors.blue),
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: () => _setReminder(msg, doc.id),
+                                  style: TextButton.styleFrom(
+                                      padding: EdgeInsets.zero,
+                                      minimumSize: const Size(40, 24)),
+                                  child: const Text('XEM',
+                                      style: TextStyle(fontSize: 12)),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                        
+                        if (msg.isDeleted)
+                          Text(
                             'This message was deleted',
                             style: TextStyle(
                                 color: isMe
@@ -1407,66 +1613,68 @@ class GroupChatPageState extends State<GroupChatPage>
                                 fontStyle: FontStyle.italic,
                                 fontSize: 15),
                           )
-                        : location != null
-                            ? _buildLocationContent(location, isMe)
-                            : Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    msg.content,
-                                    style: TextStyle(
-                                        color: isMe
-                                            ? Colors.white
-                                            : const Color(0xFF111418),
-                                        fontSize: 16,
-                                        height: 1.3),
-                                  ),
-                                  if (msg.editedAt != null ||
-                                      (isMe && !msg.isDeleted))
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 4),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.end,
-                                        children: [
-                                          if (msg.editedAt != null)
-                                            Text(
-                                              '(edited)',
-                                              style: TextStyle(
-                                                  fontSize: 11,
-                                                  color: isMe
-                                                      ? Colors.white70
-                                                      : const Color(
-                                                          0xFF8E8E93)),
-                                            ),
-                                          if (msg.editedAt != null && isMe)
-                                            const SizedBox(width: 4),
-                                          if (isMe && !msg.isDeleted)
-                                            Icon(
-                                              msg.isRead
-                                                  ? Icons.done_all_rounded
-                                                  : Icons.check_rounded,
-                                              size: 14,
-                                              color: msg.isRead
-                                                  ? Colors.white
-                                                  : Colors.white70,
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                ],
+                        else if (location != null)
+                          _buildLocationContent(location, isMe)
+                        else
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                msg.content,
+                                style: TextStyle(
+                                    color: isMe
+                                        ? Colors.white
+                                        : const Color(0xFF111418),
+                                    fontSize: 16,
+                                    height: 1.3),
                               ),
+                              if (msg.editedAt != null ||
+                                  (isMe && !msg.isDeleted))
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      if (msg.editedAt != null)
+                                        Text(
+                                          '(edited)',
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              color: isMe
+                                                  ? Colors.white70
+                                                  : const Color(0xFF8E8E93)),
+                                        ),
+                                      if (msg.editedAt != null && isMe)
+                                        const SizedBox(width: 4),
+                                      if (isMe && !msg.isDeleted)
+                                        Icon(
+                                          msg.isRead
+                                              ? Icons.done_all_rounded
+                                              : Icons.check_rounded,
+                                          size: 14,
+                                          color: msg.isRead
+                                              ? Colors.white
+                                              : Colors.white70,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ],
           ),
+
           
-          if (!isMyMessage && msg.type == TypeMessage.text) ...[
+          if (!isMe && msg.type == TypeMessage.text) ...[
             if (_scamResults[doc.id] != null && _scamResults[doc.id] != 'SAFE')
               ScamWarningWidget(status: _scamResults[doc.id]!),
-            if (_scamResults[doc.id] == null)
+            if (_scamResults[doc.id] == null && !isScamWarning)
               Padding(
                 padding: const EdgeInsets.only(left: 52, top: 4, bottom: 4),
                 child: InkWell(
@@ -1554,6 +1762,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   Widget _buildImageMessage(
       DocumentSnapshot doc, MessageChat msg, bool isMe, bool isLastInGroup) {
     return Container(
@@ -1629,6 +1840,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   Widget _buildVoiceMessage(DocumentSnapshot doc, MessageChat msg, bool isMe) {
     return Column(
       crossAxisAlignment:
@@ -1655,6 +1869,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   Widget _buildStickerMessage(
       DocumentSnapshot doc, MessageChat msg, bool isMe) {
     return Column(
@@ -1689,6 +1906,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   Widget _buildViewOnceMessage(
       DocumentSnapshot doc, MessageChat msg, bool isMe) {
     return Column(
@@ -1719,6 +1939,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   Widget _buildReactions(String messageId, bool isMe) {
     return StreamBuilder<QuerySnapshot>(
       stream: _reactionProvider.getReactions(widget.group.id, messageId),
@@ -1767,6 +1990,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   Widget _buildTypingIndicator() {
     if (_presenceProvider == null) return const SizedBox.shrink();
     return StreamBuilder<Map<String, bool>>(
@@ -1787,6 +2013,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   Widget _buildMentionSuggestions() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1830,6 +2059,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   Widget _buildStickers() {
     return Container(
       decoration: const BoxDecoration(
@@ -1873,6 +2105,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   Widget _buildFeaturesMenu() {
     return Container(
       constraints: const BoxConstraints(maxHeight: 110),
@@ -1938,6 +2173,9 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   
+  
+  
+
   Widget _buildInput() {
     return Container(
       margin: EdgeInsets.only(
@@ -2145,27 +2383,5 @@ class GroupChatPageState extends State<GroupChatPage>
         ],
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _recordingTimer?.cancel();
-    _scheduledMessages.forEach((_, t) => t.cancel());
-    _scheduledMessages.clear();
-    _scheduledMessageContents.clear();
-    try {
-      _presenceProvider?.setTypingStatus(
-          conversationId: widget.group.id,
-          userId: _currentUserId,
-          isTyping: false);
-    } catch (_) {}
-    try {
-      _voiceProvider?.dispose();
-    } catch (_) {}
-    _chatInputController.dispose();
-    _listScrollController.dispose();
-    _focusNode.dispose();
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
   }
 }
