@@ -1,17 +1,21 @@
-
+// lib/pages/call_page.dart
 import 'dart:async';
 import 'dart:ui';
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:fluttertoast/fluttertoast.dart'; // Thêm để hiện thông báo
 
 import '../models/call_model.dart';
 import '../services/agora_rtc_manager.dart';
 import '../services/call_service.dart';
+import '../services/realtime_ai_service.dart'; // Dịch vụ AI Realtime
+import '../widgets/ai_call_shield.dart'; // Khiên bảo vệ AI
 import '../widgets/call_control_bar.dart';
 import '../widgets/call_quality_indicator.dart';
 import '../widgets/call_timer_widget.dart';
+import '../widgets/live_caption_overlay.dart'; // Phụ đề AI
 
 class CallPage extends StatefulWidget {
   final CallModel call;
@@ -44,6 +48,9 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
   bool _isInitializing = true;
   String? _errorMessage;
 
+  // --- Biến cho AI ---
+  bool _isLiveCaptionEnabled = false;
+
   @override
   void initState() {
     super.initState();
@@ -61,9 +68,23 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     _initCall();
     _watchCallStatus();
     _scheduleControlsHide();
+
+    // --- KHỞI ĐỘNG AI BẢO VỆ NGẦM ---
+    _startAIProtection();
   }
 
-  
+  void _startAIProtection() {
+    // Lấy ID người đối diện. Giả định CallModel có callerId và calleeId.
+    // Nếu thuộc tính trong model của bạn khác, hãy thay đổi cho phù hợp.
+    final peerId =
+        widget.isOutgoing ? widget.call.calleeId : widget.call.callerId;
+
+    RealtimeAIService().startProtection(peerId,
+        widget.call.channelName // Dùng channelName làm ID hội thoại để lưu log
+        );
+  }
+
+  // ── Init ───────────────────────────────────────
   Future<void> _initCall() async {
     _errorSub = _rtcManager.errorStream.listen((error) {
       if (mounted) {
@@ -99,7 +120,6 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     }
 
     if (widget.call.channelName.isNotEmpty) {
-      
       final joined = await _rtcManager.joinChannel(
         channelName: widget.call.channelName,
         isVideoCall: widget.call.isVideoCall,
@@ -116,14 +136,13 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     if (mounted) setState(() => _isInitializing = false);
   }
 
-  
+  // ── Watch Call Status ──────────────────────────
   void _watchCallStatus() {
     _callStatusSub = _callService.watchCall(widget.call.callId).listen((call) {
       if (call == null || _callEnded) return;
 
       if (mounted) setState(() => _callStatus = call.status);
 
-      
       if ((call.status == CallStatus.connected ||
               call.status == CallStatus.accepted) &&
           _callConnectedAt == null) {
@@ -140,7 +159,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     });
   }
 
-  
+  // ── End Call ───────────────────────────────────
   Future<void> _endCall({bool remote = false}) async {
     if (_callEnded) return;
     _callEnded = true;
@@ -160,7 +179,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     }
   }
 
-  
+  // ── Error Dialog ───────────────────────────────
   void _showErrorDialog(String message) {
     if (!mounted) return;
     showDialog(
@@ -188,7 +207,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
-  
+  // ── Controls Hide ──────────────────────────────
   void _scheduleControlsHide() {
     _controlsHideTimer?.cancel();
     if (widget.call.isVideoCall) {
@@ -218,6 +237,9 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // --- TẮT AI KHI THOÁT ---
+    RealtimeAIService().stopProtection();
+
     _callStatusSub?.cancel();
     _remoteJoinedSub?.cancel();
     _remoteLeftSub?.cancel();
@@ -228,7 +250,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  
+  // ── BUILD ──────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -247,7 +269,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
-  
+  // ── Error State ────────────────────────────────
   Widget _buildErrorState() {
     return Container(
       decoration: const BoxDecoration(
@@ -293,32 +315,32 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
-  
+  // ── Video Call UI ──────────────────────────────
   Widget _buildVideoCallUI() {
     return GestureDetector(
       onTap: _onTapScreen,
       behavior: HitTestBehavior.opaque,
       child: Stack(
         children: [
-          
+          // Remote video (full screen)
           _buildRemoteVideoView(),
 
-          
+          // Local PiP
           if (_isConnectedStatus(_callStatus)) _buildLocalVideoPip(),
 
-          
+          // Gradient overlays (Tạo chiều sâu cho Header/Footer)
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            height: 140,
+            height: 160,
             child: IgnorePointer(
               child: Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Colors.black.withOpacity(0.5), Colors.transparent],
+                    colors: [Colors.black.withOpacity(0.6), Colors.transparent],
                   ),
                 ),
               ),
@@ -328,29 +350,30 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
             bottom: 0,
             left: 0,
             right: 0,
-            height: 200,
+            height: 220,
             child: IgnorePointer(
               child: Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
-                    colors: [Colors.black.withOpacity(0.7), Colors.transparent],
+                    colors: [Colors.black.withOpacity(0.8), Colors.transparent],
                   ),
                 ),
               ),
             ),
           ),
 
-          
+          // Initializing indicator
           if (_isInitializing)
             const Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  CircularProgressIndicator(color: Colors.white),
+                  CircularProgressIndicator(
+                      color: Colors.white, strokeWidth: 3),
                   SizedBox(height: 16),
-                  Text('Đang kết nối...',
+                  Text('Đang kết nối an toàn...',
                       style: TextStyle(
                           color: Colors.white,
                           fontSize: 16,
@@ -359,10 +382,17 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
               ),
             ),
 
-          
+          // Top bar (Tên, Avatar, Timer)
           if (_showControls) _buildVideoTopBar(),
 
-          
+          // --- AI SHIELD (Góc trên trái) ---
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 56,
+            left: 16,
+            child: const AICallShield(),
+          ),
+
+          // --- QUALITY INDICATOR (Góc trên phải) ---
           Positioned(
             top: MediaQuery.of(context).padding.top + 56,
             right: 16,
@@ -373,13 +403,60 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
             ),
           ),
 
-          
+          // --- LIVE CAPTION OVERLAY ---
+          if (_isLiveCaptionEnabled)
+            Positioned(
+              bottom: 130, // Cách control bar một đoạn
+              left: 16,
+              right: 16,
+              child: const LiveCaptionOverlay(),
+            ),
+
+          // --- AI CONTROLS & MAIN CONTROL BAR ---
           AnimatedOpacity(
             opacity: _showControls ? 1 : 0,
             duration: const Duration(milliseconds: 300),
             child: Align(
               alignment: Alignment.bottomCenter,
-              child: _buildControlBar(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Nút bật tắt phụ đề (Glassmorphism style)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Container(
+                        margin: const EdgeInsets.only(right: 20, bottom: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.black45,
+                          borderRadius: BorderRadius.circular(30),
+                          border: Border.all(color: Colors.white24, width: 0.5),
+                        ),
+                        child: IconButton(
+                          icon: Icon(
+                            _isLiveCaptionEnabled
+                                ? Icons.subtitles
+                                : Icons.subtitles_off,
+                            color: _isLiveCaptionEnabled
+                                ? Colors.greenAccent
+                                : Colors.white70,
+                          ),
+                          onPressed: () {
+                            setState(() =>
+                                _isLiveCaptionEnabled = !_isLiveCaptionEnabled);
+                            Fluttertoast.showToast(
+                                msg: _isLiveCaptionEnabled
+                                    ? "Đã bật phụ đề AI"
+                                    : "Đã tắt phụ đề AI");
+                          },
+                          tooltip: 'Live Caption AI',
+                        ),
+                      ),
+                    ],
+                  ),
+                  _buildControlBar(),
+                ],
+              ),
             ),
           ),
         ],
@@ -433,7 +510,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
                   const ColoredBox(color: Color(0xFF1a1a2e))),
         BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
-          child: Container(color: Colors.black.withOpacity(0.45)),
+          child: Container(color: Colors.black.withOpacity(0.55)),
         ),
         Center(
           child: Column(
@@ -462,26 +539,28 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
+  // Nâng cấp Local PIP: Thêm viền mượt mà, bóng đổ sâu hơn
   Widget _buildLocalVideoPip() {
     return Positioned(
-      top: MediaQuery.of(context).padding.top + 70,
+      top: MediaQuery.of(context).padding.top +
+          100, // Đẩy xuống dưới Shield/Quality
       right: 16,
       child: Container(
         width: 110,
         height: 160,
         decoration: BoxDecoration(
-          color: Colors.black45,
+          color: Colors.black87,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.2), width: 1),
+          border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withOpacity(0.5),
-                blurRadius: 20,
-                offset: const Offset(0, 8)),
+                color: Colors.black.withOpacity(0.6),
+                blurRadius: 24,
+                offset: const Offset(0, 10)),
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: BorderRadius.circular(14),
           child: ListenableBuilder(
             listenable: _rtcManager,
             builder: (_, __) {
@@ -513,23 +592,28 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
       right: 0,
       child: ClipRect(
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(
             color: Colors.black.withOpacity(0.2),
             child: SafeArea(
               bottom: false,
               child: Padding(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 child: Row(
                   children: [
+                    IconButton(
+                      icon: const Icon(Icons.keyboard_arrow_down,
+                          color: Colors.white),
+                      onPressed: () => Navigator.pop(context),
+                    ),
                     Expanded(
                       child: Text(
                         name,
                         style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold),
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600),
                       ),
                     ),
                     if (_isConnectedStatus(_callStatus) &&
@@ -539,7 +623,8 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
                             horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
                           color: Colors.black45,
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.white24, width: 0.5),
                         ),
                         child: CallTimerWidget(startTime: _callConnectedAt!),
                       ),
@@ -553,7 +638,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
-  
+  // ── Voice Call UI ──────────────────────────────
   Widget _buildVoiceCallUI() {
     final peerName =
         widget.isOutgoing ? widget.call.calleeName : widget.call.callerName;
@@ -570,19 +655,22 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
                   const ColoredBox(color: Color(0xFF1a1a2e))),
         BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
-          child: Container(color: Colors.black.withOpacity(0.5)),
+          child: Container(color: Colors.black.withOpacity(0.6)),
         ),
         SafeArea(
           child: Column(
             children: [
-              
+              // Top Bar cho Voice
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const AICallShield(), // AI Shield bên trái
                     ListenableBuilder(
+                      // Quality bên phải
                       listenable: _rtcManager,
                       builder: (_, __) =>
                           CallQualityIndicator(stats: _rtcManager.stats),
@@ -610,9 +698,9 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
                 CallTimerWidget(
                   startTime: _callConnectedAt!,
                   style: const TextStyle(
-                      color: Colors.white70,
+                      color: Colors.greenAccent,
                       fontSize: 18,
-                      fontWeight: FontWeight.w500),
+                      fontWeight: FontWeight.w600),
                 )
               else if (_isInitializing)
                 const Row(
@@ -625,14 +713,56 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
                           strokeWidth: 2, color: Colors.white70),
                     ),
                     SizedBox(width: 8),
-                    Text('Đang kết nối...',
-                        style: TextStyle(color: Colors.white70, fontSize: 18)),
+                    Text('Đang kết nối an toàn...',
+                        style: TextStyle(color: Colors.white70, fontSize: 16)),
                   ],
                 )
               else
                 _buildStatusDots(),
 
-              const Spacer(flex: 3),
+              const Spacer(flex: 2),
+
+              // Live caption cho Voice Call (Nếu đang bật)
+              if (_isLiveCaptionEnabled)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  child: LiveCaptionOverlay(),
+                ),
+
+              const Spacer(flex: 1),
+
+              // Nút phụ đề cho Voice Call
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 20),
+                    decoration: BoxDecoration(
+                      color: Colors.white10,
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    child: IconButton(
+                      icon: Icon(
+                        _isLiveCaptionEnabled
+                            ? Icons.subtitles
+                            : Icons.subtitles_off,
+                        color: _isLiveCaptionEnabled
+                            ? Colors.greenAccent
+                            : Colors.white70,
+                      ),
+                      onPressed: () {
+                        setState(() =>
+                            _isLiveCaptionEnabled = !_isLiveCaptionEnabled);
+                        Fluttertoast.showToast(
+                            msg: _isLiveCaptionEnabled
+                                ? "Đã bật phụ đề"
+                                : "Đã tắt phụ đề");
+                      },
+                      tooltip: 'Bật/tắt Phụ đề',
+                    ),
+                  ),
+                ],
+              ),
 
               _buildControlBar(),
             ],
@@ -642,7 +772,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
-  
+  // ── Control Bar ────────────────────────────────
   Widget _buildControlBar() {
     return ListenableBuilder(
       listenable: _rtcManager,
@@ -663,10 +793,8 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
-  
+  // ── Helpers ────────────────────────────────────
 
-  
-  
   bool _isConnectedStatus(CallStatus s) =>
       s == CallStatus.connected || s == CallStatus.accepted;
 
@@ -714,11 +842,9 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     return _StatusDotsWidget(label: _statusLabel());
   }
 
-  
   String _statusLabel() {
     switch (_callStatus) {
       case CallStatus.dialing:
-        return widget.isOutgoing ? 'Đang gọi…' : 'Cuộc gọi đến…';
       case CallStatus.calling:
         return widget.isOutgoing ? 'Đang gọi…' : 'Cuộc gọi đến…';
       case CallStatus.ringing:
@@ -739,7 +865,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
   }
 }
 
-
+// ── Animated Status Dots ───────────────────────
 class _StatusDotsWidget extends StatefulWidget {
   final String label;
   const _StatusDotsWidget({required this.label});
@@ -772,7 +898,7 @@ class _StatusDotsWidgetState extends State<_StatusDotsWidget> {
       '${widget.label}${'.' * _dotCount}',
       style: TextStyle(
         color: Colors.white.withOpacity(0.75),
-        fontSize: 18,
+        fontSize: 16, // Giảm một chút cho thanh thoát
         letterSpacing: 1,
       ),
     );

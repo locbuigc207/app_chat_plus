@@ -620,3 +620,57 @@ exports.proactiveMessageAnalyzer = functions.firestore
       return null;
     }
   });
+
+// =====================================================
+// 13. ADVANCED CALL SECURITY ANALYZER (Anti-Deepfake)
+// =====================================================
+exports.analyzeCallSecurity = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Yêu cầu đăng nhập.");
+  }
+
+  const {callTranscript, peerId, conversationId} = data;
+
+  try {
+    const model = genAI.getGenerativeModel({model: "gemini-2.0-flash"});
+
+    const prompt = `Phân tích đoạn hội thoại cuộc gọi sau để tìm dấu hiệu lừa đảo, tống tiền, mạo danh mượn tiền gấp, hoặc giọng nói do AI tạo ra (Deepfake).
+    Hội thoại: "${callTranscript}"
+
+    Trả về ĐÚNG CHUẨN JSON:
+    {
+      "isSafe": boolean,
+      "riskLevel": "LOW" | "MEDIUM" | "HIGH",
+      "warningMessage": "Cảnh báo ngắn gọn bằng tiếng Việt (nếu isSafe = false)",
+      "confidenceScore": số từ 0-100 đánh giá độ chắc chắn của AI
+    }`;
+
+    const result = await model.generateContent(prompt);
+    let text = result.response.text().trim();
+    text = text
+      .replace(/^```json/g, "")
+      .replace(/^```/g, "")
+      .replace(/```$/g, "")
+      .trim();
+
+    const analysis = JSON.parse(text);
+
+    // Lưu log cảnh báo vào Firestore nếu phát hiện nguy hiểm
+    if (!analysis.isSafe || analysis.riskLevel === "HIGH") {
+      await admin.firestore().collection("security_alerts").add({
+        reporterId: context.auth.uid,
+        suspectId: peerId,
+        conversationId: conversationId || "unknown",
+        transcriptSnippet: callTranscript,
+        analysisResult: analysis,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      console.log(`🚨 [Call Security] Phát hiện rủi ro từ cuộc gọi — peerId: ${peerId}`);
+    }
+
+    return analysis;
+  } catch (error) {
+    console.error("❌ Lỗi Call Security AI:", error);
+    return {isSafe: true, riskLevel: "LOW", warningMessage: "", confidenceScore: 0};
+  }
+});

@@ -10,4 +10,5 @@ export 'gemini_service.dart';
 export 'group_call_service.dart';
 export 'notification_service.dart';
 export 'offline_manager.dart';
+export 'realtime_ai_service.dart';
 export 'unified_bubble_service.dart';

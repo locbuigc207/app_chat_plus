@@ -102,6 +102,7 @@ dependencies:
   path_provider: ^2.1.2 # Lấy đường dẫn lưu video tạm
   cloud_functions: ^6.3.1
   encrypt: ^5.0.3
+  speech_to_text: ^7.3.0
 
 dev_dependencies:
   flutter_test:

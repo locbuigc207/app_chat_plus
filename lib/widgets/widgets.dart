@@ -1,5 +1,6 @@
 export 'adaptive_chat_bubble.dart';
 export 'advanced_search_bar.dart';
+export 'ai_call_shield.dart';
 export 'auto_delete_settings_dialog.dart';
 export 'bubble_adaptive_ui.dart';
 export 'bubble_manager.dart';
@@ -20,6 +21,7 @@ export 'group_call_button.dart';
 export 'group_call_listener.dart';
 export 'improved_chat_widgets.dart';
 export 'link_preview_widget.dart';
+export 'live_caption_overlay.dart';
 export 'message_options_dialog.dart';
 export 'mini_chat_overlay.dart';
 export 'mini_map_widget.dart';
