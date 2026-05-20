@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:audio_session/audio_session.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
@@ -28,7 +29,6 @@ class RealtimeAIService {
   String _currentTranscript = "";
   Timer? _aiAnalysisTimer;
 
-  
   final List<String> _redFlags = [
     "chuyển tiền",
     "ngân hàng",
@@ -42,6 +42,17 @@ class RealtimeAIService {
   Future<bool> initialize() async {
     if (_isInitialized) return true;
     try {
+      // 1. Ép hệ thống cho phép mix âm thanh (Chạy song song 2 luồng)
+      final session = await AudioSession.instance;
+      await session.configure(AudioSessionConfiguration(
+        avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
+        avAudioSessionCategoryOptions:
+            AVAudioSessionCategoryOptions.allowBluetooth |
+                AVAudioSessionCategoryOptions.mixWithOthers |
+                AVAudioSessionCategoryOptions.defaultToSpeaker,
+        avAudioSessionMode: AVAudioSessionMode.videoChat,
+      ));
+      // 2. Khởi tạo Speech To Text
       _isInitialized = await _speech.initialize(
         onError: (error) => print("STT Error: $error"),
       );
@@ -59,7 +70,6 @@ class RealtimeAIService {
     _isListening = true;
     _securityController.add(SecurityStatus.safe);
 
-    
     _speech.listen(
       onResult: (result) {
         _currentTranscript = result.recognizedWords;
@@ -71,7 +81,6 @@ class RealtimeAIService {
       partialResults: true,
     );
 
-    
     _aiAnalysisTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (_currentTranscript.length > 20) {
         _runCloudAIAnalysis(peerId, conversationId);
@@ -79,7 +88,6 @@ class RealtimeAIService {
     });
   }
 
-  
   void _localKeywordScan(String text) {
     final lowerText = text.toLowerCase();
     for (var flag in _redFlags) {
@@ -92,7 +100,6 @@ class RealtimeAIService {
     }
   }
 
-  
   Future<void> _runCloudAIAnalysis(String peerId, String conversationId) async {
     _securityController.add(SecurityStatus.scanning);
     try {
@@ -111,10 +118,9 @@ class RealtimeAIService {
             .add(data['warningMessage'] ?? "Cảnh báo Lừa đảo / Deepfake!");
       } else {
         _securityController.add(SecurityStatus.safe);
-        _warningMsgController.add(""); 
+        _warningMsgController.add("");
       }
 
-      
       _currentTranscript = "";
     } catch (e) {
       _securityController.add(SecurityStatus.safe);

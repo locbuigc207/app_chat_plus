@@ -1,4 +1,3 @@
-
 import 'dart:async';
 import 'dart:ui';
 
@@ -35,11 +34,9 @@ class GroupCallPage extends StatefulWidget {
 
 class _GroupCallPageState extends State<GroupCallPage>
     with WidgetsBindingObserver {
-  
   final _callService = GroupCallService();
   late RtcEngine _engine;
 
-  
   bool _engineInitialized = false;
   bool _isMuted = false;
   bool _isCameraOff = false;
@@ -50,26 +47,21 @@ class _GroupCallPageState extends State<GroupCallPage>
   bool _isConnected = false;
   bool _showParticipantsList = false;
   bool _isLiveCaptionEnabled = false;
+  bool _aiProtectionStarted = false; // guard: chỉ kích hoạt AI 1 lần
 
-  
   final Set<int> _remoteUids = {};
 
-  
   late GroupCallModel _callModel;
   DateTime? _connectedAt;
 
-  
   StreamSubscription? _callSub;
   Timer? _controlsHideTimer;
   Timer? _statsTimer;
 
-  
   RtcCallStats _stats = const RtcCallStats();
 
-  
   int? _spotlightUid;
 
-  
   @override
   void initState() {
     super.initState();
@@ -80,10 +72,13 @@ class _GroupCallPageState extends State<GroupCallPage>
     _initCall();
     _watchCall();
     _scheduleControlsHide();
-    _startAIProtection();
+
+    // _startAIProtection(); ← Đã bỏ, chuyển sang kích hoạt khi remote join
   }
 
   void _startAIProtection() {
+    if (_aiProtectionStarted) return;
+    _aiProtectionStarted = true;
     RealtimeAIService().startProtection(
       "GROUP_CALL_${widget.call.callId}",
       widget.call.channelName,
@@ -107,7 +102,6 @@ class _GroupCallPageState extends State<GroupCallPage>
     super.dispose();
   }
 
-  
   Future<void> _initCall() async {
     await _requestPermissions();
     await _initEngine();
@@ -141,7 +135,11 @@ class _GroupCallPageState extends State<GroupCallPage>
       },
       onUserJoined: (conn, uid, elapsed) {
         debugPrint('👤 Remote user joined: $uid');
-        if (mounted) setState(() => _remoteUids.add(uid));
+        if (mounted) {
+          setState(() => _remoteUids.add(uid));
+          // Kích hoạt AI khi có người đầu tiên tham gia (chỉ 1 lần)
+          _startAIProtection();
+        }
       },
       onUserOffline: (conn, uid, reason) {
         debugPrint('👤 Remote user left: $uid');
@@ -158,13 +156,13 @@ class _GroupCallPageState extends State<GroupCallPage>
       onRtcStats: (conn, stats) {
         if (mounted) {
           setState(() => _stats = RtcCallStats(
-                txBitrate: stats.txKBitRate ?? 0,
-                rxBitrate: stats.rxKBitRate ?? 0,
-                txPacketLoss: stats.txPacketLossRate ?? 0,
-                rxPacketLoss: stats.rxPacketLossRate ?? 0,
-                rtt: stats.lastmileDelay ?? 0,
-                duration: stats.duration ?? 0,
-              ));
+            txBitrate: stats.txKBitRate ?? 0,
+            rxBitrate: stats.rxKBitRate ?? 0,
+            txPacketLoss: stats.txPacketLossRate ?? 0,
+            rxPacketLoss: stats.rxPacketLossRate ?? 0,
+            rtt: stats.lastmileDelay ?? 0,
+            duration: stats.duration ?? 0,
+          ));
         }
       },
       onError: (err, msg) => debugPrint('❌ Agora error [$err]: $msg'),
@@ -196,7 +194,6 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
-  
   void _watchCall() {
     _callSub = _callService.watchCall(widget.call.callId).listen((call) {
       if (call == null || _callEnded) return;
@@ -225,7 +222,6 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
-  
   void _scheduleControlsHide() {
     _controlsHideTimer?.cancel();
     if (widget.call.isVideo) {
@@ -243,7 +239,6 @@ class _GroupCallPageState extends State<GroupCallPage>
     _scheduleControlsHide();
   }
 
-  
   Future<void> _toggleMute() async {
     final next = !_isMuted;
     await _engine.muteLocalAudioStream(next);
@@ -278,7 +273,6 @@ class _GroupCallPageState extends State<GroupCallPage>
         msg: _isLiveCaptionEnabled ? 'Đã bật phụ đề AI' : 'Đã tắt phụ đề AI');
   }
 
-  
   Future<void> _hangUp() async {
     if (_callEnded) return;
     _callEnded = true;
@@ -309,7 +303,6 @@ class _GroupCallPageState extends State<GroupCallPage>
     setState(() => _spotlightUid = uid);
   }
 
-  
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -324,40 +317,32 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
-  
   Widget _buildVideoUI() {
     return GestureDetector(
       onTap: _onTapScreen,
       behavior: HitTestBehavior.opaque,
       child: Stack(
         children: [
-          
           _remoteUids.isEmpty ? _buildWaitingScreen() : _buildVideoGrid(),
 
-          
           _buildGradients(),
 
-          
           if (_showControls) _buildVideoTopBar(),
 
-          
           Positioned(
             top: MediaQuery.of(context).padding.top + 60,
             left: 16,
             child: const AICallShield(),
           ),
 
-          
           Positioned(
             top: MediaQuery.of(context).padding.top + 60,
             right: 16,
             child: CallQualityIndicator(stats: _stats),
           ),
 
-          
           if (_showParticipantsList) _buildParticipantsPanel(),
 
-          
           if (_isLiveCaptionEnabled)
             Positioned(
               bottom: 140,
@@ -366,7 +351,6 @@ class _GroupCallPageState extends State<GroupCallPage>
               child: const LiveCaptionOverlay(),
             ),
 
-          
           _buildBottomControls(),
         ],
       ),
@@ -476,7 +460,7 @@ class _GroupCallPageState extends State<GroupCallPage>
               crossAxisSpacing: 2,
               mainAxisSpacing: 2,
             ),
-            itemCount: allUids.length + 1, 
+            itemCount: allUids.length + 1,
             itemBuilder: (_, i) {
               if (i == 0) return _buildLocalTile();
               final uid = allUids[i - 1];
@@ -540,7 +524,7 @@ class _GroupCallPageState extends State<GroupCallPage>
                     const SizedBox(height: 6),
                     Text(participant!.userName,
                         style:
-                            const TextStyle(color: Colors.white, fontSize: 12)),
+                        const TextStyle(color: Colors.white, fontSize: 12)),
                   ],
                 ],
               ),
@@ -555,26 +539,26 @@ class _GroupCallPageState extends State<GroupCallPage>
       children: [
         _isCameraOff
             ? Container(
-                decoration: BoxDecoration(
-                  color: Colors.black87,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Center(
-                  child:
-                      Icon(Icons.videocam_off, color: Colors.white54, size: 40),
-                ),
-              )
+          decoration: BoxDecoration(
+            color: Colors.black87,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Center(
+            child:
+            Icon(Icons.videocam_off, color: Colors.white54, size: 40),
+          ),
+        )
             : ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: _engineInitialized
-                    ? AgoraVideoView(
-                        controller: VideoViewController(
-                          rtcEngine: _engine,
-                          canvas: const VideoCanvas(uid: 0),
-                        ),
-                      )
-                    : Container(color: Colors.black54),
-              ),
+          borderRadius: BorderRadius.circular(12),
+          child: _engineInitialized
+              ? AgoraVideoView(
+            controller: VideoViewController(
+              rtcEngine: _engine,
+              canvas: const VideoCanvas(uid: 0),
+            ),
+          )
+              : Container(color: Colors.black54),
+        ),
         if (_isMuted)
           Positioned(
             bottom: 8,
@@ -623,19 +607,19 @@ class _GroupCallPageState extends State<GroupCallPage>
           borderRadius: BorderRadius.circular(14),
           child: _isCameraOff
               ? Container(
-                  color: Colors.blueGrey[900],
-                  child: const Center(
-                      child: Icon(Icons.videocam_off,
-                          color: Colors.white54, size: 28)),
-                )
+            color: Colors.blueGrey[900],
+            child: const Center(
+                child: Icon(Icons.videocam_off,
+                    color: Colors.white54, size: 28)),
+          )
               : (_engineInitialized
-                  ? AgoraVideoView(
-                      controller: VideoViewController(
-                        rtcEngine: _engine,
-                        canvas: const VideoCanvas(uid: 0),
-                      ),
-                    )
-                  : Container(color: Colors.black54)),
+              ? AgoraVideoView(
+            controller: VideoViewController(
+              rtcEngine: _engine,
+              canvas: const VideoCanvas(uid: 0),
+            ),
+          )
+              : Container(color: Colors.black54)),
         ),
       ),
     );
@@ -653,14 +637,14 @@ class _GroupCallPageState extends State<GroupCallPage>
         borderRadius: BorderRadius.circular(9),
         child: _isCameraOff
             ? Container(
-                color: Colors.blueGrey[900],
-                child: const Center(
-                    child: Icon(Icons.person, color: Colors.white54, size: 28)))
+            color: Colors.blueGrey[900],
+            child: const Center(
+                child: Icon(Icons.person, color: Colors.white54, size: 28)))
             : (_engineInitialized
-                ? AgoraVideoView(
-                    controller: VideoViewController(
-                        rtcEngine: _engine, canvas: const VideoCanvas(uid: 0)))
-                : Container(color: Colors.black54)),
+            ? AgoraVideoView(
+            controller: VideoViewController(
+                rtcEngine: _engine, canvas: const VideoCanvas(uid: 0)))
+            : Container(color: Colors.black54)),
       ),
     );
   }
@@ -735,7 +719,7 @@ class _GroupCallPageState extends State<GroupCallPage>
               bottom: false,
               child: Padding(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 child: Row(
                   children: [
                     IconButton(
@@ -763,7 +747,7 @@ class _GroupCallPageState extends State<GroupCallPage>
                     ),
                     GestureDetector(
                       onTap: () => setState(
-                          () => _showParticipantsList = !_showParticipantsList),
+                              () => _showParticipantsList = !_showParticipantsList),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 8),
@@ -799,7 +783,7 @@ class _GroupCallPageState extends State<GroupCallPage>
       bottom: 0,
       width: 260,
       child: GestureDetector(
-        onTap: () {}, 
+        onTap: () {},
         child: ClipRect(
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
@@ -844,7 +828,7 @@ class _GroupCallPageState extends State<GroupCallPage>
                               backgroundColor: Colors.blueGrey,
                               child: p.userAvatar.isEmpty
                                   ? const Icon(Icons.person,
-                                      color: Colors.white, size: 18)
+                                  color: Colors.white, size: 18)
                                   : null,
                             ),
                             title: Text(
@@ -857,8 +841,8 @@ class _GroupCallPageState extends State<GroupCallPage>
                             ),
                             subtitle: p.isAdmin
                                 ? const Text('Admin',
-                                    style: TextStyle(
-                                        color: Colors.amber, fontSize: 11))
+                                style: TextStyle(
+                                    color: Colors.amber, fontSize: 11))
                                 : null,
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -900,7 +884,6 @@ class _GroupCallPageState extends State<GroupCallPage>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
@@ -926,10 +909,9 @@ class _GroupCallPageState extends State<GroupCallPage>
                   ),
                 ],
               ),
-
-              
               Padding(
-                padding: const EdgeInsets.only(bottom: 20, left: 16, right: 16),
+                padding:
+                const EdgeInsets.only(bottom: 20, left: 16, right: 16),
                 child: Column(
                   children: [
                     Row(
@@ -968,7 +950,7 @@ class _GroupCallPageState extends State<GroupCallPage>
                           label: 'Thành viên',
                           active: _showParticipantsList,
                           onTap: () => setState(() =>
-                              _showParticipantsList = !_showParticipantsList),
+                          _showParticipantsList = !_showParticipantsList),
                         ),
                       ],
                     ),
@@ -1037,7 +1019,6 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
-  
   Widget _buildVoiceUI() {
     return Container(
       decoration: const BoxDecoration(
@@ -1050,7 +1031,6 @@ class _GroupCallPageState extends State<GroupCallPage>
       child: SafeArea(
         child: Column(
           children: [
-            
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               child: Row(
@@ -1062,8 +1042,6 @@ class _GroupCallPageState extends State<GroupCallPage>
                 ],
               ),
             ),
-
-            
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
@@ -1085,22 +1063,14 @@ class _GroupCallPageState extends State<GroupCallPage>
                 ],
               ),
             ),
-
             const Spacer(),
-
-            
             _buildVoiceParticipantsGrid(),
-
             const Spacer(),
-
-            
             if (_isLiveCaptionEnabled)
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 20, vertical: 20),
                 child: LiveCaptionOverlay(),
               ),
-
-            
             Container(
               margin: const EdgeInsets.only(bottom: 24),
               decoration: BoxDecoration(
@@ -1117,8 +1087,6 @@ class _GroupCallPageState extends State<GroupCallPage>
                 onPressed: _toggleLiveCaption,
               ),
             ),
-
-            
             _buildVoiceControls(),
             const SizedBox(height: 32),
           ],
@@ -1160,7 +1128,7 @@ class _GroupCallPageState extends State<GroupCallPage>
                       backgroundColor: Colors.blueGrey,
                       child: p.userAvatar.isEmpty
                           ? const Icon(Icons.person,
-                              size: 40, color: Colors.white)
+                          size: 40, color: Colors.white)
                           : null,
                     ),
                   ),
@@ -1204,8 +1172,6 @@ class _GroupCallPageState extends State<GroupCallPage>
               label: _isMuted ? 'Mở Mic' : 'Tắt Mic',
               active: _isMuted,
               onTap: _toggleMute),
-
-          
           GestureDetector(
             onTap: _hangUp,
             child: Container(
@@ -1224,7 +1190,6 @@ class _GroupCallPageState extends State<GroupCallPage>
               child: const Icon(Icons.call_end, color: Colors.white, size: 32),
             ),
           ),
-
           _controlBtn(
               icon: _isSpeakerOn ? Icons.volume_up : Icons.hearing,
               label: _isSpeakerOn ? 'Loa ngoài' : 'Loa trong',
