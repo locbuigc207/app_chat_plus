@@ -1,12 +1,8 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
+import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
-
-
-
-
 
 class ViewOnceMessageWidget extends StatefulWidget {
   final String groupChatId;
@@ -36,22 +32,18 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget> {
   bool _isRevealed = false;
 
   void _revealMessage() async {
-    HapticFeedback.heavyImpact(); 
+    HapticFeedback.heavyImpact();
     setState(() => _isRevealed = true);
 
-    
     await widget.provider.markAsViewed(
       groupChatId: widget.groupChatId,
       messageId: widget.messageId,
       userId: widget.currentUserId,
     );
-
-    
   }
 
   @override
   Widget build(BuildContext context) {
-    
     if (widget.isViewed && !_isRevealed) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -79,7 +71,6 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget> {
       );
     }
 
-    
     if (!_isRevealed) {
       return GestureDetector(
         onTap: _revealMessage,
@@ -118,7 +109,6 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget> {
       );
     }
 
-    
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -158,10 +148,6 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget> {
     );
   }
 }
-
-
-
-
 
 class SendViewOnceDialog extends StatefulWidget {
   final Function(String content, int type) onSend;

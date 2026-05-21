@@ -1,7 +1,7 @@
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
+import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -209,7 +209,7 @@ class _GroupMediaPageState extends State<GroupMediaPage>
       itemBuilder: (_, i) {
         final data = _links[i].data() as Map<String, dynamic>? ?? {};
         final content = data['content'] as String? ?? '';
-        
+
         final urlReg = RegExp(r'https?://[^\s]+');
         final match = urlReg.firstMatch(content);
         final url = match?.group(0) ?? content;

@@ -3,17 +3,33 @@ import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/providers/auth_provider.dart';
+import 'package:flutter_chat_demo/services/encryption_service.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+
+/// Wrapper để chứa dữ liệu sau khi đã giải mã
+class DecryptedSearchResult {
+  final DocumentSnapshot doc;
+  final MessageChat message;
+  final String decryptedContent;
+
+  DecryptedSearchResult({
+    required this.doc,
+    required this.message,
+    required this.decryptedContent,
+  });
+}
 
 class SearchMessagesPage extends StatefulWidget {
   final String groupChatId;
   final String peerName;
+  final String peerId;
 
   const SearchMessagesPage({
     super.key,
     required this.groupChatId,
     required this.peerName,
+    required this.peerId,
   });
 
   @override
@@ -22,7 +38,7 @@ class SearchMessagesPage extends StatefulWidget {
 
 class _SearchMessagesPageState extends State<SearchMessagesPage> {
   final _searchController = TextEditingController();
-  List<DocumentSnapshot> _searchResults = [];
+  List<DecryptedSearchResult> _searchResults = [];
   bool _isSearching = false;
   String _searchQuery = '';
 
@@ -54,26 +70,51 @@ class _SearchMessagesPageState extends State<SearchMessagesPage> {
           .doc(widget.groupChatId)
           .collection(widget.groupChatId)
           .orderBy(FirestoreConstants.timestamp, descending: true)
-          .limit(1000) 
+          .limit(1000)
           .get();
 
-      
-      final results = snapshot.docs.where((doc) {
-        final message = MessageChat.fromDocument(doc);
-        return message.type == TypeMessage.text &&
-            !message.isDeleted &&
-            message.content.toLowerCase().contains(_searchQuery);
-      }).toList();
+      List<DecryptedSearchResult> tempResults = [];
 
-      setState(() {
-        _searchResults = results;
-        _isSearching = false;
-      });
+      // Giải mã và lọc tuần tự trên thiết bị
+      for (var doc in snapshot.docs) {
+        final message = MessageChat.fromDocument(doc);
+
+        if (message.type == TypeMessage.text && !message.isDeleted) {
+          // Giải mã nội dung tin nhắn
+          final decryptedText = await EncryptionService().decryptPayload(
+            message.content,
+            widget.groupChatId,
+            [_currentUserId, widget.peerId],
+            _currentUserId,
+          );
+
+          // Tìm kiếm trên plaintext sau khi giải mã
+          if (decryptedText.toLowerCase().contains(_searchQuery)) {
+            tempResults.add(
+              DecryptedSearchResult(
+                doc: doc,
+                message: message,
+                decryptedContent: decryptedText,
+              ),
+            );
+          }
+        }
+      }
+
+      // Chỉ cập nhật UI nếu từ khóa chưa thay đổi trong lúc giải mã
+      if (mounted && _searchController.text.toLowerCase() == _searchQuery) {
+        setState(() {
+          _searchResults = tempResults;
+          _isSearching = false;
+        });
+      }
     } catch (e) {
-      print('Error searching messages: $e');
-      setState(() {
-        _isSearching = false;
-      });
+      print('Error searching encrypted messages: $e');
+      if (mounted) {
+        setState(() {
+          _isSearching = false;
+        });
+      }
     }
   }
 
@@ -103,7 +144,7 @@ class _SearchMessagesPageState extends State<SearchMessagesPage> {
       ),
       body: Column(
         children: [
-          
+          // Thanh tìm kiếm
           Container(
             padding: const EdgeInsets.all(16),
             color: Colors.white,
@@ -112,15 +153,21 @@ class _SearchMessagesPageState extends State<SearchMessagesPage> {
               autofocus: true,
               decoration: InputDecoration(
                 hintText: 'Search in conversation...',
-                prefixIcon: const Icon(Icons.search, color: ColorConstants.greyColor),
+                prefixIcon: const Icon(
+                  Icons.search,
+                  color: ColorConstants.greyColor,
+                ),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
-                  icon: const Icon(Icons.clear, color: ColorConstants.greyColor),
-                  onPressed: () {
-                    _searchController.clear();
-                    _performSearch('');
-                  },
-                )
+                        icon: const Icon(
+                          Icons.clear,
+                          color: ColorConstants.greyColor,
+                        ),
+                        onPressed: () {
+                          _searchController.clear();
+                          _performSearch('');
+                        },
+                      )
                     : null,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(25),
@@ -135,6 +182,7 @@ class _SearchMessagesPageState extends State<SearchMessagesPage> {
               ),
               onChanged: (value) {
                 setState(() {});
+                // Chỉ tìm kiếm khi >= 2 ký tự để tránh lag
                 if (value.length >= 2) {
                   _performSearch(value);
                 } else if (value.isEmpty) {
@@ -144,7 +192,7 @@ class _SearchMessagesPageState extends State<SearchMessagesPage> {
             ),
           ),
 
-          
+          // Hiển thị số kết quả
           if (_searchQuery.isNotEmpty && !_isSearching)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -159,78 +207,79 @@ class _SearchMessagesPageState extends State<SearchMessagesPage> {
               ),
             ),
 
-          
+          // Nội dung chính
           Expanded(
             child: _isSearching
                 ? const Center(
-              child: CircularProgressIndicator(
-                color: ColorConstants.themeColor,
-              ),
-            )
+                    child: CircularProgressIndicator(
+                      color: ColorConstants.themeColor,
+                    ),
+                  )
                 : _searchQuery.isEmpty
-                ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.search,
-                    size: 80,
-                    color: ColorConstants.greyColor.withOpacity(0.5),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Search for messages',
-                    style: TextStyle(
-                      color: ColorConstants.greyColor,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
-              ),
-            )
-                : _searchResults.isEmpty
-                ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.search_off,
-                    size: 80,
-                    color: ColorConstants.greyColor.withOpacity(0.5),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'No messages found',
-                    style: TextStyle(
-                      color: ColorConstants.greyColor,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
-              ),
-            )
-                : ListView.builder(
-              padding: const EdgeInsets.all(8),
-              itemCount: _searchResults.length,
-              itemBuilder: (context, index) {
-                return _buildSearchResultItem(_searchResults[index]);
-              },
-            ),
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.search,
+                              size: 80,
+                              color: ColorConstants.greyColor.withOpacity(0.5),
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Search for messages',
+                              style: TextStyle(
+                                color: ColorConstants.greyColor,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : _searchResults.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.search_off,
+                                  size: 80,
+                                  color:
+                                      ColorConstants.greyColor.withOpacity(0.5),
+                                ),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  'No messages found',
+                                  style: TextStyle(
+                                    color: ColorConstants.greyColor,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.all(8),
+                            itemCount: _searchResults.length,
+                            itemBuilder: (context, index) {
+                              return _buildSearchResultItem(
+                                  _searchResults[index]);
+                            },
+                          ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSearchResultItem(DocumentSnapshot doc) {
-    final message = MessageChat.fromDocument(doc);
-    final isMyMessage = message.idFrom == _currentUserId;
+  Widget _buildSearchResultItem(DecryptedSearchResult result) {
+    final isMyMessage = result.message.idFrom == _currentUserId;
     final timestamp = DateTime.fromMillisecondsSinceEpoch(
-      int.parse(message.timestamp),
+      int.parse(result.message.timestamp),
     );
 
-    
-    final content = message.content;
+    // Highlight từ khóa trong nội dung đã giải mã
+    final content = result.decryptedContent;
     final queryIndex = content.toLowerCase().indexOf(_searchQuery);
 
     Widget contentWidget;
@@ -281,7 +330,7 @@ class _SearchMessagesPageState extends State<SearchMessagesPage> {
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
-            Navigator.pop(context, doc.id); 
+            Navigator.pop(context, result.doc.id);
           },
           borderRadius: BorderRadius.circular(12),
           child: Container(
@@ -341,4 +390,3 @@ class _SearchMessagesPageState extends State<SearchMessagesPage> {
     super.dispose();
   }
 }
-

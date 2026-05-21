@@ -1,4 +1,3 @@
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -8,6 +7,8 @@ import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../services/e2ee_service.dart';
 
 enum Status {
   uninitialized,
@@ -42,8 +43,11 @@ class AuthProvider extends ChangeNotifier {
 
   String? get userFirebaseId => prefs.getString(FirestoreConstants.id);
 
-  
   UserChat? tempUserChat;
+
+  // =========================================================
+  // IS LOGGED IN
+  // =========================================================
 
   Future<bool> isLoggedIn() async {
     try {
@@ -58,12 +62,18 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  
+  // =========================================================
+  // GENERATE QR CODE
+  // =========================================================
+
   String _generateQRCode(String userId) {
     return 'CHATAPP_${userId}_${DateTime.now().millisecondsSinceEpoch}';
   }
 
-  
+  // =========================================================
+  // SIGN IN
+  // =========================================================
+
   Future<String> handleSignIn() async {
     _status = Status.authenticating;
     notifyListeners();
@@ -96,6 +106,11 @@ class AuthProvider extends ChangeNotifier {
         return 'error';
       }
 
+      // 🔐 Khởi tạo cặp khóa E2EE ngay sau khi xác thực Firebase thành công
+      print('🔑 Đang khởi tạo cặp khóa E2EE cho User...');
+      await E2EEService().generateAndStoreUserKeys(firebaseUser.uid);
+      print('✅ Khởi tạo khóa E2EE thành công!');
+
       final result = await firebaseFirestore
           .collection(FirestoreConstants.pathUserCollection)
           .where(FirestoreConstants.id, isEqualTo: firebaseUser.uid)
@@ -104,7 +119,7 @@ class AuthProvider extends ChangeNotifier {
       final documents = result.docs;
 
       if (documents.isEmpty) {
-        
+        // Người dùng mới: tạo document trên Firestore
         final qrCode = _generateQRCode(firebaseUser.uid);
 
         await firebaseFirestore
@@ -139,7 +154,7 @@ class AuthProvider extends ChangeNotifier {
         notifyListeners();
         return 'success';
       } else {
-        
+        // Người dùng cũ: đọc dữ liệu từ Firestore
         final documentSnapshot = documents.first;
         final userChat = UserChat.fromDocument(documentSnapshot);
 
@@ -152,9 +167,8 @@ class AuthProvider extends ChangeNotifier {
               .update({FirestoreConstants.qrCode: qrCode});
         }
 
-        
         if (userChat.is2FAEnabled) {
-          
+          // Yêu cầu xác thực 2FA trước khi hoàn tất đăng nhập
           tempUserChat = userChat;
           _status = Status.uninitialized;
           notifyListeners();
@@ -183,7 +197,11 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  
+  // =========================================================
+  // COMPLETE 2FA LOGIN
+  // =========================================================
+
+  /// Hoàn tất đăng nhập sau khi người dùng xác thực 2FA thành công.
   Future<void> complete2FALogin() async {
     if (tempUserChat != null) {
       await _saveUserToPrefs(
@@ -201,6 +219,10 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  // =========================================================
+  // SAVE USER TO PREFS
+  // =========================================================
 
   Future<void> _saveUserToPrefs(
     String id,
@@ -222,19 +244,37 @@ class AuthProvider extends ChangeNotifier {
     await prefs.setString('twoFactorSecret', secret);
   }
 
+  // =========================================================
+  // HANDLE EXCEPTION
+  // =========================================================
+
   void handleException() {
     _status = Status.authenticateException;
     notifyListeners();
   }
 
+  // =========================================================
+  // SIGN OUT
+  // =========================================================
+
+  /// Đăng xuất và dọn dẹp toàn bộ dữ liệu nhạy cảm:
+  /// - Xóa khóa RSA cục bộ và cache khóa phiên E2EE
+  /// - Ngắt kết nối Google Sign-In
+  /// - Xóa SharedPreferences
   Future<void> handleSignOut() async {
     _status = Status.uninitialized;
 
     try {
+      // 🔐 Xóa khóa E2EE để tránh user khác dùng nhầm Private Key cũ
+      print('🗑️ Đang xóa khóa E2EE cục bộ...');
+      await E2EEService().clearKeysOnLogout();
+      print('✅ Đã xóa khóa E2EE thành công!');
+
       await firebaseAuth.signOut();
       await googleSignIn.disconnect();
       await googleSignIn.signOut();
       await prefs.clear();
+
       print('✅ Sign out successful');
     } catch (e) {
       print('⚠️ Sign out error: $e');

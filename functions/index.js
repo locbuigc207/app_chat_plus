@@ -3,57 +3,25 @@ const admin = require("firebase-admin");
 const {RtcTokenBuilder, RtcRole} = require("agora-access-token");
 const cors = require("cors")({origin: true});
 const {GoogleGenerativeAI} = require("@google/generative-ai");
-const crypto = require("crypto");
 
 admin.initializeApp();
 
 // =====================================================
-// CẤU HÌNH AGORA
+// ĐỌC BIẾN MÔI TRƯỜNG TỪ FILE .env
 // =====================================================
-const APP_ID = "11d7a5c344694ee5ad835a7e0d388871";
-const APP_CERTIFICATE = "aa8c095cf3c248fe876a66b788a37cf4";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const AGORA_APP_ID = process.env.AGORA_APP_ID;
+const AGORA_APP_CERTIFICATE = process.env.AGORA_APP_CERTIFICATE;
 
-// =====================================================
-// CẤU HÌNH GEMINI AI
-// =====================================================
-const apiKey = process.env.GEMINI_API_KEY;
-
-if (!apiKey) {
+// Kiểm tra cảnh báo nếu thiếu key
+if (!GEMINI_API_KEY) {
   console.error("LỖI: Chưa thiết lập GEMINI_API_KEY trong file functions/.env");
 }
-
-const genAI = new GoogleGenerativeAI(apiKey);
-
-// =====================================================
-// HELPER: Giải mã AES-256-CBC (khớp với EncryptionService Flutter)
-// =====================================================
-function decryptMessageHelper(encryptedText, conversationId) {
-  if (!encryptedText || !encryptedText.includes(":")) {
-    return encryptedText;
-  }
-  try {
-    const parts = encryptedText.split(":");
-    if (parts.length !== 2) return encryptedText;
-
-    const iv = Buffer.from(parts[0], "base64");
-    const ciphertext = Buffer.from(parts[1], "base64");
-
-    const salt = "APP_CHAT_PLUS_SECURE_SALT_2026";
-    const key = crypto
-      .createHash("sha256")
-      .update(conversationId + salt, "utf-8")
-      .digest();
-
-    const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
-    let decrypted = decipher.update(ciphertext, "binary", "utf8");
-    decrypted += decipher.final("utf8");
-
-    return decrypted;
-  } catch (error) {
-    console.error("❌ Lỗi giải mã trong Cloud Function:", error);
-    return encryptedText;
-  }
+if (!AGORA_APP_ID || !AGORA_APP_CERTIFICATE) {
+  console.error("LỖI: Chưa thiết lập AGORA_APP_ID hoặc AGORA_APP_CERTIFICATE trong file functions/.env");
 }
+
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 // =====================================================
 // 1. GENERATE AGORA TOKEN
@@ -77,8 +45,8 @@ exports.generateAgoraToken = functions.https.onRequest((req, res) => {
 
     try {
       const token = RtcTokenBuilder.buildTokenWithUid(
-        APP_ID,
-        APP_CERTIFICATE,
+        AGORA_APP_ID,
+        AGORA_APP_CERTIFICATE,
         channelName,
         uid,
         role,
@@ -93,7 +61,7 @@ exports.generateAgoraToken = functions.https.onRequest((req, res) => {
 });
 
 // =====================================================
-// 2. AUTO-DELETE EXPIRED MESSAGES (Chạy mỗi 5 phút)
+// 2. AUTO-DELETE EXPIRED MESSAGES
 // =====================================================
 exports.cleanupExpiredMessages = functions.pubsub
   .schedule("every 5 minutes")
@@ -109,8 +77,6 @@ exports.cleanupExpiredMessages = functions.pubsub
         .where("autoDeleteEnabled", "==", true)
         .get();
 
-      console.log(`Found ${conversations.size} conversations with auto-delete`);
-
       let totalDeleted = 0;
 
       for (const conv of conversations.docs) {
@@ -118,7 +84,6 @@ exports.cleanupExpiredMessages = functions.pubsub
         if (!duration) continue;
 
         const conversationId = conv.id;
-
         const expiredMessages = await db
           .collection("messages")
           .doc(conversationId)
@@ -152,7 +117,6 @@ exports.cleanupExpiredMessages = functions.pubsub
           await batch.commit();
         }
       }
-
       console.log(`✅ Cleaned up ${totalDeleted} expired messages`);
       return null;
     } catch (error) {
@@ -200,7 +164,7 @@ exports.scheduleMessageDeletion = functions.firestore
   });
 
 // =====================================================
-// 4. CLEANUP TYPING STATUS (Chạy mỗi phút)
+// 4. CLEANUP TYPING STATUS
 // =====================================================
 exports.cleanupTypingStatus = functions.pubsub
   .schedule("every 1 minutes")
@@ -231,7 +195,6 @@ exports.cleanupTypingStatus = functions.pubsub
           await doc.ref.update(updates);
         }
       }
-
       return null;
     } catch (error) {
       console.error("❌ Error cleaning typing status:", error);
@@ -253,10 +216,7 @@ exports.updateUserPresence = functions.firestore
         await change.after.ref.update({
           lastSeen: admin.firestore.FieldValue.serverTimestamp(),
         });
-
-        console.log(`✅ Updated last seen for user ${context.params.userId}`);
       }
-
       return null;
     } catch (error) {
       console.error("❌ Error updating presence:", error);
@@ -265,7 +225,7 @@ exports.updateUserPresence = functions.firestore
   });
 
 // =====================================================
-// 6. SEND PUSH NOTIFICATION ON NEW MESSAGE
+// 6. SEND PUSH NOTIFICATION (E2EE BLIND TRANSPORT)
 // =====================================================
 exports.sendMessageNotification = functions.firestore
   .document("messages/{conversationId}/{messageId}")
@@ -293,42 +253,37 @@ exports.sendMessageNotification = functions.firestore
         .doc(messageData.idFrom)
         .get();
 
-      const senderName = senderDoc.exists ?
-        senderDoc.data().nickname :
-        "Someone";
+      const senderName = senderDoc.exists
+        ? senderDoc.data().nickname
+        : "Someone";
 
       const payload = {
-        notification: {
-          title: senderName,
-          body:
-            messageData.type === 0 ? messageData.content : "📷 Sent an image",
-          sound: "default",
-        },
         data: {
           conversationId: conversationId,
           senderId: messageData.idFrom,
+          senderName: senderName,
           type: "new_message",
+
+          encryptedContent:
+            messageData.type === 0
+              ? messageData.content
+              : "[Hình ảnh/Tệp đính kèm]",
         },
       };
 
       await admin.messaging().sendToDevice(pushToken, payload);
-
-      console.log(`✅ Notification sent to ${messageData.idTo}`);
       return null;
     } catch (error) {
       console.error("❌ Error sending notification:", error);
       return null;
     }
   });
-
 // =====================================================
-// 7. AUTO-DELETE EXPIRED STORIES (Chạy mỗi giờ)
+// 7. AUTO-DELETE EXPIRED STORIES
 // =====================================================
 exports.cleanupExpiredStories = functions.pubsub
   .schedule("every 1 hours")
   .onRun(async (context) => {
-    console.log("🧹 Starting story cleanup...");
-
     try {
       const db = admin.firestore();
       const now = Date.now().toString();
@@ -339,13 +294,9 @@ exports.cleanupExpiredStories = functions.pubsub
         .where("isDeleted", "==", false)
         .get();
 
-      if (expiredStories.empty) {
-        console.log("No expired stories to clean");
-        return null;
-      }
+      if (expiredStories.empty) return null;
 
       const docs = expiredStories.docs;
-      let totalUpdated = 0;
 
       for (let i = 0; i < docs.length; i += 500) {
         const batch = db.batch();
@@ -359,10 +310,7 @@ exports.cleanupExpiredStories = functions.pubsub
         });
 
         await batch.commit();
-        totalUpdated += chunk.length;
       }
-
-      console.log(`✅ Cleaned ${totalUpdated} expired stories`);
       return null;
     } catch (error) {
       console.error("❌ Error cleaning expired stories:", error);
@@ -371,99 +319,68 @@ exports.cleanupExpiredStories = functions.pubsub
   });
 
 // =====================================================
-// 8. TRANSLATE COMMUNICATION STYLE (Gemini AI)
+// 8. TRANSLATE COMMUNICATION STYLE
 // =====================================================
 exports.translateCommunication = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError("unauthenticated", "Yêu cầu đăng nhập.");
-  }
+  if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Yêu cầu đăng nhập.");
 
   const {message, targetAudience} = data;
-
   try {
     const model = genAI.getGenerativeModel({model: "gemini-2.0-flash"});
+    let prompt = `Bạn là một AI chuyên dịch phong cách giao tiếp. Hãy viết lại câu sau sao cho phù hợp với đối tượng nhận là: ${targetAudience}. Giữ nguyên ý nghĩa cốt lõi, chỉ thay đổi tone giọng, từ vựng.\n\nTin nhắn gốc: "${message}"\n`;
 
-    let prompt = `Bạn là một AI chuyên dịch phong cách giao tiếp. Hãy viết lại câu sau sao cho phù hợp với đối tượng nhận là: ${targetAudience}. Giữ nguyên ý nghĩa cốt lõi, chỉ thay đổi tone giọng, từ vựng.\n\n`;
-    prompt += `Tin nhắn gốc: "${message}"\n`;
-
-    if (targetAudience === "elder") {
-      prompt += "Yêu cầu: Văn phong lễ phép, rõ ràng, dễ hiểu, không dùng tiếng lóng hay viết tắt.";
-    } else if (targetAudience === "student") {
-      prompt += "Yêu cầu: Văn phong trẻ trung, gen Z, casual, có thể dùng từ lóng phổ biến.";
-    } else if (targetAudience === "work") {
-      prompt += "Yêu cầu: Văn phong chuyên nghiệp, súc tích, lịch sự, tập trung vào công việc.";
-    }
+    if (targetAudience === "elder") prompt += "Yêu cầu: Lễ phép, rõ ràng.";
+    else if (targetAudience === "student") prompt += "Yêu cầu: Trẻ trung, gen Z, casual.";
+    else if (targetAudience === "work") prompt += "Yêu cầu: Chuyên nghiệp, súc tích.";
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
     return {translatedText: response.text().trim()};
   } catch (error) {
-    console.error("❌ Lỗi khi gọi Gemini AI:", error);
+    console.error("❌ Lỗi AI Translation:", error);
     throw new functions.https.HttpsError("internal", "Lỗi xử lý AI.");
   }
 });
 
 // =====================================================
-// 9. ANALYZE CHAT CONTEXT (Gemini AI)
+// 9. ANALYZE CHAT CONTEXT
 // =====================================================
 exports.analyzeChatContext = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError("unauthenticated", "Yêu cầu đăng nhập.");
-  }
-
+  if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Yêu cầu đăng nhập.");
   const {messages, contextType, action} = data;
 
   try {
     const model = genAI.getGenerativeModel({model: "gemini-2.0-flash"});
-
     let prompt = `Dựa vào đoạn hội thoại sau, hãy thực hiện yêu cầu.\n\nĐoạn hội thoại:\n${messages}\n\n`;
 
-    if (contextType === "work" && action === "extract_tasks") {
-      prompt += "Yêu cầu: Liệt kê các công việc (tasks) và deadline được nhắc đến trong hội thoại dưới dạng danh sách ngắn gọn.";
-    } else if (contextType === "study" && action === "summarize") {
-      prompt += "Yêu cầu: Tóm tắt các kiến thức, bài học chính được trao đổi trong hội thoại.";
-    } else {
-      prompt += "Yêu cầu: Phân tích và tóm tắt ngắn gọn nội dung chính.";
-    }
+    if (contextType === "work" && action === "extract_tasks") prompt += "Yêu cầu: Liệt kê công việc (tasks) và deadline ngắn gọn.";
+    else if (contextType === "study" && action === "summarize") prompt += "Yêu cầu: Tóm tắt kiến thức, bài học.";
+    else prompt += "Yêu cầu: Phân tích và tóm tắt ngắn gọn.";
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
     return {analysisResult: response.text().trim()};
   } catch (error) {
-    console.error("❌ Lỗi khi phân tích Context:", error);
+    console.error("❌ Lỗi AI Chat Context:", error);
     throw new functions.https.HttpsError("internal", "Lỗi phân tích AI.");
   }
 });
 
 // =====================================================
-// 10. SCAM DETECTION (Phát hiện lừa đảo bằng AI)
+// 10. SCAM DETECTION (Chạy Manual từ Client)
 // =====================================================
 exports.analyzeScam = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError("unauthenticated", "Yêu cầu đăng nhập.");
-  }
-
+  if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Yêu cầu đăng nhập.");
   const {message} = data;
 
   try {
     const model = genAI.getGenerativeModel({model: "gemini-2.0-flash"});
-
-    const prompt = `Bạn là một chuyên gia an ninh mạng. Hãy phân tích tin nhắn sau đây xem có dấu hiệu lừa đảo (scam), phishing (link độc hại), mạo danh nhờ chuyển tiền hay tống tiền không.
-    Tin nhắn: "${message}"
-
-    Hãy trả về CHỈ MỘT TRONG CÁC TỪ KHÓA SAU (không giải thích thêm):
-    - SAFE (nếu tin nhắn hoàn toàn bình thường)
-    - WARNING_MONEY (nếu tin nhắn có nhắc đến việc vay mượn, chuyển tiền)
-    - WARNING_LINK (nếu tin nhắn chứa đường link không rõ nguồn gốc)
-    - DANGER (nếu tin nhắn chắc chắn là lừa đảo, đe dọa)`;
+    const prompt = `Phân tích tin nhắn sau xem có dấu hiệu lừa đảo, phishing, mạo danh nhờ chuyển tiền không.\nTin nhắn: "${message}"\nTrả về 1 trong các từ khóa: SAFE, WARNING_MONEY, WARNING_LINK, DANGER`;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
-    const text = response.text().trim();
-
-    return {status: text};
+    return {status: response.text().trim()};
   } catch (error) {
-    console.error("❌ Lỗi khi phân tích Scam:", error);
     return {status: "ERROR"};
   }
 });
@@ -472,190 +389,95 @@ exports.analyzeScam = functions.https.onCall(async (data, context) => {
 // 11. EXTRACT RELATIONSHIP MEMORY
 // =====================================================
 exports.extractRelationshipMemory = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError("unauthenticated", "Yêu cầu đăng nhập.");
-  }
-
+  if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Yêu cầu đăng nhập.");
   const {messages} = data;
 
   try {
     const model = genAI.getGenerativeModel({model: "gemini-2.0-flash"});
-
-    const prompt = `Bạn là một AI chuyên phân tích tâm lý và quan hệ con người. Dựa vào đoạn lịch sử trò chuyện sau, hãy trích xuất các "Kỷ niệm", "Sở thích", "Lời hứa", và đánh giá "Điểm số quan hệ" (từ 0 đến 100).
-
-    Đoạn trò chuyện:
-    ${messages}
-
-    BẮT BUỘC TRẢ VỀ ĐÚNG CHUẨN JSON (Không markdown, không text dư thừa) theo cấu trúc sau:
-    {
-      "healthScore": 85,
-      "summary": "Hai người thường xuyên chia sẻ về công việc và khá quan tâm nhau.",
-      "memories": [
-        { "category": "preference", "content": "Thích uống cà phê không đường" },
-        { "category": "memory", "content": "Đã đi du lịch Đà Lạt tháng trước" },
-        { "category": "promise", "content": "Hứa sẽ gửi file báo cáo vào cuối tuần" }
-      ]
-    }`;
+    const prompt = `Trích xuất "Kỷ niệm", "Sở thích", "Lời hứa", và đánh giá "Điểm số quan hệ" (0-100) từ đoạn chat: ${messages}. Trả về JSON chuẩn: {"healthScore": 85, "summary": "...", "memories": [{"category": "preference", "content": "..."}]}`;
 
     const result = await model.generateContent(prompt);
-    let text = result.response.text().trim();
-
-    text = text.replace(/^```json/g, "").replace(/^```/g, "").replace(/```$/g, "").trim();
-
+    let text = result.response.text().trim().replace(/^```json/g, "").replace(/^```/g, "").replace(/```$/g, "").trim();
     return JSON.parse(text);
   } catch (error) {
-    console.error("❌ Lỗi khi phân tích Relationship Memory:", error);
     throw new functions.https.HttpsError("internal", "Lỗi phân tích AI.");
   }
 });
 
 // =====================================================
-// 12. PROACTIVE AI AGENT — Phân tích tin nhắn mới tự động
-// Có giải mã AES-256-CBC và hỗ trợ cả group chat lẫn private chat
+// 12. CLIENT-DRIVEN SECURE AI ANALYZER (Đảm bảo E2EE)
 // =====================================================
-exports.proactiveMessageAnalyzer = functions.firestore
-  .document("messages/{conversationId}/{messageId}")
-  .onCreate(async (snap, context) => {
-    const messageData = snap.data();
-    const {conversationId, messageId} = context.params;
-
-    // Chỉ phân tích tin nhắn text, bỏ qua tin nhắn do AI gửi
-    if (messageData.type !== 0 || messageData.idFrom === "AI_ASSISTANT") {
-      return null;
-    }
-
-    try {
-      // Giải mã nội dung trước khi gửi lên AI
-      const plainTextContent = decryptMessageHelper(
-        messageData.content,
-        conversationId,
-      );
-
-      const model = genAI.getGenerativeModel({model: "gemini-2.0-flash"});
-
-      const prompt = `Phân tích tin nhắn này: "${plainTextContent}".
-      Trả về kết quả DƯỚI DẠNG JSON (chỉ JSON, không markdown, không giải thích) theo cấu trúc sau:
-      {
-        "isScam": boolean (true nếu có dấu hiệu lừa đảo, chuyển tiền, link độc hại),
-        "scamReason": "lý do ngắn gọn nếu isScam=true",
-        "hasReminder": boolean (true nếu có nhắc nhở lịch hẹn, công việc, deadline, cuộc họp),
-        "reminderTask": "nội dung công việc ngắn gọn",
-        "reminderTime": "Thời gian nhắc nhở nếu có (ví dụ: 8h sáng mai)"
-      }`;
-
-      const result = await model.generateContent(prompt);
-      let text = result.response.text().trim();
-      text = text
-        .replace(/^```json/g, "")
-        .replace(/^```/g, "")
-        .replace(/```$/g, "")
-        .trim();
-
-      const analysis = JSON.parse(text);
-      const updates = {};
-
-      // 1. PHÁT HIỆN LỪA ĐẢO → Gắn cờ cảnh báo lên message document
-      if (analysis.isScam) {
-        updates.scamWarning = true;
-        updates.scamReason = analysis.scamReason;
-        console.log(`🚨 [Proactive AI] Phát hiện lừa đảo trong tin nhắn: ${messageId}`);
-      }
-
-      // 2. PHÁT HIỆN NHẮC NHỞ → Tạo reminder cho người nhận
-      if (analysis.hasReminder) {
-        updates.hasReminder = true;
-
-        const convDoc = await admin
-          .firestore()
-          .collection("conversations")
-          .doc(conversationId)
-          .get();
-
-        if (convDoc.exists && convDoc.data().isGroup === true) {
-          // GROUP CHAT: Tạo reminder cho tất cả thành viên (trừ người gửi)
-          const participants = convDoc.data().participants || [];
-          const reminderPromises = participants
-            .filter(
-              (uid) =>
-                uid !== "AI_ASSISTANT" && uid !== messageData.idFrom,
-            )
-            .map((uid) =>
-              admin.firestore().collection("reminders").add({
-                userId: uid,
-                conversationId: conversationId,
-                messageId: messageId,
-                task: analysis.reminderTask,
-                timeHint: analysis.reminderTime,
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                isCompleted: false,
-                isAutoGenerated: true,
-              }),
-            );
-
-          await Promise.all(reminderPromises);
-          console.log(`⏰ [Group] Đã tạo reminder cho các thành viên từ tin nhắn ${messageId}`);
-        } else {
-          // PRIVATE CHAT: Tạo reminder cho người nhận
-          await admin.firestore().collection("reminders").add({
-            userId: messageData.idTo,
-            conversationId: conversationId,
-            messageId: messageId,
-            task: analysis.reminderTask,
-            timeHint: analysis.reminderTime,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            isCompleted: false,
-            isAutoGenerated: true,
-          });
-          console.log(`⏰ [Private] Đã tạo reminder cho người dùng ${messageData.idTo}`);
-        }
-      }
-
-      if (Object.keys(updates).length > 0) {
-        await snap.ref.update(updates);
-      }
-
-      return null;
-    } catch (error) {
-      console.error("❌ Lỗi Proactive AI Agent:", error);
-      return null;
-    }
-  });
-
-// =====================================================
-// 13. ADVANCED CALL SECURITY ANALYZER (Anti-Deepfake)
-// =====================================================
-exports.analyzeCallSecurity = functions.https.onCall(async (data, context) => {
+exports.analyzeDecryptedClientMessage = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
-    throw new functions.https.HttpsError("unauthenticated", "Yêu cầu đăng nhập.");
+    throw new functions.https.HttpsError("unauthenticated", "Yêu cầu đăng nhập hợp lệ.");
   }
 
-  const {callTranscript, peerId, conversationId} = data;
+  // ĐÃ SỬA LỖI ESLINT: Gỡ bỏ idFrom do không sử dụng
+  const {plainTextContent, conversationId, messageId, idTo} = data;
 
   try {
     const model = genAI.getGenerativeModel({model: "gemini-2.0-flash"});
 
-    const prompt = `Phân tích đoạn hội thoại cuộc gọi sau để tìm dấu hiệu lừa đảo, tống tiền, mạo danh mượn tiền gấp, hoặc giọng nói do AI tạo ra (Deepfake).
-    Hội thoại: "${callTranscript}"
-
-    Trả về ĐÚNG CHUẨN JSON:
+    const prompt = `Phân tích tin nhắn sau: "${plainTextContent}".
+    Trả về kết quả DƯỚI DẠNG JSON chuẩn (chỉ JSON, không markdown, không giải thích):
     {
-      "isSafe": boolean,
-      "riskLevel": "LOW" | "MEDIUM" | "HIGH",
-      "warningMessage": "Cảnh báo ngắn gọn bằng tiếng Việt (nếu isSafe = false)",
-      "confidenceScore": số từ 0-100 đánh giá độ chắc chắn của AI
+      "isScam": boolean,
+      "scamReason": "lý do ngắn gọn nếu có dấu hiệu lừa đảo",
+      "hasReminder": boolean,
+      "reminderTask": "nội dung công việc",
+      "reminderTime": "thời gian"
     }`;
 
     const result = await model.generateContent(prompt);
-    let text = result.response.text().trim();
-    text = text
-      .replace(/^```json/g, "")
-      .replace(/^```/g, "")
-      .replace(/```$/g, "")
-      .trim();
+    let text = result.response.text().trim().replace(/^```json/g, "").replace(/```$/g, "").trim();
+    const analysis = JSON.parse(text);
+    const db = admin.firestore();
 
+    // 1. Cập nhật cảnh báo Scam trực tiếp vào Document
+    if (analysis.isScam) {
+      await db.collection("messages").doc(conversationId).collection(conversationId).doc(messageId).update({
+        scamWarning: true,
+        scamReason: analysis.scamReason,
+      });
+      console.log(`🚨 Phát hiện rủi ro trong E2EE message: ${messageId}`);
+    }
+
+    // 2. Tự động tạo Reminder
+    if (analysis.hasReminder) {
+      await db.collection("reminders").add({
+        userId: idTo,
+        conversationId: conversationId,
+        messageId: messageId,
+        task: analysis.reminderTask,
+        timeHint: analysis.reminderTime,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        isCompleted: false,
+        isAutoGenerated: true,
+      });
+    }
+
+    return analysis;
+  } catch (error) {
+    console.error("❌ Lỗi xử lý AI từ Client:", error);
+    return null;
+  }
+});
+
+// =====================================================
+// 13. ADVANCED CALL SECURITY ANALYZER
+// =====================================================
+exports.analyzeCallSecurity = functions.https.onCall(async (data, context) => {
+  if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Yêu cầu đăng nhập.");
+  const {callTranscript, peerId, conversationId} = data;
+
+  try {
+    const model = genAI.getGenerativeModel({model: "gemini-2.0-flash"});
+    const prompt = `Phân tích hội thoại gọi điện tìm dấu hiệu lừa đảo, tống tiền, Deepfake.\nHội thoại: "${callTranscript}"\nTrả về JSON: {"isSafe": boolean, "riskLevel": "LOW" | "MEDIUM" | "HIGH", "warningMessage": "Cảnh báo", "confidenceScore": 0-100}`;
+
+    const result = await model.generateContent(prompt);
+    let text = result.response.text().trim().replace(/^```json/g, "").replace(/^```/g, "").replace(/```$/g, "").trim();
     const analysis = JSON.parse(text);
 
-    // Lưu log cảnh báo vào Firestore nếu phát hiện nguy hiểm
     if (!analysis.isSafe || analysis.riskLevel === "HIGH") {
       await admin.firestore().collection("security_alerts").add({
         reporterId: context.auth.uid,
@@ -665,12 +487,9 @@ exports.analyzeCallSecurity = functions.https.onCall(async (data, context) => {
         analysisResult: analysis,
         timestamp: admin.firestore.FieldValue.serverTimestamp(),
       });
-      console.log(`🚨 [Call Security] Phát hiện rủi ro từ cuộc gọi — peerId: ${peerId}`);
     }
-
     return analysis;
   } catch (error) {
-    console.error("❌ Lỗi Call Security AI:", error);
     return {isSafe: true, riskLevel: "LOW", warningMessage: "", confidenceScore: 0};
   }
 });
