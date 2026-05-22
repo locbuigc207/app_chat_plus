@@ -19,6 +19,29 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+// ─────────────────────────────────────────────────────────────
+// COMPATIBILITY NOTES  (chat_page.dart  ↔  search_messages.dart
+//                                       ↔  push_notification_service.dart)
+//
+// 1. SearchMessagesPage now requires THREE named params:
+//      groupChatId, peerName, peerId
+//    → _showChatOptionsMenu() now passes widget.arguments.peerId.
+//
+// 2. Search result returns the matched messageId (doc.id).
+//    → After Navigator.push we handle the returned id so the list
+//      can scroll to / highlight that message if desired.
+//
+// 3. PushNotificationService.initialize() must be called once when
+//    the chat page (or app) is ready.  We call it inside
+//    _initializeProviders so it runs after Firebase is warmed up.
+//    initialize() is idempotent – multiple calls are harmless.
+//
+// 4. EncryptionService.decryptPayload() is async and already used
+//    consistently in search_messages.dart.  _showAIContextAnalysis()
+//    and _buildItemMessage() now call the async variant so plaintext
+//    is always correctly surfaced.
+// ─────────────────────────────────────────────────────────────
+
 class ChatPage extends StatefulWidget {
   const ChatPage({
     super.key,
@@ -54,12 +77,12 @@ class ChatPageState extends State<ChatPage>
   List<QueryDocumentSnapshot> _listMessage = [];
   int _limit = 20;
   final _limitIncrement = 20;
-  String _groupChatId = "";
+  String _groupChatId = '';
 
   File? _imageFile;
   bool _isLoading = false;
   bool _isShowSticker = false;
-  String _imageUrl = "";
+  String _imageUrl = '';
 
   late final TextEditingController _chatInputController;
   late final ScrollController _listScrollController;
@@ -92,7 +115,7 @@ class ChatPageState extends State<ChatPage>
   bool _showFeaturesMenu = false;
 
   bool _isRecording = false;
-  String _recordingDuration = "0:00";
+  String _recordingDuration = '0:00';
   Timer? _recordingTimer;
   int _recordingSeconds = 0;
 
@@ -100,6 +123,9 @@ class ChatPageState extends State<ChatPage>
   final Map<String, String> _scheduledMessageContents = {};
 
   final Map<String, String> _scamResults = {};
+
+  // ── NEW: id of a message to scroll-to after returning from search ──
+  String? _pendingScrollToMessageId;
 
   @override
   void initState() {
@@ -187,6 +213,9 @@ class ChatPageState extends State<ChatPage>
     super.dispose();
   }
 
+  // ────────────────────────────────────────────────────────────
+  // INIT PROVIDERS
+  // ────────────────────────────────────────────────────────────
   void _initializeProviders(BuildContext context) {
     if (resourceManager.isDisposed) return;
 
@@ -202,6 +231,15 @@ class ChatPageState extends State<ChatPage>
     _presenceProvider = context.read<UserPresenceProvider>();
     _unifiedBubbleService = context.read<UnifiedBubbleService>();
     _telemetryProvider = context.read<TelemetryProvider>();
+
+    // ── COMPATIBILITY FIX #3 ──────────────────────────────────
+    // Initialize PushNotificationService here (after Firebase is ready).
+    // This registers the background handler and foreground listener so
+    // encrypted push payloads are decrypted before being shown.
+    PushNotificationService.initialize().catchError((e) {
+      print('⚠️ PushNotificationService init error: $e');
+    });
+    // ─────────────────────────────────────────────────────────
 
     final miniChatSub = _unifiedBubbleService?.bubbleClickStream.listen(
       (event) {
@@ -261,7 +299,7 @@ class ChatPageState extends State<ChatPage>
       return;
     }
 
-    String peerId = widget.arguments.peerId;
+    final String peerId = widget.arguments.peerId;
     if (_currentUserId.compareTo(peerId) > 0) {
       _groupChatId = '$_currentUserId-$peerId';
     } else {
@@ -907,7 +945,6 @@ class ChatPageState extends State<ChatPage>
           label: 'BẬT (Elder Mode)',
           textColor: Colors.amberAccent,
           onPressed: () {
-            
             try {
               context.read<AppModeProvider>().setMode(AppMode.elder);
               Fluttertoast.showToast(
@@ -1350,13 +1387,21 @@ class ChatPageState extends State<ChatPage>
 
     if (messageChat.idFrom != _currentUserId &&
         messageChat.type == TypeMessage.text) {
-      final replies = _smartReplyProvider.getRuleBasedReplies(
+      // ── COMPATIBILITY FIX #4 ──────────────────────────────────
+      // Decrypt before feeding into smart-reply engine so it receives
+      // plaintext, matching the same async flow used in search_messages.dart.
+      final plaintext = await EncryptionService().decryptPayload(
         messageChat.content,
+        _groupChatId,
+        [_currentUserId, widget.arguments.peerId],
+        _currentUserId,
       );
+      // ─────────────────────────────────────────────────────────
+      final replies = _smartReplyProvider.getRuleBasedReplies(plaintext);
       if (mounted && !resourceManager.isDisposed) {
         setState(() {
           _smartReplies = replies;
-          _lastReceivedMessage = messageChat.content;
+          _lastReceivedMessage = plaintext;
         });
       }
     }
@@ -1507,7 +1552,7 @@ class ChatPageState extends State<ChatPage>
       setState(() {
         _isRecording = true;
         _recordingSeconds = 0;
-        _recordingDuration = "0:00";
+        _recordingDuration = '0:00';
       });
 
       _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -1519,7 +1564,7 @@ class ChatPageState extends State<ChatPage>
           _recordingSeconds++;
           final minutes = _recordingSeconds ~/ 60;
           final seconds = _recordingSeconds % 60;
-          _recordingDuration = "$minutes:${seconds.toString().padLeft(2, '0')}";
+          _recordingDuration = '$minutes:${seconds.toString().padLeft(2, '0')}';
         });
       });
     }
@@ -1600,28 +1645,34 @@ class ChatPageState extends State<ChatPage>
     _bubbleChannel.invokeMethod('close');
   }
 
+  // ── COMPATIBILITY FIX #4 (continued) ─────────────────────────
+  // _showAIContextAnalysis now decrypts each message with the async
+  // decryptPayload API, matching search_messages.dart's approach.
+  // ─────────────────────────────────────────────────────────────
   void _showAIContextAnalysis() async {
     if (_listMessage.isEmpty) {
       Fluttertoast.showToast(msg: 'Chưa có đủ tin nhắn để phân tích');
       return;
     }
 
-    List<String> recentMessages = _listMessage
-        .take(15)
-        .map((doc) {
-          final rawMsg = MessageChat.fromDocument(doc);
+    // Decrypt each recent message asynchronously before analysis.
+    final List<String> recentMessages = [];
+    for (final doc in _listMessage.take(15)) {
+      final rawMsg = MessageChat.fromDocument(doc);
+      final decryptedContent = await EncryptionService().decryptPayload(
+        rawMsg.content,
+        _groupChatId,
+        [_currentUserId, widget.arguments.peerId],
+        _currentUserId,
+      );
+      final sender = rawMsg.idFrom == _currentUserId
+          ? 'Tôi'
+          : widget.arguments.peerNickname;
+      recentMessages.add('$sender: $decryptedContent');
+    }
+    final orderedMessages = recentMessages.reversed.toList();
 
-          final decryptedContent =
-              EncryptionService().decryptMessage(rawMsg.content, _groupChatId);
-
-          final sender = rawMsg.idFrom == _currentUserId
-              ? "Tôi"
-              : widget.arguments.peerNickname;
-          return "$sender: $decryptedContent";
-        })
-        .toList()
-        .reversed
-        .toList();
+    if (!mounted || resourceManager.isDisposed) return;
 
     showDialog(
         context: context,
@@ -1636,7 +1687,7 @@ class ChatPageState extends State<ChatPage>
                 ),
                 content: FutureBuilder<String?>(
                   future: AIBackendService().analyzeChatContext(
-                      recentMessages, 'work', 'extract_tasks'),
+                      orderedMessages, 'work', 'extract_tasks'),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const SizedBox(
@@ -1657,6 +1708,65 @@ class ChatPageState extends State<ChatPage>
                       onPressed: () => Navigator.pop(context),
                       child: const Text('Đóng')),
                 ]));
+  }
+
+  // ── COMPATIBILITY FIX #1 ──────────────────────────────────────
+  // SearchMessagesPage now receives the required `peerId` argument.
+  // The returned value (matched doc id) is stored in
+  // _pendingScrollToMessageId so the list can scroll there.
+  // ─────────────────────────────────────────────────────────────
+  Future<void> _openSearchMessages() async {
+    if (resourceManager.isDisposed) return;
+
+    final matchedId = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SearchMessagesPage(
+          groupChatId: _groupChatId,
+          peerName: widget.arguments.peerNickname,
+          // ← peerId is now correctly supplied
+          peerId: widget.arguments.peerId,
+        ),
+      ),
+    );
+
+    // If the user tapped a result, scroll toward it.
+    if (matchedId != null && mounted && !resourceManager.isDisposed) {
+      setState(() => _pendingScrollToMessageId = matchedId);
+      // Give the StreamBuilder time to render, then try to scroll.
+      Future.delayed(const Duration(milliseconds: 400), () {
+        if (!mounted || resourceManager.isDisposed) return;
+        _scrollToMessage(matchedId);
+      });
+    }
+  }
+
+  /// Scrolls the list to the message whose Firestore doc id matches [id].
+  /// Because the list is `reverse: true` and we only hold [_limit] items,
+  /// we load more if needed and jump to the item's index.
+  void _scrollToMessage(String id) {
+    if (!_listScrollController.hasClients) return;
+    final index = _listMessage.indexWhere((doc) => doc.id == id);
+    if (index == -1) {
+      // Message not yet in the loaded window – load more and retry once.
+      if (mounted && _limit <= _listMessage.length) {
+        setState(() => _limit += _limitIncrement);
+        Future.delayed(
+            const Duration(milliseconds: 500), () => _scrollToMessage(id));
+      }
+      return;
+    }
+    // Approximate scroll offset: each item is roughly 72 px.
+    final offset = (index * 72.0).clamp(
+      0.0,
+      _listScrollController.position.maxScrollExtent,
+    );
+    _listScrollController.animateTo(
+      offset,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeInOut,
+    );
+    setState(() => _pendingScrollToMessageId = null);
   }
 
   void _showChatOptionsMenu() {
@@ -1691,15 +1801,8 @@ class ChatPageState extends State<ChatPage>
               subtitle: const Text('Search in conversation'),
               onTap: () {
                 Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => SearchMessagesPage(
-                      groupChatId: _groupChatId,
-                      peerName: widget.arguments.peerNickname,
-                    ),
-                  ),
-                );
+                // ← Uses the new helper that correctly passes peerId.
+                _openSearchMessages();
               },
             ),
             ListTile(
@@ -1851,7 +1954,7 @@ class ChatPageState extends State<ChatPage>
                   } else {
                     return const Center(
                       child: Text(
-                        "Bắt đầu cuộc trò chuyện...",
+                        'Bắt đầu cuộc trò chuyện...',
                         style: TextStyle(color: Color(0xFF8E8E93)),
                       ),
                     );
@@ -1873,22 +1976,66 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
+  // ── COMPATIBILITY FIX #4 (continued) ─────────────────────────
+  // _buildItemMessage is now async-aware: decryption uses the same
+  // decryptPayload() call as search_messages.dart so both pages
+  // always show identical plaintext for a given ciphertext blob.
+  //
+  // Note: ListView.builder requires a synchronous Widget return, so we
+  // use a FutureBuilder for the decrypt step.
+  // ─────────────────────────────────────────────────────────────
   Widget _buildItemMessage(int index, DocumentSnapshot? document) {
     if (document == null) return const SizedBox.shrink();
 
-    final rawMessageChat = MessageChat.fromDocument(document);
+    // Highlight border when user navigated here from search result.
+    final bool isHighlighted = _pendingScrollToMessageId == document.id;
 
-    final decryptedContent = EncryptionService()
-        .decryptMessage(rawMessageChat.content, _groupChatId);
+    return FutureBuilder<MessageChat>(
+      future: _decryptMessageForDisplay(document),
+      // Show the raw (possibly still-encrypted) bubble while waiting,
+      // then replace with the decrypted version.
+      builder: (context, snapshot) {
+        final messageChat = snapshot.data ??
+            MessageChat.fromDocument(document)
+                .copyWith(content: '…'); // placeholder
 
-    final messageChat = rawMessageChat.copyWith(content: decryptedContent);
+        return _buildMessageBubble(
+          index: index,
+          document: document,
+          messageChat: messageChat,
+          isHighlighted: isHighlighted,
+        );
+      },
+    );
+  }
 
+  /// Decrypts a Firestore document's content using the async API.
+  Future<MessageChat> _decryptMessageForDisplay(
+      DocumentSnapshot document) async {
+    final raw = MessageChat.fromDocument(document);
+    if (raw.type != TypeMessage.text && raw.type != TypeMessage.image) {
+      return raw; // voice / sticker — no decrypt needed
+    }
+    final plaintext = await EncryptionService().decryptPayload(
+      raw.content,
+      _groupChatId,
+      [_currentUserId, widget.arguments.peerId],
+      _currentUserId,
+    );
+    return raw.copyWith(content: plaintext);
+  }
+
+  Widget _buildMessageBubble({
+    required int index,
+    required DocumentSnapshot document,
+    required MessageChat messageChat,
+    bool isHighlighted = false,
+  }) {
     final isMyMessage = messageChat.idFrom == _currentUserId;
     final data = document.data() as Map<String, dynamic>?;
     final isViewOnce = data?['isViewOnce'] ?? false;
     final isViewed = data?['isViewed'] ?? false;
 
-    
     final bool isScamWarning = data?['scamWarning'] ?? false;
     final String scamReason = data?['scamReason'] ?? '';
     final bool hasReminder = data?['hasReminder'] ?? false;
@@ -1900,40 +2047,57 @@ class ChatPageState extends State<ChatPage>
     }
     final double tailRadius = isLastInGroup ? 4.0 : 20.0;
 
+    // ── Highlight wrapper for search-jump ────────────────────
+    Widget wrapHighlight(Widget child) {
+      if (!isHighlighted) return child;
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 600),
+        decoration: BoxDecoration(
+          color: const Color(0xFF007AFF).withOpacity(0.08),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: child,
+      );
+    }
+
     if (isViewOnce) {
-      return Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        child: Row(
-          mainAxisAlignment:
-              isMyMessage ? MainAxisAlignment.end : MainAxisAlignment.start,
-          children: [
-            ViewOnceMessageWidget(
-              groupChatId: _groupChatId,
-              messageId: document.id,
-              content: messageChat.content,
-              type: messageChat.type,
-              currentUserId: _currentUserId,
-              isViewed: isViewed,
-              provider: _viewOnceProvider,
-            ),
-          ],
+      return wrapHighlight(
+        Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          child: Row(
+            mainAxisAlignment:
+                isMyMessage ? MainAxisAlignment.end : MainAxisAlignment.start,
+            children: [
+              ViewOnceMessageWidget(
+                groupChatId: _groupChatId,
+                messageId: document.id,
+                content: messageChat.content,
+                type: messageChat.type,
+                currentUserId: _currentUserId,
+                isViewed: isViewed,
+                provider: _viewOnceProvider,
+              ),
+            ],
+          ),
         ),
       );
     }
 
     if (messageChat.type == 3 && _voiceProvider != null) {
-      return Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        child: Row(
-          mainAxisAlignment:
-              isMyMessage ? MainAxisAlignment.end : MainAxisAlignment.start,
-          children: [
-            VoiceMessageWidget(
-              voiceUrl: messageChat.content,
-              isMyMessage: isMyMessage,
-              voiceProvider: _voiceProvider!,
-            ),
-          ],
+      return wrapHighlight(
+        Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          child: Row(
+            mainAxisAlignment:
+                isMyMessage ? MainAxisAlignment.end : MainAxisAlignment.start,
+            children: [
+              VoiceMessageWidget(
+                voiceUrl: messageChat.content,
+                isMyMessage: isMyMessage,
+                voiceProvider: _voiceProvider!,
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -1942,499 +2106,497 @@ class ChatPageState extends State<ChatPage>
       final location =
           _locationProvider?.parseLocationFromMessage(messageChat.content);
 
-      return Container(
-        margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
-        child: Column(
-          crossAxisAlignment:
-              isMyMessage ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment:
-                  isMyMessage ? MainAxisAlignment.end : MainAxisAlignment.start,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                GestureDetector(
-                  onLongPress: () {
-                    HapticFeedback.heavyImpact();
-                    _showAdvancedMessageOptions(messageChat, document.id);
-                  },
-                  onDoubleTap: () {
-                    HapticFeedback.mediumImpact();
-                    _showReactionPicker(document.id);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * 0.75,
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: isMyMessage
-                          ? const LinearGradient(
-                              colors: [Color(0xFF007AFF), Color(0xFF0056D6)])
-                          : null,
-                      color: isMyMessage ? null : Colors.white,
-                      borderRadius: BorderRadius.only(
-                        topLeft: const Radius.circular(20),
-                        topRight: const Radius.circular(20),
-                        bottomLeft:
-                            Radius.circular(isMyMessage ? 20 : tailRadius),
-                        bottomRight:
-                            Radius.circular(isMyMessage ? tailRadius : 20),
+      return wrapHighlight(
+        Container(
+          margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+          child: Column(
+            crossAxisAlignment:
+                isMyMessage ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: isMyMessage
+                    ? MainAxisAlignment.end
+                    : MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  GestureDetector(
+                    onLongPress: () {
+                      HapticFeedback.heavyImpact();
+                      _showAdvancedMessageOptions(messageChat, document.id);
+                    },
+                    onDoubleTap: () {
+                      HapticFeedback.mediumImpact();
+                      _showReactionPicker(document.id);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      constraints: BoxConstraints(
+                        maxWidth: MediaQuery.of(context).size.width * 0.75,
                       ),
-                      boxShadow: isMyMessage
-                          ? [
-                              BoxShadow(
-                                color:
-                                    const Color(0xFF007AFF).withOpacity(0.25),
-                                blurRadius: 8,
-                                offset: const Offset(0, 4),
-                              )
-                            ]
-                          : [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.04),
-                                blurRadius: 8,
-                                offset: const Offset(0, 4),
-                              )
-                            ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        
-                        if (!isMyMessage && isScamWarning)
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.red.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.red),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.warning,
-                                    color: Colors.red, size: 16),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'CẢNH BÁO AI: $scamReason',
-                                    style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.red,
-                                        fontWeight: FontWeight.bold),
-                                  ),
-                                ),
+                      decoration: BoxDecoration(
+                        gradient: isMyMessage
+                            ? const LinearGradient(
+                                colors: [Color(0xFF007AFF), Color(0xFF0056D6)])
+                            : null,
+                        color: isMyMessage ? null : Colors.white,
+                        borderRadius: BorderRadius.only(
+                          topLeft: const Radius.circular(20),
+                          topRight: const Radius.circular(20),
+                          bottomLeft:
+                              Radius.circular(isMyMessage ? 20 : tailRadius),
+                          bottomRight:
+                              Radius.circular(isMyMessage ? tailRadius : 20),
+                        ),
+                        boxShadow: isMyMessage
+                            ? [
+                                BoxShadow(
+                                  color:
+                                      const Color(0xFF007AFF).withOpacity(0.25),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                )
+                              ]
+                            : [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.04),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                )
                               ],
-                            ),
-                          ),
-
-                        
-                        if (!isMyMessage && hasReminder)
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.alarm_add,
-                                    color: Colors.blue, size: 16),
-                                const SizedBox(width: 8),
-                                const Expanded(
-                                  child: Text(
-                                    'AI: Phát hiện có công việc cần lưu!',
-                                    style: TextStyle(
-                                        fontSize: 12, color: Colors.blue),
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: () => _showReminders(),
-                                  style: TextButton.styleFrom(
-                                      padding: EdgeInsets.zero,
-                                      minimumSize: const Size(40, 24)),
-                                  child: const Text('XEM',
-                                      style: TextStyle(fontSize: 12)),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                        if (messageChat.isDeleted)
-                          Text(
-                            messageChat.content,
-                            style: TextStyle(
-                              color: isMyMessage
-                                  ? Colors.white70
-                                  : const Color(0xFF8E8E93),
-                              fontStyle: FontStyle.italic,
-                              fontSize: 15,
-                            ),
-                          )
-                        else if (location != null)
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (!isMyMessage && isScamWarning)
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.red.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.red),
+                              ),
+                              child: Row(
                                 children: [
-                                  Icon(
-                                    Icons.location_on,
-                                    color:
-                                        isMyMessage ? Colors.white : Colors.red,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'Location',
-                                    style: TextStyle(
-                                      color: isMyMessage
-                                          ? Colors.white
-                                          : Colors.black87,
-                                      fontWeight: FontWeight.bold,
+                                  const Icon(Icons.warning,
+                                      color: Colors.red, size: 16),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'CẢNH BÁO AI: $scamReason',
+                                      style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.red,
+                                          fontWeight: FontWeight.bold),
                                     ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 8),
-                              Text(
-                                location.address,
-                                style: TextStyle(
-                                  color: isMyMessage
-                                      ? Colors.white
-                                      : Colors.black87,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              InkWell(
-                                onTap: () =>
-                                    _openLocationInMaps(location.mapsUrl),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: isMyMessage
-                                        ? Colors.white.withOpacity(0.2)
-                                        : ColorConstants.primaryColor
-                                            .withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: isMyMessage
-                                          ? Colors.white.withOpacity(0.3)
-                                          : ColorConstants.primaryColor
-                                              .withOpacity(0.3),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.map,
-                                        size: 16,
-                                        color: isMyMessage
-                                            ? Colors.white
-                                            : ColorConstants.primaryColor,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        'View on Google Maps',
-                                        style: TextStyle(
-                                          color: isMyMessage
-                                              ? Colors.white
-                                              : ColorConstants.primaryColor,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          decoration: TextDecoration.underline,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Icon(
-                                        Icons.open_in_new,
-                                        size: 14,
-                                        color: isMyMessage
-                                            ? Colors.white
-                                            : ColorConstants.primaryColor,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          )
-                        else if (messageChat.idFrom ==
-                            AppConstants.aiAssistantId)
-                          MarkdownBody(
-                            data: messageChat.content,
-                            selectable: true,
-                            styleSheet: MarkdownStyleSheet(
-                              p: const TextStyle(
-                                color: Color(0xFF111418),
-                                fontSize: 16,
-                                height: 1.4,
-                              ),
-                              code: const TextStyle(
-                                backgroundColor: Color(0xFFF2F2F7),
-                                color: Color(0xFFE91E63),
-                                fontFamily: 'monospace',
-                              ),
-                              codeblockPadding: const EdgeInsets.all(10),
-                              codeblockDecoration: BoxDecoration(
-                                color: Colors.black87,
+                            ),
+                          if (!isMyMessage && hasReminder)
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                            ),
-                          )
-                        else
-                          Text(
-                            messageChat.content,
-                            style: TextStyle(
-                              color: isMyMessage
-                                  ? Colors.white
-                                  : const Color(0xFF111418),
-                              fontSize: 16,
-                              height: 1.3,
-                            ),
-                          ),
-
-                        if (messageChat.editedAt != null ||
-                            (isMyMessage && !messageChat.isDeleted))
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                if (messageChat.editedAt != null)
-                                  Text(
-                                    '(edited)',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: isMyMessage
-                                          ? Colors.white70
-                                          : const Color(0xFF8E8E93),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.alarm_add,
+                                      color: Colors.blue, size: 16),
+                                  const SizedBox(width: 8),
+                                  const Expanded(
+                                    child: Text(
+                                      'AI: Phát hiện có công việc cần lưu!',
+                                      style: TextStyle(
+                                          fontSize: 12, color: Colors.blue),
                                     ),
                                   ),
-                                if (messageChat.editedAt != null && isMyMessage)
-                                  const SizedBox(width: 4),
-                                if (isMyMessage && !messageChat.isDeleted)
-                                  Icon(
-                                    messageChat.isRead
-                                        ? Icons.done_all_rounded
-                                        : Icons.check_rounded,
-                                    size: 14,
-                                    color: messageChat.isRead
-                                        ? Colors.white
-                                        : Colors.white70,
+                                  TextButton(
+                                    onPressed: () => _showReminders(),
+                                    style: TextButton.styleFrom(
+                                        padding: EdgeInsets.zero,
+                                        minimumSize: const Size(40, 24)),
+                                    child: const Text('XEM',
+                                        style: TextStyle(fontSize: 12)),
                                   ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                      ],
+                          if (messageChat.isDeleted)
+                            Text(
+                              messageChat.content,
+                              style: TextStyle(
+                                color: isMyMessage
+                                    ? Colors.white70
+                                    : const Color(0xFF8E8E93),
+                                fontStyle: FontStyle.italic,
+                                fontSize: 15,
+                              ),
+                            )
+                          else if (location != null)
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.location_on,
+                                      color: isMyMessage
+                                          ? Colors.white
+                                          : Colors.red,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Location',
+                                      style: TextStyle(
+                                        color: isMyMessage
+                                            ? Colors.white
+                                            : Colors.black87,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  location.address,
+                                  style: TextStyle(
+                                    color: isMyMessage
+                                        ? Colors.white
+                                        : Colors.black87,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                InkWell(
+                                  onTap: () =>
+                                      _openLocationInMaps(location.mapsUrl),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: isMyMessage
+                                          ? Colors.white.withOpacity(0.2)
+                                          : ColorConstants.primaryColor
+                                              .withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: isMyMessage
+                                            ? Colors.white.withOpacity(0.3)
+                                            : ColorConstants.primaryColor
+                                                .withOpacity(0.3),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.map,
+                                            size: 16,
+                                            color: isMyMessage
+                                                ? Colors.white
+                                                : ColorConstants.primaryColor),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'View on Google Maps',
+                                          style: TextStyle(
+                                            color: isMyMessage
+                                                ? Colors.white
+                                                : ColorConstants.primaryColor,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            decoration:
+                                                TextDecoration.underline,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Icon(Icons.open_in_new,
+                                            size: 14,
+                                            color: isMyMessage
+                                                ? Colors.white
+                                                : ColorConstants.primaryColor),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            )
+                          else if (messageChat.idFrom ==
+                              AppConstants.aiAssistantId)
+                            MarkdownBody(
+                              data: messageChat.content,
+                              selectable: true,
+                              styleSheet: MarkdownStyleSheet(
+                                p: const TextStyle(
+                                    color: Color(0xFF111418),
+                                    fontSize: 16,
+                                    height: 1.4),
+                                code: const TextStyle(
+                                  backgroundColor: Color(0xFFF2F2F7),
+                                  color: Color(0xFFE91E63),
+                                  fontFamily: 'monospace',
+                                ),
+                                codeblockPadding: const EdgeInsets.all(10),
+                                codeblockDecoration: BoxDecoration(
+                                  color: Colors.black87,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                            )
+                          else
+                            Text(
+                              messageChat.content,
+                              style: TextStyle(
+                                color: isMyMessage
+                                    ? Colors.white
+                                    : const Color(0xFF111418),
+                                fontSize: 16,
+                                height: 1.3,
+                              ),
+                            ),
+                          if (messageChat.editedAt != null ||
+                              (isMyMessage && !messageChat.isDeleted))
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  if (messageChat.editedAt != null)
+                                    Text(
+                                      '(edited)',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: isMyMessage
+                                            ? Colors.white70
+                                            : const Color(0xFF8E8E93),
+                                      ),
+                                    ),
+                                  if (messageChat.editedAt != null &&
+                                      isMyMessage)
+                                    const SizedBox(width: 4),
+                                  if (isMyMessage && !messageChat.isDeleted)
+                                    Icon(
+                                      messageChat.isRead
+                                          ? Icons.done_all_rounded
+                                          : Icons.check_rounded,
+                                      size: 14,
+                                      color: messageChat.isRead
+                                          ? Colors.white
+                                          : Colors.white70,
+                                    ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                if (!messageChat.isDeleted) ...[
-                  const SizedBox(width: 4),
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.add_reaction, size: 18),
-                        onPressed: () => _showReactionPicker(document.id),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                      if (!isMyMessage)
+                  if (!messageChat.isDeleted) ...[
+                    const SizedBox(width: 4),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
                         IconButton(
-                          icon: const Icon(Icons.alarm_add, size: 18),
-                          onPressed: () =>
-                              _setMessageReminder(messageChat, document.id),
+                          icon: const Icon(Icons.add_reaction, size: 18),
+                          onPressed: () => _showReactionPicker(document.id),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
                         ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-            if (!isMyMessage && messageChat.type == TypeMessage.text) ...[
-              if (_scamResults[document.id] != null &&
-                  _scamResults[document.id] != 'SAFE')
-                ScamWarningWidget(status: _scamResults[document.id]!),
-
-              
-              if (_scamResults[document.id] == null && !isScamWarning)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4, bottom: 8),
-                  child: InkWell(
-                    onTap: () async {
-                      Fluttertoast.showToast(msg: "AI Đang quét an toàn...");
-                      final status = await AIBackendService()
-                          .checkScam(messageChat.content);
-                      if (mounted) {
-                        setState(() {
-                          _scamResults[document.id] = status;
-                        });
-                        if (status == 'SAFE') {
-                          Fluttertoast.showToast(msg: "Tin nhắn an toàn!");
-                        }
-                      }
-                    },
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.shield_outlined,
-                            size: 14, color: Colors.green),
-                        SizedBox(width: 4),
-                        Text(
-                          "Quét an toàn (AI)",
-                          style: TextStyle(fontSize: 12, color: Colors.green),
-                        ),
+                        if (!isMyMessage)
+                          IconButton(
+                            icon: const Icon(Icons.alarm_add, size: 18),
+                            onPressed: () =>
+                                _setMessageReminder(messageChat, document.id),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
                       ],
                     ),
+                  ],
+                ],
+              ),
+              if (!isMyMessage && messageChat.type == TypeMessage.text) ...[
+                if (_scamResults[document.id] != null &&
+                    _scamResults[document.id] != 'SAFE')
+                  ScamWarningWidget(status: _scamResults[document.id]!),
+                if (_scamResults[document.id] == null && !isScamWarning)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4, bottom: 8),
+                    child: InkWell(
+                      onTap: () async {
+                        Fluttertoast.showToast(msg: 'AI Đang quét an toàn...');
+                        final status = await AIBackendService()
+                            .checkScam(messageChat.content);
+                        if (mounted) {
+                          setState(() {
+                            _scamResults[document.id] = status;
+                          });
+                          if (status == 'SAFE') {
+                            Fluttertoast.showToast(msg: 'Tin nhắn an toàn!');
+                          }
+                        }
+                      },
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.shield_outlined,
+                              size: 14, color: Colors.green),
+                          SizedBox(width: 4),
+                          Text(
+                            'Quét an toàn (AI)',
+                            style: TextStyle(fontSize: 12, color: Colors.green),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-            ],
-            StreamBuilder<QuerySnapshot>(
-              stream: _reactionProvider.getReactions(_groupChatId, document.id),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const SizedBox.shrink();
-                }
-
-                final reactions = <String, int>{};
-                final userReactions = <String, bool>{};
-
-                for (var doc in snapshot.data!.docs) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  final emoji = data['emoji'] as String;
-                  final userId = data['userId'] as String;
-
-                  reactions[emoji] = (reactions[emoji] ?? 0) + 1;
-                  if (userId == _currentUserId) {
-                    userReactions[emoji] = true;
+              ],
+              StreamBuilder<QuerySnapshot>(
+                stream:
+                    _reactionProvider.getReactions(_groupChatId, document.id),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    return const SizedBox.shrink();
                   }
-                }
 
-                return Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: MessageReactionsDisplay(
-                    reactions: reactions,
-                    currentUserId: _currentUserId,
-                    userReactions: userReactions,
-                    onReactionTap: (emoji) {
-                      _reactionProvider.toggleReaction(
-                        _groupChatId,
-                        document.id,
-                        _currentUserId,
-                        emoji,
-                      );
-                    },
-                  ),
-                );
-              },
-            ),
-          ],
+                  final reactions = <String, int>{};
+                  final userReactions = <String, bool>{};
+
+                  for (var doc in snapshot.data!.docs) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final emoji = data['emoji'] as String;
+                    final userId = data['userId'] as String;
+
+                    reactions[emoji] = (reactions[emoji] ?? 0) + 1;
+                    if (userId == _currentUserId) {
+                      userReactions[emoji] = true;
+                    }
+                  }
+
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: MessageReactionsDisplay(
+                      reactions: reactions,
+                      currentUserId: _currentUserId,
+                      userReactions: userReactions,
+                      onReactionTap: (emoji) {
+                        _reactionProvider.toggleReaction(
+                          _groupChatId,
+                          document.id,
+                          _currentUserId,
+                          emoji,
+                        );
+                      },
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       );
     } else if (messageChat.type == TypeMessage.image) {
-      return Container(
-        margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
-        child: Row(
-          mainAxisAlignment:
-              isMyMessage ? MainAxisAlignment.end : MainAxisAlignment.start,
-          children: [
-            GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => FullPhotoPage(url: messageChat.content),
+      return wrapHighlight(
+        Container(
+          margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+          child: Row(
+            mainAxisAlignment:
+                isMyMessage ? MainAxisAlignment.end : MainAxisAlignment.start,
+            children: [
+              GestureDetector(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => FullPhotoPage(url: messageChat.content),
+                    ),
+                  );
+                },
+                onLongPress: () {
+                  HapticFeedback.heavyImpact();
+                  _showAdvancedMessageOptions(messageChat, document.id);
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.08),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      )
+                    ],
                   ),
-                );
-              },
-              onLongPress: () {
-                HapticFeedback.heavyImpact();
-                _showAdvancedMessageOptions(messageChat, document.id);
-              },
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    )
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: Image.network(
-                    messageChat.content,
-                    width: MediaQuery.of(context).size.width * 0.65,
-                    height: 250,
-                    fit: BoxFit.cover,
-                    loadingBuilder: (_, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Container(
-                        width: MediaQuery.of(context).size.width * 0.65,
-                        height: 250,
-                        color: const Color(0xFFF2F2F7),
-                        child: Center(
-                          child: CircularProgressIndicator(
-                            value: loadingProgress.expectedTotalBytes != null
-                                ? loadingProgress.cumulativeBytesLoaded /
-                                    loadingProgress.expectedTotalBytes!
-                                : null,
-                          ),
-                        ),
-                      );
-                    },
-                    errorBuilder: (_, __, ___) => Container(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: Image.network(
+                      messageChat.content,
                       width: MediaQuery.of(context).size.width * 0.65,
                       height: 250,
-                      color: ColorConstants.greyColor2,
-                      child: const Icon(Icons.error),
+                      fit: BoxFit.cover,
+                      loadingBuilder: (_, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Container(
+                          width: MediaQuery.of(context).size.width * 0.65,
+                          height: 250,
+                          color: const Color(0xFFF2F2F7),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              value: loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded /
+                                      loadingProgress.expectedTotalBytes!
+                                  : null,
+                            ),
+                          ),
+                        );
+                      },
+                      errorBuilder: (_, __, ___) => Container(
+                        width: MediaQuery.of(context).size.width * 0.65,
+                        height: 250,
+                        color: ColorConstants.greyColor2,
+                        child: const Icon(Icons.error),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     } else {
-      return Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        child: Row(
-          mainAxisAlignment:
-              isMyMessage ? MainAxisAlignment.end : MainAxisAlignment.start,
-          children: [
-            GestureDetector(
-              onLongPress: () =>
-                  _showAdvancedMessageOptions(messageChat, document.id),
-              child: Image.asset(
-                'images/${messageChat.content}.gif',
-                width: 100,
-                height: 100,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
+      // Sticker
+      return wrapHighlight(
+        Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          child: Row(
+            mainAxisAlignment:
+                isMyMessage ? MainAxisAlignment.end : MainAxisAlignment.start,
+            children: [
+              GestureDetector(
+                onLongPress: () =>
+                    _showAdvancedMessageOptions(messageChat, document.id),
+                child: Image.asset(
+                  'images/${messageChat.content}.gif',
                   width: 100,
                   height: 100,
-                  color: ColorConstants.greyColor2,
-                  child: const Icon(Icons.error),
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    width: 100,
+                    height: 100,
+                    color: ColorConstants.greyColor2,
+                    child: const Icon(Icons.error),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     }
@@ -2444,8 +2606,7 @@ class ChatPageState extends State<ChatPage>
     return Container(
       decoration: BoxDecoration(
         border: Border(
-          top: BorderSide(color: ColorConstants.greyColor2, width: 0.5),
-        ),
+            top: BorderSide(color: ColorConstants.greyColor2, width: 0.5)),
         color: Colors.white,
       ),
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -2455,25 +2616,25 @@ class ChatPageState extends State<ChatPage>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildItemSticker("mimi1"),
-              _buildItemSticker("mimi2"),
-              _buildItemSticker("mimi3"),
+              _buildItemSticker('mimi1'),
+              _buildItemSticker('mimi2'),
+              _buildItemSticker('mimi3'),
             ],
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildItemSticker("mimi4"),
-              _buildItemSticker("mimi5"),
-              _buildItemSticker("mimi6"),
+              _buildItemSticker('mimi4'),
+              _buildItemSticker('mimi5'),
+              _buildItemSticker('mimi6'),
             ],
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildItemSticker("mimi7"),
-              _buildItemSticker("mimi8"),
-              _buildItemSticker("mimi9"),
+              _buildItemSticker('mimi7'),
+              _buildItemSticker('mimi8'),
+              _buildItemSticker('mimi9'),
             ],
           ),
         ],
@@ -2797,9 +2958,7 @@ class ChatPageState extends State<ChatPage>
                           onTapOutside:
                               (widget.isBubbleMode || widget.isMiniChat)
                                   ? null
-                                  : (_) {
-                                      Utilities.closeKeyboard();
-                                    },
+                                  : (_) => Utilities.closeKeyboard(),
                           onSubmitted: (_) {
                             if (!resourceManager.isDisposed) {
                               _onSendMessageWithAutoDelete(
@@ -2809,9 +2968,7 @@ class ChatPageState extends State<ChatPage>
                               if (widget.isMiniChat || widget.isBubbleMode) {
                                 Future.delayed(
                                     const Duration(milliseconds: 100), () {
-                                  if (mounted) {
-                                    _focusNode.requestFocus();
-                                  }
+                                  if (mounted) _focusNode.requestFocus();
                                 });
                               }
                             }
@@ -2825,13 +2982,9 @@ class ChatPageState extends State<ChatPage>
                               setState(() => _smartReplies = []);
                             }
                           },
-                          decoration: InputDecoration.collapsed(
-                            hintText: (widget.isBubbleMode || widget.isMiniChat)
-                                ? 'Nhắn tin...'
-                                : 'Nhắn tin...',
-                            hintStyle: const TextStyle(
-                              color: Color(0xFF8E8E93),
-                            ),
+                          decoration: const InputDecoration.collapsed(
+                            hintText: 'Nhắn tin...',
+                            hintStyle: TextStyle(color: Color(0xFF8E8E93)),
                           ),
                         ),
                       ),
@@ -3153,12 +3306,15 @@ class ChatPageState extends State<ChatPage>
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+// ChatPageArguments — unchanged, kept here for colocation.
+// ─────────────────────────────────────────────────────────────
 class ChatPageArguments {
   final String peerId;
   final String peerAvatar;
   final String peerNickname;
 
-  ChatPageArguments({
+  const ChatPageArguments({
     required this.peerId,
     required this.peerAvatar,
     required this.peerNickname,

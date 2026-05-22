@@ -1,35 +1,11 @@
-
 import 'dart:async';
-import 'dart:convert'; 
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart'; // provides debugPrint
 import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/models/bubble_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 class BubbleServiceV2 {
   static const MethodChannel _channel = MethodChannel('chat_bubbles_v2');
@@ -44,14 +20,13 @@ class BubbleServiceV2 {
   }
 
   bool _isInitialized = false;
-  bool _isDisposing = false; 
+  bool _isDisposing = false;
   bool _isBubbleApiSupported = false;
   StreamSubscription<dynamic>? _eventSubscription;
   SharedPreferences? _prefs;
 
   final Map<String, BubbleData> _activeBubbles = {};
 
-  
   StreamController<BubbleClickEvent>? _bubbleClickController;
   StreamController<Map<String, BubbleData>>? _activeBubblesController;
 
@@ -71,12 +46,11 @@ class BubbleServiceV2 {
     return _activeBubblesController!.stream;
   }
 
-  
-  
-  
+  // ---------------------------------------------------------------------------
+  // INIT
+  // ---------------------------------------------------------------------------
 
   Future<void> _initialize() async {
-    
     if (_isInitialized || _isDisposing) return;
 
     try {
@@ -86,7 +60,6 @@ class BubbleServiceV2 {
         return;
       }
 
-      
       _bubbleClickController ??= StreamController<BubbleClickEvent>.broadcast();
       _activeBubblesController ??=
           StreamController<Map<String, BubbleData>>.broadcast();
@@ -113,27 +86,25 @@ class BubbleServiceV2 {
     }
   }
 
-  
-  
-  
+  // ---------------------------------------------------------------------------
+  // EVENT LISTENER
+  // ---------------------------------------------------------------------------
 
   void _setupEventListener() {
-    
     _eventSubscription?.cancel();
 
     try {
       _eventSubscription = _eventChannel.receiveBroadcastStream().listen(
         (event) {
-          if (_isDisposing) return; 
+          if (_isDisposing) return;
           if (event is Map) {
             _handleBubbleEvent(Map<String, dynamic>.from(event));
           }
         },
         onError: (error) {
-          
           debugPrint('❌ BubbleServiceV2 event error: $error');
         },
-        cancelOnError: false, 
+        cancelOnError: false,
       );
       debugPrint('✅ BubbleServiceV2 event listener active');
     } catch (e) {
@@ -163,9 +134,9 @@ class BubbleServiceV2 {
     }
   }
 
-  
-  
-  
+  // ---------------------------------------------------------------------------
+  // BUBBLE MANAGEMENT
+  // ---------------------------------------------------------------------------
 
   Future<bool> showBubble({
     required String userId,
@@ -271,11 +242,10 @@ class BubbleServiceV2 {
     }
   }
 
-  
-  
-  
+  // ---------------------------------------------------------------------------
+  // PERSISTENCE
+  // ---------------------------------------------------------------------------
 
-  
   Future<void> _saveBubbles() async {
     try {
       await _initPrefs();
@@ -283,7 +253,6 @@ class BubbleServiceV2 {
         await _prefs?.remove('bubbles_v2');
         return;
       }
-      
       final data = _activeBubbles.map((k, v) => MapEntry(k, v.toJson()));
       final jsonStr = jsonEncode(data);
       await _prefs?.setString('bubbles_v2', jsonStr);
@@ -293,7 +262,6 @@ class BubbleServiceV2 {
     }
   }
 
-  
   Future<void> _restoreBubbles() async {
     try {
       await _initPrefs();
@@ -303,7 +271,6 @@ class BubbleServiceV2 {
         return;
       }
 
-      
       final Map<String, dynamic> decoded =
           jsonDecode(jsonStr) as Map<String, dynamic>;
 
@@ -313,14 +280,12 @@ class BubbleServiceV2 {
           final bubbleData = BubbleData.fromJson(
               Map<String, dynamic>.from(entry.value as Map));
 
-          
           final age = DateTime.now().difference(bubbleData.timestamp);
           if (age.inMinutes >= 1440) {
             debugPrint('⏰ Skipping stale bubble: ${bubbleData.userName}');
             continue;
           }
 
-          
           _activeBubbles[entry.key] = bubbleData;
           restored++;
         } catch (e) {
@@ -349,9 +314,9 @@ class BubbleServiceV2 {
     _prefs ??= await SharedPreferences.getInstance();
   }
 
-  
-  
-  
+  // ---------------------------------------------------------------------------
+  // HELPERS
+  // ---------------------------------------------------------------------------
 
   void _emitActiveBubbles() {
     final ctrl = _activeBubblesController;
@@ -360,9 +325,9 @@ class BubbleServiceV2 {
     }
   }
 
-  
-  
-  
+  // ---------------------------------------------------------------------------
+  // GETTERS
+  // ---------------------------------------------------------------------------
 
   bool get isSupported => _isBubbleApiSupported;
   bool get isInitialized => _isInitialized;
@@ -392,23 +357,19 @@ class BubbleServiceV2 {
     }
   }
 
-  
-  
-  
+  // ---------------------------------------------------------------------------
+  // DISPOSE / REINIT
+  // ---------------------------------------------------------------------------
 
-  
-  
   void dispose() {
     if (_isDisposing) return;
     _isDisposing = true;
 
     debugPrint('🗑️ BubbleServiceV2 disposing...');
 
-    
     _eventSubscription?.cancel();
     _eventSubscription = null;
 
-    
     if (_bubbleClickController != null && !_bubbleClickController!.isClosed) {
       _bubbleClickController!.close();
     }
@@ -420,17 +381,13 @@ class BubbleServiceV2 {
     _activeBubblesController = null;
 
     _isInitialized = false;
-    _isDisposing = false; 
+    _isDisposing = false;
 
     debugPrint('✅ BubbleServiceV2 disposed');
   }
 
-  
   Future<void> reinitialize() async {
     if (_isInitialized) return;
     await _initialize();
   }
 }
-
-
-void debugPrint(String msg) => print(msg);
