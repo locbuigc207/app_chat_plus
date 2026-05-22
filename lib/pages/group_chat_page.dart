@@ -31,7 +31,13 @@ class GroupChatPageState extends State<GroupChatPage>
   List<QueryDocumentSnapshot> _listMessage = [];
   int _limit = 20;
   final int _limitIncrement = 20;
+
   bool _isLoading = false;
+  // ── MEDIA (ảnh + video) ──────────────────────────────────────
+  bool _isLoadingMedia = false;
+  final ImagePicker _imagePicker = ImagePicker();
+  // ─────────────────────────────────────────────────────────────
+
   bool _isShowSticker = false;
   bool _showFeaturesMenu = false;
   bool _isRecording = false;
@@ -129,12 +135,9 @@ class GroupChatPageState extends State<GroupChatPage>
     _translationProvider = context.read<TranslationProvider>();
     _telemetryProvider = context.read<TelemetryProvider>();
 
-    // FIX: LocationProvider injected via Provider — consistent with others.
-    // Requires LocationProvider to be registered in the widget tree.
     try {
       _locationProvider = context.read<LocationProvider>();
     } catch (_) {
-      // LocationProvider is optional; gracefully degrade if absent.
       _locationProvider = null;
     }
 
@@ -216,7 +219,6 @@ class GroupChatPageState extends State<GroupChatPage>
             .doc(uid)
             .get();
         if (doc.exists) {
-          // FIX: also cache avatar URL while we already have the document
           final nickname =
               doc.get(FirestoreConstants.nickname) as String? ?? 'User';
           final photoUrl =
@@ -469,29 +471,118 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   // ---------------------------------------------------------------------------
-  // IMAGE / FILE
+  // IMAGE / VIDEO / COMPRESSION MEDIA (PHASE 2)
   // ---------------------------------------------------------------------------
 
-  Future<bool> _pickImage() async {
+  Future<void> _onPickImage() async {
     HapticFeedback.lightImpact();
     try {
-      final picker = ImagePicker();
-      final picked = await picker.pickImage(source: ImageSource.gallery);
-      if (picked != null) {
-        if (mounted && !resourceManager.isDisposed) {
-          setState(() {
-            _imageFile = File(picked.path);
-            _isLoading = true;
-          });
-        }
-        return true;
+      final XFile? pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+      );
+      if (pickedFile != null) {
+        await _processAndSendMedia(File(pickedFile.path), isVideo: false);
       }
-    } catch (_) {
-      Fluttertoast.showToast(msg: 'Failed to pick image');
+    } catch (e) {
+      Fluttertoast.showToast(msg: 'Không thể chọn ảnh');
     }
-    return false;
   }
 
+  Future<void> _onPickVideo() async {
+    HapticFeedback.lightImpact();
+    try {
+      final XFile? pickedFile = await _imagePicker.pickVideo(
+        source: ImageSource.gallery,
+      );
+      if (pickedFile != null) {
+        await _processAndSendMedia(File(pickedFile.path), isVideo: true);
+      }
+    } catch (e) {
+      Fluttertoast.showToast(msg: 'Không thể chọn video');
+    }
+  }
+
+  Future<void> _processAndSendMedia(File file, {required bool isVideo}) async {
+    if (resourceManager.isDisposed) return;
+
+    final mediaLabel = isVideo ? 'Video' : 'Hình Ảnh';
+    final mediaIcon = isVideo ? Icons.videocam_rounded : Icons.image_rounded;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => SafeSendDialog(
+        title: 'Gửi $mediaLabel',
+        content:
+            'Bạn có chắc chắn muốn gửi ${isVideo ? 'video' : 'bức ảnh'} này vào nhóm?',
+        icon: mediaIcon,
+      ),
+    );
+
+    if (confirm != true || resourceManager.isDisposed) return;
+
+    if (mounted) setState(() => _isLoadingMedia = true);
+
+    try {
+      File? fileToUpload;
+      File? videoThumbnail;
+      final compressionService = MediaCompressionService();
+
+      if (isVideo) {
+        fileToUpload = await compressionService.compressVideo(file);
+        videoThumbnail = await compressionService.getVideoThumbnail(file);
+      } else {
+        fileToUpload = await compressionService.compressImage(file);
+      }
+
+      if (fileToUpload == null) throw Exception('Compression failed');
+
+      final String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+      final String ext = isVideo ? 'mp4' : 'jpg';
+      final String filePath =
+          '${FirestoreConstants.pathMediaStorage}/${widget.group.id}/$timestamp.$ext';
+
+      // Tải file nén lên Storage
+      final snapshot = await _chatProvider.uploadFile(fileToUpload, filePath);
+      final fileUrl = await snapshot.ref.getDownloadURL();
+
+      String contentPayload = fileUrl;
+      if (isVideo && videoThumbnail != null) {
+        final thumbPath =
+            '${FirestoreConstants.pathMediaStorage}/${widget.group.id}/${timestamp}_thumb.jpg';
+        final thumbSnapshot =
+            await _chatProvider.uploadFile(videoThumbnail, thumbPath);
+        final thumbUrl = await thumbSnapshot.ref.getDownloadURL();
+        contentPayload = '$fileUrl|$thumbUrl';
+      }
+
+      // Gửi vào Group theo định dạng group chat
+      await _sendGroupMessage(
+          contentPayload, isVideo ? TypeMessage.video : TypeMessage.image);
+
+      compressionService.clearCache();
+
+      if (_listScrollController.hasClients) {
+        _listScrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+      Fluttertoast.showToast(
+        msg: isVideo ? '🎬 Video đã gửi' : '📷 Ảnh đã gửi',
+        backgroundColor: Colors.green,
+      );
+    } catch (e) {
+      Fluttertoast.showToast(
+          msg: 'Lỗi khi gửi $mediaLabel', backgroundColor: Colors.red);
+    } finally {
+      if (mounted && !resourceManager.isDisposed) {
+        setState(() => _isLoadingMedia = false);
+      }
+    }
+  }
+
+  // Phương thức upload cũ, giữ lại để tương thích fallback nếu cần
   Future<void> _uploadFile() async {
     if (_imageFile == null) return;
 
@@ -639,8 +730,6 @@ class GroupChatPageState extends State<GroupChatPage>
 
   // ---------------------------------------------------------------------------
   // AI CONTEXT ANALYSIS
-  // Uses decryptPayload() async — consistent with search_messages.dart and
-  // push_notification_service.dart.
   // ---------------------------------------------------------------------------
 
   Future<void> _showAIContextAnalysis() async {
@@ -973,7 +1062,7 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   // ---------------------------------------------------------------------------
-  // SEARCH — centralised helper so peerId is never omitted
+  // SEARCH
   // ---------------------------------------------------------------------------
 
   void _openSearch() {
@@ -1039,7 +1128,36 @@ class GroupChatPageState extends State<GroupChatPage>
         Positioned(
           child: _isLoading ? const LoadingView() : const SizedBox.shrink(),
         ),
+        if (_isLoadingMedia)
+          Positioned.fill(child: _buildMediaLoadingOverlay()),
       ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // MEDIA LOADING OVERLAY
+  // ---------------------------------------------------------------------------
+  Widget _buildMediaLoadingOverlay() {
+    if (!_isLoadingMedia) return const SizedBox.shrink();
+    return Container(
+      color: Colors.black.withOpacity(0.45),
+      child: const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: Colors.white),
+            SizedBox(height: 16),
+            Text(
+              'Đang nén và tối ưu tệp...',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1156,7 +1274,6 @@ class GroupChatPageState extends State<GroupChatPage>
     );
   }
 
-  // FIX: extracted to avoid duplicated Navigator.push blocks
   void _openGroupInfo() {
     Navigator.push(
       context,
@@ -1239,7 +1356,6 @@ class GroupChatPageState extends State<GroupChatPage>
         }
       }
       if (count > 0) await batch.commit();
-      // Clear caches so no stale data is rendered after history wipe
       _decryptedCache.clear();
       _scamResults.clear();
       Fluttertoast.showToast(msg: 'History cleared');
@@ -1374,11 +1490,6 @@ class GroupChatPageState extends State<GroupChatPage>
     if (document == null) return const SizedBox.shrink();
     final rawMessageChat = MessageChat.fromDocument(document);
 
-    // Decrypt once and cache by doc.id.
-    // decryptMessage() is the sync wrapper in EncryptionService.
-    // decryptPayload() (async) is used in _showAIContextAnalysis,
-    // search_messages.dart, and push_notification_service.dart — both share
-    // the same key derivation path.
     final decryptedContent = _decryptedCache.putIfAbsent(
       document.id,
       () => EncryptionService().decryptMessage(
@@ -1410,6 +1521,9 @@ class GroupChatPageState extends State<GroupChatPage>
     if (msg.type == TypeMessage.image) {
       return _buildImageMessage(document, msg, isMe, isLastInGroup);
     }
+    if (msg.type == TypeMessage.video) {
+      return _buildVideoMessage(document, msg, isMe, isLastInGroup);
+    }
     if (msg.type == TypeMessage.sticker) {
       return _buildStickerMessage(document, msg, isMe);
     }
@@ -1419,7 +1533,6 @@ class GroupChatPageState extends State<GroupChatPage>
 
   // ---------------------------------------------------------------------------
   // SENDER INFO & AVATAR
-  // FIX: use _avatarUrlCache instead of per-item FutureBuilder Firestore calls
   // ---------------------------------------------------------------------------
 
   Widget _buildSenderInfo(String senderId) {
@@ -1750,7 +1863,7 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   // ---------------------------------------------------------------------------
-  // IMAGE / VOICE / STICKER / VIEW-ONCE MESSAGE WIDGETS
+  // IMAGE / VIDEO / VOICE / STICKER / VIEW-ONCE MESSAGE WIDGETS
   // ---------------------------------------------------------------------------
 
   Widget _buildImageMessage(
@@ -1814,6 +1927,121 @@ class GroupChatPageState extends State<GroupChatPage>
                           height: 220,
                           color: const Color(0xFFF2F2F7),
                           child: const Icon(Icons.error)),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          _buildReactions(doc.id, isMe),
+          _buildTimestamp(msg.timestamp, isMe),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVideoMessage(
+      DocumentSnapshot doc, MessageChat msg, bool isMe, bool isLastInGroup) {
+    final parts = msg.content.split('|');
+    final videoUrl = parts.isNotEmpty ? parts[0] : '';
+    final thumbnailUrl = parts.length > 1 ? parts[1] : '';
+
+    return Container(
+      margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+      child: Column(
+        crossAxisAlignment:
+            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          if (!isMe && isLastInGroup) _buildSenderInfo(msg.idFrom),
+          Row(
+            mainAxisAlignment:
+                isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (!isMe)
+                isLastInGroup
+                    ? _buildAvatar(msg.idFrom)
+                    : const SizedBox(width: 40),
+              GestureDetector(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => VideoPlayerPage(videoUrl: videoUrl),
+                    ),
+                  );
+                },
+                onLongPress: () {
+                  HapticFeedback.heavyImpact();
+                  _showMessageOptions(msg, doc.id);
+                },
+                child: Container(
+                  width: MediaQuery.of(context).size.width * 0.65,
+                  height: 200,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    color: Colors.black,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.08),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      )
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        thumbnailUrl.isNotEmpty
+                            ? Image.network(
+                                thumbnailUrl,
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: double.infinity,
+                                loadingBuilder:
+                                    (context, child, loadingProgress) {
+                                  if (loadingProgress == null) return child;
+                                  return const Center(
+                                    child: CircularProgressIndicator(
+                                        color: Colors.white),
+                                  );
+                                },
+                                errorBuilder: (context, error, stackTrace) =>
+                                    Container(color: Colors.black54),
+                              )
+                            : Container(color: Colors.black54),
+                        const Icon(
+                          Icons.play_circle_fill_rounded,
+                          size: 56,
+                          color: Colors.white,
+                        ),
+                        Positioned(
+                          bottom: 8,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.videocam,
+                                    size: 12, color: Colors.white),
+                                SizedBox(width: 4),
+                                Text('Video',
+                                    style: TextStyle(
+                                        fontSize: 11, color: Colors.white)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -2011,7 +2239,6 @@ class GroupChatPageState extends State<GroupChatPage>
         itemCount: _memberSuggestions.length,
         itemBuilder: (_, i) {
           final m = _memberSuggestions[i];
-          // FIX: null-safe access instead of force-unwrap (!)
           final userId = m['userId'] as String? ?? '';
           final name = m['name'] as String? ?? '';
           if (userId.isEmpty || name.isEmpty) return const SizedBox.shrink();
@@ -2060,7 +2287,6 @@ class GroupChatPageState extends State<GroupChatPage>
     );
   }
 
-  // FIX: extracted to avoid repeating the same Row+map pattern three times
   Widget _buildStickerRow(List<String> stickers) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -2088,6 +2314,8 @@ class GroupChatPageState extends State<GroupChatPage>
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
+            _featureBtn(Icons.image_rounded, 'Ảnh', _onPickImage),
+            _featureBtn(Icons.videocam_rounded, 'Video', _onPickVideo),
             _featureBtn(Icons.visibility_off, 'View Once', () {
               setState(() => _showFeaturesMenu = false);
               _sendViewOnce();
@@ -2103,12 +2331,6 @@ class GroupChatPageState extends State<GroupChatPage>
             _featureBtn(Icons.schedule_send, 'Schedule', () {
               setState(() => _showFeaturesMenu = false);
               _scheduleMessage();
-            }),
-            _featureBtn(Icons.image, 'Gallery', () {
-              setState(() => _showFeaturesMenu = false);
-              _pickImage().then((ok) {
-                if (ok) _uploadFile();
-              });
             }),
           ],
         ),
@@ -2279,9 +2501,7 @@ class GroupChatPageState extends State<GroupChatPage>
                   IconButton(
                     icon: const Icon(Icons.image_rounded,
                         color: Color(0xFF8E8E93), size: 26),
-                    onPressed: () => _pickImage().then((ok) {
-                      if (ok) _uploadFile();
-                    }),
+                    onPressed: _onPickImage,
                   ),
                 IconButton(
                   icon: const Icon(Icons.face,

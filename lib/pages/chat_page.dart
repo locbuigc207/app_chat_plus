@@ -8,7 +8,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
-import 'package:flutter_chat_demo/pages/video_player_page.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_chat_demo/utils/utils.dart';
@@ -2137,8 +2136,13 @@ class ChatPageState extends State<ChatPage>
       );
     }
 
-    // ── VIDEO message bubble (MỚI) ────────────────────────────
+    // ── VIDEO message bubble ──────────────────────────────────
     if (messageChat.type == TypeMessage.video) {
+      // Tách "videoUrl|thumbnailUrl" — thumbnail có thể không có
+      final parts = messageChat.content.split('|');
+      final videoUrl = parts.isNotEmpty ? parts[0] : '';
+      final thumbnailUrl = parts.length > 1 ? parts[1] : '';
+
       return wrapHighlight(
         Container(
           margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
@@ -2152,8 +2156,8 @@ class ChatPageState extends State<ChatPage>
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) =>
-                          VideoPlayerPage(videoUrl: messageChat.content),
+                      // Chỉ truyền videoUrl sạch vào VideoPlayerPage
+                      builder: (_) => VideoPlayerPage(videoUrl: videoUrl),
                     ),
                   );
                 },
@@ -2180,9 +2184,28 @@ class ChatPageState extends State<ChatPage>
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-                        // Thumbnail placeholder – replace with
-                        // VideoThumbnailWidget if available in your project.
-                        Container(color: Colors.black54),
+                        // Hiển thị thumbnail nếu có, fallback màu đen
+                        thumbnailUrl.isNotEmpty
+                            ? Image.network(
+                                thumbnailUrl,
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: double.infinity,
+                                loadingBuilder:
+                                    (context, child, loadingProgress) {
+                                  if (loadingProgress == null) return child;
+                                  return Container(
+                                    color: Colors.black54,
+                                    child: const Center(
+                                      child: CircularProgressIndicator(
+                                          color: Colors.white),
+                                    ),
+                                  );
+                                },
+                                errorBuilder: (context, error, stackTrace) =>
+                                    Container(color: Colors.black54),
+                              )
+                            : Container(color: Colors.black54),
                         const Icon(
                           Icons.play_circle_fill_rounded,
                           size: 56,
