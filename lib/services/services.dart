@@ -9,6 +9,7 @@ export 'e2ee_service.dart';
 export 'encryption_service.dart';
 export 'gemini_service.dart';
 export 'group_call_service.dart';
+export 'media_compression_service.dart';
 export 'notification_service.dart';
 export 'offline_manager.dart';
 export 'push_notification_service.dart';

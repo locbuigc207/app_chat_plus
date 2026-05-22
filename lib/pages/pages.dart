@@ -30,4 +30,5 @@ export 'theme_settings_page.dart';
 export 'two_factor_setup_page.dart';
 export 'two_factor_verify_page.dart';
 export 'user_profile_page.dart';
+export 'video_player_page.dart';
 export 'web_home_layout.dart';

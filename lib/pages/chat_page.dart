@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
+import 'package:flutter_chat_demo/pages/video_player_page.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_chat_demo/utils/utils.dart';
@@ -18,29 +19,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-
-// ─────────────────────────────────────────────────────────────
-// COMPATIBILITY NOTES  (chat_page.dart  ↔  search_messages.dart
-//                                       ↔  push_notification_service.dart)
-//
-// 1. SearchMessagesPage now requires THREE named params:
-//      groupChatId, peerName, peerId
-//    → _showChatOptionsMenu() now passes widget.arguments.peerId.
-//
-// 2. Search result returns the matched messageId (doc.id).
-//    → After Navigator.push we handle the returned id so the list
-//      can scroll to / highlight that message if desired.
-//
-// 3. PushNotificationService.initialize() must be called once when
-//    the chat page (or app) is ready.  We call it inside
-//    _initializeProviders so it runs after Firebase is warmed up.
-//    initialize() is idempotent – multiple calls are harmless.
-//
-// 4. EncryptionService.decryptPayload() is async and already used
-//    consistently in search_messages.dart.  _showAIContextAnalysis()
-//    and _buildItemMessage() now call the async variant so plaintext
-//    is always correctly surfaced.
-// ─────────────────────────────────────────────────────────────
 
 class ChatPage extends StatefulWidget {
   const ChatPage({
@@ -84,6 +62,13 @@ class ChatPageState extends State<ChatPage>
   bool _isShowSticker = false;
   String _imageUrl = '';
 
+  // ── MEDIA (ảnh + video) ──────────────────────────────────────
+  // Trạng thái loading riêng cho việc nén/upload media,
+  // tách biệt với _isLoading để overlay có thể hiển thị thông báo cụ thể.
+  bool _isLoadingMedia = false;
+  final ImagePicker _imagePicker = ImagePicker();
+  // ─────────────────────────────────────────────────────────────
+
   late final TextEditingController _chatInputController;
   late final ScrollController _listScrollController;
   late final FocusNode _focusNode;
@@ -124,7 +109,7 @@ class ChatPageState extends State<ChatPage>
 
   final Map<String, String> _scamResults = {};
 
-  // ── NEW: id of a message to scroll-to after returning from search ──
+  // ── id của tin nhắn cần scroll đến sau khi quay lại từ search ──
   String? _pendingScrollToMessageId;
 
   @override
@@ -232,14 +217,9 @@ class ChatPageState extends State<ChatPage>
     _unifiedBubbleService = context.read<UnifiedBubbleService>();
     _telemetryProvider = context.read<TelemetryProvider>();
 
-    // ── COMPATIBILITY FIX #3 ──────────────────────────────────
-    // Initialize PushNotificationService here (after Firebase is ready).
-    // This registers the background handler and foreground listener so
-    // encrypted push payloads are decrypted before being shown.
     PushNotificationService.initialize().catchError((e) {
       print('⚠️ PushNotificationService init error: $e');
     });
-    // ─────────────────────────────────────────────────────────
 
     final miniChatSub = _unifiedBubbleService?.bubbleClickStream.listen(
       (event) {
@@ -592,6 +572,10 @@ class ChatPageState extends State<ChatPage>
           messageType = 'image';
           displayMessage = '📷 Photo';
           break;
+        case TypeMessage.video:
+          messageType = 'video';
+          displayMessage = '🎬 Video';
+          break;
         case 3:
           messageType = 'voice';
           displayMessage = '🎤 Voice message';
@@ -813,30 +797,118 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  Future<bool> _pickImage() async {
+  // ────────────────────────────────────────────────────────────
+  // MEDIA: CHỌN ẢNH TỪ THƯ VIỆN
+  // Thay thế _pickImage() cũ. Dùng _imagePicker chung thay vì
+  // tạo mới ImagePicker() mỗi lần gọi.
+  // ────────────────────────────────────────────────────────────
+  Future<void> _onPickImage() async {
     HapticFeedback.lightImpact();
     try {
-      final imagePicker = ImagePicker();
-      final pickedXFile = await imagePicker.pickImage(
+      final XFile? pickedFile = await _imagePicker.pickImage(
         source: ImageSource.gallery,
       );
-      if (pickedXFile != null) {
-        final imageFile = File(pickedXFile.path);
-        if (!mounted || resourceManager.isDisposed) return false;
-        setState(() {
-          _imageFile = imageFile;
-          _isLoading = true;
-        });
-        return true;
+      if (pickedFile != null) {
+        await _processAndSendMedia(File(pickedFile.path), isVideo: false);
       }
-      return false;
     } catch (e) {
       ErrorLogger.logError(e, null, context: 'Pick Image');
-      Fluttertoast.showToast(msg: 'Failed to pick image');
-      return false;
+      Fluttertoast.showToast(msg: 'Không thể chọn ảnh');
     }
   }
 
+  // ────────────────────────────────────────────────────────────
+  // MEDIA: CHỌN VIDEO TỪ THƯ VIỆN (MỚI)
+  // ────────────────────────────────────────────────────────────
+  Future<void> _onPickVideo() async {
+    HapticFeedback.lightImpact();
+    try {
+      final XFile? pickedFile = await _imagePicker.pickVideo(
+        source: ImageSource.gallery,
+      );
+      if (pickedFile != null) {
+        await _processAndSendMedia(File(pickedFile.path), isVideo: true);
+      }
+    } catch (e) {
+      ErrorLogger.logError(e, null, context: 'Pick Video');
+      Fluttertoast.showToast(msg: 'Không thể chọn video');
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // MEDIA: NÉN VÀ GỬI QUA PROVIDER (MỚI)
+  // Tách riêng khỏi _uploadFile() để dùng chung cho cả ảnh/video.
+  // ChatProvider.sendMediaMessage() chịu trách nhiệm nén + upload.
+  // ────────────────────────────────────────────────────────────
+  Future<void> _processAndSendMedia(File file, {required bool isVideo}) async {
+    if (resourceManager.isDisposed) return;
+
+    // Xác nhận gửi trước khi nén/upload
+    final mediaLabel = isVideo ? 'Video' : 'Hình Ảnh';
+    final mediaIcon = isVideo ? Icons.videocam_rounded : Icons.image_rounded;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => SafeSendDialog(
+        title: 'Gửi $mediaLabel',
+        content:
+            'Bạn có chắc chắn muốn gửi ${isVideo ? 'video' : 'bức ảnh'} này?',
+        icon: mediaIcon,
+      ),
+    );
+
+    if (confirm != true || resourceManager.isDisposed) return;
+
+    // Bật overlay loading với thông báo nén
+    if (mounted) setState(() => _isLoadingMedia = true);
+
+    try {
+      final success = await _chatProvider.sendMediaMessage(
+        originalFile: file,
+        isVideo: isVideo,
+        groupChatId: _groupChatId,
+        currentUserId: _currentUserId,
+        peerId: widget.arguments.peerId,
+      );
+
+      if (!mounted || resourceManager.isDisposed) return;
+
+      if (success) {
+        // Scroll lên đầu sau khi gửi thành công
+        if (_listScrollController.hasClients) {
+          _listScrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+        Fluttertoast.showToast(
+          msg: isVideo ? '🎬 Video đã gửi' : '📷 Ảnh đã gửi',
+          backgroundColor: Colors.green,
+        );
+      } else {
+        Fluttertoast.showToast(
+          msg: 'Không thể gửi ${isVideo ? 'video' : 'ảnh'}. Thử lại.',
+          backgroundColor: Colors.red,
+        );
+      }
+    } catch (e) {
+      ErrorLogger.logError(e, null, context: 'Send Media');
+      if (mounted && !resourceManager.isDisposed) {
+        Fluttertoast.showToast(msg: 'Lỗi khi gửi media');
+      }
+    } finally {
+      if (mounted && !resourceManager.isDisposed) {
+        setState(() => _isLoadingMedia = false);
+      }
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // LEGACY: _uploadFile() giữ lại để không phá vỡ các luồng cũ
+  // dùng _imageFile trực tiếp (ví dụ: camera capture cũ).
+  // Các luồng mới nên dùng _processAndSendMedia() thay thế.
+  // ────────────────────────────────────────────────────────────
   Future<void> _uploadFile() async {
     if (_imageFile == null) return;
 
@@ -1387,16 +1459,12 @@ class ChatPageState extends State<ChatPage>
 
     if (messageChat.idFrom != _currentUserId &&
         messageChat.type == TypeMessage.text) {
-      // ── COMPATIBILITY FIX #4 ──────────────────────────────────
-      // Decrypt before feeding into smart-reply engine so it receives
-      // plaintext, matching the same async flow used in search_messages.dart.
       final plaintext = await EncryptionService().decryptPayload(
         messageChat.content,
         _groupChatId,
         [_currentUserId, widget.arguments.peerId],
         _currentUserId,
       );
-      // ─────────────────────────────────────────────────────────
       final replies = _smartReplyProvider.getRuleBasedReplies(plaintext);
       if (mounted && !resourceManager.isDisposed) {
         setState(() {
@@ -1645,17 +1713,12 @@ class ChatPageState extends State<ChatPage>
     _bubbleChannel.invokeMethod('close');
   }
 
-  // ── COMPATIBILITY FIX #4 (continued) ─────────────────────────
-  // _showAIContextAnalysis now decrypts each message with the async
-  // decryptPayload API, matching search_messages.dart's approach.
-  // ─────────────────────────────────────────────────────────────
   void _showAIContextAnalysis() async {
     if (_listMessage.isEmpty) {
       Fluttertoast.showToast(msg: 'Chưa có đủ tin nhắn để phân tích');
       return;
     }
 
-    // Decrypt each recent message asynchronously before analysis.
     final List<String> recentMessages = [];
     for (final doc in _listMessage.take(15)) {
       final rawMsg = MessageChat.fromDocument(doc);
@@ -1710,11 +1773,6 @@ class ChatPageState extends State<ChatPage>
                 ]));
   }
 
-  // ── COMPATIBILITY FIX #1 ──────────────────────────────────────
-  // SearchMessagesPage now receives the required `peerId` argument.
-  // The returned value (matched doc id) is stored in
-  // _pendingScrollToMessageId so the list can scroll there.
-  // ─────────────────────────────────────────────────────────────
   Future<void> _openSearchMessages() async {
     if (resourceManager.isDisposed) return;
 
@@ -1724,16 +1782,13 @@ class ChatPageState extends State<ChatPage>
         builder: (_) => SearchMessagesPage(
           groupChatId: _groupChatId,
           peerName: widget.arguments.peerNickname,
-          // ← peerId is now correctly supplied
           peerId: widget.arguments.peerId,
         ),
       ),
     );
 
-    // If the user tapped a result, scroll toward it.
     if (matchedId != null && mounted && !resourceManager.isDisposed) {
       setState(() => _pendingScrollToMessageId = matchedId);
-      // Give the StreamBuilder time to render, then try to scroll.
       Future.delayed(const Duration(milliseconds: 400), () {
         if (!mounted || resourceManager.isDisposed) return;
         _scrollToMessage(matchedId);
@@ -1741,14 +1796,10 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  /// Scrolls the list to the message whose Firestore doc id matches [id].
-  /// Because the list is `reverse: true` and we only hold [_limit] items,
-  /// we load more if needed and jump to the item's index.
   void _scrollToMessage(String id) {
     if (!_listScrollController.hasClients) return;
     final index = _listMessage.indexWhere((doc) => doc.id == id);
     if (index == -1) {
-      // Message not yet in the loaded window – load more and retry once.
       if (mounted && _limit <= _listMessage.length) {
         setState(() => _limit += _limitIncrement);
         Future.delayed(
@@ -1756,7 +1807,6 @@ class ChatPageState extends State<ChatPage>
       }
       return;
     }
-    // Approximate scroll offset: each item is roughly 72 px.
     final offset = (index * 72.0).clamp(
       0.0,
       _listScrollController.position.maxScrollExtent,
@@ -1801,7 +1851,6 @@ class ChatPageState extends State<ChatPage>
               subtitle: const Text('Search in conversation'),
               onTap: () {
                 Navigator.pop(context);
-                // ← Uses the new helper that correctly passes peerId.
                 _openSearchMessages();
               },
             ),
@@ -1976,28 +2025,16 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ── COMPATIBILITY FIX #4 (continued) ─────────────────────────
-  // _buildItemMessage is now async-aware: decryption uses the same
-  // decryptPayload() call as search_messages.dart so both pages
-  // always show identical plaintext for a given ciphertext blob.
-  //
-  // Note: ListView.builder requires a synchronous Widget return, so we
-  // use a FutureBuilder for the decrypt step.
-  // ─────────────────────────────────────────────────────────────
   Widget _buildItemMessage(int index, DocumentSnapshot? document) {
     if (document == null) return const SizedBox.shrink();
 
-    // Highlight border when user navigated here from search result.
     final bool isHighlighted = _pendingScrollToMessageId == document.id;
 
     return FutureBuilder<MessageChat>(
       future: _decryptMessageForDisplay(document),
-      // Show the raw (possibly still-encrypted) bubble while waiting,
-      // then replace with the decrypted version.
       builder: (context, snapshot) {
         final messageChat = snapshot.data ??
-            MessageChat.fromDocument(document)
-                .copyWith(content: '…'); // placeholder
+            MessageChat.fromDocument(document).copyWith(content: '…');
 
         return _buildMessageBubble(
           index: index,
@@ -2009,12 +2046,11 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  /// Decrypts a Firestore document's content using the async API.
   Future<MessageChat> _decryptMessageForDisplay(
       DocumentSnapshot document) async {
     final raw = MessageChat.fromDocument(document);
     if (raw.type != TypeMessage.text && raw.type != TypeMessage.image) {
-      return raw; // voice / sticker — no decrypt needed
+      return raw;
     }
     final plaintext = await EncryptionService().decryptPayload(
       raw.content,
@@ -2047,7 +2083,6 @@ class ChatPageState extends State<ChatPage>
     }
     final double tailRadius = isLastInGroup ? 4.0 : 20.0;
 
-    // ── Highlight wrapper for search-jump ────────────────────
     Widget wrapHighlight(Widget child) {
       if (!isHighlighted) return child;
       return AnimatedContainer(
@@ -2101,6 +2136,92 @@ class ChatPageState extends State<ChatPage>
         ),
       );
     }
+
+    // ── VIDEO message bubble (MỚI) ────────────────────────────
+    if (messageChat.type == TypeMessage.video) {
+      return wrapHighlight(
+        Container(
+          margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+          child: Row(
+            mainAxisAlignment:
+                isMyMessage ? MainAxisAlignment.end : MainAxisAlignment.start,
+            children: [
+              GestureDetector(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          VideoPlayerPage(videoUrl: messageChat.content),
+                    ),
+                  );
+                },
+                onLongPress: () {
+                  HapticFeedback.heavyImpact();
+                  _showAdvancedMessageOptions(messageChat, document.id);
+                },
+                child: Container(
+                  width: MediaQuery.of(context).size.width * 0.65,
+                  height: 200,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    color: Colors.black,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.08),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      )
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // Thumbnail placeholder – replace with
+                        // VideoThumbnailWidget if available in your project.
+                        Container(color: Colors.black54),
+                        const Icon(
+                          Icons.play_circle_fill_rounded,
+                          size: 56,
+                          color: Colors.white,
+                        ),
+                        Positioned(
+                          bottom: 8,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.videocam,
+                                    size: 12, color: Colors.white),
+                                SizedBox(width: 4),
+                                Text('Video',
+                                    style: TextStyle(
+                                        fontSize: 11, color: Colors.white)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    // ─────────────────────────────────────────────────────────
 
     if (messageChat.type == TypeMessage.text) {
       final location =
@@ -2670,6 +2791,18 @@ class ChatPageState extends State<ChatPage>
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
+            // ── CHỌN ẢNH (dùng _onPickImage mới) ──────────────
+            _buildFeatureButton(
+              icon: Icons.image_rounded,
+              label: 'Ảnh',
+              onTap: _onPickImage,
+            ),
+            // ── CHỌN VIDEO (MỚI) ────────────────────────────────
+            _buildFeatureButton(
+              icon: Icons.videocam_rounded,
+              label: 'Video',
+              onTap: _onPickVideo,
+            ),
             _buildFeatureButton(
               icon: Icons.visibility_off,
               label: 'View Once',
@@ -2803,6 +2936,35 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
+  // ────────────────────────────────────────────────────────────
+  // MEDIA LOADING OVERLAY (MỚI)
+  // Hiển thị khi _isLoadingMedia = true, chặn thao tác người dùng
+  // trong lúc nén và upload ảnh/video.
+  // ────────────────────────────────────────────────────────────
+  Widget _buildMediaLoadingOverlay() {
+    if (!_isLoadingMedia) return const SizedBox.shrink();
+    return Container(
+      color: Colors.black.withOpacity(0.45),
+      child: const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: Colors.white),
+            SizedBox(height: 16),
+            Text(
+              'Đang nén và tối ưu tệp...',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildAdvancedInput() {
     final showFullFeatures = !widget.isBubbleMode && !widget.isMiniChat;
 
@@ -2917,14 +3079,13 @@ class ChatPageState extends State<ChatPage>
                         iconSize: 28,
                         onPressed: _toggleFeaturesMenu,
                       ),
+                    // ── Nút ảnh trong thanh input dùng _onPickImage mới ──
                     if (showFullFeatures && !_showFeaturesMenu)
                       IconButton(
                         icon: const Icon(Icons.image_rounded),
                         color: const Color(0xFF8E8E93),
                         iconSize: 26,
-                        onPressed: () => _pickImage().then((s) {
-                          if (s) _uploadFile();
-                        }),
+                        onPressed: _onPickImage,
                       ),
                     if (showFullFeatures && !_showFeaturesMenu)
                       IconButton(
@@ -3158,6 +3319,10 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
+  // ────────────────────────────────────────────────────────────
+  // _buildChatContent: tích hợp overlay nén media (_isLoadingMedia)
+  // song song với overlay upload thông thường (_isLoading).
+  // ────────────────────────────────────────────────────────────
   Widget _buildChatContent() {
     return Stack(
       children: [
@@ -3174,9 +3339,13 @@ class ChatPageState extends State<ChatPage>
             _buildAdvancedInput(),
           ],
         ),
+        // Overlay upload thông thường (ảnh cũ / voice)
         Positioned(
           child: _isLoading ? const LoadingView() : const SizedBox.shrink(),
         ),
+        // Overlay nén/upload media (ảnh + video mới)
+        if (_isLoadingMedia)
+          Positioned.fill(child: _buildMediaLoadingOverlay()),
       ],
     );
   }
@@ -3307,7 +3476,7 @@ class ChatPageState extends State<ChatPage>
 }
 
 // ─────────────────────────────────────────────────────────────
-// ChatPageArguments — unchanged, kept here for colocation.
+// ChatPageArguments
 // ─────────────────────────────────────────────────────────────
 class ChatPageArguments {
   final String peerId;

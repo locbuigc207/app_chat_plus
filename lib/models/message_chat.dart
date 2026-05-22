@@ -7,6 +7,14 @@ import 'package:flutter_chat_demo/constants/constants.dart';
 
 /// Hằng số xác định loại nội dung tin nhắn.
 /// Dùng thống nhất trong [MessageChat], [ChatProvider], [AdaptiveChatBubble].
+///
+/// | Value | Loại      | Ghi chú                                          |
+/// |-------|-----------|--------------------------------------------------|
+/// | 0     | text      | Văn bản thường, áp dụng E2EE                     |
+/// | 1     | image     | URL ảnh từ Firebase Storage (đã nén)             |
+/// | 2     | sticker   | Tên file sticker local (vd: "mimi1")             |
+/// | 3     | file      | URL file đính kèm (legacy)                       |
+/// | 4     | video     | "videoUrl|thumbnailUrl" từ [ChatProvider.sendMediaMessage] |
 class TypeMessage {
   const TypeMessage._();
 
@@ -14,6 +22,10 @@ class TypeMessage {
   static const int image = 1;
   static const int sticker = 2;
   static const int file = 3;
+
+  /// Video đã nén. Content format: `"videoUrl|thumbnailUrl"`.
+  /// Được gửi bởi [ChatProvider.sendMediaMessage] khi `isVideo = true`.
+  static const int video = 4;
 }
 
 // =========================================================
@@ -121,6 +133,7 @@ class MessageChat {
     bool? isRead,
     String? readAt,
     bool? scamWarning,
+    bool? isDeleted,
   }) {
     return MessageChat(
       idFrom: idFrom,
@@ -128,13 +141,36 @@ class MessageChat {
       timestamp: timestamp,
       content: content ?? this.content,
       type: type,
-      isDeleted: isDeleted,
+      isDeleted: isDeleted ?? this.isDeleted,
       editedAt: editedAt ?? this.editedAt,
       isPinned: isPinned ?? this.isPinned,
       isRead: isRead ?? this.isRead,
       readAt: readAt ?? this.readAt,
       scamWarning: scamWarning ?? this.scamWarning,
     );
+  }
+
+  // =========================================================
+  // HELPERS
+  // =========================================================
+
+  /// Trả về `true` nếu đây là tin nhắn video ([TypeMessage.video]).
+  bool get isVideo => type == TypeMessage.video;
+
+  /// Với video, content có dạng `"videoUrl|thumbnailUrl"`.
+  /// Trả về URL video (phần trước `|`), hoặc toàn bộ content nếu không có `|`.
+  String get videoUrl {
+    if (!isVideo) return content;
+    final parts = content.split('|');
+    return parts.isNotEmpty ? parts[0] : content;
+  }
+
+  /// Với video, trả về URL thumbnail (phần sau `|`).
+  /// Trả về chuỗi rỗng nếu không có thumbnail.
+  String get videoThumbnailUrl {
+    if (!isVideo) return '';
+    final parts = content.split('|');
+    return parts.length > 1 ? parts[1] : '';
   }
 
   // =========================================================
