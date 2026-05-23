@@ -3,22 +3,71 @@ import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/providers/auth_provider.dart';
-import 'package:flutter_chat_demo/services/encryption_service.dart';
+import 'package:flutter_chat_demo/services/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-/// Wrapper để chứa dữ liệu sau khi đã giải mã
-class DecryptedSearchResult {
-  final DocumentSnapshot doc;
-  final MessageChat message;
-  final String decryptedContent;
+// ---------------------------------------------------------------------------
+// Model thống nhất cho kết quả tìm kiếm từ cả 2 nguồn
+// ---------------------------------------------------------------------------
 
-  DecryptedSearchResult({
-    required this.doc,
-    required this.message,
-    required this.decryptedContent,
+class SearchResult {
+  final String messageId;
+  final String idFrom;
+  final String content; // Plaintext đã giải mã
+  final String timestamp;
+  final bool isMyMessage;
+
+  const SearchResult({
+    required this.messageId,
+    required this.idFrom,
+    required this.content,
+    required this.timestamp,
+    required this.isMyMessage,
   });
+
+  /// Tạo từ Hive local DB map
+  factory SearchResult.fromLocalDb(
+    Map<dynamic, dynamic> data,
+    String currentUserId,
+  ) {
+    return SearchResult(
+      messageId: data['messageId']?.toString() ?? '',
+      idFrom: data['idFrom']?.toString() ?? '',
+      content: data['content']?.toString() ?? '',
+      timestamp: data['timestamp']?.toString() ?? '0',
+      isMyMessage: data['idFrom'] == currentUserId,
+    );
+  }
+
+  /// Tạo từ Firestore document đã giải mã
+  factory SearchResult.fromFirestore(
+    DocumentSnapshot doc,
+    MessageChat message,
+    String decryptedContent,
+    String currentUserId,
+  ) {
+    return SearchResult(
+      messageId: doc.id,
+      idFrom: message.idFrom,
+      content: decryptedContent,
+      timestamp: message.timestamp,
+      isMyMessage: message.idFrom == currentUserId,
+    );
+  }
+
+  DateTime? get dateTime {
+    try {
+      return DateTime.fromMillisecondsSinceEpoch(int.parse(timestamp));
+    } catch (_) {
+      return null;
+    }
+  }
 }
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 
 class SearchMessagesPage extends StatefulWidget {
   final String groupChatId;
@@ -38,9 +87,13 @@ class SearchMessagesPage extends StatefulWidget {
 
 class _SearchMessagesPageState extends State<SearchMessagesPage> {
   final _searchController = TextEditingController();
-  List<DecryptedSearchResult> _searchResults = [];
+
+  List<SearchResult> _searchResults = [];
   bool _isSearching = false;
   String _searchQuery = '';
+
+  /// Nguồn dữ liệu đang được dùng — hiển thị để debug / UX
+  bool _usingLocalDb = false;
 
   late final String _currentUserId;
 
@@ -50,20 +103,68 @@ class _SearchMessagesPageState extends State<SearchMessagesPage> {
     _currentUserId = context.read<AuthProvider>().userFirebaseId ?? '';
   }
 
+  // -------------------------------------------------------------------------
+  // Search logic
+  // -------------------------------------------------------------------------
+
   Future<void> _performSearch(String query) async {
-    if (query.trim().isEmpty) {
+    final trimmed = query.trim();
+
+    if (trimmed.isEmpty) {
       setState(() {
         _searchResults = [];
         _searchQuery = '';
+        _isSearching = false;
+        _usingLocalDb = false;
       });
       return;
     }
 
     setState(() {
       _isSearching = true;
-      _searchQuery = query.toLowerCase();
+      _searchQuery = trimmed.toLowerCase();
     });
 
+    // 1️⃣ Thử local DB trước — đồng bộ, cực nhanh (~0.05 s / 10k tin nhắn)
+    final localResults = _searchLocalDb(_searchQuery);
+
+    if (localResults.isNotEmpty) {
+      if (mounted) {
+        setState(() {
+          _searchResults = localResults;
+          _isSearching = false;
+          _usingLocalDb = true;
+        });
+      }
+      return;
+    }
+
+    // 2️⃣ Fallback: Firestore + giải mã async (khi local DB trống / chưa sync)
+    await _searchFirestore(_searchQuery);
+  }
+
+  /// Tìm kiếm đồng bộ từ Hive — trả về list ngay lập tức.
+  List<SearchResult> _searchLocalDb(String query) {
+    try {
+      final allMessages = LocalDbService().getMessages(widget.groupChatId);
+
+      return allMessages
+          .where(
+            (msg) =>
+                msg['type'] == 0 &&
+                msg['isDeleted'] != true &&
+                msg['content'].toString().toLowerCase().contains(query),
+          )
+          .map((msg) => SearchResult.fromLocalDb(msg, _currentUserId))
+          .toList();
+    } catch (e) {
+      debugPrint('[SearchPage] Local DB error: $e');
+      return [];
+    }
+  }
+
+  /// Tìm kiếm bất đồng bộ từ Firestore, giải mã từng tin nhắn.
+  Future<void> _searchFirestore(String query) async {
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection(FirestoreConstants.pathMessageCollection)
@@ -73,50 +174,53 @@ class _SearchMessagesPageState extends State<SearchMessagesPage> {
           .limit(1000)
           .get();
 
-      List<DecryptedSearchResult> tempResults = [];
+      final List<SearchResult> tempResults = [];
 
-      // Giải mã và lọc tuần tự trên thiết bị
-      for (var doc in snapshot.docs) {
+      for (final doc in snapshot.docs) {
+        // Huỷ sớm nếu từ khoá đã thay đổi trong lúc giải mã
+        if (!mounted || _searchController.text.toLowerCase() != query) return;
+
         final message = MessageChat.fromDocument(doc);
 
-        if (message.type == TypeMessage.text && !message.isDeleted) {
-          // Giải mã nội dung tin nhắn
-          final decryptedText = await EncryptionService().decryptPayload(
-            message.content,
-            widget.groupChatId,
-            [_currentUserId, widget.peerId],
-            _currentUserId,
-          );
+        if (message.type != TypeMessage.text || message.isDeleted) continue;
 
-          // Tìm kiếm trên plaintext sau khi giải mã
-          if (decryptedText.toLowerCase().contains(_searchQuery)) {
-            tempResults.add(
-              DecryptedSearchResult(
-                doc: doc,
-                message: message,
-                decryptedContent: decryptedText,
-              ),
-            );
-          }
+        final decryptedText = await EncryptionService().decryptPayload(
+          message.content,
+          widget.groupChatId,
+          [_currentUserId, widget.peerId],
+          _currentUserId,
+        );
+
+        if (decryptedText.toLowerCase().contains(query)) {
+          tempResults.add(
+            SearchResult.fromFirestore(
+              doc,
+              message,
+              decryptedText,
+              _currentUserId,
+            ),
+          );
         }
       }
 
-      // Chỉ cập nhật UI nếu từ khóa chưa thay đổi trong lúc giải mã
-      if (mounted && _searchController.text.toLowerCase() == _searchQuery) {
+      if (mounted && _searchController.text.toLowerCase() == query) {
         setState(() {
           _searchResults = tempResults;
           _isSearching = false;
+          _usingLocalDb = false;
         });
       }
     } catch (e) {
-      print('Error searching encrypted messages: $e');
+      debugPrint('[SearchPage] Firestore search error: $e');
       if (mounted) {
-        setState(() {
-          _isSearching = false;
-        });
+        setState(() => _isSearching = false);
       }
     }
   }
+
+  // -------------------------------------------------------------------------
+  // Build
+  // -------------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -144,154 +248,144 @@ class _SearchMessagesPageState extends State<SearchMessagesPage> {
       ),
       body: Column(
         children: [
-          // Thanh tìm kiếm
-          Container(
-            padding: const EdgeInsets.all(16),
-            color: Colors.white,
-            child: TextField(
-              controller: _searchController,
-              autofocus: true,
-              decoration: InputDecoration(
-                hintText: 'Search in conversation...',
-                prefixIcon: const Icon(
-                  Icons.search,
-                  color: ColorConstants.greyColor,
-                ),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(
-                          Icons.clear,
-                          color: ColorConstants.greyColor,
-                        ),
-                        onPressed: () {
-                          _searchController.clear();
-                          _performSearch('');
-                        },
-                      )
-                    : null,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(25),
-                  borderSide: BorderSide.none,
-                ),
-                filled: true,
-                fillColor: ColorConstants.greyColor2,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
-                ),
-              ),
-              onChanged: (value) {
-                setState(() {});
-                // Chỉ tìm kiếm khi >= 2 ký tự để tránh lag
-                if (value.length >= 2) {
-                  _performSearch(value);
-                } else if (value.isEmpty) {
-                  _performSearch('');
-                }
-              },
-            ),
+          _buildSearchBar(),
+          _buildResultCountBar(),
+          Expanded(child: _buildBody()),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      color: Colors.white,
+      child: TextField(
+        controller: _searchController,
+        autofocus: true,
+        decoration: InputDecoration(
+          hintText: 'Search in conversation...',
+          prefixIcon: const Icon(
+            Icons.search,
+            color: ColorConstants.greyColor,
           ),
+          suffixIcon: _searchController.text.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(
+                    Icons.clear,
+                    color: ColorConstants.greyColor,
+                  ),
+                  onPressed: () {
+                    _searchController.clear();
+                    _performSearch('');
+                  },
+                )
+              : null,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(25),
+            borderSide: BorderSide.none,
+          ),
+          filled: true,
+          fillColor: ColorConstants.greyColor2,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 12,
+          ),
+        ),
+        onChanged: (value) {
+          setState(() {}); // Cập nhật nút clear
+          if (value.length >= 2) {
+            _performSearch(value);
+          } else if (value.isEmpty) {
+            _performSearch('');
+          }
+        },
+      ),
+    );
+  }
 
-          // Hiển thị số kết quả
-          if (_searchQuery.isNotEmpty && !_isSearching)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: ColorConstants.greyColor2.withOpacity(0.3),
-              width: double.infinity,
-              child: Text(
-                '${_searchResults.length} result${_searchResults.length != 1 ? 's' : ''} found',
-                style: const TextStyle(
-                  color: ColorConstants.greyColor,
-                  fontSize: 14,
-                ),
-              ),
-            ),
+  Widget _buildResultCountBar() {
+    if (_searchQuery.isEmpty || _isSearching) return const SizedBox.shrink();
 
-          // Nội dung chính
-          Expanded(
-            child: _isSearching
-                ? const Center(
-                    child: CircularProgressIndicator(
-                      color: ColorConstants.themeColor,
-                    ),
-                  )
-                : _searchQuery.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.search,
-                              size: 80,
-                              color: ColorConstants.greyColor.withOpacity(0.5),
-                            ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'Search for messages',
-                              style: TextStyle(
-                                color: ColorConstants.greyColor,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : _searchResults.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.search_off,
-                                  size: 80,
-                                  color:
-                                      ColorConstants.greyColor.withOpacity(0.5),
-                                ),
-                                const SizedBox(height: 16),
-                                const Text(
-                                  'No messages found',
-                                  style: TextStyle(
-                                    color: ColorConstants.greyColor,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.all(8),
-                            itemCount: _searchResults.length,
-                            itemBuilder: (context, index) {
-                              return _buildSearchResultItem(
-                                  _searchResults[index]);
-                            },
-                          ),
+    final source = _usingLocalDb ? ' (local)' : ' (cloud)';
+    final count = _searchResults.length;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: ColorConstants.greyColor2.withOpacity(0.3),
+      width: double.infinity,
+      child: Text(
+        '$count result${count != 1 ? 's' : ''} found$source',
+        style: const TextStyle(
+          color: ColorConstants.greyColor,
+          fontSize: 14,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_isSearching) {
+      return const Center(
+        child: CircularProgressIndicator(color: ColorConstants.themeColor),
+      );
+    }
+
+    if (_searchQuery.isEmpty) {
+      return _buildEmptyState(
+        icon: Icons.search,
+        label: 'Search for messages',
+      );
+    }
+
+    if (_searchResults.isEmpty) {
+      return _buildEmptyState(
+        icon: Icons.search_off,
+        label: 'No messages found',
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(8),
+      itemCount: _searchResults.length,
+      itemBuilder: (context, index) =>
+          _buildSearchResultItem(_searchResults[index]),
+    );
+  }
+
+  Widget _buildEmptyState({required IconData icon, required String label}) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon,
+              size: 80, color: ColorConstants.greyColor.withOpacity(0.5)),
+          const SizedBox(height: 16),
+          Text(
+            label,
+            style:
+                const TextStyle(color: ColorConstants.greyColor, fontSize: 16),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSearchResultItem(DecryptedSearchResult result) {
-    final isMyMessage = result.message.idFrom == _currentUserId;
-    final timestamp = DateTime.fromMillisecondsSinceEpoch(
-      int.parse(result.message.timestamp),
-    );
-
-    // Highlight từ khóa trong nội dung đã giải mã
-    final content = result.decryptedContent;
+  Widget _buildSearchResultItem(SearchResult result) {
+    final content = result.content;
     final queryIndex = content.toLowerCase().indexOf(_searchQuery);
 
     Widget contentWidget;
+
     if (queryIndex != -1) {
       final before = content.substring(0, queryIndex);
-      final match = content.substring(
-        queryIndex,
-        queryIndex + _searchQuery.length,
-      );
+      final match =
+          content.substring(queryIndex, queryIndex + _searchQuery.length);
       final after = content.substring(queryIndex + _searchQuery.length);
 
       contentWidget = RichText(
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
         text: TextSpan(
           style: const TextStyle(
             color: ColorConstants.primaryColor,
@@ -309,8 +403,6 @@ class _SearchMessagesPageState extends State<SearchMessagesPage> {
             TextSpan(text: after),
           ],
         ),
-        maxLines: 3,
-        overflow: TextOverflow.ellipsis,
       );
     } else {
       contentWidget = Text(
@@ -329,19 +421,14 @@ class _SearchMessagesPageState extends State<SearchMessagesPage> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () {
-            Navigator.pop(context, result.doc.id);
-          },
+          onTap: () => Navigator.pop(context, result.messageId),
           borderRadius: BorderRadius.circular(12),
           child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: ColorConstants.greyColor2.withOpacity(0.5),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: ColorConstants.greyColor2,
-                width: 1,
-              ),
+              border: Border.all(color: ColorConstants.greyColor2),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -349,15 +436,15 @@ class _SearchMessagesPageState extends State<SearchMessagesPage> {
                 Row(
                   children: [
                     Icon(
-                      isMyMessage ? Icons.send : Icons.reply,
+                      result.isMyMessage ? Icons.send : Icons.reply,
                       size: 16,
                       color: ColorConstants.greyColor,
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      isMyMessage ? 'You' : widget.peerName,
+                      result.isMyMessage ? 'You' : widget.peerName,
                       style: TextStyle(
-                        color: isMyMessage
+                        color: result.isMyMessage
                             ? ColorConstants.primaryColor
                             : ColorConstants.greyColor,
                         fontWeight: FontWeight.bold,
@@ -365,13 +452,14 @@ class _SearchMessagesPageState extends State<SearchMessagesPage> {
                       ),
                     ),
                     const Spacer(),
-                    Text(
-                      DateFormat('MMM dd, HH:mm').format(timestamp),
-                      style: const TextStyle(
-                        color: ColorConstants.greyColor,
-                        fontSize: 12,
+                    if (result.dateTime != null)
+                      Text(
+                        DateFormat('MMM dd, HH:mm').format(result.dateTime!),
+                        style: const TextStyle(
+                          color: ColorConstants.greyColor,
+                          fontSize: 12,
+                        ),
                       ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 8),

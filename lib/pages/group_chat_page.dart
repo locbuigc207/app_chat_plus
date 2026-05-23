@@ -12,6 +12,7 @@ import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_chat_demo/utils/utils.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -28,15 +29,12 @@ class GroupChatPage extends StatefulWidget {
 class GroupChatPageState extends State<GroupChatPage>
     with WidgetsBindingObserver, ResourceManagerMixin {
   late String _currentUserId;
-  List<QueryDocumentSnapshot> _listMessage = [];
-  int _limit = 20;
+  int _limit = 30;
   final int _limitIncrement = 20;
 
   bool _isLoading = false;
-  // ── MEDIA (ảnh + video) ──────────────────────────────────────
   bool _isLoadingMedia = false;
   final ImagePicker _imagePicker = ImagePicker();
-  // ─────────────────────────────────────────────────────────────
 
   bool _isShowSticker = false;
   bool _showFeaturesMenu = false;
@@ -53,22 +51,14 @@ class GroupChatPageState extends State<GroupChatPage>
   bool _showMentionSuggestions = false;
   List<Map<String, dynamic>> _memberSuggestions = [];
 
-  // FIX: single source of truth for member names — used by avatar cache too
+  // Single source of truth for member names & avatar cache
   Map<String, String> _memberNames = {};
-
-  // FIX: avatar URL cache — avoids repeated Firestore reads on every rebuild
   final Map<String, String> _avatarUrlCache = {};
 
-  File? _imageFile;
-  String _imageUrl = '';
-
   List<SmartReply> _smartReplies = [];
-
   final Map<String, String> _scamResults = {};
 
-  // Decrypted-content cache: key = doc.id, value = plaintext.
-  // Cleared on clearHistory so stale entries never persist.
-  final Map<String, String> _decryptedCache = {};
+  String? _pendingScrollToMessageId;
 
   late ChatProvider _chatProvider;
   late AuthProvider _authProvider;
@@ -137,9 +127,7 @@ class GroupChatPageState extends State<GroupChatPage>
 
     try {
       _locationProvider = context.read<LocationProvider>();
-    } catch (_) {
-      _locationProvider = null;
-    }
+    } catch (_) {}
 
     try {
       _voiceProvider =
@@ -161,16 +149,27 @@ class GroupChatPageState extends State<GroupChatPage>
       );
       return;
     }
+
+    // 🚀 Start background sync to Local DB
+    _chatProvider.listenToFirebaseChanges(
+        _groupChatId, _currentUserId, _groupChatId);
+
     _markMessagesAsRead();
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (!resourceManager.isDisposed && mounted) {
+        _loadSmartReplies();
+      }
+    });
   }
 
   void _scrollListener() {
     if (resourceManager.isDisposed || !_listScrollController.hasClients) return;
     final pos = _listScrollController.position;
-    if (pos.pixels >= pos.maxScrollExtent - 100 &&
-        !pos.outOfRange &&
-        _limit <= _listMessage.length) {
-      if (mounted) setState(() => _limit += _limitIncrement);
+    if (pos.pixels >= pos.maxScrollExtent - 100 && !pos.outOfRange) {
+      final totalMessages = LocalDbService().getMessages(_groupChatId).length;
+      if (_limit < totalMessages) {
+        if (mounted) setState(() => _limit += _limitIncrement);
+      }
     }
   }
 
@@ -192,11 +191,9 @@ class GroupChatPageState extends State<GroupChatPage>
     _scheduledMessageContents.clear();
     try {
       _presenceProvider?.setTypingStatus(
-          conversationId: widget.group.id,
+          conversationId: _groupChatId,
           userId: _currentUserId,
           isTyping: false);
-    } catch (_) {}
-    try {
       _voiceProvider?.dispose();
     } catch (_) {}
     _chatInputController.dispose();
@@ -244,7 +241,7 @@ class GroupChatPageState extends State<GroupChatPage>
 
   void _loadPinnedMessages() {
     if (resourceManager.isDisposed) return;
-    final sub = _messageProvider.getPinnedMessages(widget.group.id).listen(
+    final sub = _messageProvider.getPinnedMessages(_groupChatId).listen(
       (snapshot) {
         if (!mounted || resourceManager.isDisposed) return;
         setState(() => _pinnedMessages = snapshot.docs);
@@ -261,8 +258,8 @@ class GroupChatPageState extends State<GroupChatPage>
   void _handleTextChange(String text) {
     if (resourceManager.isDisposed) return;
     _handleTyping(text);
-
     _telemetryProvider.recordTextChange(text);
+
     if (_telemetryProvider.shouldSuggestElderMode) {
       _showAdaptiveUISuggestion();
       _telemetryProvider.markAsHandled();
@@ -313,7 +310,7 @@ class GroupChatPageState extends State<GroupChatPage>
   void _handleTyping(String text) {
     if (_presenceProvider == null || resourceManager.isDisposed) return;
     _presenceProvider!.setTypingStatus(
-      conversationId: widget.group.id,
+      conversationId: _groupChatId,
       userId: _currentUserId,
       isTyping: text.isNotEmpty,
     );
@@ -361,8 +358,8 @@ class GroupChatPageState extends State<GroupChatPage>
     try {
       final unread = await FirebaseFirestore.instance
           .collection(FirestoreConstants.pathMessageCollection)
-          .doc(widget.group.id)
-          .collection(widget.group.id)
+          .doc(_groupChatId)
+          .collection(_groupChatId)
           .where('isRead', isEqualTo: false)
           .get();
 
@@ -377,7 +374,7 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   // ---------------------------------------------------------------------------
-  // SEND MESSAGE
+  // SEND MESSAGE (OFFLINE-FIRST)
   // ---------------------------------------------------------------------------
 
   Future<void> _onSendMessage(String content, int type) async {
@@ -406,11 +403,27 @@ class GroupChatPageState extends State<GroupChatPage>
     }
 
     try {
-      await _sendGroupMessage(finalContent, type);
+      // 🚀 Offline-first send
+      await _chatProvider.sendMessage(
+          finalContent, type, _groupChatId, _currentUserId, _groupChatId);
+
+      // Update last message for group conversation
+      await FirebaseFirestore.instance
+          .collection(FirestoreConstants.pathConversationCollection)
+          .doc(_groupChatId)
+          .set({
+        FirestoreConstants.isGroup: true,
+        FirestoreConstants.participants: widget.group.memberIds,
+        FirestoreConstants.lastMessage: finalContent,
+        FirestoreConstants.lastMessageTime:
+            DateTime.now().millisecondsSinceEpoch.toString(),
+        FirestoreConstants.lastMessageType: type,
+      }, SetOptions(merge: true));
+
       await _autoDeleteProvider.scheduleMessageDeletion(
-        groupChatId: widget.group.id,
+        groupChatId: _groupChatId,
         messageId: DateTime.now().millisecondsSinceEpoch.toString(),
-        conversationId: widget.group.id,
+        conversationId: _groupChatId,
       );
     } catch (_) {
       Fluttertoast.showToast(msg: 'Send failed');
@@ -422,48 +435,16 @@ class GroupChatPageState extends State<GroupChatPage>
     }
   }
 
-  Future<void> _sendGroupMessage(String content, int type) async {
-    final messageId = DateTime.now().millisecondsSinceEpoch.toString();
-    final docRef = FirebaseFirestore.instance
-        .collection(FirestoreConstants.pathMessageCollection)
-        .doc(widget.group.id)
-        .collection(widget.group.id)
-        .doc(messageId);
+  void _loadSmartReplies() {
+    if (resourceManager.isDisposed) return;
+    final messages = LocalDbService().getMessages(_groupChatId);
+    if (messages.isEmpty) return;
 
-    await FirebaseFirestore.instance.runTransaction((tx) async {
-      tx.set(docRef, {
-        FirestoreConstants.idFrom: _currentUserId,
-        FirestoreConstants.idTo: widget.group.id,
-        FirestoreConstants.timestamp: messageId,
-        FirestoreConstants.content: content,
-        FirestoreConstants.type: type,
-        'isDeleted': false,
-        'isPinned': false,
-        'isRead': false,
-        'groupId': widget.group.id,
-      });
-    });
-
-    await FirebaseFirestore.instance
-        .collection(FirestoreConstants.pathConversationCollection)
-        .doc(widget.group.id)
-        .set({
-      FirestoreConstants.isGroup: true,
-      FirestoreConstants.participants: widget.group.memberIds,
-      FirestoreConstants.lastMessage: content,
-      FirestoreConstants.lastMessageTime: messageId,
-      FirestoreConstants.lastMessageType: type,
-    }, SetOptions(merge: true));
-
-    await _loadSmartReplies();
-  }
-
-  Future<void> _loadSmartReplies() async {
-    if (_listMessage.isEmpty || resourceManager.isDisposed) return;
-    final last = _listMessage.first;
-    final msg = MessageChat.fromDocument(last);
-    if (msg.idFrom != _currentUserId && msg.type == TypeMessage.text) {
-      final replies = _smartReplyProvider.getRuleBasedReplies(msg.content);
+    final lastMessageData = messages.first;
+    if (lastMessageData['idFrom'] != _currentUserId &&
+        lastMessageData['type'] == TypeMessage.text) {
+      final plaintext = lastMessageData['content'];
+      final replies = _smartReplyProvider.getRuleBasedReplies(plaintext);
       if (mounted && !resourceManager.isDisposed) {
         setState(() => _smartReplies = replies);
       }
@@ -471,15 +452,14 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   // ---------------------------------------------------------------------------
-  // IMAGE / VIDEO / COMPRESSION MEDIA (PHASE 2)
+  // IMAGE / VIDEO / MEDIA
   // ---------------------------------------------------------------------------
 
   Future<void> _onPickImage() async {
     HapticFeedback.lightImpact();
     try {
-      final XFile? pickedFile = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-      );
+      final XFile? pickedFile =
+          await _imagePicker.pickImage(source: ImageSource.gallery);
       if (pickedFile != null) {
         await _processAndSendMedia(File(pickedFile.path), isVideo: false);
       }
@@ -491,9 +471,8 @@ class GroupChatPageState extends State<GroupChatPage>
   Future<void> _onPickVideo() async {
     HapticFeedback.lightImpact();
     try {
-      final XFile? pickedFile = await _imagePicker.pickVideo(
-        source: ImageSource.gallery,
-      );
+      final XFile? pickedFile =
+          await _imagePicker.pickVideo(source: ImageSource.gallery);
       if (pickedFile != null) {
         await _processAndSendMedia(File(pickedFile.path), isVideo: true);
       }
@@ -523,55 +502,30 @@ class GroupChatPageState extends State<GroupChatPage>
     if (mounted) setState(() => _isLoadingMedia = true);
 
     try {
-      File? fileToUpload;
-      File? videoThumbnail;
-      final compressionService = MediaCompressionService();
+      final success = await _chatProvider.sendMediaMessage(
+        originalFile: file,
+        isVideo: isVideo,
+        groupChatId: _groupChatId,
+        currentUserId: _currentUserId,
+        peerId: _groupChatId,
+        onLoadingStatusChanged: (isLoading) {
+          if (mounted) setState(() => _isLoadingMedia = isLoading);
+        },
+      );
 
-      if (isVideo) {
-        fileToUpload = await compressionService.compressVideo(file);
-        videoThumbnail = await compressionService.getVideoThumbnail(file);
-      } else {
-        fileToUpload = await compressionService.compressImage(file);
-      }
+      if (!mounted || resourceManager.isDisposed) return;
 
-      if (fileToUpload == null) throw Exception('Compression failed');
-
-      final String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
-      final String ext = isVideo ? 'mp4' : 'jpg';
-      final String filePath =
-          '${FirestoreConstants.pathMediaStorage}/${widget.group.id}/$timestamp.$ext';
-
-      // Tải file nén lên Storage
-      final snapshot = await _chatProvider.uploadFile(fileToUpload, filePath);
-      final fileUrl = await snapshot.ref.getDownloadURL();
-
-      String contentPayload = fileUrl;
-      if (isVideo && videoThumbnail != null) {
-        final thumbPath =
-            '${FirestoreConstants.pathMediaStorage}/${widget.group.id}/${timestamp}_thumb.jpg';
-        final thumbSnapshot =
-            await _chatProvider.uploadFile(videoThumbnail, thumbPath);
-        final thumbUrl = await thumbSnapshot.ref.getDownloadURL();
-        contentPayload = '$fileUrl|$thumbUrl';
-      }
-
-      // Gửi vào Group theo định dạng group chat
-      await _sendGroupMessage(
-          contentPayload, isVideo ? TypeMessage.video : TypeMessage.image);
-
-      compressionService.clearCache();
-
-      if (_listScrollController.hasClients) {
-        _listScrollController.animateTo(
-          0,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
+      if (success != false) {
+        if (_listScrollController.hasClients) {
+          _listScrollController.animateTo(0,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut);
+        }
+        Fluttertoast.showToast(
+          msg: isVideo ? '🎬 Video đã gửi' : '📷 Ảnh đã gửi',
+          backgroundColor: Colors.green,
         );
       }
-      Fluttertoast.showToast(
-        msg: isVideo ? '🎬 Video đã gửi' : '📷 Ảnh đã gửi',
-        backgroundColor: Colors.green,
-      );
     } catch (e) {
       Fluttertoast.showToast(
           msg: 'Lỗi khi gửi $mediaLabel', backgroundColor: Colors.red);
@@ -579,40 +533,6 @@ class GroupChatPageState extends State<GroupChatPage>
       if (mounted && !resourceManager.isDisposed) {
         setState(() => _isLoadingMedia = false);
       }
-    }
-  }
-
-  // Phương thức upload cũ, giữ lại để tương thích fallback nếu cần
-  Future<void> _uploadFile() async {
-    if (_imageFile == null) return;
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => const SafeSendDialog(
-        title: 'Gửi Hình Ảnh',
-        content: 'Bạn có chắc chắn muốn gửi bức ảnh này cho người khác không?',
-        icon: Icons.image_rounded,
-      ),
-    );
-    if (confirm != true) {
-      if (mounted) setState(() => _isLoading = false);
-      return;
-    }
-
-    try {
-      final fileName = DateTime.now().millisecondsSinceEpoch.toString();
-      final task = _chatProvider.uploadFile(_imageFile!, fileName);
-      final snapshot = await task;
-      _imageUrl = await snapshot.ref.getDownloadURL();
-      if (mounted && !resourceManager.isDisposed) {
-        setState(() => _isLoading = false);
-      }
-      await _onSendMessage(_imageUrl, TypeMessage.image);
-    } catch (_) {
-      if (mounted && !resourceManager.isDisposed) {
-        setState(() => _isLoading = false);
-      }
-      Fluttertoast.showToast(msg: 'Upload failed');
     }
   }
 
@@ -732,25 +652,19 @@ class GroupChatPageState extends State<GroupChatPage>
   // AI CONTEXT ANALYSIS
   // ---------------------------------------------------------------------------
 
-  Future<void> _showAIContextAnalysis() async {
-    if (_listMessage.isEmpty) {
+  void _showAIContextAnalysis() {
+    final messages = LocalDbService().getMessages(_groupChatId);
+    if (messages.isEmpty) {
       Fluttertoast.showToast(msg: 'Chưa có đủ tin nhắn để phân tích');
       return;
     }
 
     final List<String> recentMessages = [];
-    for (final doc in _listMessage.take(20)) {
-      final rawMsg = MessageChat.fromDocument(doc);
-      final decryptedContent = await EncryptionService().decryptPayload(
-        rawMsg.content,
-        _groupChatId,
-        [_currentUserId, widget.group.id],
-        _currentUserId,
-      );
-      final sender = rawMsg.idFrom == _currentUserId
+    for (final data in messages.take(20)) {
+      final sender = data['idFrom'] == _currentUserId
           ? 'Tôi'
-          : (_memberNames[rawMsg.idFrom] ?? 'Thành viên');
-      recentMessages.add('$sender: $decryptedContent');
+          : (_memberNames[data['idFrom']] ?? 'Thành viên');
+      recentMessages.add('$sender: ${data['content']}');
     }
 
     if (!mounted || resourceManager.isDisposed) return;
@@ -831,7 +745,7 @@ class GroupChatPageState extends State<GroupChatPage>
         originalContent: current,
         onSave: (newContent) async {
           final ok = await _messageProvider.editMessage(
-              widget.group.id, messageId, newContent);
+              _groupChatId, messageId, newContent);
           if (ok) Fluttertoast.showToast(msg: 'Message edited');
         },
       ),
@@ -855,15 +769,14 @@ class GroupChatPageState extends State<GroupChatPage>
       ),
     );
     if (confirm == true) {
-      final ok =
-          await _messageProvider.deleteMessage(widget.group.id, messageId);
+      final ok = await _messageProvider.deleteMessage(_groupChatId, messageId);
       if (ok) Fluttertoast.showToast(msg: 'Message deleted');
     }
   }
 
   Future<void> _togglePin(String messageId, bool current) async {
     final ok = await _messageProvider.togglePinMessage(
-        widget.group.id, messageId, current);
+        _groupChatId, messageId, current);
     if (ok) Fluttertoast.showToast(msg: current ? 'Unpinned' : 'Pinned');
   }
 
@@ -883,7 +796,7 @@ class GroupChatPageState extends State<GroupChatPage>
       final ok = await _reminderProvider.scheduleReminder(
         userId: _currentUserId,
         messageId: messageId,
-        conversationId: widget.group.id,
+        conversationId: _groupChatId,
         reminderTime: reminderTime,
         message: message.content,
       );
@@ -997,9 +910,9 @@ class GroupChatPageState extends State<GroupChatPage>
       builder: (_) => SendViewOnceDialog(
         onSend: (content, type) async {
           await _viewOnceProvider.sendViewOnceMessage(
-            groupChatId: widget.group.id,
+            groupChatId: _groupChatId,
             currentUserId: _currentUserId,
-            peerId: widget.group.id,
+            peerId: _groupChatId,
             content: content,
             type: type,
           );
@@ -1012,7 +925,7 @@ class GroupChatPageState extends State<GroupChatPage>
     showDialog(
       context: context,
       builder: (_) => AutoDeleteSettingsDialog(
-        conversationId: widget.group.id,
+        conversationId: _groupChatId,
         provider: _autoDeleteProvider,
       ),
     );
@@ -1027,7 +940,7 @@ class GroupChatPageState extends State<GroupChatPage>
         child: ReactionPicker(
           onEmojiSelected: (emoji) {
             _reactionProvider.toggleReaction(
-                widget.group.id, messageId, _currentUserId, emoji);
+                _groupChatId, messageId, _currentUserId, emoji);
             Navigator.pop(context);
           },
         ),
@@ -1055,27 +968,182 @@ class GroupChatPageState extends State<GroupChatPage>
 
   void _onBackPress() {
     _presenceProvider?.setTypingStatus(
-        conversationId: widget.group.id,
-        userId: _currentUserId,
-        isTyping: false);
+        conversationId: _groupChatId, userId: _currentUserId, isTyping: false);
     Navigator.pop(context);
   }
 
   // ---------------------------------------------------------------------------
-  // SEARCH
+  // SEARCH & SCROLL TO MESSAGE
   // ---------------------------------------------------------------------------
 
-  void _openSearch() {
-    Navigator.push(
+  void _openSearch() async {
+    final matchedId = await Navigator.push<String>(
       context,
       MaterialPageRoute(
         builder: (_) => SearchMessagesPage(
-          groupChatId: widget.group.id,
+          groupChatId: _groupChatId,
           peerName: widget.group.groupName,
-          peerId: widget.group.id,
+          peerId: _groupChatId,
         ),
       ),
     );
+
+    if (matchedId != null && mounted) {
+      setState(() => _pendingScrollToMessageId = matchedId);
+      Future.delayed(
+          const Duration(milliseconds: 400), () => _scrollToMessage(matchedId));
+    }
+  }
+
+  void _scrollToMessage(String id) {
+    if (!_listScrollController.hasClients) return;
+    final allMessages = LocalDbService().getMessages(_groupChatId);
+    final index = allMessages.indexWhere((map) => map['messageId'] == id);
+
+    if (index == -1) {
+      if (mounted && _limit <= allMessages.length) {
+        setState(() => _limit += _limitIncrement);
+        Future.delayed(
+            const Duration(milliseconds: 500), () => _scrollToMessage(id));
+      }
+      return;
+    }
+
+    final offset = (index * 72.0)
+        .clamp(0.0, _listScrollController.position.maxScrollExtent);
+    _listScrollController.animateTo(offset,
+        duration: const Duration(milliseconds: 400), curve: Curves.easeInOut);
+    setState(() => _pendingScrollToMessageId = null);
+  }
+
+  // ---------------------------------------------------------------------------
+  // CLEAR HISTORY / LEAVE GROUP
+  // ---------------------------------------------------------------------------
+
+  Future<void> _clearHistory() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Clear History'),
+        content: const Text('Delete all messages in this group?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child:
+                  const Text('Clear', style: TextStyle(color: Colors.orange))),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    if (mounted) setState(() => _isLoading = true);
+    try {
+      final msgs = await FirebaseFirestore.instance
+          .collection(FirestoreConstants.pathMessageCollection)
+          .doc(_groupChatId)
+          .collection(_groupChatId)
+          .get();
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+      int count = 0;
+      for (final doc in msgs.docs) {
+        batch.delete(doc.reference);
+        if (++count >= 500) {
+          await batch.commit();
+          batch = FirebaseFirestore.instance.batch();
+          count = 0;
+        }
+      }
+      if (count > 0) await batch.commit();
+      _scamResults.clear();
+      Fluttertoast.showToast(msg: 'History cleared');
+    } catch (_) {
+      Fluttertoast.showToast(msg: 'Failed to clear history');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _leaveGroup() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Leave Group'),
+        content: const Text('Are you sure you want to leave this group?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Leave', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      final newMembers =
+          widget.group.memberIds.where((id) => id != _currentUserId).toList();
+      await FirebaseFirestore.instance
+          .collection(FirestoreConstants.pathGroupCollection)
+          .doc(_groupChatId)
+          .update({FirestoreConstants.memberIds: newMembers});
+      await _onSendMessage(
+          '${_memberNames[_currentUserId] ?? 'User'} left the group',
+          TypeMessage.text);
+      if (mounted) Navigator.of(context).pop();
+      Fluttertoast.showToast(msg: 'You left the group');
+    } catch (_) {
+      Fluttertoast.showToast(msg: 'Failed to leave group');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // GROUP INFO
+  // ---------------------------------------------------------------------------
+
+  void _openGroupInfo() {
+    HapticFeedback.lightImpact();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GroupInfoPage(
+          group: widget.group,
+          currentUserId: _currentUserId,
+          memberNames: _memberNames,
+        ),
+      ),
+    );
+  }
+
+  void _onMenuSelected(String value) {
+    switch (value) {
+      case 'ai_assistant':
+        _showAIContextAnalysis();
+      case 'info':
+        _openGroupInfo();
+      case 'media':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => GroupMediaPage(
+              groupId: _groupChatId,
+              groupName: widget.group.groupName,
+            ),
+          ),
+        );
+      case 'search':
+        _openSearch();
+      case 'autodelete':
+        _showAutoDeleteSettings();
+      case 'clear':
+        _clearHistory();
+      case 'leave':
+        _leaveGroup();
+      default:
+        Fluttertoast.showToast(msg: 'Coming soon');
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1097,7 +1165,7 @@ class GroupChatPageState extends State<GroupChatPage>
           child: Column(
             children: [
               ActiveGroupCallBanner(
-                groupId: widget.group.id,
+                groupId: _groupChatId,
                 currentUserId: _currentUserId,
                 memberIds: widget.group.memberIds,
                 groupName: widget.group.groupName,
@@ -1137,8 +1205,8 @@ class GroupChatPageState extends State<GroupChatPage>
   // ---------------------------------------------------------------------------
   // MEDIA LOADING OVERLAY
   // ---------------------------------------------------------------------------
+
   Widget _buildMediaLoadingOverlay() {
-    if (!_isLoadingMedia) return const SizedBox.shrink();
     return Container(
       color: Colors.black.withOpacity(0.45),
       child: const Center(
@@ -1150,10 +1218,9 @@ class GroupChatPageState extends State<GroupChatPage>
             Text(
               'Đang nén và tối ưu tệp...',
               style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 15,
-              ),
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15),
             ),
           ],
         ),
@@ -1176,10 +1243,7 @@ class GroupChatPageState extends State<GroupChatPage>
         onPressed: _onBackPress,
       ),
       title: InkWell(
-        onTap: () {
-          HapticFeedback.lightImpact();
-          _openGroupInfo();
-        },
+        onTap: _openGroupInfo,
         child: Row(
           children: [
             Hero(
@@ -1229,7 +1293,7 @@ class GroupChatPageState extends State<GroupChatPage>
       ),
       actions: [
         GroupVideoCallButton(
-          groupId: widget.group.id,
+          groupId: _groupChatId,
           groupName: widget.group.groupName,
           memberIds: widget.group.memberIds,
         ),
@@ -1274,132 +1338,6 @@ class GroupChatPageState extends State<GroupChatPage>
     );
   }
 
-  void _openGroupInfo() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => GroupInfoPage(
-          group: widget.group,
-          currentUserId: _currentUserId,
-          memberNames: _memberNames,
-        ),
-      ),
-    );
-  }
-
-  void _onMenuSelected(String value) {
-    switch (value) {
-      case 'ai_assistant':
-        _showAIContextAnalysis();
-      case 'info':
-        _openGroupInfo();
-      case 'media':
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => GroupMediaPage(
-              groupId: widget.group.id,
-              groupName: widget.group.groupName,
-            ),
-          ),
-        );
-      case 'search':
-        _openSearch();
-      case 'autodelete':
-        _showAutoDeleteSettings();
-      case 'clear':
-        _clearHistory();
-      case 'leave':
-        _leaveGroup();
-      default:
-        Fluttertoast.showToast(msg: 'Coming soon');
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // CLEAR HISTORY / LEAVE GROUP
-  // ---------------------------------------------------------------------------
-
-  Future<void> _clearHistory() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Clear History'),
-        content: const Text('Delete all messages in this group?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child:
-                  const Text('Clear', style: TextStyle(color: Colors.orange))),
-        ],
-      ),
-    );
-    if (confirm != true) return;
-    if (mounted) setState(() => _isLoading = true);
-    try {
-      final msgs = await FirebaseFirestore.instance
-          .collection(FirestoreConstants.pathMessageCollection)
-          .doc(widget.group.id)
-          .collection(widget.group.id)
-          .get();
-      WriteBatch batch = FirebaseFirestore.instance.batch();
-      int count = 0;
-      for (final doc in msgs.docs) {
-        batch.delete(doc.reference);
-        if (++count >= 500) {
-          await batch.commit();
-          batch = FirebaseFirestore.instance.batch();
-          count = 0;
-        }
-      }
-      if (count > 0) await batch.commit();
-      _decryptedCache.clear();
-      _scamResults.clear();
-      Fluttertoast.showToast(msg: 'History cleared');
-    } catch (_) {
-      Fluttertoast.showToast(msg: 'Failed to clear history');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _leaveGroup() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Leave Group'),
-        content: const Text('Are you sure you want to leave this group?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Leave', style: TextStyle(color: Colors.red))),
-        ],
-      ),
-    );
-    if (confirm != true) return;
-    try {
-      final newMembers =
-          widget.group.memberIds.where((id) => id != _currentUserId).toList();
-      await FirebaseFirestore.instance
-          .collection(FirestoreConstants.pathGroupCollection)
-          .doc(widget.group.id)
-          .update({FirestoreConstants.memberIds: newMembers});
-      await _sendGroupMessage(
-          '${_memberNames[_currentUserId] ?? 'User'} left the group',
-          TypeMessage.text);
-      if (mounted) Navigator.of(context).pop();
-      Fluttertoast.showToast(msg: 'You left the group');
-    } catch (_) {
-      Fluttertoast.showToast(msg: 'Failed to leave group');
-    }
-  }
-
   // ---------------------------------------------------------------------------
   // PINNED MESSAGES
   // ---------------------------------------------------------------------------
@@ -1418,8 +1356,6 @@ class GroupChatPageState extends State<GroupChatPage>
         itemCount: _pinnedMessages.length,
         itemBuilder: (_, index) {
           final message = MessageChat.fromDocument(_pinnedMessages[index]);
-          final display =
-              _decryptedCache[_pinnedMessages[index].id] ?? message.content;
           return Container(
             width: 200,
             margin: const EdgeInsets.only(right: 8),
@@ -1434,7 +1370,7 @@ class GroupChatPageState extends State<GroupChatPage>
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    display,
+                    message.content,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -1452,83 +1388,102 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   // ---------------------------------------------------------------------------
-  // MESSAGE LIST
+  // 🚀 CORE OFFLINE-FIRST: MESSAGE LIST FROM LOCAL DB
   // ---------------------------------------------------------------------------
 
   Widget _buildListMessage() {
     return Flexible(
-      child: StreamBuilder<QuerySnapshot>(
-        stream: _chatProvider.getChatStream(widget.group.id, _limit),
-        builder: (_, snapshot) {
-          if (snapshot.hasData) {
-            _listMessage = snapshot.data!.docs;
-            if (_listMessage.isNotEmpty) {
-              return ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                itemCount: _listMessage.length,
-                reverse: true,
-                controller: _listScrollController,
-                physics: const BouncingScrollPhysics(
-                    parent: AlwaysScrollableScrollPhysics()),
-                itemBuilder: (_, index) =>
-                    _buildItemMessage(index, _listMessage[index]),
-              );
-            }
-            return const Center(
-                child: Text('No messages yet. Say hello! 👋',
-                    style: TextStyle(color: Color(0xFF8E8E93))));
-          }
-          return const Center(
+      child: _groupChatId.isNotEmpty
+          ? ValueListenableBuilder(
+              valueListenable: LocalDbService().messagesBox.listenable(),
+              builder: (context, Box box, _) {
+                final allMessages = LocalDbService().getMessages(_groupChatId);
+                final displayMessages = allMessages.take(_limit).toList();
+
+                if (displayMessages.isEmpty) {
+                  return const Center(
+                      child: Text('No messages yet. Say hello! 👋',
+                          style: TextStyle(color: Color(0xFF8E8E93))));
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                  itemCount: displayMessages.length,
+                  reverse: true,
+                  controller: _listScrollController,
+                  physics: const BouncingScrollPhysics(
+                      parent: AlwaysScrollableScrollPhysics()),
+                  itemBuilder: (_, index) {
+                    final localData = displayMessages[index];
+                    return _buildItemMessageFromLocal(
+                        index, localData, displayMessages);
+                  },
+                );
+              },
+            )
+          : const Center(
               child:
-                  CircularProgressIndicator(color: ColorConstants.themeColor));
-        },
-      ),
+                  CircularProgressIndicator(color: ColorConstants.themeColor)),
     );
   }
 
-  Widget _buildItemMessage(int index, DocumentSnapshot? document) {
-    if (document == null) return const SizedBox.shrink();
-    final rawMessageChat = MessageChat.fromDocument(document);
+  Widget _buildItemMessageFromLocal(int index, Map<dynamic, dynamic> localData,
+      List<Map<dynamic, dynamic>> fullList) {
+    final isHighlighted = _pendingScrollToMessageId == localData['messageId'];
+    final isPending = localData['status'] == 'pending';
 
-    final decryptedContent = _decryptedCache.putIfAbsent(
-      document.id,
-      () => EncryptionService().decryptMessage(
-        rawMessageChat.content,
-        _groupChatId,
-      ),
+    final messageChat = MessageChat(
+      idFrom: localData['idFrom'] ?? '',
+      idTo: localData['idTo'] ?? '',
+      timestamp: localData['timestamp'] ?? '',
+      content: localData['content'] ?? '',
+      type: localData['type'] ?? 0,
+      isRead: localData['status'] == 'sent',
     );
-
-    final msg = rawMessageChat.copyWith(content: decryptedContent);
-
-    final isMe = msg.idFrom == _currentUserId;
-    final data = document.data() as Map<String, dynamic>?;
-    final isViewOnce = data?['isViewOnce'] ?? false;
-    final bool isScamWarning = data?['scamWarning'] ?? false;
-    final String scamReason = data?['scamReason'] ?? '';
-    final bool hasReminder = data?['hasReminder'] ?? false;
 
     bool isLastInGroup = true;
     if (index > 0) {
-      final prevMsg = MessageChat.fromDocument(_listMessage[index - 1]);
-      isLastInGroup = prevMsg.idFrom != msg.idFrom;
+      final prevMsg = fullList[index - 1];
+      isLastInGroup = prevMsg['idFrom'] != messageChat.idFrom;
     }
-    final double tailRadius = isLastInGroup ? 4.0 : 20.0;
 
-    if (isViewOnce) return _buildViewOnceMessage(document, msg, isMe);
-    if (msg.type == 3 && _voiceProvider != null) {
-      return _buildVoiceMessage(document, msg, isMe);
+    final isMe = messageChat.idFrom == _currentUserId;
+    final data = localData;
+    final isViewOnce = data['isViewOnce'] ?? false;
+    final bool isScamWarning = data['scamWarning'] ?? false;
+    final String scamReason = data['scamReason'] ?? '';
+    final bool hasReminder = data['hasReminder'] ?? false;
+    final String messageId = localData['messageId'] ?? '';
+
+    if (isViewOnce) {
+      return _buildViewOnceMessageFromLocal(messageChat, localData, messageId);
     }
-    if (msg.type == TypeMessage.image) {
-      return _buildImageMessage(document, msg, isMe, isLastInGroup);
+    if (messageChat.type == 3 && _voiceProvider != null) {
+      return _buildVoiceMessage(messageChat, isMe);
     }
-    if (msg.type == TypeMessage.video) {
-      return _buildVideoMessage(document, msg, isMe, isLastInGroup);
+    if (messageChat.type == TypeMessage.image) {
+      return _buildImageMessageFromLocal(
+          messageId, messageChat, isMe, isLastInGroup, isPending);
     }
-    if (msg.type == TypeMessage.sticker) {
-      return _buildStickerMessage(document, msg, isMe);
+    if (messageChat.type == TypeMessage.video) {
+      return _buildVideoMessageFromLocal(
+          messageId, messageChat, isMe, isLastInGroup, isPending);
     }
-    return _buildTextMessage(document, msg, isMe, isLastInGroup, tailRadius,
-        isScamWarning, scamReason, hasReminder);
+    if (messageChat.type == TypeMessage.sticker) {
+      return _buildStickerMessage(messageChat, isMe, messageId);
+    }
+
+    return _buildTextMessageFromLocal(
+      messageId: messageId,
+      msg: messageChat,
+      isMe: isMe,
+      isLastInGroup: isLastInGroup,
+      isPending: isPending,
+      isHighlighted: isHighlighted,
+      isScamWarning: isScamWarning,
+      scamReason: scamReason,
+      hasReminder: hasReminder,
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -1573,18 +1528,21 @@ class GroupChatPageState extends State<GroupChatPage>
   // TEXT MESSAGE
   // ---------------------------------------------------------------------------
 
-  Widget _buildTextMessage(
-      DocumentSnapshot doc,
-      MessageChat msg,
-      bool isMe,
-      bool isLastInGroup,
-      double tailRadius,
-      bool isScamWarning,
-      String scamReason,
-      bool hasReminder) {
+  Widget _buildTextMessageFromLocal({
+    required String messageId,
+    required MessageChat msg,
+    required bool isMe,
+    required bool isLastInGroup,
+    required bool isPending,
+    bool isHighlighted = false,
+    bool isScamWarning = false,
+    String scamReason = '',
+    bool hasReminder = false,
+  }) {
+    final double tailRadius = isLastInGroup ? 4.0 : 20.0;
     final location = _locationProvider?.parseLocationFromMessage(msg.content);
 
-    return Container(
+    Widget bubble = Container(
       margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
       child: Column(
         crossAxisAlignment:
@@ -1604,11 +1562,11 @@ class GroupChatPageState extends State<GroupChatPage>
                 child: GestureDetector(
                   onLongPress: () {
                     HapticFeedback.heavyImpact();
-                    _showMessageOptions(msg, doc.id);
+                    _showMessageOptions(msg, messageId);
                   },
                   onDoubleTap: () {
                     HapticFeedback.mediumImpact();
-                    _showReactionPicker(doc.id);
+                    _showReactionPicker(messageId);
                   },
                   child: Container(
                     padding: const EdgeInsets.symmetric(
@@ -1692,7 +1650,7 @@ class GroupChatPageState extends State<GroupChatPage>
                                   ),
                                 ),
                                 TextButton(
-                                  onPressed: () => _setReminder(msg, doc.id),
+                                  onPressed: () => _setReminder(msg, messageId),
                                   style: TextButton.styleFrom(
                                       padding: EdgeInsets.zero,
                                       minimumSize: const Size(40, 24)),
@@ -1727,38 +1685,29 @@ class GroupChatPageState extends State<GroupChatPage>
                                     fontSize: 16,
                                     height: 1.3),
                               ),
-                              if (msg.editedAt != null ||
-                                  (isMe && !msg.isDeleted))
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 4),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    children: [
-                                      if (msg.editedAt != null)
-                                        Text(
-                                          '(edited)',
-                                          style: TextStyle(
-                                              fontSize: 11,
-                                              color: isMe
-                                                  ? Colors.white70
-                                                  : const Color(0xFF8E8E93)),
-                                        ),
-                                      if (msg.editedAt != null && isMe)
-                                        const SizedBox(width: 4),
-                                      if (isMe && !msg.isDeleted)
-                                        Icon(
-                                          msg.isRead
-                                              ? Icons.done_all_rounded
-                                              : Icons.check_rounded,
-                                          size: 14,
-                                          color: msg.isRead
-                                              ? Colors.white
-                                              : Colors.white70,
-                                        ),
-                                    ],
-                                  ),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    if (isMe)
+                                      Icon(
+                                        isPending
+                                            ? Icons.access_time_rounded
+                                            : msg.isRead
+                                                ? Icons.done_all_rounded
+                                                : Icons.check_rounded,
+                                        size: 14,
+                                        color: isPending
+                                            ? Colors.white54
+                                            : msg.isRead
+                                                ? Colors.white
+                                                : Colors.white70,
+                                      ),
+                                  ],
                                 ),
+                              ),
                             ],
                           ),
                       ],
@@ -1769,9 +1718,10 @@ class GroupChatPageState extends State<GroupChatPage>
             ],
           ),
           if (!isMe && msg.type == TypeMessage.text) ...[
-            if (_scamResults[doc.id] != null && _scamResults[doc.id] != 'SAFE')
-              ScamWarningWidget(status: _scamResults[doc.id]!),
-            if (_scamResults[doc.id] == null && !isScamWarning)
+            if (_scamResults[messageId] != null &&
+                _scamResults[messageId] != 'SAFE')
+              ScamWarningWidget(status: _scamResults[messageId]!),
+            if (_scamResults[messageId] == null && !isScamWarning)
               Padding(
                 padding: const EdgeInsets.only(left: 52, top: 4, bottom: 4),
                 child: InkWell(
@@ -1780,7 +1730,7 @@ class GroupChatPageState extends State<GroupChatPage>
                     final status =
                         await AIBackendService().checkScam(msg.content);
                     if (mounted) {
-                      setState(() => _scamResults[doc.id] = status);
+                      setState(() => _scamResults[messageId] = status);
                     }
                     if (status == 'SAFE') {
                       Fluttertoast.showToast(msg: 'Tin nhắn an toàn!');
@@ -1799,10 +1749,20 @@ class GroupChatPageState extends State<GroupChatPage>
                 ),
               ),
           ],
-          _buildReactions(doc.id, isMe),
+          _buildReactions(messageId, isMe),
           _buildTimestamp(msg.timestamp, isMe),
         ],
       ),
+    );
+
+    if (!isHighlighted) return bubble;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 600),
+      decoration: BoxDecoration(
+        color: const Color(0xFF007AFF).withOpacity(0.08),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: bubble,
     );
   }
 
@@ -1866,8 +1826,8 @@ class GroupChatPageState extends State<GroupChatPage>
   // IMAGE / VIDEO / VOICE / STICKER / VIEW-ONCE MESSAGE WIDGETS
   // ---------------------------------------------------------------------------
 
-  Widget _buildImageMessage(
-      DocumentSnapshot doc, MessageChat msg, bool isMe, bool isLastInGroup) {
+  Widget _buildImageMessageFromLocal(String messageId, MessageChat msg,
+      bool isMe, bool isLastInGroup, bool isPending) {
     return Container(
       margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
       child: Column(
@@ -1886,19 +1846,24 @@ class GroupChatPageState extends State<GroupChatPage>
                     : const SizedBox(width: 40),
               GestureDetector(
                 onTap: () {
-                  HapticFeedback.lightImpact();
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => FullPhotoPage(url: msg.content)));
+                  if (!isPending) {
+                    HapticFeedback.lightImpact();
+                    Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => FullPhotoPage(url: msg.content)));
+                  }
                 },
                 onLongPress: () {
                   HapticFeedback.heavyImpact();
-                  _showMessageOptions(msg, doc.id);
+                  _showMessageOptions(msg, messageId);
                 },
                 child: Container(
+                  width: MediaQuery.of(context).size.width * 0.65,
+                  height: 220,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(20),
+                    color: Colors.black12,
                     boxShadow: [
                       BoxShadow(
                           color: Colors.black.withOpacity(0.08),
@@ -1908,40 +1873,46 @@ class GroupChatPageState extends State<GroupChatPage>
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(20),
-                    child: Image.network(
-                      msg.content,
-                      width: 220,
-                      height: 220,
-                      fit: BoxFit.cover,
-                      loadingBuilder: (_, child, progress) {
-                        if (progress == null) return child;
-                        return Container(
-                            width: 220,
-                            height: 220,
-                            color: const Color(0xFFF2F2F7),
-                            child: const Center(
-                                child: CircularProgressIndicator()));
-                      },
-                      errorBuilder: (_, __, ___) => Container(
-                          width: 220,
-                          height: 220,
-                          color: const Color(0xFFF2F2F7),
-                          child: const Icon(Icons.error)),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        if (!isPending)
+                          Image.network(
+                            msg.content,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                            loadingBuilder: (_, child, progress) {
+                              if (progress == null) return child;
+                              return Container(
+                                  color: const Color(0xFFF2F2F7),
+                                  child: const Center(
+                                      child: CircularProgressIndicator()));
+                            },
+                            errorBuilder: (_, __, ___) => Container(
+                                color: const Color(0xFFF2F2F7),
+                                child: const Icon(Icons.error)),
+                          ),
+                        if (isPending)
+                          const Center(
+                              child: CircularProgressIndicator(
+                                  color: Colors.white)),
+                      ],
                     ),
                   ),
                 ),
               ),
             ],
           ),
-          _buildReactions(doc.id, isMe),
+          _buildReactions(messageId, isMe),
           _buildTimestamp(msg.timestamp, isMe),
         ],
       ),
     );
   }
 
-  Widget _buildVideoMessage(
-      DocumentSnapshot doc, MessageChat msg, bool isMe, bool isLastInGroup) {
+  Widget _buildVideoMessageFromLocal(String messageId, MessageChat msg,
+      bool isMe, bool isLastInGroup, bool isPending) {
     final parts = msg.content.split('|');
     final videoUrl = parts.isNotEmpty ? parts[0] : '';
     final thumbnailUrl = parts.length > 1 ? parts[1] : '';
@@ -1964,17 +1935,19 @@ class GroupChatPageState extends State<GroupChatPage>
                     : const SizedBox(width: 40),
               GestureDetector(
                 onTap: () {
-                  HapticFeedback.lightImpact();
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => VideoPlayerPage(videoUrl: videoUrl),
-                    ),
-                  );
+                  if (!isPending) {
+                    HapticFeedback.lightImpact();
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => VideoPlayerPage(videoUrl: videoUrl),
+                      ),
+                    );
+                  }
                 },
                 onLongPress: () {
                   HapticFeedback.heavyImpact();
-                  _showMessageOptions(msg, doc.id);
+                  _showMessageOptions(msg, messageId);
                 },
                 child: Container(
                   width: MediaQuery.of(context).size.width * 0.65,
@@ -1984,10 +1957,9 @@ class GroupChatPageState extends State<GroupChatPage>
                     color: Colors.black,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.08),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      )
+                          color: Colors.black.withOpacity(0.08),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4))
                     ],
                   ),
                   child: ClipRRect(
@@ -1995,29 +1967,24 @@ class GroupChatPageState extends State<GroupChatPage>
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-                        thumbnailUrl.isNotEmpty
-                            ? Image.network(
-                                thumbnailUrl,
-                                fit: BoxFit.cover,
-                                width: double.infinity,
-                                height: double.infinity,
-                                loadingBuilder:
-                                    (context, child, loadingProgress) {
-                                  if (loadingProgress == null) return child;
-                                  return const Center(
-                                    child: CircularProgressIndicator(
-                                        color: Colors.white),
-                                  );
-                                },
-                                errorBuilder: (context, error, stackTrace) =>
-                                    Container(color: Colors.black54),
-                              )
-                            : Container(color: Colors.black54),
-                        const Icon(
-                          Icons.play_circle_fill_rounded,
-                          size: 56,
-                          color: Colors.white,
-                        ),
+                        if (!isPending && thumbnailUrl.isNotEmpty)
+                          Image.network(
+                            thumbnailUrl,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                            errorBuilder: (_, __, ___) =>
+                                Container(color: Colors.black54),
+                          )
+                        else
+                          Container(color: Colors.black54),
+                        if (isPending)
+                          const Center(
+                              child: CircularProgressIndicator(
+                                  color: Colors.white))
+                        else
+                          const Icon(Icons.play_circle_fill_rounded,
+                              size: 56, color: Colors.white),
                         Positioned(
                           bottom: 8,
                           right: 8,
@@ -2025,9 +1992,8 @@ class GroupChatPageState extends State<GroupChatPage>
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.black54,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
+                                color: Colors.black54,
+                                borderRadius: BorderRadius.circular(4)),
                             child: const Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -2048,14 +2014,14 @@ class GroupChatPageState extends State<GroupChatPage>
               ),
             ],
           ),
-          _buildReactions(doc.id, isMe),
+          _buildReactions(messageId, isMe),
           _buildTimestamp(msg.timestamp, isMe),
         ],
       ),
     );
   }
 
-  Widget _buildVoiceMessage(DocumentSnapshot doc, MessageChat msg, bool isMe) {
+  Widget _buildVoiceMessage(MessageChat msg, bool isMe) {
     return Column(
       crossAxisAlignment:
           isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -2080,8 +2046,7 @@ class GroupChatPageState extends State<GroupChatPage>
     );
   }
 
-  Widget _buildStickerMessage(
-      DocumentSnapshot doc, MessageChat msg, bool isMe) {
+  Widget _buildStickerMessage(MessageChat msg, bool isMe, String messageId) {
     return Column(
       crossAxisAlignment:
           isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -2094,7 +2059,7 @@ class GroupChatPageState extends State<GroupChatPage>
             if (!isMe) _buildAvatar(msg.idFrom),
             const SizedBox(width: 4),
             GestureDetector(
-              onLongPress: () => _showMessageOptions(msg, doc.id),
+              onLongPress: () => _showMessageOptions(msg, messageId),
               child: Image.asset(
                 'images/${msg.content}.gif',
                 width: 100,
@@ -2113,8 +2078,9 @@ class GroupChatPageState extends State<GroupChatPage>
     );
   }
 
-  Widget _buildViewOnceMessage(
-      DocumentSnapshot doc, MessageChat msg, bool isMe) {
+  Widget _buildViewOnceMessageFromLocal(
+      MessageChat msg, Map<dynamic, dynamic> localData, String messageId) {
+    final isMe = msg.idFrom == _currentUserId;
     return Column(
       crossAxisAlignment:
           isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -2127,13 +2093,12 @@ class GroupChatPageState extends State<GroupChatPage>
             if (!isMe) _buildAvatar(msg.idFrom),
             const SizedBox(width: 4),
             ViewOnceMessageWidget(
-              groupChatId: widget.group.id,
-              messageId: doc.id,
+              groupChatId: _groupChatId,
+              messageId: messageId,
               content: msg.content,
               type: msg.type,
               currentUserId: _currentUserId,
-              isViewed:
-                  (doc.data() as Map<String, dynamic>?)?['isViewed'] ?? false,
+              isViewed: localData['isViewed'] ?? false,
               provider: _viewOnceProvider,
             ),
           ],
@@ -2148,7 +2113,7 @@ class GroupChatPageState extends State<GroupChatPage>
 
   Widget _buildReactions(String messageId, bool isMe) {
     return StreamBuilder<QuerySnapshot>(
-      stream: _reactionProvider.getReactions(widget.group.id, messageId),
+      stream: _reactionProvider.getReactions(_groupChatId, messageId),
       builder: (_, snap) {
         if (!snap.hasData || snap.data!.docs.isEmpty) {
           return const SizedBox.shrink();
@@ -2169,7 +2134,7 @@ class GroupChatPageState extends State<GroupChatPage>
             currentUserId: _currentUserId,
             userReactions: userReactions,
             onReactionTap: (emoji) => _reactionProvider.toggleReaction(
-                widget.group.id, messageId, _currentUserId, emoji),
+                _groupChatId, messageId, _currentUserId, emoji),
           ),
         );
       },
@@ -2200,7 +2165,7 @@ class GroupChatPageState extends State<GroupChatPage>
   Widget _buildTypingIndicator() {
     if (_presenceProvider == null) return const SizedBox.shrink();
     return StreamBuilder<Map<String, bool>>(
-      stream: _presenceProvider!.getTypingStatus(widget.group.id),
+      stream: _presenceProvider!.getTypingStatus(_groupChatId),
       builder: (_, snap) {
         if (!snap.hasData) return const SizedBox.shrink();
         final typingUsers = snap.data!.entries
@@ -2241,7 +2206,9 @@ class GroupChatPageState extends State<GroupChatPage>
           final m = _memberSuggestions[i];
           final userId = m['userId'] as String? ?? '';
           final name = m['name'] as String? ?? '';
-          if (userId.isEmpty || name.isEmpty) return const SizedBox.shrink();
+          if (userId.isEmpty || name.isEmpty) {
+            return const SizedBox.shrink();
+          }
           return ListTile(
             dense: true,
             leading: CircleAvatar(

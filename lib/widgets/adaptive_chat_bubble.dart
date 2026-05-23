@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../models/message_chat.dart';
-import '../providers/app_mode_provider.dart';
+import '../models/models.dart';
+import '../providers/providers.dart';
 import '../services/services.dart';
 
 class AdaptiveChatBubble extends StatelessWidget {
@@ -31,52 +31,24 @@ class AdaptiveChatBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool isMe = message.idFrom == currentUserId;
 
-    // Ảnh / sticker / file → không giải mã, hiển thị trực tiếp
+    // Ảnh / sticker / file → hiển thị trực tiếp
     if (message.type != TypeMessage.text) {
       return _buildImageOrFileMessage(isMe);
     }
 
-    // Tin nhắn văn bản → giải mã E2EE bất đồng bộ
-    return FutureBuilder<String>(
-      future: EncryptionService().decryptPayload(
-        message.content,
-        conversationId,
-        [currentUserId, peerId],
-        currentUserId,
-      ),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return _buildBubbleUI(
-            context: context,
-            isMe: isMe,
-            text: '🔒 Đang giải mã...',
-            overrideColor: Colors.grey[400],
-          );
-        }
+    // Tin nhắn văn bản — dữ liệu từ Local DB đã được giải mã sẵn,
+    // render trực tiếp message.content, không cần FutureBuilder/decryptPayload.
+    // Loại bỏ hoàn toàn async decode để đạt 120 FPS khi cuộn.
 
-        if (snapshot.hasError) {
-          return _buildBubbleUI(
-            context: context,
-            isMe: isMe,
-            text: '⚠️ Lỗi hiển thị tin nhắn',
-            overrideColor: Colors.redAccent[100],
-          );
-        }
+    // 🤖 Kích hoạt AI scan phía client (chỉ với tin người khác gửi, chưa cảnh báo)
+    if (!isMe && message.scamWarning != true) {
+      _triggerClientSideAI(message.content, message.timestamp);
+    }
 
-        final plainText = snapshot.data ?? '';
-
-        // 🤖 Kích hoạt AI scan phía client sau khi giải mã xong
-        // Chỉ scan tin nhắn người khác gửi đến và chưa được cảnh báo
-        if (!isMe && message.scamWarning != true) {
-          _triggerClientSideAI(plainText, message.timestamp);
-        }
-
-        return _buildBubbleUI(
-          context: context,
-          isMe: isMe,
-          text: plainText,
-        );
-      },
+    return _buildBubbleUI(
+      context: context,
+      isMe: isMe,
+      text: message.content,
     );
   }
 
@@ -119,7 +91,7 @@ class AdaptiveChatBubble extends StatelessWidget {
       bubbleColor = isMe ? Colors.purpleAccent : Colors.orangeAccent[100]!;
     }
 
-    // Override màu khi có trạng thái đặc biệt (loading / lỗi)
+    // Override màu khi có trạng thái đặc biệt
     if (overrideColor != null) {
       bubbleColor = overrideColor;
       textColor = Colors.black87;
@@ -178,7 +150,7 @@ class AdaptiveChatBubble extends StatelessWidget {
   // IMAGE / FILE MESSAGE
   // =========================================================
 
-  /// Hiển thị tin nhắn dạng ảnh hoặc file (không qua giải mã E2EE).
+  /// Hiển thị tin nhắn dạng ảnh hoặc file.
   Widget _buildImageOrFileMessage(bool isMe) {
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -201,7 +173,7 @@ class AdaptiveChatBubble extends StatelessWidget {
   // CLIENT-SIDE AI SCAN
   // =========================================================
 
-  /// Kích hoạt AI scan phía client sau khi giải mã tin nhắn thành công.
+  /// Kích hoạt AI scan phía client sau khi tin nhắn được hiển thị.
   /// Chỉ gọi với tin nhắn người khác gửi đến và chưa được cảnh báo scam.
   /// Nên cache [messageId] đã scan (qua SharedPreferences) để tránh gọi lặp.
   void _triggerClientSideAI(String plainText, String messageId) {

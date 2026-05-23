@@ -39,7 +39,6 @@ Future<void> main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    
     await FirebaseAppCheck.instance.activate(
       androidProvider: AndroidProvider.playIntegrity,
       appleProvider: AppleProvider.appAttest,
@@ -54,6 +53,14 @@ Future<void> main() async {
     } catch (e) {
       print('⚠️ Không thể bật Offline Persistence (có thể do Web): $e');
     }
+
+    // 🚀 KHỞI TẠO LOCAL DB (Hive)
+    await LocalDbService().initialize();
+    print('✅ LocalDbService đã khởi tạo');
+
+    // 🔄 BẬT TRÌNH ĐỒNG BỘ NGẦM TOÀN CỤC
+    SyncManager().startListening();
+    print('✅ SyncManager đã bắt đầu lắng nghe');
   } catch (e) {
     print('❌ Firebase initialization error: $e');
   }
@@ -80,9 +87,9 @@ Future<void> main() async {
   ));
 }
 
-
-
-
+// ---------------------------------------------------------------------------
+// BUBBLE CHAT CHANNEL MANAGER
+// ---------------------------------------------------------------------------
 
 class BubbleChatChannelManager extends StatefulWidget {
   final Widget child;
@@ -184,9 +191,9 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
   Widget build(BuildContext context) => widget.child;
 }
 
-
-
-
+// ---------------------------------------------------------------------------
+// NOTIFICATION INITIALIZATION
+// ---------------------------------------------------------------------------
 
 Future<void> _initializeNotifications(
   FlutterLocalNotificationsPlugin plugin,
@@ -241,9 +248,9 @@ Future<void> _initializeNotifications(
   }
 }
 
-
-
-
+// ---------------------------------------------------------------------------
+// MY APP
+// ---------------------------------------------------------------------------
 
 class MyApp extends StatelessWidget {
   final SharedPreferences prefs;
@@ -392,9 +399,9 @@ class MyApp extends StatelessWidget {
   }
 }
 
-
-
-
+// ---------------------------------------------------------------------------
+// APP INITIALIZER
+// ---------------------------------------------------------------------------
 
 class AppInitializer extends StatefulWidget {
   final NotificationService notificationService;
@@ -441,9 +448,9 @@ class _AppInitializerState extends State<AppInitializer>
   }
 }
 
-
-
-
+// ---------------------------------------------------------------------------
+// MINI CHAT OVERLAY MANAGER
+// ---------------------------------------------------------------------------
 
 class MiniChatOverlayManager extends StatefulWidget {
   final Widget child;
@@ -533,9 +540,9 @@ class _MiniChatOverlayManagerState extends State<MiniChatOverlayManager> {
   Widget build(BuildContext context) => widget.child;
 }
 
-
-
-
+// ---------------------------------------------------------------------------
+// MINI CHAT OVERLAY WIDGET
+// ---------------------------------------------------------------------------
 
 class MiniChatOverlayWidget extends StatefulWidget {
   final String userId;
@@ -685,9 +692,9 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget> {
   }
 }
 
-
-
-
+// ---------------------------------------------------------------------------
+// BUBBLE MODE DETECTOR
+// ---------------------------------------------------------------------------
 
 class BubbleModeDetector {
   static const MethodChannel _channel = MethodChannel('bubble_chat_channel');

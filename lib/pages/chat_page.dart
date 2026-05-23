@@ -14,6 +14,7 @@ import 'package:flutter_chat_demo/utils/utils.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -51,19 +52,15 @@ class ChatPageState extends State<ChatPage>
 
   bool _isTyping = false;
 
-  List<QueryDocumentSnapshot> _listMessage = [];
-  int _limit = 20;
+  // ── Local DB dùng limit thay cho QueryDocumentSnapshot list ──
+  int _limit = 30;
   final _limitIncrement = 20;
   String _groupChatId = '';
 
-  File? _imageFile;
   bool _isLoading = false;
   bool _isShowSticker = false;
-  String _imageUrl = '';
 
   // ── MEDIA (ảnh + video) ──────────────────────────────────────
-  // Trạng thái loading riêng cho việc nén/upload media,
-  // tách biệt với _isLoading để overlay có thể hiển thị thông báo cụ thể.
   bool _isLoadingMedia = false;
   final ImagePicker _imagePicker = ImagePicker();
   // ─────────────────────────────────────────────────────────────
@@ -176,22 +173,12 @@ class ChatPageState extends State<ChatPage>
 
     try {
       _voiceProvider?.dispose();
-    } catch (e) {
-      print('⚠️ Error disposing voice provider: $e');
-    }
-
-    try {
       _chatInputController.dispose();
       _listScrollController.dispose();
       _focusNode.dispose();
-    } catch (e) {
-      print('⚠️ Controller disposal error: $e');
-    }
-
-    try {
       WidgetsBinding.instance.removeObserver(this);
     } catch (e) {
-      print('⚠️ Error removing observer: $e');
+      print('⚠️ Disposal error: $e');
     }
 
     super.dispose();
@@ -253,8 +240,6 @@ class ChatPageState extends State<ChatPage>
     _readLocal();
     _loadPinnedMessages();
     _checkConversationLock();
-    _loadSmartReplies();
-    _setupAutoReadMarking();
 
     if (_presenceProvider != null && _currentUserId.isNotEmpty) {
       _presenceProvider!.setUserOnline(_currentUserId);
@@ -285,6 +270,10 @@ class ChatPageState extends State<ChatPage>
       _groupChatId = '$peerId-$_currentUserId';
     }
 
+    // 🚀 BẬT LẮNG NGHE ĐỒNG BỘ NỀN VÀO LOCAL DB (Offline-First)
+    _chatProvider.listenToFirebaseChanges(_groupChatId, _currentUserId, peerId);
+
+    // Giữ lại để trigger Bubble Overlay khi nhận tin nhắn mới
     _setupIncomingMessageListener();
 
     _chatProvider.updateDataFirestore(
@@ -296,6 +285,7 @@ class ChatPageState extends State<ChatPage>
     Future.delayed(const Duration(milliseconds: 500), () {
       if (!resourceManager.isDisposed && mounted) {
         _markMessagesAsRead();
+        _loadSmartReplies();
       }
     });
   }
@@ -304,9 +294,11 @@ class ChatPageState extends State<ChatPage>
     if (resourceManager.isDisposed || !_listScrollController.hasClients) return;
     final pos = _listScrollController.position;
     if (pos.pixels >= pos.maxScrollExtent - 100 &&
-        !_listScrollController.position.outOfRange &&
-        _limit <= _listMessage.length) {
-      if (mounted) setState(() => _limit += _limitIncrement);
+        !_listScrollController.position.outOfRange) {
+      final totalMessages = LocalDbService().getMessages(_groupChatId).length;
+      if (_limit < totalMessages) {
+        if (mounted) setState(() => _limit += _limitIncrement);
+      }
     }
   }
 
@@ -346,6 +338,7 @@ class ChatPageState extends State<ChatPage>
     resourceManager.addSubscription(subscription);
   }
 
+  // Giữ lại để bắt trigger notification bubble khi đang không mở app
   void _setupIncomingMessageListener() {
     if (resourceManager.isDisposed ||
         _groupChatId.isEmpty ||
@@ -363,12 +356,7 @@ class ChatPageState extends State<ChatPage>
         .snapshots()
         .listen(
       (snapshot) async {
-        if (resourceManager.isDisposed) return;
-
-        if (_isProcessingMessage) {
-          print('⚠️ Already processing messages, skipping...');
-          return;
-        }
+        if (resourceManager.isDisposed || _isProcessingMessage) return;
 
         _isProcessingMessage = true;
 
@@ -379,27 +367,19 @@ class ChatPageState extends State<ChatPage>
             if (change.type == DocumentChangeType.added) {
               final docId = change.doc.id;
 
-              if (_processedMessageIds.contains(docId)) {
-                print('ℹ️ Message already processed: $docId');
-                continue;
-              }
-
+              if (_processedMessageIds.contains(docId)) continue;
               _processedMessageIds.add(docId);
-              print('✅ Processing new message: $docId');
 
               if (_processedMessageIds.length > 100) {
-                final toRemove = _processedMessageIds.length - 100;
-                final oldIds = _processedMessageIds.take(toRemove).toList();
-                _processedMessageIds.removeAll(oldIds);
-                print('🗑️ Cleaned ${oldIds.length} old message IDs');
+                _processedMessageIds
+                    .removeAll(_processedMessageIds.take(50).toList());
               }
 
               final data = change.doc.data();
               if (data != null) {
-                final content =
-                    data[FirestoreConstants.content] as String? ?? '';
                 final type = data[FirestoreConstants.type] as int? ?? 0;
-                await _updateBubbleWithMessage(content, type,
+                // Bubble trigger — dùng placeholder thay vì giải mã
+                await _updateBubbleWithMessage('Có tin nhắn mới', type,
                     isFromUser: false);
               }
 
@@ -422,27 +402,6 @@ class ChatPageState extends State<ChatPage>
 
     resourceManager.addSubscription(subscription);
     print('✅ Incoming message listener setup with deduplication');
-  }
-
-  void _setupAutoReadMarking() {
-    if (resourceManager.isDisposed) return;
-    final subscription = FirebaseFirestore.instance
-        .collection(FirestoreConstants.pathMessageCollection)
-        .doc(_groupChatId)
-        .collection(_groupChatId)
-        .where(FirestoreConstants.idTo, isEqualTo: _currentUserId)
-        .where('isRead', isEqualTo: false)
-        .snapshots()
-        .listen(
-      (snapshot) {
-        if (resourceManager.isDisposed) return;
-        if (snapshot.docs.isNotEmpty && mounted) _markMessagesAsRead();
-      },
-      onError: (error) {
-        ErrorLogger.logError(error, null, context: 'Setup Auto Read');
-      },
-    );
-    resourceManager.addSubscription(subscription);
   }
 
   Future<void> _markMessagesAsRead() async {
@@ -502,7 +461,8 @@ class ChatPageState extends State<ChatPage>
     }
 
     try {
-      _chatProvider.sendMessage(
+      // 🚀 Offline-First: lưu Local DB & đẩy vào hàng đợi gửi
+      await _chatProvider.sendMessage(
         finalContent,
         type,
         _groupChatId,
@@ -518,7 +478,7 @@ class ChatPageState extends State<ChatPage>
       await _updateBubbleWithMessage(finalContent, type, isFromUser: true);
     } catch (e) {
       ErrorLogger.logError(e, null, context: 'Send Message');
-      Fluttertoast.showToast(msg: 'Send failed');
+      Fluttertoast.showToast(msg: 'Lỗi ghi cục bộ');
       return;
     }
 
@@ -534,7 +494,7 @@ class ChatPageState extends State<ChatPage>
     }
 
     if (!resourceManager.isDisposed) {
-      await _loadSmartReplies();
+      _loadSmartReplies();
     }
 
     if (_listScrollController.hasClients && !resourceManager.isDisposed) {
@@ -590,9 +550,6 @@ class ChatPageState extends State<ChatPage>
         avatarUrl: widget.arguments.peerAvatar,
         messageType: messageType,
       );
-
-      print(
-          '✅ Bubble updated with ${isFromUser ? "sent" : "received"} message');
     } catch (e) {
       print('❌ Error updating bubble: $e');
     }
@@ -798,8 +755,6 @@ class ChatPageState extends State<ChatPage>
 
   // ────────────────────────────────────────────────────────────
   // MEDIA: CHỌN ẢNH TỪ THƯ VIỆN
-  // Thay thế _pickImage() cũ. Dùng _imagePicker chung thay vì
-  // tạo mới ImagePicker() mỗi lần gọi.
   // ────────────────────────────────────────────────────────────
   Future<void> _onPickImage() async {
     HapticFeedback.lightImpact();
@@ -817,7 +772,7 @@ class ChatPageState extends State<ChatPage>
   }
 
   // ────────────────────────────────────────────────────────────
-  // MEDIA: CHỌN VIDEO TỪ THƯ VIỆN (MỚI)
+  // MEDIA: CHỌN VIDEO TỪ THƯ VIỆN
   // ────────────────────────────────────────────────────────────
   Future<void> _onPickVideo() async {
     HapticFeedback.lightImpact();
@@ -835,14 +790,11 @@ class ChatPageState extends State<ChatPage>
   }
 
   // ────────────────────────────────────────────────────────────
-  // MEDIA: NÉN VÀ GỬI QUA PROVIDER (MỚI)
-  // Tách riêng khỏi _uploadFile() để dùng chung cho cả ảnh/video.
-  // ChatProvider.sendMediaMessage() chịu trách nhiệm nén + upload.
+  // MEDIA: NÉN VÀ GỬI QUA PROVIDER
   // ────────────────────────────────────────────────────────────
   Future<void> _processAndSendMedia(File file, {required bool isVideo}) async {
     if (resourceManager.isDisposed) return;
 
-    // Xác nhận gửi trước khi nén/upload
     final mediaLabel = isVideo ? 'Video' : 'Hình Ảnh';
     final mediaIcon = isVideo ? Icons.videocam_rounded : Icons.image_rounded;
 
@@ -858,7 +810,6 @@ class ChatPageState extends State<ChatPage>
 
     if (confirm != true || resourceManager.isDisposed) return;
 
-    // Bật overlay loading với thông báo nén
     if (mounted) setState(() => _isLoadingMedia = true);
 
     try {
@@ -868,12 +819,14 @@ class ChatPageState extends State<ChatPage>
         groupChatId: _groupChatId,
         currentUserId: _currentUserId,
         peerId: widget.arguments.peerId,
+        onLoadingStatusChanged: (isLoading) {
+          if (mounted) setState(() => _isLoadingMedia = isLoading);
+        },
       );
 
       if (!mounted || resourceManager.isDisposed) return;
 
-      if (success) {
-        // Scroll lên đầu sau khi gửi thành công
+      if (success != false) {
         if (_listScrollController.hasClients) {
           _listScrollController.animateTo(
             0,
@@ -900,45 +853,6 @@ class ChatPageState extends State<ChatPage>
       if (mounted && !resourceManager.isDisposed) {
         setState(() => _isLoadingMedia = false);
       }
-    }
-  }
-
-  // ────────────────────────────────────────────────────────────
-  // LEGACY: _uploadFile() giữ lại để không phá vỡ các luồng cũ
-  // dùng _imageFile trực tiếp (ví dụ: camera capture cũ).
-  // Các luồng mới nên dùng _processAndSendMedia() thay thế.
-  // ────────────────────────────────────────────────────────────
-  Future<void> _uploadFile() async {
-    if (_imageFile == null) return;
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => const SafeSendDialog(
-        title: 'Gửi Hình Ảnh',
-        content: 'Bạn có chắc chắn muốn gửi bức ảnh này cho người khác không?',
-        icon: Icons.image_rounded,
-      ),
-    );
-    if (confirm != true) {
-      if (mounted) setState(() => _isLoading = false);
-      return;
-    }
-
-    try {
-      final fileName = DateTime.now().millisecondsSinceEpoch.toString();
-      final uploadTask = _chatProvider.uploadFile(_imageFile!, fileName);
-      final snapshot = await uploadTask;
-      _imageUrl = await snapshot.ref.getDownloadURL();
-
-      if (!mounted || resourceManager.isDisposed) return;
-      setState(() => _isLoading = false);
-      await _onSendMessageWithAutoDelete(_imageUrl, TypeMessage.image);
-    } catch (e) {
-      ErrorLogger.logError(e, null, context: 'Upload File');
-      if (mounted && !resourceManager.isDisposed) {
-        setState(() => _isLoading = false);
-      }
-      Fluttertoast.showToast(msg: 'Upload failed');
     }
   }
 
@@ -1040,7 +954,7 @@ class ChatPageState extends State<ChatPage>
         isOwnMessage: message.idFrom == _currentUserId,
         isPinned: message.isPinned,
         isDeleted: message.isDeleted,
-        messageContent: message.content,
+        messageContent: message.content, // đã giải mã từ Local DB
         onEdit: () => _editMessage(messageId, message.content),
         onDelete: () => _deleteMessage(messageId),
         onPin: () => _togglePinMessage(messageId, message.isPinned),
@@ -1125,7 +1039,6 @@ class ChatPageState extends State<ChatPage>
   void _setReplyToMessage(MessageChat message) {
     HapticFeedback.selectionClick();
     if (resourceManager.isDisposed || !mounted) return;
-
     setState(() => _replyingTo = message);
     _focusNode.requestFocus();
   }
@@ -1450,20 +1363,17 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  Future<void> _loadSmartReplies() async {
-    if (_listMessage.isEmpty || resourceManager.isDisposed) return;
+  // 🚀 Đọc Smart Replies từ Local DB — không cần giải mã thêm
+  void _loadSmartReplies() {
+    if (resourceManager.isDisposed) return;
 
-    final lastMessage = _listMessage.first;
-    final messageChat = MessageChat.fromDocument(lastMessage);
+    final messages = LocalDbService().getMessages(_groupChatId);
+    if (messages.isEmpty) return;
 
-    if (messageChat.idFrom != _currentUserId &&
-        messageChat.type == TypeMessage.text) {
-      final plaintext = await EncryptionService().decryptPayload(
-        messageChat.content,
-        _groupChatId,
-        [_currentUserId, widget.arguments.peerId],
-        _currentUserId,
-      );
+    final lastMessageData = messages.first;
+    if (lastMessageData['idFrom'] != _currentUserId &&
+        lastMessageData['type'] == TypeMessage.text) {
+      final plaintext = lastMessageData['content'] as String? ?? '';
       final replies = _smartReplyProvider.getRuleBasedReplies(plaintext);
       if (mounted && !resourceManager.isDisposed) {
         setState(() {
@@ -1488,7 +1398,6 @@ class ChatPageState extends State<ChatPage>
       final uri = Uri.parse(mapsUrl);
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
-        print('✅ Opened Maps: $mapsUrl');
       } else {
         Fluttertoast.showToast(
           msg: '❌ Cannot open Google Maps',
@@ -1538,7 +1447,6 @@ class ChatPageState extends State<ChatPage>
           msg: '📍 Location shared successfully',
           backgroundColor: Colors.green,
         );
-        print('✅ Location sent: ${locationData.mapsUrl}');
       } else {
         Fluttertoast.showToast(
           msg: '❌ Failed to get location. Please try again.',
@@ -1713,63 +1621,61 @@ class ChatPageState extends State<ChatPage>
   }
 
   void _showAIContextAnalysis() async {
-    if (_listMessage.isEmpty) {
+    // 🚀 Đọc context từ Local DB thay vì Firebase + Decrypt
+    final messages = LocalDbService().getMessages(_groupChatId);
+    if (messages.isEmpty) {
       Fluttertoast.showToast(msg: 'Chưa có đủ tin nhắn để phân tích');
       return;
     }
 
     final List<String> recentMessages = [];
-    for (final doc in _listMessage.take(15)) {
-      final rawMsg = MessageChat.fromDocument(doc);
-      final decryptedContent = await EncryptionService().decryptPayload(
-        rawMsg.content,
-        _groupChatId,
-        [_currentUserId, widget.arguments.peerId],
-        _currentUserId,
-      );
-      final sender = rawMsg.idFrom == _currentUserId
+    for (final data in messages.take(15)) {
+      final sender = data['idFrom'] == _currentUserId
           ? 'Tôi'
           : widget.arguments.peerNickname;
-      recentMessages.add('$sender: $decryptedContent');
+      recentMessages.add('$sender: ${data['content']}');
     }
     final orderedMessages = recentMessages.reversed.toList();
 
     if (!mounted || resourceManager.isDisposed) return;
 
     showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-                title: const Row(
-                  children: [
-                    Icon(Icons.auto_awesome, color: Colors.purple),
-                    SizedBox(width: 8),
-                    Text('AI Đang Phân Tích...'),
-                  ],
-                ),
-                content: FutureBuilder<String?>(
-                  future: AIBackendService().analyzeChatContext(
-                      orderedMessages, 'work', 'extract_tasks'),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const SizedBox(
-                          height: 100,
-                          child: Center(child: CircularProgressIndicator()));
-                    }
-                    if (snapshot.hasError || !snapshot.hasData) {
-                      return const Text('❌ Không thể kết nối với AI lúc này.');
-                    }
-                    return SingleChildScrollView(
-                      child: Text(snapshot.data!,
-                          style: const TextStyle(fontSize: 14, height: 1.5)),
-                    );
-                  },
-                ),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Đóng')),
-                ]));
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.auto_awesome, color: Colors.purple),
+            SizedBox(width: 8),
+            Text('AI Đang Phân Tích...'),
+          ],
+        ),
+        content: FutureBuilder<String?>(
+          future: AIBackendService()
+              .analyzeChatContext(orderedMessages, 'work', 'extract_tasks'),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const SizedBox(
+                  height: 100,
+                  child: Center(child: CircularProgressIndicator()));
+            }
+            if (snapshot.hasError || !snapshot.hasData) {
+              return const Text('❌ Không thể kết nối với AI lúc này.');
+            }
+            return SingleChildScrollView(
+              child: Text(snapshot.data!,
+                  style: const TextStyle(fontSize: 14, height: 1.5)),
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Đóng'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _openSearchMessages() async {
@@ -1795,17 +1701,22 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
+  // 🚀 Tìm vị trí từ Local DB
   void _scrollToMessage(String id) {
     if (!_listScrollController.hasClients) return;
-    final index = _listMessage.indexWhere((doc) => doc.id == id);
+
+    final allMessages = LocalDbService().getMessages(_groupChatId);
+    final index = allMessages.indexWhere((map) => map['messageId'] == id);
+
     if (index == -1) {
-      if (mounted && _limit <= _listMessage.length) {
+      if (mounted && _limit <= allMessages.length) {
         setState(() => _limit += _limitIncrement);
         Future.delayed(
             const Duration(milliseconds: 500), () => _scrollToMessage(id));
       }
       return;
     }
+
     final offset = (index * 72.0).clamp(
       0.0,
       _listScrollController.position.maxScrollExtent,
@@ -1979,41 +1890,41 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
+  // ────────────────────────────────────────────────────────────
+  // 🚀 CORE OFFLINE-FIRST: Sử dụng ValueListenableBuilder từ Hive
+  // ────────────────────────────────────────────────────────────
   Widget _buildListMessage() {
     return Flexible(
       child: _groupChatId.isNotEmpty
-          ? StreamBuilder<QuerySnapshot>(
-              stream: _chatProvider.getChatStream(_groupChatId, _limit),
-              builder: (_, snapshot) {
-                if (snapshot.hasData) {
-                  _listMessage = snapshot.data!.docs;
-                  if (_listMessage.isNotEmpty) {
-                    return ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                      itemBuilder: (_, index) =>
-                          _buildItemMessage(index, snapshot.data?.docs[index]),
-                      itemCount: snapshot.data?.docs.length,
-                      reverse: true,
-                      controller: _listScrollController,
-                      physics: const BouncingScrollPhysics(
-                        parent: AlwaysScrollableScrollPhysics(),
-                      ),
-                    );
-                  } else {
-                    return const Center(
-                      child: Text(
-                        'Bắt đầu cuộc trò chuyện...',
-                        style: TextStyle(color: Color(0xFF8E8E93)),
-                      ),
-                    );
-                  }
-                } else {
+          ? ValueListenableBuilder(
+              valueListenable: LocalDbService().messagesBox.listenable(),
+              builder: (context, Box box, _) {
+                final allMessages = LocalDbService().getMessages(_groupChatId);
+                final displayMessages = allMessages.take(_limit).toList();
+
+                if (displayMessages.isEmpty) {
                   return const Center(
-                    child: CircularProgressIndicator(
-                      color: ColorConstants.themeColor,
+                    child: Text(
+                      'Bắt đầu cuộc trò chuyện...',
+                      style: TextStyle(color: Color(0xFF8E8E93)),
                     ),
                   );
                 }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                  itemBuilder: (_, index) {
+                    final localData = displayMessages[index];
+                    return _buildItemMessageFromLocal(
+                        index, localData, displayMessages);
+                  },
+                  itemCount: displayMessages.length,
+                  reverse: true,
+                  controller: _listScrollController,
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                );
               },
             )
           : const Center(
@@ -2024,63 +1935,56 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  Widget _buildItemMessage(int index, DocumentSnapshot? document) {
-    if (document == null) return const SizedBox.shrink();
+  // Chuyển đổi dữ liệu Local (Map) thành MessageChat để render UI
+  Widget _buildItemMessageFromLocal(
+    int index,
+    Map<dynamic, dynamic> localData,
+    List<Map<dynamic, dynamic>> fullList,
+  ) {
+    final isHighlighted = _pendingScrollToMessageId == localData['messageId'];
+    final isPending = localData['status'] == 'pending';
 
-    final bool isHighlighted = _pendingScrollToMessageId == document.id;
-
-    return FutureBuilder<MessageChat>(
-      future: _decryptMessageForDisplay(document),
-      builder: (context, snapshot) {
-        final messageChat = snapshot.data ??
-            MessageChat.fromDocument(document).copyWith(content: '…');
-
-        return _buildMessageBubble(
-          index: index,
-          document: document,
-          messageChat: messageChat,
-          isHighlighted: isHighlighted,
-        );
-      },
+    final messageChat = MessageChat(
+      idFrom: localData['idFrom'] ?? '',
+      idTo: localData['idTo'] ?? '',
+      timestamp: localData['timestamp'] ?? '',
+      content: localData['content'] ?? '', // TEXT ĐÃ GIẢI MÃ từ Local DB
+      type: localData['type'] ?? 0,
+      isRead: localData['status'] == 'sent',
     );
-  }
-
-  Future<MessageChat> _decryptMessageForDisplay(
-      DocumentSnapshot document) async {
-    final raw = MessageChat.fromDocument(document);
-    if (raw.type != TypeMessage.text && raw.type != TypeMessage.image) {
-      return raw;
-    }
-    final plaintext = await EncryptionService().decryptPayload(
-      raw.content,
-      _groupChatId,
-      [_currentUserId, widget.arguments.peerId],
-      _currentUserId,
-    );
-    return raw.copyWith(content: plaintext);
-  }
-
-  Widget _buildMessageBubble({
-    required int index,
-    required DocumentSnapshot document,
-    required MessageChat messageChat,
-    bool isHighlighted = false,
-  }) {
-    final isMyMessage = messageChat.idFrom == _currentUserId;
-    final data = document.data() as Map<String, dynamic>?;
-    final isViewOnce = data?['isViewOnce'] ?? false;
-    final isViewed = data?['isViewed'] ?? false;
-
-    final bool isScamWarning = data?['scamWarning'] ?? false;
-    final String scamReason = data?['scamReason'] ?? '';
-    final bool hasReminder = data?['hasReminder'] ?? false;
 
     bool isLastInGroup = true;
     if (index > 0) {
-      final prevMsg = MessageChat.fromDocument(_listMessage[index - 1]);
-      isLastInGroup = prevMsg.idFrom != messageChat.idFrom;
+      final prevMsg = fullList[index - 1];
+      isLastInGroup = prevMsg['idFrom'] != messageChat.idFrom;
     }
+
+    return _buildMessageBubble(
+      messageId: localData['messageId'] ?? '',
+      messageChat: messageChat,
+      localData: localData,
+      isLastInGroup: isLastInGroup,
+      isHighlighted: isHighlighted,
+      isPending: isPending,
+    );
+  }
+
+  Widget _buildMessageBubble({
+    required String messageId,
+    required MessageChat messageChat,
+    required Map<dynamic, dynamic> localData,
+    required bool isLastInGroup,
+    bool isHighlighted = false,
+    bool isPending = false,
+  }) {
+    final isMyMessage = messageChat.idFrom == _currentUserId;
     final double tailRadius = isLastInGroup ? 4.0 : 20.0;
+
+    final bool isScamWarning = localData['scamWarning'] ?? false;
+    final String scamReason = localData['scamReason'] ?? '';
+    final bool hasReminder = localData['hasReminder'] ?? false;
+    final bool isViewOnce = localData['isViewOnce'] ?? false;
+    final bool isViewed = localData['isViewed'] ?? false;
 
     Widget wrapHighlight(Widget child) {
       if (!isHighlighted) return child;
@@ -2094,6 +1998,7 @@ class ChatPageState extends State<ChatPage>
       );
     }
 
+    // ── VIEW ONCE ──────────────────────────────────────────────
     if (isViewOnce) {
       return wrapHighlight(
         Container(
@@ -2104,7 +2009,7 @@ class ChatPageState extends State<ChatPage>
             children: [
               ViewOnceMessageWidget(
                 groupChatId: _groupChatId,
-                messageId: document.id,
+                messageId: messageId,
                 content: messageChat.content,
                 type: messageChat.type,
                 currentUserId: _currentUserId,
@@ -2117,6 +2022,7 @@ class ChatPageState extends State<ChatPage>
       );
     }
 
+    // ── VOICE ──────────────────────────────────────────────────
     if (messageChat.type == 3 && _voiceProvider != null) {
       return wrapHighlight(
         Container(
@@ -2136,9 +2042,8 @@ class ChatPageState extends State<ChatPage>
       );
     }
 
-    // ── VIDEO message bubble ──────────────────────────────────
+    // ── VIDEO ──────────────────────────────────────────────────
     if (messageChat.type == TypeMessage.video) {
-      // Tách "videoUrl|thumbnailUrl" — thumbnail có thể không có
       final parts = messageChat.content.split('|');
       final videoUrl = parts.isNotEmpty ? parts[0] : '';
       final thumbnailUrl = parts.length > 1 ? parts[1] : '';
@@ -2156,14 +2061,13 @@ class ChatPageState extends State<ChatPage>
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      // Chỉ truyền videoUrl sạch vào VideoPlayerPage
                       builder: (_) => VideoPlayerPage(videoUrl: videoUrl),
                     ),
                   );
                 },
                 onLongPress: () {
                   HapticFeedback.heavyImpact();
-                  _showAdvancedMessageOptions(messageChat, document.id);
+                  _showAdvancedMessageOptions(messageChat, messageId);
                 },
                 child: Container(
                   width: MediaQuery.of(context).size.width * 0.65,
@@ -2184,33 +2088,34 @@ class ChatPageState extends State<ChatPage>
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-                        // Hiển thị thumbnail nếu có, fallback màu đen
-                        thumbnailUrl.isNotEmpty
-                            ? Image.network(
-                                thumbnailUrl,
-                                fit: BoxFit.cover,
-                                width: double.infinity,
-                                height: double.infinity,
-                                loadingBuilder:
-                                    (context, child, loadingProgress) {
-                                  if (loadingProgress == null) return child;
-                                  return Container(
-                                    color: Colors.black54,
-                                    child: const Center(
-                                      child: CircularProgressIndicator(
-                                          color: Colors.white),
-                                    ),
-                                  );
-                                },
-                                errorBuilder: (context, error, stackTrace) =>
-                                    Container(color: Colors.black54),
-                              )
-                            : Container(color: Colors.black54),
-                        const Icon(
-                          Icons.play_circle_fill_rounded,
-                          size: 56,
-                          color: Colors.white,
-                        ),
+                        if (thumbnailUrl.isNotEmpty && !isPending)
+                          Image.network(
+                            thumbnailUrl,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Container(
+                                color: Colors.black54,
+                                child: const Center(
+                                    child: CircularProgressIndicator(
+                                        color: Colors.white)),
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) =>
+                                Container(color: Colors.black54),
+                          )
+                        else
+                          Container(color: Colors.black54),
+                        if (isPending)
+                          const CircularProgressIndicator(color: Colors.white)
+                        else
+                          const Icon(
+                            Icons.play_circle_fill_rounded,
+                            size: 56,
+                            color: Colors.white,
+                          ),
                         Positioned(
                           bottom: 8,
                           right: 8,
@@ -2244,8 +2149,8 @@ class ChatPageState extends State<ChatPage>
         ),
       );
     }
-    // ─────────────────────────────────────────────────────────
 
+    // ── TEXT ───────────────────────────────────────────────────
     if (messageChat.type == TypeMessage.text) {
       final location =
           _locationProvider?.parseLocationFromMessage(messageChat.content);
@@ -2266,11 +2171,11 @@ class ChatPageState extends State<ChatPage>
                   GestureDetector(
                     onLongPress: () {
                       HapticFeedback.heavyImpact();
-                      _showAdvancedMessageOptions(messageChat, document.id);
+                      _showAdvancedMessageOptions(messageChat, messageId);
                     },
                     onDoubleTap: () {
                       HapticFeedback.mediumImpact();
-                      _showReactionPicker(document.id);
+                      _showReactionPicker(messageId);
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(
@@ -2312,6 +2217,7 @@ class ChatPageState extends State<ChatPage>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // Scam Warning
                           if (!isMyMessage && isScamWarning)
                             Container(
                               margin: const EdgeInsets.only(bottom: 8),
@@ -2338,6 +2244,7 @@ class ChatPageState extends State<ChatPage>
                                 ],
                               ),
                             ),
+                          // Reminder Hint
                           if (!isMyMessage && hasReminder)
                             Container(
                               margin: const EdgeInsets.only(bottom: 8),
@@ -2369,6 +2276,7 @@ class ChatPageState extends State<ChatPage>
                                 ],
                               ),
                             ),
+                          // Content
                           if (messageChat.isDeleted)
                             Text(
                               messageChat.content,
@@ -2502,8 +2410,9 @@ class ChatPageState extends State<ChatPage>
                                 height: 1.3,
                               ),
                             ),
+                          // Read receipt + edited + pending indicator
                           if (messageChat.editedAt != null ||
-                              (isMyMessage && !messageChat.isDeleted))
+                              isMyMessage && !messageChat.isDeleted)
                             Padding(
                               padding: const EdgeInsets.only(top: 4),
                               child: Row(
@@ -2525,13 +2434,17 @@ class ChatPageState extends State<ChatPage>
                                     const SizedBox(width: 4),
                                   if (isMyMessage && !messageChat.isDeleted)
                                     Icon(
-                                      messageChat.isRead
-                                          ? Icons.done_all_rounded
-                                          : Icons.check_rounded,
+                                      isPending
+                                          ? Icons.access_time_rounded
+                                          : messageChat.isRead
+                                              ? Icons.done_all_rounded
+                                              : Icons.check_rounded,
                                       size: 14,
-                                      color: messageChat.isRead
-                                          ? Colors.white
-                                          : Colors.white70,
+                                      color: isPending
+                                          ? Colors.white54
+                                          : messageChat.isRead
+                                              ? Colors.white
+                                              : Colors.white70,
                                     ),
                                 ],
                               ),
@@ -2547,7 +2460,7 @@ class ChatPageState extends State<ChatPage>
                       children: [
                         IconButton(
                           icon: const Icon(Icons.add_reaction, size: 18),
-                          onPressed: () => _showReactionPicker(document.id),
+                          onPressed: () => _showReactionPicker(messageId),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
                         ),
@@ -2555,7 +2468,7 @@ class ChatPageState extends State<ChatPage>
                           IconButton(
                             icon: const Icon(Icons.alarm_add, size: 18),
                             onPressed: () =>
-                                _setMessageReminder(messageChat, document.id),
+                                _setMessageReminder(messageChat, messageId),
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(),
                           ),
@@ -2564,11 +2477,12 @@ class ChatPageState extends State<ChatPage>
                   ],
                 ],
               ),
+              // Scam check button (chỉ cho tin nhắn không phải của mình)
               if (!isMyMessage && messageChat.type == TypeMessage.text) ...[
-                if (_scamResults[document.id] != null &&
-                    _scamResults[document.id] != 'SAFE')
-                  ScamWarningWidget(status: _scamResults[document.id]!),
-                if (_scamResults[document.id] == null && !isScamWarning)
+                if (_scamResults[messageId] != null &&
+                    _scamResults[messageId] != 'SAFE')
+                  ScamWarningWidget(status: _scamResults[messageId]!),
+                if (_scamResults[messageId] == null && !isScamWarning)
                   Padding(
                     padding: const EdgeInsets.only(top: 4, bottom: 8),
                     child: InkWell(
@@ -2577,9 +2491,7 @@ class ChatPageState extends State<ChatPage>
                         final status = await AIBackendService()
                             .checkScam(messageChat.content);
                         if (mounted) {
-                          setState(() {
-                            _scamResults[document.id] = status;
-                          });
+                          setState(() => _scamResults[messageId] = status);
                           if (status == 'SAFE') {
                             Fluttertoast.showToast(msg: 'Tin nhắn an toàn!');
                           }
@@ -2600,9 +2512,9 @@ class ChatPageState extends State<ChatPage>
                     ),
                   ),
               ],
+              // Reactions
               StreamBuilder<QuerySnapshot>(
-                stream:
-                    _reactionProvider.getReactions(_groupChatId, document.id),
+                stream: _reactionProvider.getReactions(_groupChatId, messageId),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                     return const SizedBox.shrink();
@@ -2615,7 +2527,6 @@ class ChatPageState extends State<ChatPage>
                     final data = doc.data() as Map<String, dynamic>;
                     final emoji = data['emoji'] as String;
                     final userId = data['userId'] as String;
-
                     reactions[emoji] = (reactions[emoji] ?? 0) + 1;
                     if (userId == _currentUserId) {
                       userReactions[emoji] = true;
@@ -2631,7 +2542,7 @@ class ChatPageState extends State<ChatPage>
                       onReactionTap: (emoji) {
                         _reactionProvider.toggleReaction(
                           _groupChatId,
-                          document.id,
+                          messageId,
                           _currentUserId,
                           emoji,
                         );
@@ -2644,7 +2555,10 @@ class ChatPageState extends State<ChatPage>
           ),
         ),
       );
-    } else if (messageChat.type == TypeMessage.image) {
+    }
+
+    // ── IMAGE ──────────────────────────────────────────────────
+    if (messageChat.type == TypeMessage.image) {
       return wrapHighlight(
         Container(
           margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
@@ -2664,7 +2578,7 @@ class ChatPageState extends State<ChatPage>
                 },
                 onLongPress: () {
                   HapticFeedback.heavyImpact();
-                  _showAdvancedMessageOptions(messageChat, document.id);
+                  _showAdvancedMessageOptions(messageChat, messageId);
                 },
                 child: Container(
                   decoration: BoxDecoration(
@@ -2679,63 +2593,45 @@ class ChatPageState extends State<ChatPage>
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(20),
-                    child: Image.network(
-                      messageChat.content,
-                      width: MediaQuery.of(context).size.width * 0.65,
-                      height: 250,
-                      fit: BoxFit.cover,
-                      loadingBuilder: (_, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return Container(
-                          width: MediaQuery.of(context).size.width * 0.65,
-                          height: 250,
-                          color: const Color(0xFFF2F2F7),
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              value: loadingProgress.expectedTotalBytes != null
-                                  ? loadingProgress.cumulativeBytesLoaded /
-                                      loadingProgress.expectedTotalBytes!
-                                  : null,
+                    child: isPending
+                        ? Container(
+                            width: MediaQuery.of(context).size.width * 0.65,
+                            height: 250,
+                            color: const Color(0xFFF2F2F7),
+                            child: const Center(
+                              child: CircularProgressIndicator(),
+                            ),
+                          )
+                        : Image.network(
+                            messageChat.content,
+                            width: MediaQuery.of(context).size.width * 0.65,
+                            height: 250,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (_, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Container(
+                                width: MediaQuery.of(context).size.width * 0.65,
+                                height: 250,
+                                color: const Color(0xFFF2F2F7),
+                                child: Center(
+                                  child: CircularProgressIndicator(
+                                    value: loadingProgress.expectedTotalBytes !=
+                                            null
+                                        ? loadingProgress
+                                                .cumulativeBytesLoaded /
+                                            loadingProgress.expectedTotalBytes!
+                                        : null,
+                                  ),
+                                ),
+                              );
+                            },
+                            errorBuilder: (_, __, ___) => Container(
+                              width: MediaQuery.of(context).size.width * 0.65,
+                              height: 250,
+                              color: ColorConstants.greyColor2,
+                              child: const Icon(Icons.error),
                             ),
                           ),
-                        );
-                      },
-                      errorBuilder: (_, __, ___) => Container(
-                        width: MediaQuery.of(context).size.width * 0.65,
-                        height: 250,
-                        color: ColorConstants.greyColor2,
-                        child: const Icon(Icons.error),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    } else {
-      // Sticker
-      return wrapHighlight(
-        Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          child: Row(
-            mainAxisAlignment:
-                isMyMessage ? MainAxisAlignment.end : MainAxisAlignment.start,
-            children: [
-              GestureDetector(
-                onLongPress: () =>
-                    _showAdvancedMessageOptions(messageChat, document.id),
-                child: Image.asset(
-                  'images/${messageChat.content}.gif',
-                  width: 100,
-                  height: 100,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    width: 100,
-                    height: 100,
-                    color: ColorConstants.greyColor2,
-                    child: const Icon(Icons.error),
                   ),
                 ),
               ),
@@ -2744,6 +2640,35 @@ class ChatPageState extends State<ChatPage>
         ),
       );
     }
+
+    // ── STICKER ────────────────────────────────────────────────
+    return wrapHighlight(
+      Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          mainAxisAlignment:
+              isMyMessage ? MainAxisAlignment.end : MainAxisAlignment.start,
+          children: [
+            GestureDetector(
+              onLongPress: () =>
+                  _showAdvancedMessageOptions(messageChat, messageId),
+              child: Image.asset(
+                'images/${messageChat.content}.gif',
+                width: 100,
+                height: 100,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  width: 100,
+                  height: 100,
+                  color: ColorConstants.greyColor2,
+                  child: const Icon(Icons.error),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildStickers() {
@@ -2814,13 +2739,11 @@ class ChatPageState extends State<ChatPage>
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            // ── CHỌN ẢNH (dùng _onPickImage mới) ──────────────
             _buildFeatureButton(
               icon: Icons.image_rounded,
               label: 'Ảnh',
               onTap: _onPickImage,
             ),
-            // ── CHỌN VIDEO (MỚI) ────────────────────────────────
             _buildFeatureButton(
               icon: Icons.videocam_rounded,
               label: 'Video',
@@ -2841,7 +2764,7 @@ class ChatPageState extends State<ChatPage>
                         content: content,
                         type: type,
                       );
-                      await _loadSmartReplies();
+                      _loadSmartReplies();
                     },
                   ),
                 );
@@ -2960,9 +2883,7 @@ class ChatPageState extends State<ChatPage>
   }
 
   // ────────────────────────────────────────────────────────────
-  // MEDIA LOADING OVERLAY (MỚI)
-  // Hiển thị khi _isLoadingMedia = true, chặn thao tác người dùng
-  // trong lúc nén và upload ảnh/video.
+  // MEDIA LOADING OVERLAY
   // ────────────────────────────────────────────────────────────
   Widget _buildMediaLoadingOverlay() {
     if (!_isLoadingMedia) return const SizedBox.shrink();
@@ -3102,7 +3023,6 @@ class ChatPageState extends State<ChatPage>
                         iconSize: 28,
                         onPressed: _toggleFeaturesMenu,
                       ),
-                    // ── Nút ảnh trong thanh input dùng _onPickImage mới ──
                     if (showFullFeatures && !_showFeaturesMenu)
                       IconButton(
                         icon: const Icon(Icons.image_rounded),
@@ -3342,10 +3262,6 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ────────────────────────────────────────────────────────────
-  // _buildChatContent: tích hợp overlay nén media (_isLoadingMedia)
-  // song song với overlay upload thông thường (_isLoading).
-  // ────────────────────────────────────────────────────────────
   Widget _buildChatContent() {
     return Stack(
       children: [
@@ -3362,11 +3278,11 @@ class ChatPageState extends State<ChatPage>
             _buildAdvancedInput(),
           ],
         ),
-        // Overlay upload thông thường (ảnh cũ / voice)
+        // Overlay upload thông thường (voice)
         Positioned(
           child: _isLoading ? const LoadingView() : const SizedBox.shrink(),
         ),
-        // Overlay nén/upload media (ảnh + video mới)
+        // Overlay nén/upload media (ảnh + video)
         if (_isLoadingMedia)
           Positioned.fill(child: _buildMediaLoadingOverlay()),
       ],
