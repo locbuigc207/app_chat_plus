@@ -954,7 +954,7 @@ class ChatPageState extends State<ChatPage>
         isOwnMessage: message.idFrom == _currentUserId,
         isPinned: message.isPinned,
         isDeleted: message.isDeleted,
-        messageContent: message.content, // đã giải mã từ Local DB
+        messageContent: message.content,
         onEdit: () => _editMessage(messageId, message.content),
         onDelete: () => _deleteMessage(messageId),
         onPin: () => _togglePinMessage(messageId, message.isPinned),
@@ -1042,6 +1042,9 @@ class ChatPageState extends State<ChatPage>
     setState(() => _replyingTo = message);
     _focusNode.requestFocus();
   }
+
+  // 🚀 Alias ngắn gọn cho SwipeToReplyWrapper gọi
+  void _setReply(MessageChat message) => _setReplyToMessage(message);
 
   void _showReactionPicker(String messageId) {
     if (resourceManager.isDisposed) return;
@@ -1913,17 +1916,21 @@ class ChatPageState extends State<ChatPage>
 
                 return ListView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                  itemCount: displayMessages.length,
+                  reverse: true,
+                  controller: _listScrollController,
+
+                  // 🚀 VẬT LÝ CUỘN BOUNCING CHUẨN iOS — MỌI THIẾT BỊ ĐỀU MỀM MẠI
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                    decelerationRate: ScrollDecelerationRate.fast,
+                  ),
+
                   itemBuilder: (_, index) {
                     final localData = displayMessages[index];
                     return _buildItemMessageFromLocal(
                         index, localData, displayMessages);
                   },
-                  itemCount: displayMessages.length,
-                  reverse: true,
-                  controller: _listScrollController,
-                  physics: const BouncingScrollPhysics(
-                    parent: AlwaysScrollableScrollPhysics(),
-                  ),
                 );
               },
             )
@@ -1959,13 +1966,22 @@ class ChatPageState extends State<ChatPage>
       isLastInGroup = prevMsg['idFrom'] != messageChat.idFrom;
     }
 
-    return _buildMessageBubble(
+    final isMe = messageChat.idFrom == _currentUserId;
+
+    // 🚀 XÂY DỰNG UI BỌC TRONG SwipeToReplyWrapper
+    final Widget bubbleWidget = _buildMessageBubble(
       messageId: localData['messageId'] ?? '',
       messageChat: messageChat,
       localData: localData,
       isLastInGroup: isLastInGroup,
       isHighlighted: isHighlighted,
       isPending: isPending,
+    );
+
+    return SwipeToReplyWrapper(
+      isMe: isMe,
+      onSwipe: () => _setReply(messageChat),
+      child: bubbleWidget,
     );
   }
 
@@ -3012,30 +3028,46 @@ class ChatPageState extends State<ChatPage>
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
+                    // 🚀 NÚT MỞ FEATURES MENU CÓ BOUNCING EFFECT
                     if (showFullFeatures)
-                      IconButton(
-                        icon: Icon(
-                          _showFeaturesMenu
-                              ? Icons.close_rounded
-                              : Icons.add_circle_rounded,
+                      BouncingWrapper(
+                        onTap: _toggleFeaturesMenu,
+                        child: Padding(
+                          padding: const EdgeInsets.all(10.0),
+                          child: Icon(
+                            _showFeaturesMenu
+                                ? Icons.close_rounded
+                                : Icons.add_circle_rounded,
+                            color: const Color(0xFF8E8E93),
+                            size: 28,
+                          ),
                         ),
-                        color: const Color(0xFF8E8E93),
-                        iconSize: 28,
-                        onPressed: _toggleFeaturesMenu,
                       ),
+                    // 🚀 NÚT CHỌN ẢNH CÓ BOUNCING EFFECT
                     if (showFullFeatures && !_showFeaturesMenu)
-                      IconButton(
-                        icon: const Icon(Icons.image_rounded),
-                        color: const Color(0xFF8E8E93),
-                        iconSize: 26,
-                        onPressed: _onPickImage,
+                      BouncingWrapper(
+                        onTap: _onPickImage,
+                        child: const Padding(
+                          padding: EdgeInsets.all(10.0),
+                          child: Icon(
+                            Icons.image_rounded,
+                            color: Color(0xFF8E8E93),
+                            size: 26,
+                          ),
+                        ),
                       ),
+                    // 🚀 NÚT STICKER CÓ BOUNCING EFFECT
                     if (showFullFeatures && !_showFeaturesMenu)
-                      IconButton(
-                        icon: const Icon(Icons.face_rounded),
-                        color: const Color(0xFF8E8E93),
-                        iconSize: 26,
-                        onPressed: _getSticker,
+                      BouncingWrapper(
+                        onTap: _getSticker,
+                        child: const Padding(
+                          padding: EdgeInsets.all(10.0),
+                          child: Icon(
+                            Icons.face_rounded,
+                            color: Color(0xFF8E8E93),
+                            size: 26,
+                          ),
+                        ),
                       ),
                     Expanded(
                       child: Container(
@@ -3093,9 +3125,11 @@ class ChatPageState extends State<ChatPage>
                         ),
                       ),
                     ),
+                    // 🚀 NÚT GỬI / MIC CÓ BOUNCING EFFECT (scaleFactor = 0.85 → nhấn lún sâu)
                     Padding(
                       padding: const EdgeInsets.all(6.0),
-                      child: GestureDetector(
+                      child: BouncingWrapper(
+                        scaleFactor: 0.85,
                         onTap: () {
                           if (_chatInputController.text.trim().isNotEmpty) {
                             _onSendMessageWithAutoDelete(

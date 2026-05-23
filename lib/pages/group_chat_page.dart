@@ -1411,8 +1411,11 @@ class GroupChatPageState extends State<GroupChatPage>
                   itemCount: displayMessages.length,
                   reverse: true,
                   controller: _listScrollController,
+                  // 🚀 Physics cuộn mượt kiểu iOS, chống trôi tuột
                   physics: const BouncingScrollPhysics(
-                      parent: AlwaysScrollableScrollPhysics()),
+                    parent: AlwaysScrollableScrollPhysics(),
+                    decelerationRate: ScrollDecelerationRate.fast,
+                  ),
                   itemBuilder: (_, index) {
                     final localData = displayMessages[index];
                     return _buildItemMessageFromLocal(
@@ -1525,7 +1528,7 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   // ---------------------------------------------------------------------------
-  // TEXT MESSAGE
+  // TEXT MESSAGE (với SwipeToReplyWrapper)
   // ---------------------------------------------------------------------------
 
   Widget _buildTextMessageFromLocal({
@@ -1542,216 +1545,223 @@ class GroupChatPageState extends State<GroupChatPage>
     final double tailRadius = isLastInGroup ? 4.0 : 20.0;
     final location = _locationProvider?.parseLocationFromMessage(msg.content);
 
-    Widget bubble = Container(
-      margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
-      child: Column(
-        crossAxisAlignment:
-            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-        children: [
-          if (!isMe && isLastInGroup) _buildSenderInfo(msg.idFrom),
-          Row(
-            mainAxisAlignment:
-                isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              if (!isMe)
-                isLastInGroup
-                    ? _buildAvatar(msg.idFrom)
-                    : const SizedBox(width: 40),
-              Flexible(
-                child: GestureDetector(
-                  onLongPress: () {
-                    HapticFeedback.heavyImpact();
-                    _showMessageOptions(msg, messageId);
-                  },
-                  onDoubleTap: () {
-                    HapticFeedback.mediumImpact();
-                    _showReactionPicker(messageId);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    constraints: BoxConstraints(
-                        maxWidth: MediaQuery.of(context).size.width * 0.72),
-                    decoration: BoxDecoration(
-                      gradient: isMe
-                          ? const LinearGradient(
-                              colors: [Color(0xFF007AFF), Color(0xFF0056D6)])
-                          : null,
-                      color: isMe ? null : Colors.white,
-                      borderRadius: BorderRadius.only(
-                        topLeft: const Radius.circular(20),
-                        topRight: const Radius.circular(20),
-                        bottomLeft: Radius.circular(isMe ? 20 : tailRadius),
-                        bottomRight: Radius.circular(isMe ? tailRadius : 20),
+    // 🚀 Toàn bộ bubble được bọc bởi SwipeToReplyWrapper
+    Widget bubble = SwipeToReplyWrapper(
+      isMe: isMe,
+      onSwipe: () => _setReply(msg),
+      child: Container(
+        margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+        child: Column(
+          crossAxisAlignment:
+              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            if (!isMe && isLastInGroup) _buildSenderInfo(msg.idFrom),
+            Row(
+              mainAxisAlignment:
+                  isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (!isMe)
+                  isLastInGroup
+                      ? _buildAvatar(msg.idFrom)
+                      : const SizedBox(width: 40),
+                Flexible(
+                  child: GestureDetector(
+                    onLongPress: () {
+                      HapticFeedback.heavyImpact();
+                      _showMessageOptions(msg, messageId);
+                    },
+                    onDoubleTap: () {
+                      HapticFeedback.mediumImpact();
+                      _showReactionPicker(messageId);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      constraints: BoxConstraints(
+                          maxWidth: MediaQuery.of(context).size.width * 0.72),
+                      decoration: BoxDecoration(
+                        gradient: isMe
+                            ? const LinearGradient(
+                                colors: [Color(0xFF007AFF), Color(0xFF0056D6)])
+                            : null,
+                        color: isMe ? null : Colors.white,
+                        borderRadius: BorderRadius.only(
+                          topLeft: const Radius.circular(20),
+                          topRight: const Radius.circular(20),
+                          bottomLeft: Radius.circular(isMe ? 20 : tailRadius),
+                          bottomRight: Radius.circular(isMe ? tailRadius : 20),
+                        ),
+                        boxShadow: isMe
+                            ? [
+                                BoxShadow(
+                                    color: const Color(0xFF007AFF)
+                                        .withOpacity(0.25),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 4))
+                              ]
+                            : [
+                                BoxShadow(
+                                    color: Colors.black.withOpacity(0.04),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 4))
+                              ],
                       ),
-                      boxShadow: isMe
-                          ? [
-                              BoxShadow(
-                                  color:
-                                      const Color(0xFF007AFF).withOpacity(0.25),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4))
-                            ]
-                          : [
-                              BoxShadow(
-                                  color: Colors.black.withOpacity(0.04),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4))
-                            ],
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (!isMe && isScamWarning)
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.red.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.red),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.warning,
+                                      color: Colors.red, size: 16),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'CẢNH BÁO AI: $scamReason',
+                                      style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.red,
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (!isMe && hasReminder)
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.alarm_add,
+                                      color: Colors.blue, size: 16),
+                                  const SizedBox(width: 8),
+                                  const Expanded(
+                                    child: Text(
+                                      'AI: Phát hiện có công việc cần lưu!',
+                                      style: TextStyle(
+                                          fontSize: 12, color: Colors.blue),
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        _setReminder(msg, messageId),
+                                    style: TextButton.styleFrom(
+                                        padding: EdgeInsets.zero,
+                                        minimumSize: const Size(40, 24)),
+                                    child: const Text('XEM',
+                                        style: TextStyle(fontSize: 12)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (msg.isDeleted)
+                            Text(
+                              'This message was deleted',
+                              style: TextStyle(
+                                  color: isMe
+                                      ? Colors.white70
+                                      : const Color(0xFF8E8E93),
+                                  fontStyle: FontStyle.italic,
+                                  fontSize: 15),
+                            )
+                          else if (location != null)
+                            _buildLocationContent(location, isMe)
+                          else
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  msg.content,
+                                  style: TextStyle(
+                                      color: isMe
+                                          ? Colors.white
+                                          : const Color(0xFF111418),
+                                      fontSize: 16,
+                                      height: 1.3),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      if (isMe)
+                                        Icon(
+                                          isPending
+                                              ? Icons.access_time_rounded
+                                              : msg.isRead
+                                                  ? Icons.done_all_rounded
+                                                  : Icons.check_rounded,
+                                          size: 14,
+                                          color: isPending
+                                              ? Colors.white54
+                                              : msg.isRead
+                                                  ? Colors.white
+                                                  : Colors.white70,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                        ],
+                      ),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  ),
+                ),
+              ],
+            ),
+            if (!isMe && msg.type == TypeMessage.text) ...[
+              if (_scamResults[messageId] != null &&
+                  _scamResults[messageId] != 'SAFE')
+                ScamWarningWidget(status: _scamResults[messageId]!),
+              if (_scamResults[messageId] == null && !isScamWarning)
+                Padding(
+                  padding: const EdgeInsets.only(left: 52, top: 4, bottom: 4),
+                  child: InkWell(
+                    onTap: () async {
+                      Fluttertoast.showToast(msg: 'AI Đang quét an toàn...');
+                      final status =
+                          await AIBackendService().checkScam(msg.content);
+                      if (mounted) {
+                        setState(() => _scamResults[messageId] = status);
+                      }
+                      if (status == 'SAFE') {
+                        Fluttertoast.showToast(msg: 'Tin nhắn an toàn!');
+                      }
+                    },
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (!isMe && isScamWarning)
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.red.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.red),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.warning,
-                                    color: Colors.red, size: 16),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'CẢNH BÁO AI: $scamReason',
-                                    style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.red,
-                                        fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        if (!isMe && hasReminder)
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.alarm_add,
-                                    color: Colors.blue, size: 16),
-                                const SizedBox(width: 8),
-                                const Expanded(
-                                  child: Text(
-                                    'AI: Phát hiện có công việc cần lưu!',
-                                    style: TextStyle(
-                                        fontSize: 12, color: Colors.blue),
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: () => _setReminder(msg, messageId),
-                                  style: TextButton.styleFrom(
-                                      padding: EdgeInsets.zero,
-                                      minimumSize: const Size(40, 24)),
-                                  child: const Text('XEM',
-                                      style: TextStyle(fontSize: 12)),
-                                ),
-                              ],
-                            ),
-                          ),
-                        if (msg.isDeleted)
-                          Text(
-                            'This message was deleted',
-                            style: TextStyle(
-                                color: isMe
-                                    ? Colors.white70
-                                    : const Color(0xFF8E8E93),
-                                fontStyle: FontStyle.italic,
-                                fontSize: 15),
-                          )
-                        else if (location != null)
-                          _buildLocationContent(location, isMe)
-                        else
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                msg.content,
-                                style: TextStyle(
-                                    color: isMe
-                                        ? Colors.white
-                                        : const Color(0xFF111418),
-                                    fontSize: 16,
-                                    height: 1.3),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.only(top: 4),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  children: [
-                                    if (isMe)
-                                      Icon(
-                                        isPending
-                                            ? Icons.access_time_rounded
-                                            : msg.isRead
-                                                ? Icons.done_all_rounded
-                                                : Icons.check_rounded,
-                                        size: 14,
-                                        color: isPending
-                                            ? Colors.white54
-                                            : msg.isRead
-                                                ? Colors.white
-                                                : Colors.white70,
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
+                        Icon(Icons.shield_outlined,
+                            size: 14, color: Colors.green),
+                        SizedBox(width: 4),
+                        Text('Quét an toàn (AI)',
+                            style:
+                                TextStyle(fontSize: 12, color: Colors.green)),
                       ],
                     ),
                   ),
                 ),
-              ),
             ],
-          ),
-          if (!isMe && msg.type == TypeMessage.text) ...[
-            if (_scamResults[messageId] != null &&
-                _scamResults[messageId] != 'SAFE')
-              ScamWarningWidget(status: _scamResults[messageId]!),
-            if (_scamResults[messageId] == null && !isScamWarning)
-              Padding(
-                padding: const EdgeInsets.only(left: 52, top: 4, bottom: 4),
-                child: InkWell(
-                  onTap: () async {
-                    Fluttertoast.showToast(msg: 'AI Đang quét an toàn...');
-                    final status =
-                        await AIBackendService().checkScam(msg.content);
-                    if (mounted) {
-                      setState(() => _scamResults[messageId] = status);
-                    }
-                    if (status == 'SAFE') {
-                      Fluttertoast.showToast(msg: 'Tin nhắn an toàn!');
-                    }
-                  },
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.shield_outlined,
-                          size: 14, color: Colors.green),
-                      SizedBox(width: 4),
-                      Text('Quét an toàn (AI)',
-                          style: TextStyle(fontSize: 12, color: Colors.green)),
-                    ],
-                  ),
-                ),
-              ),
+            _buildReactions(messageId, isMe),
+            _buildTimestamp(msg.timestamp, isMe),
           ],
-          _buildReactions(messageId, isMe),
-          _buildTimestamp(msg.timestamp, isMe),
-        ],
+        ),
       ),
     );
 
@@ -2331,7 +2341,7 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   // ---------------------------------------------------------------------------
-  // INPUT BAR
+  // INPUT BAR (với BouncingWrapper trên các nút)
   // ---------------------------------------------------------------------------
 
   Widget _buildInput() {
@@ -2422,20 +2432,22 @@ class GroupChatPageState extends State<GroupChatPage>
                       style: const TextStyle(
                           color: Colors.red, fontWeight: FontWeight.bold)),
                   const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.red, size: 20),
-                    onPressed: _cancelRecording,
-                    padding: EdgeInsets.zero,
-                    constraints:
-                        const BoxConstraints(minWidth: 36, minHeight: 36),
+                  // 🚀 BouncingWrapper cho nút hủy recording
+                  BouncingWrapper(
+                    onTap: _cancelRecording,
+                    child: const Padding(
+                      padding: EdgeInsets.all(8.0),
+                      child: Icon(Icons.delete, color: Colors.red, size: 20),
+                    ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.send,
-                        color: Color(0xFF007AFF), size: 20),
-                    onPressed: _stopRecording,
-                    padding: EdgeInsets.zero,
-                    constraints:
-                        const BoxConstraints(minWidth: 36, minHeight: 36),
+                  // 🚀 BouncingWrapper cho nút gửi recording
+                  BouncingWrapper(
+                    onTap: _stopRecording,
+                    child: const Padding(
+                      padding: EdgeInsets.all(8.0),
+                      child:
+                          Icon(Icons.send, color: Color(0xFF007AFF), size: 20),
+                    ),
                   ),
                 ],
               ),
@@ -2454,26 +2466,37 @@ class GroupChatPageState extends State<GroupChatPage>
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                IconButton(
-                  icon: Icon(
-                    _showFeaturesMenu
-                        ? Icons.close_rounded
-                        : Icons.add_circle_rounded,
-                    color: const Color(0xFF8E8E93),
-                    size: 28,
+                // 🚀 BouncingWrapper cho nút mở features menu
+                BouncingWrapper(
+                  onTap: _toggleFeaturesMenu,
+                  child: Padding(
+                    padding: const EdgeInsets.all(10.0),
+                    child: Icon(
+                      _showFeaturesMenu
+                          ? Icons.close_rounded
+                          : Icons.add_circle_rounded,
+                      color: const Color(0xFF8E8E93),
+                      size: 28,
+                    ),
                   ),
-                  onPressed: _toggleFeaturesMenu,
                 ),
                 if (!_showFeaturesMenu)
-                  IconButton(
-                    icon: const Icon(Icons.image_rounded,
-                        color: Color(0xFF8E8E93), size: 26),
-                    onPressed: _onPickImage,
+                  // 🚀 BouncingWrapper cho nút chọn ảnh nhanh
+                  BouncingWrapper(
+                    onTap: _onPickImage,
+                    child: const Padding(
+                      padding: EdgeInsets.all(10.0),
+                      child: Icon(Icons.image_rounded,
+                          color: Color(0xFF8E8E93), size: 26),
+                    ),
                   ),
-                IconButton(
-                  icon: const Icon(Icons.face,
-                      color: Color(0xFF8E8E93), size: 26),
-                  onPressed: _getSticker,
+                // 🚀 BouncingWrapper cho nút sticker
+                BouncingWrapper(
+                  onTap: _getSticker,
+                  child: const Padding(
+                    padding: EdgeInsets.all(10.0),
+                    child: Icon(Icons.face, color: Color(0xFF8E8E93), size: 26),
+                  ),
                 ),
                 Expanded(
                   child: Container(
@@ -2496,33 +2519,33 @@ class GroupChatPageState extends State<GroupChatPage>
                     ),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(6.0),
-                  child: GestureDetector(
-                    onTap: () {
-                      if (_chatInputController.text.trim().isNotEmpty) {
-                        _onSendMessage(
-                            _chatInputController.text, TypeMessage.text);
-                      } else {
-                        _startRecording();
-                      }
-                    },
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: const BoxDecoration(
-                          color: Color(0xFF007AFF), shape: BoxShape.circle),
-                      child: ValueListenableBuilder<TextEditingValue>(
-                        valueListenable: _chatInputController,
-                        builder: (context, value, child) {
-                          final hasText = value.text.trim().isNotEmpty;
-                          return Icon(
-                            hasText ? Icons.send_rounded : Icons.mic_rounded,
-                            color: Colors.white,
-                            size: 20,
-                          );
-                        },
-                      ),
+                // 🚀 BouncingWrapper cho nút Gửi / Mic với scaleFactor sâu hơn
+                BouncingWrapper(
+                  scaleFactor: 0.85,
+                  onTap: () {
+                    if (_chatInputController.text.trim().isNotEmpty) {
+                      _onSendMessage(
+                          _chatInputController.text, TypeMessage.text);
+                    } else {
+                      _startRecording();
+                    }
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.all(6),
+                    width: 40,
+                    height: 40,
+                    decoration: const BoxDecoration(
+                        color: Color(0xFF007AFF), shape: BoxShape.circle),
+                    child: ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _chatInputController,
+                      builder: (context, value, child) {
+                        final hasText = value.text.trim().isNotEmpty;
+                        return Icon(
+                          hasText ? Icons.send_rounded : Icons.mic_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        );
+                      },
                     ),
                   ),
                 ),
