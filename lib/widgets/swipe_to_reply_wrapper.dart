@@ -98,6 +98,8 @@ class _SwipeToReplyWrapperState extends State<SwipeToReplyWrapper>
         (_dragExtent.abs() / _swipeThreshold).clamp(0.0, 1.0);
 
     return GestureDetector(
+      // 🚀 Nhận diện vuốt kể cả ở vùng trống ngang hàng với tin nhắn
+      behavior: HitTestBehavior.translucent,
       onHorizontalDragUpdate: _onHorizontalDragUpdate,
       onHorizontalDragEnd: _onHorizontalDragEnd,
       child: Stack(

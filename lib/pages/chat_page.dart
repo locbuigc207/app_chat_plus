@@ -304,7 +304,7 @@ class ChatPageState extends State<ChatPage>
 
   void _ensureKeyboardVisibility() {
     if (widget.isMiniChat) {
-      Future.delayed(const Duration(milliseconds: 100), () {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _focusNode.hasFocus && !resourceManager.isDisposed) {
           _focusNode.requestFocus();
         }
