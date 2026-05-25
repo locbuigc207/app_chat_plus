@@ -1,10 +1,9 @@
-
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:deepar_flutter_plus/deepar_flutter_plus.dart';
-import 'package:ffmpeg_kit_flutter_min_gpl/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_min_gpl/return_code.dart';
+import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter/return_code.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -16,10 +15,6 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
-
-
-
-
 
 class StoryCreatorPage extends StatefulWidget {
   final String userId;
@@ -47,7 +42,9 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
     super.initState();
     _tab = TabController(length: 3, vsync: this)
       ..addListener(() {
-        if (_tab.indexIsChanging) setState(() => _tabIndex = _tab.index);
+        if (_tab.indexIsChanging) {
+          setState(() => _tabIndex = _tab.index);
+        }
       });
   }
 
@@ -63,7 +60,6 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
       backgroundColor: Colors.black,
       body: Column(
         children: [
-          
           SafeArea(
             bottom: false,
             child: Padding(
@@ -75,8 +71,6 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
                     onPressed: () => Navigator.pop(context),
                   ),
                   const Spacer(),
-
-                  
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.white12,
@@ -113,20 +107,16 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
                       ],
                     ),
                   ),
-
                   const Spacer(),
-                  const SizedBox(width: 48), 
+                  const SizedBox(width: 48), // Balance alignment
                 ],
               ),
             ),
           ),
-
-          
           Expanded(
             child: TabBarView(
               controller: _tab,
-              physics:
-                  const NeverScrollableScrollPhysics(), 
+              physics: const NeverScrollableScrollPhysics(),
               children: [
                 _PhotoCreator(
                   userId: widget.userId,
@@ -152,17 +142,16 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
   }
 }
 
-
-
-
-
 class _TabBtn extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
 
-  const _TabBtn(
-      {required this.label, required this.selected, required this.onTap});
+  const _TabBtn({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -187,10 +176,6 @@ class _TabBtn extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _PhotoCreator extends StatefulWidget {
   final String userId;
@@ -234,6 +219,7 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
   Future<void> _publish() async {
     if (_image == null) return;
     setState(() => _loading = true);
+
     try {
       final id = await context.read<StoryProvider>().createImageStory(
             userId: widget.userId,
@@ -245,7 +231,10 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
                 : _captionCtrl.text.trim(),
             privacy: _privacy,
           );
-      if (id != null && mounted) {
+
+      if (!mounted) return;
+
+      if (id != null) {
         Navigator.of(context).pop(true);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -254,6 +243,11 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
           ),
         );
       }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
+      );
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -263,32 +257,30 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
   Widget build(BuildContext context) {
     if (_image == null) return _PickerPrompt(onPick: _pick);
 
-    
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
     return GestureDetector(
-      onTap: () =>
-          FocusScope.of(context).unfocus(), 
+      onTap: () => FocusScope.of(context).unfocus(),
       child: Stack(
         fit: StackFit.expand,
         children: [
           Image.file(_image!, fit: BoxFit.cover),
-
-          
           Positioned(
             top: 16,
             right: 16,
             child: Column(
               children: [
                 _SideBtn(
-                    icon: Icons.collections,
-                    label: 'Gallery',
-                    onTap: () => _pick(ImageSource.gallery)),
+                  icon: Icons.collections,
+                  label: 'Gallery',
+                  onTap: () => _pick(ImageSource.gallery),
+                ),
                 const SizedBox(height: 12),
                 _SideBtn(
-                    icon: Icons.camera_alt,
-                    label: 'Camera',
-                    onTap: () => _pick(ImageSource.camera)),
+                  icon: Icons.camera_alt,
+                  label: 'Camera',
+                  onTap: () => _pick(ImageSource.camera),
+                ),
                 const SizedBox(height: 12),
                 _SideBtn(
                   icon: _privacy == StoryPrivacy.friends
@@ -304,8 +296,6 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
               ],
             ),
           ),
-
-          
           Positioned(
             bottom: bottomInset > 0 ? bottomInset + 16 : 96,
             left: 16,
@@ -330,8 +320,6 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
               ),
             ),
           ),
-
-          
           Positioned(
             bottom: 32,
             left: 16,
@@ -345,10 +333,6 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
     );
   }
 }
-
-
-
-
 
 class _PickerPrompt extends StatelessWidget {
   final void Function(ImageSource) onPick;
@@ -371,27 +355,31 @@ class _PickerPrompt extends StatelessWidget {
                 color: Colors.white54, size: 48),
           ),
           const SizedBox(height: 24),
-          const Text('Share a photo',
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700)),
+          const Text(
+            'Share a photo',
+            style: TextStyle(
+                color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700),
+          ),
           const SizedBox(height: 8),
-          const Text('Choose or take a photo to share as status',
-              style: TextStyle(color: Colors.white54, fontSize: 14)),
+          const Text(
+            'Choose or take a photo to share as status',
+            style: TextStyle(color: Colors.white54, fontSize: 14),
+          ),
           const SizedBox(height: 40),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               _BigPickBtn(
-                  icon: Icons.collections,
-                  label: 'Gallery',
-                  onTap: () => onPick(ImageSource.gallery)),
+                icon: Icons.collections,
+                label: 'Gallery',
+                onTap: () => onPick(ImageSource.gallery),
+              ),
               const SizedBox(width: 24),
               _BigPickBtn(
-                  icon: Icons.camera_alt,
-                  label: 'Camera',
-                  onTap: () => onPick(ImageSource.camera)),
+                icon: Icons.camera_alt,
+                label: 'Camera',
+                onTap: () => onPick(ImageSource.camera),
+              ),
             ],
           ),
         ],
@@ -404,8 +392,12 @@ class _BigPickBtn extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  const _BigPickBtn(
-      {required this.icon, required this.label, required this.onTap});
+
+  const _BigPickBtn({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -431,10 +423,6 @@ class _BigPickBtn extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _TextCreator extends StatefulWidget {
   final String userId;
@@ -496,6 +484,7 @@ class _TextCreatorState extends State<_TextCreator> {
     final text = _ctrl.text.trim();
     if (text.isEmpty) return;
     setState(() => _loading = true);
+
     try {
       final id = await context.read<StoryProvider>().createTextStory(
             userId: widget.userId,
@@ -508,7 +497,10 @@ class _TextCreatorState extends State<_TextCreator> {
             fontSize: _fontSize,
             privacy: _privacy,
           );
-      if (id != null && mounted) {
+
+      if (!mounted) return;
+
+      if (id != null) {
         Navigator.of(context).pop(true);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -517,6 +509,11 @@ class _TextCreatorState extends State<_TextCreator> {
           ),
         );
       }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
+      );
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -527,7 +524,6 @@ class _TextCreatorState extends State<_TextCreator> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        
         AnimatedContainer(
           duration: const Duration(milliseconds: 300),
           decoration: BoxDecoration(
@@ -538,8 +534,6 @@ class _TextCreatorState extends State<_TextCreator> {
             ),
           ),
         ),
-
-        
         Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -568,8 +562,6 @@ class _TextCreatorState extends State<_TextCreator> {
             ),
           ),
         ),
-
-        
         Positioned(
           top: 16,
           right: 16,
@@ -604,8 +596,6 @@ class _TextCreatorState extends State<_TextCreator> {
             ],
           ),
         ),
-
-        
         Positioned(
           bottom: 96,
           left: 0,
@@ -613,7 +603,6 @@ class _TextCreatorState extends State<_TextCreator> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Row(
@@ -643,8 +632,6 @@ class _TextCreatorState extends State<_TextCreator> {
                 ),
               ),
               const SizedBox(height: 10),
-
-              
               SizedBox(
                 height: 44,
                 child: ListView.builder(
@@ -679,7 +666,6 @@ class _TextCreatorState extends State<_TextCreator> {
             ],
           ),
         ),
-
         Positioned(
           bottom: 32,
           left: 16,
@@ -695,64 +681,49 @@ class _TextCreatorState extends State<_TextCreator> {
   }
 }
 
-
-
-
-
-
 class _ArFilter {
-  
   final String displayName;
-
-  
-  
   final String? assetPath;
 
   const _ArFilter({required this.displayName, this.assetPath});
 
-  
   static const _ArFilter none = _ArFilter(displayName: 'None');
 
-  
-  
   static String _toDisplayName(String assetPath) {
-    final fileName = assetPath.split('/').last; 
-    final withoutExt = fileName.replaceAll('.deepar', ''); 
+    final fileName = assetPath.split('/').last;
+    final withoutExt = fileName.replaceAll('.deepar', '');
     return withoutExt
         .split('_')
         .map((w) => w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}')
-        .join(' '); 
+        .join(' ');
   }
 
-  
-  
   static Future<List<_ArFilter>> loadAll() async {
-    final manifestJson = await rootBundle.loadString('AssetManifest.json');
-    final manifest = json.decode(manifestJson) as Map<String, dynamic>;
+    try {
+      final manifestJson = await rootBundle.loadString('AssetManifest.json');
+      final manifest = json.decode(manifestJson) as Map<String, dynamic>;
 
-    final effectPaths = manifest.keys
-        .where((key) =>
-            key.startsWith('assets/effects/') && key.endsWith('.deepar'))
-        .toList()
-      ..sort(); 
+      final effectPaths = manifest.keys
+          .where((key) =>
+              key.startsWith('assets/effects/') && key.endsWith('.deepar'))
+          .toList()
+        ..sort();
 
-    final filters = [
-      _ArFilter.none,
-      ...effectPaths.map(
-        (path) => _ArFilter(
-          displayName: _toDisplayName(path),
-          assetPath: path,
+      return [
+        _ArFilter.none,
+        ...effectPaths.map(
+          (path) => _ArFilter(
+            displayName: _toDisplayName(path),
+            assetPath: path,
+          ),
         ),
-      ),
-    ];
-
-    return filters;
+      ];
+    } catch (e) {
+      debugPrint('Error loading filters: $e');
+      return [_ArFilter.none];
+    }
   }
 }
-
-
-
-
 
 class _VideoCreator extends StatefulWidget {
   final String userId;
@@ -770,7 +741,6 @@ class _VideoCreator extends StatefulWidget {
 }
 
 class _VideoCreatorState extends State<_VideoCreator> {
-  
   static const _androidKey =
       '694aafc68314126d55d03f1cb2b23ce05f57467994107fb3895aab7f7060c2a5863a6c28f29a341b';
   static const _iosKey = 'YOUR_IOS_DEEPAR_KEY_HERE';
@@ -783,7 +753,6 @@ class _VideoCreatorState extends State<_VideoCreator> {
   bool _isProcessing = false;
   String? _selectedAudioPath;
 
-  
   List<_ArFilter> _filters = [];
   int _currentFilterIndex = 0;
 
@@ -793,13 +762,9 @@ class _VideoCreatorState extends State<_VideoCreator> {
     _initAll();
   }
 
-  
   Future<void> _initAll() async {
-    
     final filters = await _ArFilter.loadAll();
     if (mounted) setState(() => _filters = filters);
-
-    
     await _initDeepAr();
   }
 
@@ -826,11 +791,8 @@ class _VideoCreatorState extends State<_VideoCreator> {
 
   void _switchFilter(int index) {
     setState(() => _currentFilterIndex = index);
-
     final filter = _filters[index];
-    _deepArController.switchEffect(
-      filter.assetPath ?? '',
-    );
+    _deepArController.switchEffect(filter.assetPath ?? '');
   }
 
   Future<void> _pickMusic() async {
@@ -854,36 +816,53 @@ class _VideoCreatorState extends State<_VideoCreator> {
   Future<void> _stopRecording() async {
     if (_selectedAudioPath != null) await _audioPlayer.stop();
 
-    final File videoFile = await _deepArController.stopVideoRecording();
-    setState(() {
-      _isRecording = false;
-      _isProcessing = true;
-    });
+    try {
+      final File videoFile = await _deepArController.stopVideoRecording();
+      setState(() {
+        _isRecording = false;
+        _isProcessing = true;
+      });
 
-    if (_selectedAudioPath != null) {
-      await _mergeAudioAndVideo(videoFile.path, _selectedAudioPath!);
-    } else {
-      await _uploadStory(videoFile.path);
+      if (_selectedAudioPath != null) {
+        await _mergeAudioAndVideo(videoFile.path, _selectedAudioPath!);
+      } else {
+        await _uploadStory(videoFile.path);
+      }
+    } catch (e) {
+      setState(() {
+        _isRecording = false;
+        _isProcessing = false;
+      });
+      Fluttertoast.showToast(msg: 'Lỗi khi kết thúc quay video!');
     }
   }
 
   Future<void> _mergeAudioAndVideo(String videoPath, String audioPath) async {
-    final dir = await getApplicationDocumentsDirectory();
-    final output =
-        '${dir.path}/story_${DateTime.now().millisecondsSinceEpoch}.mp4';
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final output =
+          '${dir.path}/story_${DateTime.now().millisecondsSinceEpoch}.mp4';
 
-    final cmd =
-        "-i '$videoPath' -i '$audioPath' -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest '$output'";
+      final cmd =
+          "-i '$videoPath' -i '$audioPath' -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest '$output'";
 
-    await FFmpegKit.executeAsync(cmd, (session) async {
+      // Sử dụng FFmpegKit.execute() để đợi hoàn thành một cách đồng bộ
+      final session = await FFmpegKit.execute(cmd);
       final rc = await session.getReturnCode();
+
       if (ReturnCode.isSuccess(rc)) {
         await _uploadStory(output);
       } else {
+        final logs = await session.getAllLogsAsString();
+        debugPrint('FFmpeg Error Logs: $logs');
+
         if (mounted) setState(() => _isProcessing = false);
         Fluttertoast.showToast(msg: 'Lỗi ghép nhạc vào video!');
       }
-    });
+    } catch (e) {
+      if (mounted) setState(() => _isProcessing = false);
+      Fluttertoast.showToast(msg: 'Đã xảy ra sự cố: $e');
+    }
   }
 
   Future<void> _uploadStory(String finalPath) async {
@@ -906,7 +885,9 @@ class _VideoCreatorState extends State<_VideoCreator> {
 
   @override
   void dispose() {
-    _deepArController.destroy();
+    if (_isInitialized) {
+      _deepArController.destroy();
+    }
     _audioPlayer.dispose();
     super.dispose();
   }
@@ -922,10 +903,7 @@ class _VideoCreatorState extends State<_VideoCreator> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        
         Positioned.fill(child: DeepArPreviewPlus(_deepArController)),
-
-        
         Positioned(
           top: 16,
           right: 16,
@@ -938,8 +916,6 @@ class _VideoCreatorState extends State<_VideoCreator> {
             onTap: _pickMusic,
           ),
         ),
-
-        
         if (_isProcessing)
           Container(
             color: Colors.black87,
@@ -955,8 +931,6 @@ class _VideoCreatorState extends State<_VideoCreator> {
               ),
             ),
           ),
-
-        
         if (!_isProcessing)
           Positioned(
             bottom: 32,
@@ -965,7 +939,6 @@ class _VideoCreatorState extends State<_VideoCreator> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                
                 if (_filters.isNotEmpty)
                   SizedBox(
                     height: 80,
@@ -1008,10 +981,7 @@ class _VideoCreatorState extends State<_VideoCreator> {
                       },
                     ),
                   ),
-
                 const SizedBox(height: 20),
-
-                
                 GestureDetector(
                   onLongPressStart: (_) => _startRecording(),
                   onLongPressEnd: (_) => _stopRecording(),
@@ -1042,10 +1012,6 @@ class _VideoCreatorState extends State<_VideoCreator> {
     );
   }
 }
-
-
-
-
 
 class _SideBtn extends StatelessWidget {
   final IconData icon;
