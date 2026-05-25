@@ -77,10 +77,6 @@ class FirestoreConstants {
   static const String lastMessage = 'lastMessage';
   static const String lastMessageTime = 'lastMessageTime';
   static const String lastMessageType = 'lastMessageType';
-
-  // =========================================================
-  // SHARED / MISC FIELDS
-  // =========================================================
-
   static const String createdAt = 'createdAt';
+  static const String pathDocumentStorage = 'documents';
 }

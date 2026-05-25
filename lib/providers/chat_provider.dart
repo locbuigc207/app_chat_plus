@@ -59,6 +59,149 @@ class ChatProvider {
   }
 
   // =========================================================
+  // UPLOAD FILE & GET URL (public – dùng cho Document/Tài liệu)
+  // =========================================================
+
+  /// Upload một tài liệu (PDF, DOC, DOCX, XLS, XLSX…) lên Firebase Storage
+  /// và trả về download URL.
+  ///
+  /// Path lưu trữ: `documents/{groupId}/{timestamp}_{fileName}`
+  ///
+  /// Trả về URL chuỗi nếu thành công, hoặc `null` nếu có lỗi.
+  Future<String?> uploadFileAndGetUrl(File file, String groupId) async {
+    try {
+      final String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+      final String originalName = file.path.split('/').last;
+      final String storagePath =
+          '${FirestoreConstants.pathDocumentStorage}/$groupId/${timestamp}_$originalName';
+
+      final Reference reference = firebaseStorage.ref().child(storagePath);
+      final UploadTask uploadTask = reference.putFile(
+        file,
+        SettableMetadata(
+          // Giữ MIME type gốc để trình duyệt/app biết cách xử lý khi mở
+          contentType: _resolveContentType(originalName),
+        ),
+      );
+
+      final TaskSnapshot snapshot = await uploadTask.whenComplete(() {});
+      final String downloadUrl = await snapshot.ref.getDownloadURL();
+      return downloadUrl;
+    } catch (e) {
+      print('❌ uploadFileAndGetUrl error: $e');
+      return null;
+    }
+  }
+
+  /// Phân giải MIME type dựa trên phần mở rộng file.
+  String _resolveContentType(String fileName) {
+    final ext = fileName.split('.').last.toLowerCase();
+    const Map<String, String> mimeMap = {
+      'pdf': 'application/pdf',
+      'doc': 'application/msword',
+      'docx':
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'xls': 'application/vnd.ms-excel',
+      'xlsx':
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'ppt': 'application/vnd.ms-powerpoint',
+      'pptx':
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'txt': 'text/plain',
+    };
+    return mimeMap[ext] ?? 'application/octet-stream';
+  }
+
+  // =========================================================
+  // VOTE POLL – Firestore Transaction (thread-safe)
+  // =========================================================
+
+  /// Ghi nhận lượt bình chọn của [userId] cho option [optionId]
+  /// trong tin nhắn poll [messageId] thuộc cuộc hội thoại [groupChatId].
+  ///
+  /// Cơ chế hoạt động (dùng Firestore Transaction để tránh race-condition):
+  /// - Nếu user **chưa** vote option này → thêm userId vào mảng `votes` của option đó.
+  /// - Nếu user **đã** vote option này → rút userId ra (toggle off / bỏ phiếu lại).
+  /// - Mỗi user chỉ được vote **một** option tại một thời điểm: khi chọn option mới,
+  ///   userId sẽ tự động bị xóa khỏi option cũ (single-choice poll).
+  ///
+  /// Để hỗ trợ multi-choice, xóa phần "Xóa khỏi option cũ" bên dưới.
+  Future<void> votePoll(
+    String groupChatId,
+    String messageId,
+    String optionId,
+    String userId,
+  ) async {
+    final DocumentReference messageRef = firebaseFirestore
+        .collection(FirestoreConstants.pathMessageCollection)
+        .doc(groupChatId)
+        .collection(groupChatId)
+        .doc(messageId);
+
+    try {
+      await firebaseFirestore.runTransaction((transaction) async {
+        final DocumentSnapshot snapshot = await transaction.get(messageRef);
+
+        if (!snapshot.exists) {
+          throw Exception('Poll message $messageId không tồn tại.');
+        }
+
+        final data = snapshot.data() as Map<String, dynamic>;
+
+        // Parse mảng options từ Firestore
+        // Mỗi option có dạng: { 'id': String, 'text': String, 'votes': List<String> }
+        final List<dynamic> rawOptions = List.from(data['options'] ?? []);
+
+        final List<Map<String, dynamic>> options =
+            rawOptions.map((o) => Map<String, dynamic>.from(o as Map)).toList();
+
+        // Kiểm tra option mục tiêu có tồn tại không
+        final int targetIndex =
+            options.indexWhere((o) => o['id'].toString() == optionId);
+        if (targetIndex == -1) {
+          throw Exception('Option $optionId không tồn tại trong poll này.');
+        }
+
+        // ------------------------------------------------------------------
+        // Xóa userId khỏi TẤT CẢ options (đảm bảo single-choice)
+        // Bỏ vòng lặp này nếu muốn hỗ trợ multi-choice.
+        // ------------------------------------------------------------------
+        for (final option in options) {
+          final List<dynamic> votes = List.from(option['votes'] ?? []);
+          votes.remove(userId);
+          option['votes'] = votes;
+        }
+
+        // ------------------------------------------------------------------
+        // Toggle vote trên option đã chọn
+        // ------------------------------------------------------------------
+        final List<dynamic> targetVotes =
+            List.from(options[targetIndex]['votes'] ?? []);
+
+        if (targetVotes.contains(userId)) {
+          // Đã vote → bỏ phiếu (toggle off)
+          targetVotes.remove(userId);
+        } else {
+          // Chưa vote → thêm phiếu
+          targetVotes.add(userId);
+        }
+        options[targetIndex]['votes'] = targetVotes;
+
+        // ------------------------------------------------------------------
+        // Ghi lại toàn bộ mảng options vào Firestore (trong transaction)
+        // ------------------------------------------------------------------
+        transaction.update(messageRef, {'options': options});
+      });
+    } on FirebaseException catch (e) {
+      print('❌ votePoll FirebaseException [${e.code}]: ${e.message}');
+      rethrow;
+    } catch (e) {
+      print('❌ votePoll error: $e');
+      rethrow;
+    }
+  }
+
+  // =========================================================
   // UPDATE FIRESTORE DOCUMENT (utility)
   // =========================================================
 
@@ -219,6 +362,7 @@ class ChatProvider {
 
         // ------------------------------------------------------------------
         // Giải mã E2EE tin nhắn kéo từ server
+        // Bỏ qua giải mã cho các loại không phải text (document, poll, media…)
         // ------------------------------------------------------------------
         String plainText = data['content'] as String? ?? '';
         if (data['type'] == TypeMessage.text) {
@@ -246,6 +390,16 @@ class ChatProvider {
           'content': plainText,
           'type': data['type'],
           'status': MessageStatus.sent,
+          // Giữ lại các field mở rộng nếu có (poll options, isViewOnce…)
+          if (data.containsKey('options')) 'options': data['options'],
+          if (data.containsKey('isViewOnce')) 'isViewOnce': data['isViewOnce'],
+          if (data.containsKey('isPinned')) 'isPinned': data['isPinned'],
+          if (data.containsKey('isDeleted')) 'isDeleted': data['isDeleted'],
+          if (data.containsKey('scamWarning'))
+            'scamWarning': data['scamWarning'],
+          if (data.containsKey('scamReason')) 'scamReason': data['scamReason'],
+          if (data.containsKey('hasReminder'))
+            'hasReminder': data['hasReminder'],
         };
         await _localDb.saveMessage(groupChatId, messageId, updatedMessage);
       }

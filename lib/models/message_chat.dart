@@ -5,27 +5,16 @@ import 'package:flutter_chat_demo/constants/constants.dart';
 // TYPE MESSAGE CONSTANTS
 // =========================================================
 
-/// Hằng số xác định loại nội dung tin nhắn.
-/// Dùng thống nhất trong [MessageChat], [ChatProvider], [AdaptiveChatBubble].
-///
-/// | Value | Loại      | Ghi chú                                          |
-/// |-------|-----------|--------------------------------------------------|
-/// | 0     | text      | Văn bản thường, áp dụng E2EE                     |
-/// | 1     | image     | URL ảnh từ Firebase Storage (đã nén)             |
-/// | 2     | sticker   | Tên file sticker local (vd: "mimi1")             |
-/// | 3     | file      | URL file đính kèm (legacy)                       |
-/// | 4     | video     | "videoUrl|thumbnailUrl" từ [ChatProvider.sendMediaMessage] |
 class TypeMessage {
   const TypeMessage._();
 
   static const int text = 0;
   static const int image = 1;
   static const int sticker = 2;
-  static const int file = 3;
-
-  /// Video đã nén. Content format: `"videoUrl|thumbnailUrl"`.
-  /// Được gửi bởi [ChatProvider.sendMediaMessage] khi `isVideo = true`.
+  static const int voice = 3;
   static const int video = 4;
+  static const int document = 5; // File tài liệu
+  static const int poll = 6; // Bình chọn
 }
 
 // =========================================================
@@ -156,6 +145,12 @@ class MessageChat {
 
   /// Trả về `true` nếu đây là tin nhắn video ([TypeMessage.video]).
   bool get isVideo => type == TypeMessage.video;
+
+  /// Trả về `true` nếu đây là tin nhắn tài liệu ([TypeMessage.document]).
+  bool get isDocument => type == TypeMessage.document;
+
+  /// Trả về `true` nếu đây là tin nhắn bình chọn ([TypeMessage.poll]).
+  bool get isPoll => type == TypeMessage.poll;
 
   /// Với video, content có dạng `"videoUrl|thumbnailUrl"`.
   /// Trả về URL video (phần trước `|`), hoặc toàn bộ content nếu không có `|`.
