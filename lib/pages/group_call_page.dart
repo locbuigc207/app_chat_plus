@@ -3,11 +3,13 @@ import 'dart:ui';
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide AspectRatio;
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:simple_pip_mode/pip_widget.dart';
+import 'package:simple_pip_mode/simple_pip.dart';
 
 import '../models/group_call_model.dart';
 import '../services/agora_rtc_manager.dart';
@@ -35,6 +37,7 @@ class GroupCallPage extends StatefulWidget {
 class _GroupCallPageState extends State<GroupCallPage>
     with WidgetsBindingObserver {
   final _callService = GroupCallService();
+  final _pip = SimplePip();
   late RtcEngine _engine;
 
   bool _engineInitialized = false;
@@ -72,18 +75,40 @@ class _GroupCallPageState extends State<GroupCallPage>
     _initCall();
     _watchCall();
     _scheduleControlsHide();
-
-    // _startAIProtection(); ← Đã bỏ, chuyển sang kích hoạt khi remote join
   }
+
+  // ─────────────────────────────────────────────
+  // PiP
+  // ─────────────────────────────────────────────
+
+  /// Thu nhỏ cuộc gọi video thành cửa sổ nổi (PiP).
+  /// Gọi khi người dùng bấm nút thu nhỏ hoặc bấm Back.
+  Future<void> _enterPiPMode() async {
+    final isPipAvailable = await SimplePip.isPipAvailable;
+    if (isPipAvailable) {
+      await _pip.enterPipMode(aspectRatio: (3, 4));
+    } else {
+      // Fallback nếu thiết bị không hỗ trợ PiP (Android < 8.0)
+      if (mounted) Navigator.pop(context);
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  // AI Protection
+  // ─────────────────────────────────────────────
 
   void _startAIProtection() {
     if (_aiProtectionStarted) return;
     _aiProtectionStarted = true;
     RealtimeAIService().startProtection(
-      "GROUP_CALL_${widget.call.callId}",
+      'GROUP_CALL_${widget.call.callId}',
       widget.call.channelName,
     );
   }
+
+  // ─────────────────────────────────────────────
+  // Lifecycle
+  // ─────────────────────────────────────────────
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -101,6 +126,10 @@ class _GroupCallPageState extends State<GroupCallPage>
     _cleanup();
     super.dispose();
   }
+
+  // ─────────────────────────────────────────────
+  // Init / Cleanup
+  // ─────────────────────────────────────────────
 
   Future<void> _initCall() async {
     await _requestPermissions();
@@ -156,13 +185,13 @@ class _GroupCallPageState extends State<GroupCallPage>
       onRtcStats: (conn, stats) {
         if (mounted) {
           setState(() => _stats = RtcCallStats(
-            txBitrate: stats.txKBitRate ?? 0,
-            rxBitrate: stats.rxKBitRate ?? 0,
-            txPacketLoss: stats.txPacketLossRate ?? 0,
-            rxPacketLoss: stats.rxPacketLossRate ?? 0,
-            rtt: stats.lastmileDelay ?? 0,
-            duration: stats.duration ?? 0,
-          ));
+                txBitrate: stats.txKBitRate ?? 0,
+                rxBitrate: stats.rxKBitRate ?? 0,
+                txPacketLoss: stats.txPacketLossRate ?? 0,
+                rxPacketLoss: stats.rxPacketLossRate ?? 0,
+                rtt: stats.lastmileDelay ?? 0,
+                duration: stats.duration ?? 0,
+              ));
         }
       },
       onError: (err, msg) => debugPrint('❌ Agora error [$err]: $msg'),
@@ -239,6 +268,10 @@ class _GroupCallPageState extends State<GroupCallPage>
     _scheduleControlsHide();
   }
 
+  // ─────────────────────────────────────────────
+  // Controls
+  // ─────────────────────────────────────────────
+
   Future<void> _toggleMute() async {
     final next = !_isMuted;
     await _engine.muteLocalAudioStream(next);
@@ -303,8 +336,32 @@ class _GroupCallPageState extends State<GroupCallPage>
     setState(() => _spotlightUid = uid);
   }
 
+  // ─────────────────────────────────────────────
+  // Build
+  // ─────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
+    if (widget.call.isVideo) {
+      return PipWidget(
+        // Giao diện khi bị thu nhỏ: chỉ hiện luồng video remote đầu tiên
+        pipBuilder: (context) => _buildRemoteVideoOnly(),
+        // Giao diện bình thường: full màn hình với toàn bộ điều khiển
+        builder: (context) => PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) async {
+            // Bấm Back → thu nhỏ PiP thay vì thoát hẳn
+            if (!didPop) await _enterPiPMode();
+          },
+          child: Scaffold(
+            backgroundColor: Colors.black,
+            body: _buildVideoUI(),
+          ),
+        ),
+      );
+    }
+
+    // Voice call — không cần PiP
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
@@ -312,10 +369,57 @@ class _GroupCallPageState extends State<GroupCallPage>
       },
       child: Scaffold(
         backgroundColor: Colors.black,
-        body: widget.call.isVideo ? _buildVideoUI() : _buildVoiceUI(),
+        body: _buildVoiceUI(),
       ),
     );
   }
+
+  // ─────────────────────────────────────────────
+  // PiP builder: remote video tối giản
+  // ─────────────────────────────────────────────
+
+  /// Giao diện tối giản trong cửa sổ PiP — hiện video remote đầu tiên (hoặc
+  /// spotlight nếu đang có), fallback avatar nếu chưa có video.
+  Widget _buildRemoteVideoOnly() {
+    if (!_engineInitialized) {
+      return const ColoredBox(
+        color: Color(0xFF1a1a2e),
+        child: Center(child: CircularProgressIndicator(color: Colors.white54)),
+      );
+    }
+
+    final targetUid =
+        _spotlightUid ?? (_remoteUids.isNotEmpty ? _remoteUids.first : null);
+
+    if (targetUid == null) {
+      // Chưa có remote — hiện tên nhóm
+      return ColoredBox(
+        color: const Color(0xFF1a1a2e),
+        child: Center(
+          child: Text(
+            widget.call.groupName,
+            style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+                fontWeight: FontWeight.w500),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    return AgoraVideoView(
+      controller: VideoViewController.remote(
+        rtcEngine: _engine,
+        canvas: VideoCanvas(uid: targetUid),
+        connection: RtcConnection(channelId: widget.call.channelName),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────
+  // Video UI (full screen)
+  // ─────────────────────────────────────────────
 
   Widget _buildVideoUI() {
     return GestureDetector(
@@ -324,25 +428,19 @@ class _GroupCallPageState extends State<GroupCallPage>
       child: Stack(
         children: [
           _remoteUids.isEmpty ? _buildWaitingScreen() : _buildVideoGrid(),
-
           _buildGradients(),
-
           if (_showControls) _buildVideoTopBar(),
-
           Positioned(
             top: MediaQuery.of(context).padding.top + 60,
             left: 16,
             child: const AICallShield(),
           ),
-
           Positioned(
             top: MediaQuery.of(context).padding.top + 60,
             right: 16,
             child: CallQualityIndicator(stats: _stats),
           ),
-
           if (_showParticipantsList) _buildParticipantsPanel(),
-
           if (_isLiveCaptionEnabled)
             Positioned(
               bottom: 140,
@@ -350,7 +448,6 @@ class _GroupCallPageState extends State<GroupCallPage>
               right: 16,
               child: const LiveCaptionOverlay(),
             ),
-
           _buildBottomControls(),
         ],
       ),
@@ -524,7 +621,7 @@ class _GroupCallPageState extends State<GroupCallPage>
                     const SizedBox(height: 6),
                     Text(participant!.userName,
                         style:
-                        const TextStyle(color: Colors.white, fontSize: 12)),
+                            const TextStyle(color: Colors.white, fontSize: 12)),
                   ],
                 ],
               ),
@@ -539,26 +636,26 @@ class _GroupCallPageState extends State<GroupCallPage>
       children: [
         _isCameraOff
             ? Container(
-          decoration: BoxDecoration(
-            color: Colors.black87,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Center(
-            child:
-            Icon(Icons.videocam_off, color: Colors.white54, size: 40),
-          ),
-        )
+                decoration: BoxDecoration(
+                  color: Colors.black87,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Center(
+                  child:
+                      Icon(Icons.videocam_off, color: Colors.white54, size: 40),
+                ),
+              )
             : ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: _engineInitialized
-              ? AgoraVideoView(
-            controller: VideoViewController(
-              rtcEngine: _engine,
-              canvas: const VideoCanvas(uid: 0),
-            ),
-          )
-              : Container(color: Colors.black54),
-        ),
+                borderRadius: BorderRadius.circular(12),
+                child: _engineInitialized
+                    ? AgoraVideoView(
+                        controller: VideoViewController(
+                          rtcEngine: _engine,
+                          canvas: const VideoCanvas(uid: 0),
+                        ),
+                      )
+                    : Container(color: Colors.black54),
+              ),
         if (_isMuted)
           Positioned(
             bottom: 8,
@@ -586,6 +683,7 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
+  /// PiP nội tuyến — camera local hiển thị góc phải màn hình (khác PiP hệ thống)
   Widget _buildLocalPip() {
     return GestureDetector(
       onTap: () {},
@@ -607,19 +705,19 @@ class _GroupCallPageState extends State<GroupCallPage>
           borderRadius: BorderRadius.circular(14),
           child: _isCameraOff
               ? Container(
-            color: Colors.blueGrey[900],
-            child: const Center(
-                child: Icon(Icons.videocam_off,
-                    color: Colors.white54, size: 28)),
-          )
+                  color: Colors.blueGrey[900],
+                  child: const Center(
+                      child: Icon(Icons.videocam_off,
+                          color: Colors.white54, size: 28)),
+                )
               : (_engineInitialized
-              ? AgoraVideoView(
-            controller: VideoViewController(
-              rtcEngine: _engine,
-              canvas: const VideoCanvas(uid: 0),
-            ),
-          )
-              : Container(color: Colors.black54)),
+                  ? AgoraVideoView(
+                      controller: VideoViewController(
+                        rtcEngine: _engine,
+                        canvas: const VideoCanvas(uid: 0),
+                      ),
+                    )
+                  : Container(color: Colors.black54)),
         ),
       ),
     );
@@ -637,14 +735,14 @@ class _GroupCallPageState extends State<GroupCallPage>
         borderRadius: BorderRadius.circular(9),
         child: _isCameraOff
             ? Container(
-            color: Colors.blueGrey[900],
-            child: const Center(
-                child: Icon(Icons.person, color: Colors.white54, size: 28)))
+                color: Colors.blueGrey[900],
+                child: const Center(
+                    child: Icon(Icons.person, color: Colors.white54, size: 28)))
             : (_engineInitialized
-            ? AgoraVideoView(
-            controller: VideoViewController(
-                rtcEngine: _engine, canvas: const VideoCanvas(uid: 0)))
-            : Container(color: Colors.black54)),
+                ? AgoraVideoView(
+                    controller: VideoViewController(
+                        rtcEngine: _engine, canvas: const VideoCanvas(uid: 0)))
+                : Container(color: Colors.black54)),
       ),
     );
   }
@@ -719,13 +817,15 @@ class _GroupCallPageState extends State<GroupCallPage>
               bottom: false,
               child: Padding(
                 padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 child: Row(
                   children: [
+                    // Nút thu nhỏ PiP
                     IconButton(
-                      icon: const Icon(Icons.keyboard_arrow_down,
+                      icon: const Icon(Icons.picture_in_picture_alt,
                           color: Colors.white),
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: _enterPiPMode,
+                      tooltip: 'Thu nhỏ',
                     ),
                     Expanded(
                       child: Column(
@@ -747,7 +847,7 @@ class _GroupCallPageState extends State<GroupCallPage>
                     ),
                     GestureDetector(
                       onTap: () => setState(
-                              () => _showParticipantsList = !_showParticipantsList),
+                          () => _showParticipantsList = !_showParticipantsList),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 8),
@@ -828,7 +928,7 @@ class _GroupCallPageState extends State<GroupCallPage>
                               backgroundColor: Colors.blueGrey,
                               child: p.userAvatar.isEmpty
                                   ? const Icon(Icons.person,
-                                  color: Colors.white, size: 18)
+                                      color: Colors.white, size: 18)
                                   : null,
                             ),
                             title: Text(
@@ -841,8 +941,8 @@ class _GroupCallPageState extends State<GroupCallPage>
                             ),
                             subtitle: p.isAdmin
                                 ? const Text('Admin',
-                                style: TextStyle(
-                                    color: Colors.amber, fontSize: 11))
+                                    style: TextStyle(
+                                        color: Colors.amber, fontSize: 11))
                                 : null,
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -910,8 +1010,7 @@ class _GroupCallPageState extends State<GroupCallPage>
                 ],
               ),
               Padding(
-                padding:
-                const EdgeInsets.only(bottom: 20, left: 16, right: 16),
+                padding: const EdgeInsets.only(bottom: 20, left: 16, right: 16),
                 child: Column(
                   children: [
                     Row(
@@ -950,7 +1049,7 @@ class _GroupCallPageState extends State<GroupCallPage>
                           label: 'Thành viên',
                           active: _showParticipantsList,
                           onTap: () => setState(() =>
-                          _showParticipantsList = !_showParticipantsList),
+                              _showParticipantsList = !_showParticipantsList),
                         ),
                       ],
                     ),
@@ -984,40 +1083,9 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
-  Widget _controlBtn({
-    required IconData icon,
-    required String label,
-    required bool active,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              color: active
-                  ? Colors.white.withOpacity(0.3)
-                  : Colors.white.withOpacity(0.12),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white.withOpacity(0.3)),
-            ),
-            child: Icon(icon, color: Colors.white, size: 24),
-          ),
-          const SizedBox(height: 6),
-          Text(label,
-              style: TextStyle(
-                  color: Colors.white.withOpacity(0.9),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500)),
-        ],
-      ),
-    );
-  }
+  // ─────────────────────────────────────────────
+  // Voice UI
+  // ─────────────────────────────────────────────
 
   Widget _buildVoiceUI() {
     return Container(
@@ -1128,7 +1196,7 @@ class _GroupCallPageState extends State<GroupCallPage>
                       backgroundColor: Colors.blueGrey,
                       child: p.userAvatar.isEmpty
                           ? const Icon(Icons.person,
-                          size: 40, color: Colors.white)
+                              size: 40, color: Colors.white)
                           : null,
                     ),
                   ),
@@ -1195,6 +1263,45 @@ class _GroupCallPageState extends State<GroupCallPage>
               label: _isSpeakerOn ? 'Loa ngoài' : 'Loa trong',
               active: _isSpeakerOn,
               onTap: _toggleSpeaker),
+        ],
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────
+  // Shared helpers
+  // ─────────────────────────────────────────────
+
+  Widget _controlBtn({
+    required IconData icon,
+    required String label,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              color: active
+                  ? Colors.white.withOpacity(0.3)
+                  : Colors.white.withOpacity(0.12),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white.withOpacity(0.3)),
+            ),
+            child: Icon(icon, color: Colors.white, size: 24),
+          ),
+          const SizedBox(height: 6),
+          Text(label,
+              style: TextStyle(
+                  color: Colors.white.withOpacity(0.9),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500)),
         ],
       ),
     );

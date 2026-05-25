@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
@@ -45,6 +47,7 @@ class GroupChatPageState extends State<GroupChatPage>
 
   MessageChat? _replyingTo;
   String? _replyingToSenderName;
+  String? _replyingToMessageId;
 
   List<DocumentSnapshot> _pinnedMessages = [];
 
@@ -74,7 +77,8 @@ class GroupChatPageState extends State<GroupChatPage>
   VoiceMessageProvider? _voiceProvider;
   LocationProvider? _locationProvider;
 
-  late TextEditingController _chatInputController;
+  // MentionTextEditingController từ Giai đoạn 2
+  late MentionTextEditingController _chatInputController;
   late ScrollController _listScrollController;
   late FocusNode _focusNode;
 
@@ -90,7 +94,7 @@ class GroupChatPageState extends State<GroupChatPage>
   @override
   void initState() {
     super.initState();
-    _chatInputController = TextEditingController();
+    _chatInputController = MentionTextEditingController();
     _listScrollController = ScrollController();
     _focusNode = FocusNode();
 
@@ -150,7 +154,6 @@ class GroupChatPageState extends State<GroupChatPage>
       return;
     }
 
-    // 🚀 Start background sync to Local DB
     _chatProvider.listenToFirebaseChanges(
         _groupChatId, _currentUserId, _groupChatId);
 
@@ -379,7 +382,8 @@ class GroupChatPageState extends State<GroupChatPage>
 
   Future<void> _onSendMessage(String content, int type) async {
     if (resourceManager.isDisposed) return;
-    if (content.trim().isEmpty) {
+    // Allow non-text types (media, sticker, etc.) even if content appears "empty"
+    if (content.trim().isEmpty && type == TypeMessage.text) {
       Fluttertoast.showToast(msg: 'Nothing to send');
       return;
     }
@@ -397,17 +401,16 @@ class GroupChatPageState extends State<GroupChatPage>
       setState(() {
         _replyingTo = null;
         _replyingToSenderName = null;
+        _replyingToMessageId = null;
         _smartReplies = [];
         _showMentionSuggestions = false;
       });
     }
 
     try {
-      // 🚀 Offline-first send
       await _chatProvider.sendMessage(
           finalContent, type, _groupChatId, _currentUserId, _groupChatId);
 
-      // Update last message for group conversation
       await FirebaseFirestore.instance
           .collection(FirestoreConstants.pathConversationCollection)
           .doc(_groupChatId)
@@ -426,7 +429,7 @@ class GroupChatPageState extends State<GroupChatPage>
         conversationId: _groupChatId,
       );
     } catch (_) {
-      Fluttertoast.showToast(msg: 'Send failed');
+      Fluttertoast.showToast(msg: 'Gửi thất bại');
     }
 
     if (_listScrollController.hasClients && !resourceManager.isDisposed) {
@@ -533,6 +536,41 @@ class GroupChatPageState extends State<GroupChatPage>
       if (mounted && !resourceManager.isDisposed) {
         setState(() => _isLoadingMedia = false);
       }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // DOCUMENT PICKER
+  // ---------------------------------------------------------------------------
+
+  Future<void> _onPickDocument() async {
+    HapticFeedback.lightImpact();
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'doc', 'docx', 'xls', 'xlsx'],
+      );
+
+      if (result != null && result.files.single.path != null) {
+        File file = File(result.files.single.path!);
+        String fileName = result.files.single.name;
+        int fileSize = result.files.single.size;
+
+        if (mounted) setState(() => _isLoadingMedia = true);
+
+        String? fileUrl =
+            await _chatProvider.uploadFileAndGetUrl(file, _groupChatId);
+
+        if (fileUrl != null && mounted) {
+          String content =
+              jsonEncode({'url': fileUrl, 'name': fileName, 'size': fileSize});
+          await _onSendMessage(content, TypeMessage.document);
+        }
+      }
+    } catch (e) {
+      Fluttertoast.showToast(msg: 'Lỗi chọn file');
+    } finally {
+      if (mounted) setState(() => _isLoadingMedia = false);
     }
   }
 
@@ -731,7 +769,7 @@ class GroupChatPageState extends State<GroupChatPage>
           Clipboard.setData(ClipboardData(text: message.content));
           Fluttertoast.showToast(msg: 'Copied');
         },
-        onReply: () => _setReply(message),
+        onReply: () => _setReply(message, messageId),
         onReminder: () => _setReminder(message, messageId),
         onTranslate: () => _translateMessage(message.content),
       ),
@@ -770,7 +808,7 @@ class GroupChatPageState extends State<GroupChatPage>
     );
     if (confirm == true) {
       final ok = await _messageProvider.deleteMessage(_groupChatId, messageId);
-      if (ok) Fluttertoast.showToast(msg: 'Message deleted');
+      if (ok) Fluttertoast.showToast(msg: 'Đã xóa tin nhắn');
     }
   }
 
@@ -780,11 +818,13 @@ class GroupChatPageState extends State<GroupChatPage>
     if (ok) Fluttertoast.showToast(msg: current ? 'Unpinned' : 'Pinned');
   }
 
-  void _setReply(MessageChat message) {
+  /// [messageId] dùng để scroll đến tin gốc khi bấm vào reply preview (Giai đoạn 2)
+  void _setReply(MessageChat message, [String? messageId]) {
     HapticFeedback.selectionClick();
     if (resourceManager.isDisposed || !mounted) return;
     setState(() {
       _replyingTo = message;
+      _replyingToMessageId = messageId;
       _replyingToSenderName = _getSenderName(message.idFrom);
     });
     _focusNode.requestFocus();
@@ -1388,7 +1428,64 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   // ---------------------------------------------------------------------------
-  // 🚀 CORE OFFLINE-FIRST: MESSAGE LIST FROM LOCAL DB
+  // MEDIA GROUP ALGORITHM
+  // ---------------------------------------------------------------------------
+
+  List<dynamic> _processMessages(List<Map<dynamic, dynamic>> rawMessages) {
+    List<dynamic> grouped = [];
+    List<Map<dynamic, dynamic>> currentMediaGroup = [];
+
+    for (int i = 0; i < rawMessages.length; i++) {
+      var msg = rawMessages[i];
+      int type = msg['type'] ?? 0;
+      bool isMedia = (type == TypeMessage.image || type == TypeMessage.video);
+
+      if (isMedia) {
+        if (currentMediaGroup.isEmpty) {
+          currentMediaGroup.add(msg);
+        } else {
+          var prevMsg = currentMediaGroup.last;
+          int timeDiff = (int.parse(prevMsg['timestamp'] ?? '0') -
+                  int.parse(msg['timestamp'] ?? '0'))
+              .abs();
+          // Group media sent by the same person within 10 seconds
+          if (msg['idFrom'] == prevMsg['idFrom'] && timeDiff <= 10000) {
+            currentMediaGroup.add(msg);
+          } else {
+            grouped.add(currentMediaGroup.length == 1
+                ? currentMediaGroup.first
+                : {
+                    'isMediaGroup': true,
+                    'messages': List.from(currentMediaGroup)
+                  });
+            currentMediaGroup = [msg];
+          }
+        }
+      } else {
+        if (currentMediaGroup.isNotEmpty) {
+          grouped.add(currentMediaGroup.length == 1
+              ? currentMediaGroup.first
+              : {
+                  'isMediaGroup': true,
+                  'messages': List.from(currentMediaGroup)
+                });
+          currentMediaGroup.clear();
+        }
+        grouped.add(msg);
+      }
+    }
+
+    if (currentMediaGroup.isNotEmpty) {
+      grouped.add(currentMediaGroup.length == 1
+          ? currentMediaGroup.first
+          : {'isMediaGroup': true, 'messages': List.from(currentMediaGroup)});
+    }
+
+    return grouped;
+  }
+
+  // ---------------------------------------------------------------------------
+  // CORE OFFLINE-FIRST: MESSAGE LIST FROM LOCAL DB
   // ---------------------------------------------------------------------------
 
   Widget _buildListMessage() {
@@ -1399,8 +1496,9 @@ class GroupChatPageState extends State<GroupChatPage>
               builder: (context, Box box, _) {
                 final allMessages = LocalDbService().getMessages(_groupChatId);
                 final displayMessages = allMessages.take(_limit).toList();
+                final groupedData = _processMessages(displayMessages);
 
-                if (displayMessages.isEmpty) {
+                if (groupedData.isEmpty) {
                   return const Center(
                       child: Text('No messages yet. Say hello! 👋',
                           style: TextStyle(color: Color(0xFF8E8E93))));
@@ -1408,18 +1506,21 @@ class GroupChatPageState extends State<GroupChatPage>
 
                 return ListView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                  itemCount: displayMessages.length,
+                  itemCount: groupedData.length,
                   reverse: true,
                   controller: _listScrollController,
-                  // 🚀 Physics cuộn mượt kiểu iOS, chống trôi tuột
                   physics: const BouncingScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
                     decelerationRate: ScrollDecelerationRate.fast,
                   ),
                   itemBuilder: (_, index) {
-                    final localData = displayMessages[index];
+                    final item = groupedData[index];
+                    if (item is Map && item['isMediaGroup'] == true) {
+                      return _buildMediaGroup(
+                          List<Map<dynamic, dynamic>>.from(item['messages']));
+                    }
                     return _buildItemMessageFromLocal(
-                        index, localData, displayMessages);
+                        index, item as Map<dynamic, dynamic>, displayMessages);
                   },
                 );
               },
@@ -1429,6 +1530,117 @@ class GroupChatPageState extends State<GroupChatPage>
                   CircularProgressIndicator(color: ColorConstants.themeColor)),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // MEDIA GROUP GRID WIDGET
+  // ---------------------------------------------------------------------------
+
+  Widget _buildMediaGroup(List<Map<dynamic, dynamic>> messages) {
+    if (messages.isEmpty) return const SizedBox.shrink();
+
+    final firstMsgData = messages.first;
+    final isMe = firstMsgData['idFrom'] == _currentUserId;
+    final messageId = firstMsgData['messageId'] as String? ?? '';
+
+    final representativeMsg = MessageChat(
+      idFrom: firstMsgData['idFrom'] ?? '',
+      idTo: firstMsgData['idTo'] ?? '',
+      timestamp: firstMsgData['timestamp'] ?? '',
+      content: firstMsgData['content'] ?? '',
+      type: firstMsgData['type'] ?? 0,
+      isRead: firstMsgData['status'] == 'sent',
+    );
+
+    return SwipeToReplyWrapper(
+      isMe: isMe,
+      onSwipe: () => _setReply(representativeMsg, messageId),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        child: Column(
+          crossAxisAlignment:
+              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            if (!isMe) _buildSenderInfo(firstMsgData['idFrom']),
+            Row(
+              mainAxisAlignment:
+                  isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (!isMe) _buildAvatar(firstMsgData['idFrom']),
+                Container(
+                  width: MediaQuery.of(context).size.width * 0.7,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    color: Colors.transparent,
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 2,
+                      mainAxisSpacing: 2,
+                    ),
+                    itemCount: messages.length,
+                    itemBuilder: (context, i) {
+                      var m = messages[i];
+                      bool isVideo = m['type'] == TypeMessage.video;
+                      String url = m['content'] ?? '';
+                      final videoUrl = isVideo ? url.split('|').first : '';
+                      final thumbUrl = isVideo
+                          ? (url.split('|').length > 1 ? url.split('|')[1] : '')
+                          : url;
+                      return GestureDetector(
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          if (isVideo) {
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) =>
+                                        VideoPlayerPage(videoUrl: videoUrl)));
+                          } else {
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) =>
+                                        FullPhotoPage(url: thumbUrl)));
+                          }
+                        },
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Image.network(
+                              thumbUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  Container(color: Colors.black12),
+                            ),
+                            if (isVideo)
+                              const Center(
+                                child: Icon(Icons.play_circle_fill_rounded,
+                                    color: Colors.white, size: 32),
+                              ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+            _buildTimestamp(firstMsgData['timestamp'] ?? '', isMe),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // ITEM MESSAGE BUILDER
+  // ---------------------------------------------------------------------------
 
   Widget _buildItemMessageFromLocal(int index, Map<dynamic, dynamic> localData,
       List<Map<dynamic, dynamic>> fullList) {
@@ -1451,41 +1663,157 @@ class GroupChatPageState extends State<GroupChatPage>
     }
 
     final isMe = messageChat.idFrom == _currentUserId;
-    final data = localData;
-    final isViewOnce = data['isViewOnce'] ?? false;
-    final bool isScamWarning = data['scamWarning'] ?? false;
-    final String scamReason = data['scamReason'] ?? '';
-    final bool hasReminder = data['hasReminder'] ?? false;
+    final isViewOnce = localData['isViewOnce'] ?? false;
+    final bool isScamWarning = localData['scamWarning'] ?? false;
+    final String scamReason = localData['scamReason'] ?? '';
+    final bool hasReminder = localData['hasReminder'] ?? false;
     final String messageId = localData['messageId'] ?? '';
 
-    if (isViewOnce) {
-      return _buildViewOnceMessageFromLocal(messageChat, localData, messageId);
-    }
-    if (messageChat.type == 3 && _voiceProvider != null) {
-      return _buildVoiceMessage(messageChat, isMe);
-    }
-    if (messageChat.type == TypeMessage.image) {
-      return _buildImageMessageFromLocal(
-          messageId, messageChat, isMe, isLastInGroup, isPending);
-    }
-    if (messageChat.type == TypeMessage.video) {
-      return _buildVideoMessageFromLocal(
-          messageId, messageChat, isMe, isLastInGroup, isPending);
-    }
-    if (messageChat.type == TypeMessage.sticker) {
-      return _buildStickerMessage(messageChat, isMe, messageId);
+    // --- Poll ---
+    if (messageChat.type == TypeMessage.poll) {
+      return SwipeToReplyWrapper(
+        isMe: isMe,
+        onSwipe: () => _setReply(messageChat, messageId),
+        child: Container(
+          margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (!isMe)
+                isLastInGroup
+                    ? _buildAvatar(messageChat.idFrom)
+                    : const SizedBox(width: 40),
+              PollMessageWidget(
+                content: messageChat.content,
+                messageId: messageId,
+                currentUserId: _currentUserId,
+                onVote: (mId, optId) {
+                  _chatProvider.votePoll(
+                      _groupChatId, mId, optId, _currentUserId);
+                },
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
-    return _buildTextMessageFromLocal(
-      messageId: messageId,
-      msg: messageChat,
+    // --- Document ---
+    if (messageChat.type == TypeMessage.document) {
+      Map<String, dynamic> fileData = {};
+      try {
+        fileData = jsonDecode(messageChat.content);
+      } catch (_) {}
+      return SwipeToReplyWrapper(
+        isMe: isMe,
+        onSwipe: () => _setReply(messageChat, messageId),
+        child: Container(
+          margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (!isMe)
+                isLastInGroup
+                    ? _buildAvatar(messageChat.idFrom)
+                    : const SizedBox(width: 40),
+              GestureDetector(
+                onTap: () {
+                  final url = fileData['url'] as String? ?? '';
+                  if (url.isNotEmpty) launchUrl(Uri.parse(url));
+                },
+                onLongPress: () => _showMessageOptions(messageChat, messageId),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isMe ? Colors.blue.shade100 : Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                          color: Colors.black.withOpacity(0.04),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4))
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.insert_drive_file,
+                          color: Color(0xFF007AFF), size: 30),
+                      const SizedBox(width: 8),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            fileData['name'] as String? ?? 'File',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            '${((fileData['size'] as num? ?? 0) / 1024).toStringAsFixed(1)} KB',
+                            style: const TextStyle(
+                                fontSize: 12, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    Widget messageBubble;
+
+    // --- View Once ---
+    if (isViewOnce) {
+      messageBubble =
+          _buildViewOnceMessageFromLocal(messageChat, localData, messageId);
+    }
+    // --- Voice ---
+    else if (messageChat.type == 3 && _voiceProvider != null) {
+      messageBubble = _buildVoiceMessage(messageChat, isMe);
+    }
+    // --- Image ---
+    else if (messageChat.type == TypeMessage.image) {
+      messageBubble = _buildImageMessageFromLocal(
+          messageId, messageChat, isMe, isLastInGroup, isPending);
+    }
+    // --- Video ---
+    else if (messageChat.type == TypeMessage.video) {
+      messageBubble = _buildVideoMessageFromLocal(
+          messageId, messageChat, isMe, isLastInGroup, isPending);
+    }
+    // --- Sticker ---
+    else if (messageChat.type == TypeMessage.sticker) {
+      messageBubble = _buildStickerMessage(messageChat, isMe, messageId);
+    }
+    // --- Text ---
+    else {
+      messageBubble = _buildTextMessageFromLocal(
+        messageId: messageId,
+        msg: messageChat,
+        isMe: isMe,
+        isLastInGroup: isLastInGroup,
+        isPending: isPending,
+        isHighlighted: isHighlighted,
+        isScamWarning: isScamWarning,
+        scamReason: scamReason,
+        hasReminder: hasReminder,
+      );
+    }
+
+    return SwipeToReplyWrapper(
       isMe: isMe,
-      isLastInGroup: isLastInGroup,
-      isPending: isPending,
-      isHighlighted: isHighlighted,
-      isScamWarning: isScamWarning,
-      scamReason: scamReason,
-      hasReminder: hasReminder,
+      onSwipe: () => _setReply(messageChat, messageId),
+      child: messageBubble,
     );
   }
 
@@ -1528,7 +1856,7 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   // ---------------------------------------------------------------------------
-  // TEXT MESSAGE (với SwipeToReplyWrapper)
+  // TEXT MESSAGE
   // ---------------------------------------------------------------------------
 
   Widget _buildTextMessageFromLocal({
@@ -1545,223 +1873,220 @@ class GroupChatPageState extends State<GroupChatPage>
     final double tailRadius = isLastInGroup ? 4.0 : 20.0;
     final location = _locationProvider?.parseLocationFromMessage(msg.content);
 
-    // 🚀 Toàn bộ bubble được bọc bởi SwipeToReplyWrapper
-    Widget bubble = SwipeToReplyWrapper(
-      isMe: isMe,
-      onSwipe: () => _setReply(msg),
-      child: Container(
-        margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
-        child: Column(
-          crossAxisAlignment:
-              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          children: [
-            if (!isMe && isLastInGroup) _buildSenderInfo(msg.idFrom),
-            Row(
-              mainAxisAlignment:
-                  isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (!isMe)
-                  isLastInGroup
-                      ? _buildAvatar(msg.idFrom)
-                      : const SizedBox(width: 40),
-                Flexible(
-                  child: GestureDetector(
-                    onLongPress: () {
-                      HapticFeedback.heavyImpact();
-                      _showMessageOptions(msg, messageId);
-                    },
-                    onDoubleTap: () {
-                      HapticFeedback.mediumImpact();
-                      _showReactionPicker(messageId);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
-                      constraints: BoxConstraints(
-                          maxWidth: MediaQuery.of(context).size.width * 0.72),
-                      decoration: BoxDecoration(
-                        gradient: isMe
-                            ? const LinearGradient(
-                                colors: [Color(0xFF007AFF), Color(0xFF0056D6)])
-                            : null,
-                        color: isMe ? null : Colors.white,
-                        borderRadius: BorderRadius.only(
-                          topLeft: const Radius.circular(20),
-                          topRight: const Radius.circular(20),
-                          bottomLeft: Radius.circular(isMe ? 20 : tailRadius),
-                          bottomRight: Radius.circular(isMe ? tailRadius : 20),
-                        ),
-                        boxShadow: isMe
-                            ? [
-                                BoxShadow(
-                                    color: const Color(0xFF007AFF)
-                                        .withOpacity(0.25),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 4))
-                              ]
-                            : [
-                                BoxShadow(
-                                    color: Colors.black.withOpacity(0.04),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 4))
-                              ],
+    Widget bubble = Container(
+      margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+      child: Column(
+        crossAxisAlignment:
+            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          if (!isMe && isLastInGroup) _buildSenderInfo(msg.idFrom),
+          Row(
+            mainAxisAlignment:
+                isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (!isMe)
+                isLastInGroup
+                    ? _buildAvatar(msg.idFrom)
+                    : const SizedBox(width: 40),
+              Flexible(
+                child: GestureDetector(
+                  onLongPress: () {
+                    HapticFeedback.heavyImpact();
+                    _showMessageOptions(msg, messageId);
+                  },
+                  onDoubleTap: () {
+                    HapticFeedback.mediumImpact();
+                    _showReactionPicker(messageId);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    constraints: BoxConstraints(
+                        maxWidth: MediaQuery.of(context).size.width * 0.72),
+                    decoration: BoxDecoration(
+                      gradient: isMe
+                          ? const LinearGradient(
+                              colors: [Color(0xFF007AFF), Color(0xFF0056D6)])
+                          : null,
+                      color: isMe ? null : Colors.white,
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(20),
+                        topRight: const Radius.circular(20),
+                        bottomLeft: Radius.circular(isMe ? 20 : tailRadius),
+                        bottomRight: Radius.circular(isMe ? tailRadius : 20),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (!isMe && isScamWarning)
-                            Container(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Colors.red.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Colors.red),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.warning,
-                                      color: Colors.red, size: 16),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      'CẢNH BÁO AI: $scamReason',
-                                      style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.red,
-                                          fontWeight: FontWeight.bold),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          if (!isMe && hasReminder)
-                            Container(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Colors.blue.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.alarm_add,
-                                      color: Colors.blue, size: 16),
-                                  const SizedBox(width: 8),
-                                  const Expanded(
-                                    child: Text(
-                                      'AI: Phát hiện có công việc cần lưu!',
-                                      style: TextStyle(
-                                          fontSize: 12, color: Colors.blue),
-                                    ),
-                                  ),
-                                  TextButton(
-                                    onPressed: () =>
-                                        _setReminder(msg, messageId),
-                                    style: TextButton.styleFrom(
-                                        padding: EdgeInsets.zero,
-                                        minimumSize: const Size(40, 24)),
-                                    child: const Text('XEM',
-                                        style: TextStyle(fontSize: 12)),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          if (msg.isDeleted)
-                            Text(
-                              'This message was deleted',
-                              style: TextStyle(
-                                  color: isMe
-                                      ? Colors.white70
-                                      : const Color(0xFF8E8E93),
-                                  fontStyle: FontStyle.italic,
-                                  fontSize: 15),
-                            )
-                          else if (location != null)
-                            _buildLocationContent(location, isMe)
-                          else
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  msg.content,
-                                  style: TextStyle(
-                                      color: isMe
-                                          ? Colors.white
-                                          : const Color(0xFF111418),
-                                      fontSize: 16,
-                                      height: 1.3),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 4),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    children: [
-                                      if (isMe)
-                                        Icon(
-                                          isPending
-                                              ? Icons.access_time_rounded
-                                              : msg.isRead
-                                                  ? Icons.done_all_rounded
-                                                  : Icons.check_rounded,
-                                          size: 14,
-                                          color: isPending
-                                              ? Colors.white54
-                                              : msg.isRead
-                                                  ? Colors.white
-                                                  : Colors.white70,
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                        ],
-                      ),
+                      boxShadow: isMe
+                          ? [
+                              BoxShadow(
+                                  color:
+                                      const Color(0xFF007AFF).withOpacity(0.25),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4))
+                            ]
+                          : [
+                              BoxShadow(
+                                  color: Colors.black.withOpacity(0.04),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4))
+                            ],
                     ),
-                  ),
-                ),
-              ],
-            ),
-            if (!isMe && msg.type == TypeMessage.text) ...[
-              if (_scamResults[messageId] != null &&
-                  _scamResults[messageId] != 'SAFE')
-                ScamWarningWidget(status: _scamResults[messageId]!),
-              if (_scamResults[messageId] == null && !isScamWarning)
-                Padding(
-                  padding: const EdgeInsets.only(left: 52, top: 4, bottom: 4),
-                  child: InkWell(
-                    onTap: () async {
-                      Fluttertoast.showToast(msg: 'AI Đang quét an toàn...');
-                      final status =
-                          await AIBackendService().checkScam(msg.content);
-                      if (mounted) {
-                        setState(() => _scamResults[messageId] = status);
-                      }
-                      if (status == 'SAFE') {
-                        Fluttertoast.showToast(msg: 'Tin nhắn an toàn!');
-                      }
-                    },
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.shield_outlined,
-                            size: 14, color: Colors.green),
-                        SizedBox(width: 4),
-                        Text('Quét an toàn (AI)',
-                            style:
-                                TextStyle(fontSize: 12, color: Colors.green)),
+                        // Scam warning banner
+                        if (!isMe && isScamWarning)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.red),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.warning,
+                                    color: Colors.red, size: 16),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'CẢNH BÁO AI: $scamReason',
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.red,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        // Reminder detection banner
+                        if (!isMe && hasReminder)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.alarm_add,
+                                    color: Colors.blue, size: 16),
+                                const SizedBox(width: 8),
+                                const Expanded(
+                                  child: Text(
+                                    'AI: Phát hiện có công việc cần lưu!',
+                                    style: TextStyle(
+                                        fontSize: 12, color: Colors.blue),
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: () => _setReminder(msg, messageId),
+                                  style: TextButton.styleFrom(
+                                      padding: EdgeInsets.zero,
+                                      minimumSize: const Size(40, 24)),
+                                  child: const Text('XEM',
+                                      style: TextStyle(fontSize: 12)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        // Message body
+                        if (msg.isDeleted)
+                          Text(
+                            'This message was deleted',
+                            style: TextStyle(
+                                color: isMe
+                                    ? Colors.white70
+                                    : const Color(0xFF8E8E93),
+                                fontStyle: FontStyle.italic,
+                                fontSize: 15),
+                          )
+                        else if (location != null)
+                          _buildLocationContent(location, isMe)
+                        else
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                msg.content,
+                                style: TextStyle(
+                                    color: isMe
+                                        ? Colors.white
+                                        : const Color(0xFF111418),
+                                    fontSize: 16,
+                                    height: 1.3),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    if (isMe)
+                                      Icon(
+                                        isPending
+                                            ? Icons.access_time_rounded
+                                            : msg.isRead
+                                                ? Icons.done_all_rounded
+                                                : Icons.check_rounded,
+                                        size: 14,
+                                        color: isPending
+                                            ? Colors.white54
+                                            : msg.isRead
+                                                ? Colors.white
+                                                : Colors.white70,
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                       ],
                     ),
                   ),
                 ),
+              ),
             ],
-            _buildReactions(messageId, isMe),
-            _buildTimestamp(msg.timestamp, isMe),
+          ),
+          // AI scam scan button for incoming text messages
+          if (!isMe && msg.type == TypeMessage.text) ...[
+            if (_scamResults[messageId] != null &&
+                _scamResults[messageId] != 'SAFE')
+              ScamWarningWidget(status: _scamResults[messageId]!),
+            if (_scamResults[messageId] == null && !isScamWarning)
+              Padding(
+                padding: const EdgeInsets.only(left: 52, top: 4, bottom: 4),
+                child: InkWell(
+                  onTap: () async {
+                    Fluttertoast.showToast(msg: 'AI Đang quét an toàn...');
+                    final status =
+                        await AIBackendService().checkScam(msg.content);
+                    if (mounted) {
+                      setState(() => _scamResults[messageId] = status);
+                    }
+                    if (status == 'SAFE') {
+                      Fluttertoast.showToast(msg: 'Tin nhắn an toàn!');
+                    }
+                  },
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.shield_outlined,
+                          size: 14, color: Colors.green),
+                      SizedBox(width: 4),
+                      Text('Quét an toàn (AI)',
+                          style: TextStyle(fontSize: 12, color: Colors.green)),
+                    ],
+                  ),
+                ),
+              ),
           ],
-        ),
+          _buildReactions(messageId, isMe),
+          _buildTimestamp(msg.timestamp, isMe),
+        ],
       ),
     );
 
@@ -2216,9 +2541,7 @@ class GroupChatPageState extends State<GroupChatPage>
           final m = _memberSuggestions[i];
           final userId = m['userId'] as String? ?? '';
           final name = m['name'] as String? ?? '';
-          if (userId.isEmpty || name.isEmpty) {
-            return const SizedBox.shrink();
-          }
+          if (userId.isEmpty || name.isEmpty) return const SizedBox.shrink();
           return ListTile(
             dense: true,
             leading: CircleAvatar(
@@ -2293,6 +2616,32 @@ class GroupChatPageState extends State<GroupChatPage>
           children: [
             _featureBtn(Icons.image_rounded, 'Ảnh', _onPickImage),
             _featureBtn(Icons.videocam_rounded, 'Video', _onPickVideo),
+            _featureBtn(Icons.attach_file, 'Tài liệu', () {
+              setState(() => _showFeaturesMenu = false);
+              _onPickDocument();
+            }),
+            _featureBtn(Icons.poll, 'Bình chọn', () {
+              setState(() => _showFeaturesMenu = false);
+              showDialog(
+                context: context,
+                builder: (_) => CreatePollDialog(
+                  onCreate: (question, options) {
+                    final opts = options
+                        .asMap()
+                        .entries
+                        .map((e) => {
+                              'id': e.key.toString(),
+                              'text': e.value,
+                              'votes': <String>[],
+                            })
+                        .toList();
+                    final content =
+                        jsonEncode({'question': question, 'options': opts});
+                    _onSendMessage(content, TypeMessage.poll);
+                  },
+                ),
+              );
+            }),
             _featureBtn(Icons.visibility_off, 'View Once', () {
               setState(() => _showFeaturesMenu = false);
               _sendViewOnce();
@@ -2341,7 +2690,7 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   // ---------------------------------------------------------------------------
-  // INPUT BAR (với BouncingWrapper trên các nút)
+  // INPUT BAR
   // ---------------------------------------------------------------------------
 
   Widget _buildInput() {
@@ -2355,6 +2704,7 @@ class GroupChatPageState extends State<GroupChatPage>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Smart replies
           if (_smartReplies.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
@@ -2369,48 +2719,59 @@ class GroupChatPageState extends State<GroupChatPage>
                 },
               ),
             ),
+          // Reply preview — tap to scroll to original message (Giai đoạn 2)
           if (_replyingTo != null)
-            Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                      color: Colors.black.withOpacity(0.04), blurRadius: 8)
-                ],
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.reply_rounded,
-                      color: Color(0xFF007AFF), size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Replying to $_replyingToSenderName: ${_replyingTo!.content}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFF8E8E93),
-                          fontWeight: FontWeight.w500),
+            GestureDetector(
+              onTap: () {
+                if (_replyingToMessageId != null) {
+                  _scrollToMessage(_replyingToMessageId!);
+                }
+              },
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.black.withOpacity(0.04), blurRadius: 8)
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.reply_rounded,
+                        color: Color(0xFF007AFF), size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Replying to $_replyingToSenderName: ${_replyingTo!.content}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF8E8E93),
+                            fontWeight: FontWeight.w500),
+                      ),
                     ),
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      setState(() {
-                        _replyingTo = null;
-                        _replyingToSenderName = null;
-                      });
-                    },
-                    child: const Icon(Icons.close_rounded,
-                        size: 20, color: Color(0xFF8E8E93)),
-                  ),
-                ],
+                    GestureDetector(
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        setState(() {
+                          _replyingTo = null;
+                          _replyingToSenderName = null;
+                          _replyingToMessageId = null;
+                        });
+                      },
+                      child: const Icon(Icons.close_rounded,
+                          size: 20, color: Color(0xFF8E8E93)),
+                    ),
+                  ],
+                ),
               ),
             ),
+          // Recording indicator
           if (_isRecording)
             Container(
               margin: const EdgeInsets.only(bottom: 8),
@@ -2432,7 +2793,6 @@ class GroupChatPageState extends State<GroupChatPage>
                       style: const TextStyle(
                           color: Colors.red, fontWeight: FontWeight.bold)),
                   const Spacer(),
-                  // 🚀 BouncingWrapper cho nút hủy recording
                   BouncingWrapper(
                     onTap: _cancelRecording,
                     child: const Padding(
@@ -2440,7 +2800,6 @@ class GroupChatPageState extends State<GroupChatPage>
                       child: Icon(Icons.delete, color: Colors.red, size: 20),
                     ),
                   ),
-                  // 🚀 BouncingWrapper cho nút gửi recording
                   BouncingWrapper(
                     onTap: _stopRecording,
                     child: const Padding(
@@ -2452,6 +2811,7 @@ class GroupChatPageState extends State<GroupChatPage>
                 ],
               ),
             ),
+          // Main input row
           Container(
             decoration: BoxDecoration(
               color: Colors.white,
@@ -2466,7 +2826,6 @@ class GroupChatPageState extends State<GroupChatPage>
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                // 🚀 BouncingWrapper cho nút mở features menu
                 BouncingWrapper(
                   onTap: _toggleFeaturesMenu,
                   child: Padding(
@@ -2481,7 +2840,6 @@ class GroupChatPageState extends State<GroupChatPage>
                   ),
                 ),
                 if (!_showFeaturesMenu)
-                  // 🚀 BouncingWrapper cho nút chọn ảnh nhanh
                   BouncingWrapper(
                     onTap: _onPickImage,
                     child: const Padding(
@@ -2490,7 +2848,6 @@ class GroupChatPageState extends State<GroupChatPage>
                           color: Color(0xFF8E8E93), size: 26),
                     ),
                   ),
-                // 🚀 BouncingWrapper cho nút sticker
                 BouncingWrapper(
                   onTap: _getSticker,
                   child: const Padding(
@@ -2504,7 +2861,8 @@ class GroupChatPageState extends State<GroupChatPage>
                     padding:
                         const EdgeInsets.only(right: 8, top: 12, bottom: 12),
                     child: TextField(
-                      controller: _chatInputController,
+                      controller:
+                          _chatInputController, // MentionTextEditingController
                       focusNode: _focusNode,
                       style: const TextStyle(
                           fontSize: 16, color: Color(0xFF111418)),
@@ -2519,7 +2877,6 @@ class GroupChatPageState extends State<GroupChatPage>
                     ),
                   ),
                 ),
-                // 🚀 BouncingWrapper cho nút Gửi / Mic với scaleFactor sâu hơn
                 BouncingWrapper(
                   scaleFactor: 0.85,
                   onTap: () {

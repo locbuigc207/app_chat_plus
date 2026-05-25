@@ -1,9 +1,9 @@
-
 export 'app_date_utils.dart';
 export 'bubble_testing_utils.dart';
 export 'data_masking_utils.dart';
 export 'debouncer.dart';
 export 'error_logger.dart';
+export 'mention_text_editing_controller.dart';
 export 'network_utils.dart';
 export 'resource_manager.dart';
 export 'utilities.dart';

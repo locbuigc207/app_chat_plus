@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide AspectRatio;
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:simple_pip_mode/pip_widget.dart';
+import 'package:simple_pip_mode/simple_pip.dart';
 
 import '../models/call_model.dart';
 import '../services/agora_rtc_manager.dart';
@@ -32,6 +34,7 @@ class CallPage extends StatefulWidget {
 
 class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
   final _callService = CallService();
+  final _pip = SimplePip();
   late final AgoraRtcManager _rtcManager;
 
   CallStatus _callStatus = CallStatus.calling;
@@ -66,19 +69,38 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     _initCall();
     _watchCallStatus();
     _scheduleControlsHide();
-
-    // _startAIProtection(); ← Đã bỏ, chuyển sang kích hoạt khi remote join
   }
+
+  // ─────────────────────────────────────────────
+  // PiP
+  // ─────────────────────────────────────────────
+
+  /// Thu nhỏ cuộc gọi video thành cửa sổ nổi (PiP).
+  /// isPipAvailable là static getter; AspectRatio là record (numerator, denominator).
+  Future<void> _enterPiPMode() async {
+    final isPipAvailable = await SimplePip.isPipAvailable;
+    if (isPipAvailable) {
+      // AspectRatio của simple_pip_mode là typedef record (int, int)
+      await _pip.enterPipMode(aspectRatio: (3, 4));
+    } else {
+      // Fallback nếu thiết bị không hỗ trợ PiP (Android < 8.0)
+      if (mounted) Navigator.pop(context);
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  // AI Protection
+  // ─────────────────────────────────────────────
 
   void _startAIProtection() {
     final peerId =
-    widget.isOutgoing ? widget.call.calleeId : widget.call.callerId;
-
-    RealtimeAIService().startProtection(
-      peerId,
-      widget.call.channelName,
-    );
+        widget.isOutgoing ? widget.call.calleeId : widget.call.callerId;
+    RealtimeAIService().startProtection(peerId, widget.call.channelName);
   }
+
+  // ─────────────────────────────────────────────
+  // Init / Cleanup
+  // ─────────────────────────────────────────────
 
   Future<void> _initCall() async {
     _errorSub = _rtcManager.errorStream.listen((error) {
@@ -110,7 +132,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
         setState(() {
           _isInitializing = false;
           _errorMessage =
-          'Không thể khởi tạo cuộc gọi.\nKiểm tra Agora App ID.';
+              'Không thể khởi tạo cuộc gọi.\nKiểm tra Agora App ID.';
         });
       }
       return;
@@ -140,7 +162,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
       if (mounted) setState(() => _callStatus = call.status);
 
       if ((call.status == CallStatus.connected ||
-          call.status == CallStatus.accepted) &&
+              call.status == CallStatus.accepted) &&
           _callConnectedAt == null) {
         if (mounted) setState(() => _callConnectedAt = DateTime.now());
       }
@@ -231,7 +253,6 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     RealtimeAIService().stopProtection();
-
     _callStatusSub?.cancel();
     _remoteJoinedSub?.cancel();
     _remoteLeftSub?.cancel();
@@ -242,8 +263,35 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     super.dispose();
   }
 
+  // ─────────────────────────────────────────────
+  // Build
+  // ─────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
+    // Chỉ dùng PipWidget cho cuộc gọi video; voice call giữ nguyên
+    if (widget.call.isVideoCall) {
+      return PipWidget(
+        // Giao diện khi bị thu nhỏ: chỉ hiện luồng video remote
+        pipBuilder: (context) => _buildRemoteVideoOnly(),
+        // Giao diện bình thường: full màn hình với toàn bộ điều khiển
+        builder: (context) => PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            // Bấm Back → thu nhỏ PiP thay vì thoát hẳn
+            if (!didPop) _enterPiPMode();
+          },
+          child: Scaffold(
+            backgroundColor: Colors.black,
+            body: _errorMessage != null && !_isInitializing
+                ? _buildErrorState()
+                : _buildVideoCallUI(),
+          ),
+        ),
+      );
+    }
+
+    // Voice call — không cần PiP
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -253,12 +301,52 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
         backgroundColor: Colors.black,
         body: _errorMessage != null && !_isInitializing
             ? _buildErrorState()
-            : widget.call.isVideoCall
-            ? _buildVideoCallUI()
             : _buildVoiceCallUI(),
       ),
     );
   }
+
+  // ─────────────────────────────────────────────
+  // PiP builder: luồng video remote tối giản
+  // ─────────────────────────────────────────────
+
+  Widget _buildRemoteVideoOnly() {
+    return ListenableBuilder(
+      listenable: _rtcManager,
+      builder: (_, __) {
+        final showVideo = _isConnectedStatus(_callStatus) &&
+            _rtcManager.hasRemoteUser &&
+            _rtcManager.remoteVideoOn &&
+            _rtcManager.engine != null &&
+            widget.call.channelName.isNotEmpty;
+
+        if (!showVideo) {
+          final name = widget.isOutgoing
+              ? widget.call.calleeName
+              : widget.call.callerName;
+          final avatar = widget.isOutgoing
+              ? widget.call.calleeAvatar
+              : widget.call.callerAvatar;
+          return ColoredBox(
+            color: const Color(0xFF1a1a2e),
+            child: Center(child: _buildAvatar(avatar, name, size: 60)),
+          );
+        }
+
+        return AgoraVideoView(
+          controller: VideoViewController.remote(
+            rtcEngine: _rtcManager.engine!,
+            canvas: VideoCanvas(uid: _rtcManager.remoteUid!),
+            connection: RtcConnection(channelId: widget.call.channelName),
+          ),
+        );
+      },
+    );
+  }
+
+  // ─────────────────────────────────────────────
+  // Error state
+  // ─────────────────────────────────────────────
 
   Widget _buildErrorState() {
     return Container(
@@ -305,6 +393,10 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
+  // ─────────────────────────────────────────────
+  // Video call UI (full screen)
+  // ─────────────────────────────────────────────
+
   Widget _buildVideoCallUI() {
     return GestureDetector(
       onTap: _onTapScreen,
@@ -315,6 +407,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
 
           if (_isConnectedStatus(_callStatus)) _buildLocalVideoPip(),
 
+          // Top gradient
           Positioned(
             top: 0,
             left: 0,
@@ -326,12 +419,17 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Colors.black.withOpacity(0.6), Colors.transparent],
+                    colors: [
+                      Colors.black.withOpacity(0.6),
+                      Colors.transparent,
+                    ],
                   ),
                 ),
               ),
             ),
           ),
+
+          // Bottom gradient
           Positioned(
             bottom: 0,
             left: 0,
@@ -343,7 +441,10 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
                   gradient: LinearGradient(
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
-                    colors: [Colors.black.withOpacity(0.8), Colors.transparent],
+                    colors: [
+                      Colors.black.withOpacity(0.8),
+                      Colors.transparent,
+                    ],
                   ),
                 ),
               ),
@@ -358,11 +459,13 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
                   CircularProgressIndicator(
                       color: Colors.white, strokeWidth: 3),
                   SizedBox(height: 16),
-                  Text('Đang kết nối an toàn...',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500)),
+                  Text(
+                    'Đang kết nối an toàn...',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500),
+                  ),
                 ],
               ),
             ),
@@ -422,11 +525,11 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
                           ),
                           onPressed: () {
                             setState(() =>
-                            _isLiveCaptionEnabled = !_isLiveCaptionEnabled);
+                                _isLiveCaptionEnabled = !_isLiveCaptionEnabled);
                             Fluttertoast.showToast(
                                 msg: _isLiveCaptionEnabled
-                                    ? "Đã bật phụ đề AI"
-                                    : "Đã tắt phụ đề AI");
+                                    ? 'Đã bật phụ đề AI'
+                                    : 'Đã tắt phụ đề AI');
                           },
                           tooltip: 'Live Caption AI',
                         ),
@@ -457,7 +560,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
           if (!showVideo) {
             return _buildRemoteVideoPlaceholder(
               connected:
-              _isConnectedStatus(_callStatus) && _rtcManager.hasRemoteUser,
+                  _isConnectedStatus(_callStatus) && _rtcManager.hasRemoteUser,
             );
           }
 
@@ -475,9 +578,9 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
 
   Widget _buildRemoteVideoPlaceholder({bool connected = false}) {
     final name =
-    widget.isOutgoing ? widget.call.calleeName : widget.call.callerName;
+        widget.isOutgoing ? widget.call.calleeName : widget.call.callerName;
     final avatar =
-    widget.isOutgoing ? widget.call.calleeAvatar : widget.call.callerAvatar;
+        widget.isOutgoing ? widget.call.calleeAvatar : widget.call.callerAvatar;
 
     return Stack(
       fit: StackFit.expand,
@@ -486,7 +589,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
           Image.network(avatar,
               fit: BoxFit.cover,
               errorBuilder: (_, __, ___) =>
-              const ColoredBox(color: Color(0xFF1a1a2e))),
+                  const ColoredBox(color: Color(0xFF1a1a2e))),
         BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
           child: Container(color: Colors.black.withOpacity(0.55)),
@@ -518,6 +621,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
+  /// PiP nội tuyến — camera local hiển thị góc phải màn hình (khác PiP hệ thống)
   Widget _buildLocalVideoPip() {
     return Positioned(
       top: MediaQuery.of(context).padding.top + 100,
@@ -562,7 +666,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
 
   Widget _buildVideoTopBar() {
     final name =
-    widget.isOutgoing ? widget.call.calleeName : widget.call.callerName;
+        widget.isOutgoing ? widget.call.calleeName : widget.call.callerName;
     return Positioned(
       top: 0,
       left: 0,
@@ -576,13 +680,15 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
               bottom: false,
               child: Padding(
                 padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 child: Row(
                   children: [
+                    // Nút thu nhỏ PiP
                     IconButton(
-                      icon: const Icon(Icons.keyboard_arrow_down,
+                      icon: const Icon(Icons.picture_in_picture_alt,
                           color: Colors.white),
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: _enterPiPMode,
+                      tooltip: 'Thu nhỏ',
                     ),
                     Expanded(
                       child: Text(
@@ -615,11 +721,15 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
+  // ─────────────────────────────────────────────
+  // Voice call UI
+  // ─────────────────────────────────────────────
+
   Widget _buildVoiceCallUI() {
     final peerName =
-    widget.isOutgoing ? widget.call.calleeName : widget.call.callerName;
+        widget.isOutgoing ? widget.call.calleeName : widget.call.callerName;
     final peerAvatar =
-    widget.isOutgoing ? widget.call.calleeAvatar : widget.call.callerAvatar;
+        widget.isOutgoing ? widget.call.calleeAvatar : widget.call.callerAvatar;
 
     return Stack(
       fit: StackFit.expand,
@@ -628,7 +738,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
           Image.network(peerAvatar,
               fit: BoxFit.cover,
               errorBuilder: (_, __, ___) =>
-              const ColoredBox(color: Color(0xFF1a1a2e))),
+                  const ColoredBox(color: Color(0xFF1a1a2e))),
         BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
           child: Container(color: Colors.black.withOpacity(0.6)),
@@ -638,7 +748,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
             children: [
               Padding(
                 padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -652,12 +762,9 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
                   ],
                 ),
               ),
-
               const Spacer(flex: 2),
-
               _buildAvatar(peerAvatar, peerName, size: 140),
               const SizedBox(height: 32),
-
               Text(
                 peerName,
                 style: const TextStyle(
@@ -667,7 +774,6 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
                     letterSpacing: -0.5),
               ),
               const SizedBox(height: 12),
-
               if (_isConnectedStatus(_callStatus) && _callConnectedAt != null)
                 CallTimerWidget(
                   startTime: _callConnectedAt!,
@@ -693,17 +799,13 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
                 )
               else
                 _buildStatusDots(),
-
               const Spacer(flex: 2),
-
               if (_isLiveCaptionEnabled)
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 20),
                   child: LiveCaptionOverlay(),
                 ),
-
               const Spacer(flex: 1),
-
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -724,18 +826,17 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
                       ),
                       onPressed: () {
                         setState(() =>
-                        _isLiveCaptionEnabled = !_isLiveCaptionEnabled);
+                            _isLiveCaptionEnabled = !_isLiveCaptionEnabled);
                         Fluttertoast.showToast(
                             msg: _isLiveCaptionEnabled
-                                ? "Đã bật phụ đề"
-                                : "Đã tắt phụ đề");
+                                ? 'Đã bật phụ đề'
+                                : 'Đã tắt phụ đề');
                       },
                       tooltip: 'Bật/tắt Phụ đề',
                     ),
                   ),
                 ],
               ),
-
               _buildControlBar(),
             ],
           ),
@@ -743,6 +844,10 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
       ],
     );
   }
+
+  // ─────────────────────────────────────────────
+  // Shared helpers
+  // ─────────────────────────────────────────────
 
   Widget _buildControlBar() {
     return ListenableBuilder(
@@ -755,10 +860,10 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
         isFrontCamera: _rtcManager.isFrontCamera,
         onMuteTap: () => _rtcManager.toggleMute(),
         onCameraTap:
-        widget.call.isVideoCall ? () => _rtcManager.toggleCamera() : null,
+            widget.call.isVideoCall ? () => _rtcManager.toggleCamera() : null,
         onSpeakerTap: () => _rtcManager.toggleSpeaker(),
         onSwitchCameraTap:
-        widget.call.isVideoCall ? () => _rtcManager.switchCamera() : null,
+            widget.call.isVideoCall ? () => _rtcManager.switchCamera() : null,
         onEndCall: _endCall,
       ),
     );
@@ -784,8 +889,8 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
       child: ClipOval(
         child: url.isNotEmpty
             ? Image.network(url,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _defaultAvatar(name, size))
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _defaultAvatar(name, size))
             : _defaultAvatar(name, size),
       ),
     );
@@ -807,9 +912,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildStatusDots() {
-    return _StatusDotsWidget(label: _statusLabel());
-  }
+  Widget _buildStatusDots() => _StatusDotsWidget(label: _statusLabel());
 
   String _statusLabel() {
     switch (_callStatus) {
@@ -833,6 +936,10 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     }
   }
 }
+
+// ─────────────────────────────────────────────
+// Status dots widget
+// ─────────────────────────────────────────────
 
 class _StatusDotsWidget extends StatefulWidget {
   final String label;
