@@ -114,6 +114,8 @@ dependencies:
   hive_flutter: ^1.1.0
   audio_waveforms: ^2.0.2
   simple_pip_mode: ^1.1.0
+  noise_meter: ^5.1.0
+  sensors_plus: ^7.0.0
 
 dev_dependencies:
   flutter_test:

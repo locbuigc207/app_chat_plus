@@ -7,7 +7,7 @@ const {GoogleGenerativeAI} = require("@google/generative-ai");
 admin.initializeApp();
 
 // =====================================================
-// ĐỌC BIẾN MÔI TRƯỜNG TỪ FILE .env
+// ĐỌC BIẾN MÔI TRƯỜNG TỪ FILE .env (BẢO MẬT KEY)
 // =====================================================
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AGORA_APP_ID = process.env.AGORA_APP_ID;
@@ -253,9 +253,9 @@ exports.sendMessageNotification = functions.firestore
         .doc(messageData.idFrom)
         .get();
 
-      const senderName = senderDoc.exists
-        ? senderDoc.data().nickname
-        : "Someone";
+      const senderName = senderDoc.exists ?
+        senderDoc.data().nickname :
+        "Someone";
 
       const payload = {
         data: {
@@ -265,9 +265,9 @@ exports.sendMessageNotification = functions.firestore
           type: "new_message",
 
           encryptedContent:
-            messageData.type === 0
-              ? messageData.content
-              : "[Hình ảnh/Tệp đính kèm]",
+            messageData.type === 0 ?
+              messageData.content :
+              "[Hình ảnh/Tệp đính kèm]",
         },
       };
 
@@ -278,6 +278,7 @@ exports.sendMessageNotification = functions.firestore
       return null;
     }
   });
+
 // =====================================================
 // 7. AUTO-DELETE EXPIRED STORIES
 // =====================================================
@@ -412,7 +413,6 @@ exports.analyzeDecryptedClientMessage = functions.https.onCall(async (data, cont
     throw new functions.https.HttpsError("unauthenticated", "Yêu cầu đăng nhập hợp lệ.");
   }
 
-  // ĐÃ SỬA LỖI ESLINT: Gỡ bỏ idFrom do không sử dụng
   const {plainTextContent, conversationId, messageId, idTo} = data;
 
   try {
@@ -433,7 +433,6 @@ exports.analyzeDecryptedClientMessage = functions.https.onCall(async (data, cont
     const analysis = JSON.parse(text);
     const db = admin.firestore();
 
-    // 1. Cập nhật cảnh báo Scam trực tiếp vào Document
     if (analysis.isScam) {
       await db.collection("messages").doc(conversationId).collection(conversationId).doc(messageId).update({
         scamWarning: true,
@@ -442,7 +441,6 @@ exports.analyzeDecryptedClientMessage = functions.https.onCall(async (data, cont
       console.log(`🚨 Phát hiện rủi ro trong E2EE message: ${messageId}`);
     }
 
-    // 2. Tự động tạo Reminder
     if (analysis.hasReminder) {
       await db.collection("reminders").add({
         userId: idTo,
@@ -493,3 +491,85 @@ exports.analyzeCallSecurity = functions.https.onCall(async (data, context) => {
     return {isSafe: true, riskLevel: "LOW", warningMessage: "", confidenceScore: 0};
   }
 });
+
+// =====================================================
+// 14. AI WEEKLY RECAP (GIAI ĐOẠN 3: BÓC PHỐT TUẦN)
+// =====================================================
+exports.weeklyAiRecap = functions.pubsub
+  .schedule("every sunday 20:00")
+  .timeZone("Asia/Ho_Chi_Minh")
+  .onRun(async (context) => {
+    console.log("🔥 Bắt đầu chạy Recap Tuần...");
+    const db = admin.firestore();
+
+    try {
+      const groupsSnapshot = await db
+        .collection("conversations")
+        .where("isGroup", "==", true)
+        .get();
+
+      // Lấy thời gian 7 ngày trước (tính bằng milliseconds)
+      const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+      for (const groupDoc of groupsSnapshot.docs) {
+        const groupId = groupDoc.id;
+
+        // Truy vấn tin nhắn trong 7 ngày qua
+        const msgsSnapshot = await db
+          .collection("messages")
+          .doc(groupId)
+          .collection(groupId)
+          .where("timestamp", ">=", sevenDaysAgo.toString())
+          .orderBy("timestamp", "asc")
+          .limit(200) // Giới hạn số lượng để tránh quá tải Token
+          .get();
+
+        if (msgsSnapshot.empty) continue;
+
+        let chatHistory = "";
+        msgsSnapshot.forEach((doc) => {
+          const data = doc.data();
+          if (data.type === 0) { // Chỉ lấy tin nhắn dạng Text
+            chatHistory += `User ${data.idFrom}: ${data.content}\n`;
+          }
+        });
+
+        if (chatHistory.trim() === "") continue;
+
+        // Gọi Gemini API
+        const model = genAI.getGenerativeModel({model: "gemini-2.0-flash"});
+        const prompt = `Dưới đây là lịch sử chat nhóm trong tuần qua. Hãy đóng vai một MC vui nhộn, viết một bản tin "Bóc phốt tuần" siêu ngắn (dưới 150 chữ), hài hước, chỉ ra ai nói nhiều nhất, câu nói ấn tượng hoặc trend hài hước nhất. Lịch sử:\n${chatHistory}`;
+
+        const result = await model.generateContent(prompt);
+        const recapText = "🔥 BẢN TIN BÓC PHỐT TUẦN 🔥\n\n" + result.response.text();
+
+        // Push tin nhắn Recap vào nhóm với tư cách AI_BOT
+        const messageId = Date.now().toString();
+        await db
+          .collection("messages")
+          .doc(groupId)
+          .collection(groupId)
+          .doc(messageId)
+          .set({
+            idFrom: "AI_BOT",
+            idTo: groupId,
+            timestamp: messageId,
+            content: recapText,
+            type: 0,
+            status: "sent",
+          });
+
+        // Cập nhật cuộc hội thoại hiển thị Last Message
+        await groupDoc.ref.update({
+          lastMessage: recapText,
+          lastMessageTime: messageId,
+          lastMessageType: 0,
+        });
+      }
+      console.log("✅ Hoàn thành Recap Tuần.");
+      return null;
+    } catch (error) {
+      console.error("❌ Lỗi AI Weekly Recap:", error);
+      return null;
+    }
+  });

@@ -1669,6 +1669,71 @@ class GroupChatPageState extends State<GroupChatPage>
     final bool hasReminder = localData['hasReminder'] ?? false;
     final String messageId = localData['messageId'] ?? '';
 
+    // --- Giai đoạn 3: Game Caro (Type 7) ---
+    if (messageChat.type == 7) {
+      return SwipeToReplyWrapper(
+          isMe: isMe,
+          onSwipe: () => _setReply(messageChat, messageId),
+          child: Container(
+              margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+              alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+              child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (!isMe)
+                      isLastInGroup
+                          ? _buildAvatar(messageChat.idFrom)
+                          : const SizedBox(width: 40),
+                    TicTacToeMessageWidget(
+                      content: messageChat.content,
+                      messageId: messageId,
+                      groupId: _groupChatId,
+                      currentUserId: _currentUserId,
+                    )
+                  ])));
+    }
+
+    // --- Giai đoạn 3: Thổi Bóng (Type 8) ---
+    if (messageChat.type == 8) {
+      return SwipeToReplyWrapper(
+          isMe: isMe,
+          onSwipe: () => _setReply(messageChat, messageId),
+          child: Container(
+              margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+              alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+              child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (!isMe)
+                      isLastInGroup
+                          ? _buildAvatar(messageChat.idFrom)
+                          : const SizedBox(width: 40),
+                    BlowMessageWidget(secretText: messageChat.content)
+                  ])));
+    }
+
+    // --- Giai đoạn 3: Lắc Máy (Type 9) ---
+    if (messageChat.type == 9) {
+      return SwipeToReplyWrapper(
+          isMe: isMe,
+          onSwipe: () => _setReply(messageChat, messageId),
+          child: Container(
+              margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+              alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+              child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (!isMe)
+                      isLastInGroup
+                          ? _buildAvatar(messageChat.idFrom)
+                          : const SizedBox(width: 40),
+                    ShakeMessageWidget(secretText: messageChat.content)
+                  ])));
+    }
+
     // --- Poll ---
     if (messageChat.type == TypeMessage.poll) {
       return SwipeToReplyWrapper(
@@ -2616,6 +2681,30 @@ class GroupChatPageState extends State<GroupChatPage>
           children: [
             _featureBtn(Icons.image_rounded, 'Ảnh', _onPickImage),
             _featureBtn(Icons.videocam_rounded, 'Video', _onPickVideo),
+
+            // --- Giai đoạn 3: Tính năng Viral & Game ---
+            _featureBtn(Icons.games, 'Caro 3x3', () {
+              setState(() => _showFeaturesMenu = false);
+              String gameState = jsonEncode({
+                'board': ["", "", "", "", "", "", "", "", ""],
+                'turn': "",
+                'winner': "",
+                'playerX': "",
+                'playerO': ""
+              });
+              _onSendMessage(gameState, 7); // 7 is TypeMessage.game
+            }),
+            _featureBtn(Icons.air, 'Thổi bóng', () {
+              setState(() => _showFeaturesMenu = false);
+              _onSendMessage(
+                  "Bí mật: Hôm nay đi nhậu không?", 8); // 8 is TypeMessage.blow
+            }),
+            _featureBtn(Icons.vibration, 'Lắc máy', () {
+              setState(() => _showFeaturesMenu = false);
+              _onSendMessage(
+                  "Surprise! Quà của bạn đây 🎁", 9); // 9 is TypeMessage.shake
+            }),
+
             _featureBtn(Icons.attach_file, 'Tài liệu', () {
               setState(() => _showFeaturesMenu = false);
               _onPickDocument();

@@ -15,6 +15,9 @@ class TypeMessage {
   static const int video = 4;
   static const int document = 5; // File tài liệu
   static const int poll = 6; // Bình chọn
+  static const int game = 7;
+  static const int blow = 8;
+  static const int shake = 9;
 }
 
 // =========================================================
