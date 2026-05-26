@@ -116,6 +116,7 @@ dependencies:
   simple_pip_mode: ^1.1.0
   noise_meter: ^5.1.0
   sensors_plus: ^7.0.0
+  flutter_card_swiper: ^7.2.0
 
 dev_dependencies:
   flutter_test:

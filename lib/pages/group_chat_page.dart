@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,8 +13,10 @@ import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_chat_demo/utils/utils.dart';
+import 'package:flutter_chat_demo/widgets/swipe_reply_cards.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -50,7 +53,6 @@ class GroupChatPageState extends State<GroupChatPage>
   String? _replyingToMessageId;
 
   List<DocumentSnapshot> _pinnedMessages = [];
-
   bool _showMentionSuggestions = false;
   List<Map<String, dynamic>> _memberSuggestions = [];
 
@@ -60,8 +62,15 @@ class GroupChatPageState extends State<GroupChatPage>
 
   List<SmartReply> _smartReplies = [];
   final Map<String, String> _scamResults = {};
-
   String? _pendingScrollToMessageId;
+
+  // --- GIAI ĐOẠN 4: AI AUTO-PILOT & SWIPE CARDS ---
+  bool _isAutoPilotOn = false;
+  bool _isShowingSwipeCards = false;
+  List<String> _swipeReplies = [];
+  String _lastAutoRepliedMessageId = '';
+  StreamSubscription? _autoPilotSubscription;
+  // -------------------------------------------------
 
   late ChatProvider _chatProvider;
   late AuthProvider _authProvider;
@@ -77,7 +86,6 @@ class GroupChatPageState extends State<GroupChatPage>
   VoiceMessageProvider? _voiceProvider;
   LocationProvider? _locationProvider;
 
-  // MentionTextEditingController từ Giai đoạn 2
   late MentionTextEditingController _chatInputController;
   late ScrollController _listScrollController;
   late FocusNode _focusNode;
@@ -111,6 +119,7 @@ class GroupChatPageState extends State<GroupChatPage>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!resourceManager.isDisposed && mounted) {
         _initializeProviders(context);
+        _listenForAutoPilot();
       }
     });
   }
@@ -188,6 +197,7 @@ class GroupChatPageState extends State<GroupChatPage>
 
   @override
   void dispose() {
+    _autoPilotSubscription?.cancel();
     _recordingTimer?.cancel();
     _scheduledMessages.forEach((_, t) => t.cancel());
     _scheduledMessages.clear();
@@ -382,7 +392,6 @@ class GroupChatPageState extends State<GroupChatPage>
 
   Future<void> _onSendMessage(String content, int type) async {
     if (resourceManager.isDisposed) return;
-    // Allow non-text types (media, sticker, etc.) even if content appears "empty"
     if (content.trim().isEmpty && type == TypeMessage.text) {
       Fluttertoast.showToast(msg: 'Nothing to send');
       return;
@@ -687,6 +696,137 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 
   // ---------------------------------------------------------------------------
+  // GIAI ĐOẠN 4: AI AUTO-PILOT (DIGITAL TWIN)
+  // ---------------------------------------------------------------------------
+
+  void _listenForAutoPilot() {
+    _autoPilotSubscription = FirebaseFirestore.instance
+        .collection(FirestoreConstants.pathMessageCollection)
+        .doc(_groupChatId)
+        .collection(_groupChatId)
+        .orderBy('timestamp', descending: true)
+        .limit(1)
+        .snapshots()
+        .listen((snap) async {
+      if (snap.docs.isEmpty || !_isAutoPilotOn) return;
+
+      final data = snap.docs.first.data();
+      final String idFrom = data['idFrom'] ?? '';
+      final String content = data['content'] ?? '';
+      final String msgId = data['timestamp'] ?? '';
+
+      // Không tự reply tin của mình, không reply tin AI, không reply tin đã xử lý
+      if (idFrom != _currentUserId &&
+          idFrom != 'AI_BOT' &&
+          !content.startsWith('[AI]') &&
+          msgId != _lastAutoRepliedMessageId) {
+        _lastAutoRepliedMessageId = msgId;
+        try {
+          final result = await FirebaseFunctions.instance
+              .httpsCallable('generateAutoPilotReply')
+              .call({
+            'incomingMessage': content,
+            'myStyleContext':
+                'Thường dùng từ gen Z như: "okela", "chịu", "đỉnh", hay xài emoji 😂, 🔥',
+          });
+          final String aiReply = "[AI Trả lời]: ${result.data['reply']}";
+          await _onSendMessage(aiReply, TypeMessage.text);
+        } catch (e) {
+          debugPrint("Auto-Pilot Error: $e");
+        }
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // GIAI ĐOẠN 4: SWIPE CARDS (ZERO-TYPE AI)
+  // ---------------------------------------------------------------------------
+
+  Future<void> _triggerZeroTypeSwipe() async {
+    if (mounted) setState(() => _isLoading = true);
+    try {
+      final messages = LocalDbService().getMessages(_groupChatId);
+      final String lastMsg = messages.isNotEmpty
+          ? (messages.first['content'] ?? 'Hello')
+          : 'Hello';
+
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('generateSwipeReplies')
+          .call({
+        'incomingMessage': lastMsg,
+        'contextMessages': '',
+      });
+
+      final List<String> replies = List<String>.from(result.data as List);
+      if (mounted) {
+        setState(() {
+          _swipeReplies = replies;
+          _isShowingSwipeCards = true;
+        });
+      }
+    } catch (e) {
+      Fluttertoast.showToast(msg: 'Không thể gọi AI');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // GIAI ĐOẠN 4: GEO-LOCKED MESSAGE
+  // ---------------------------------------------------------------------------
+
+  Future<void> _sendGeoLockedMessage() async {
+    setState(() => _showFeaturesMenu = false);
+    final TextEditingController textController = TextEditingController();
+
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Khóa tin nhắn bằng GPS'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Người nhận phải đứng cách vị trí hiện tại của bạn <50m mới đọc được.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: textController,
+              decoration: const InputDecoration(labelText: 'Nội dung bí mật'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Hủy')),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              if (mounted) setState(() => _isLoading = true);
+              try {
+                final Position pos = await Geolocator.getCurrentPosition();
+                final String content = jsonEncode({
+                  'text': textController.text,
+                  'lat': pos.latitude,
+                  'lng': pos.longitude,
+                });
+                await _onSendMessage(content, TypeMessage.geoLocked);
+              } catch (e) {
+                Fluttertoast.showToast(msg: 'Lỗi lấy GPS');
+              } finally {
+                if (mounted) setState(() => _isLoading = false);
+              }
+            },
+            child: const Text('Khóa & Gửi'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // AI CONTEXT ANALYSIS
   // ---------------------------------------------------------------------------
 
@@ -818,7 +958,6 @@ class GroupChatPageState extends State<GroupChatPage>
     if (ok) Fluttertoast.showToast(msg: current ? 'Unpinned' : 'Pinned');
   }
 
-  /// [messageId] dùng để scroll đến tin gốc khi bấm vào reply preview (Giai đoạn 2)
   void _setReply(MessageChat message, [String? messageId]) {
     HapticFeedback.selectionClick();
     if (resourceManager.isDisposed || !mounted) return;
@@ -1230,7 +1369,8 @@ class GroupChatPageState extends State<GroupChatPage>
             _buildTypingIndicator(),
             if (_isShowSticker) _buildStickers(),
             if (_showFeaturesMenu) _buildFeaturesMenu(),
-            _buildInput(),
+            // Ẩn input bar khi đang hiển thị swipe cards
+            if (!_isShowingSwipeCards) _buildInput(),
           ],
         ),
         Positioned(
@@ -1238,6 +1378,21 @@ class GroupChatPageState extends State<GroupChatPage>
         ),
         if (_isLoadingMedia)
           Positioned.fill(child: _buildMediaLoadingOverlay()),
+        // GIAI ĐOẠN 4: Swipe Cards overlay
+        if (_isShowingSwipeCards)
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: SwipeReplyCards(
+              replies: _swipeReplies,
+              onSend: (text) async {
+                await _onSendMessage(text, TypeMessage.text);
+                setState(() => _isShowingSwipeCards = false);
+              },
+              onCancel: () => setState(() => _isShowingSwipeCards = false),
+            ),
+          ),
       ],
     );
   }
@@ -1332,6 +1487,32 @@ class GroupChatPageState extends State<GroupChatPage>
         ),
       ),
       actions: [
+        // GIAI ĐOẠN 4: NÚT AUTO-PILOT
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Auto',
+              style: TextStyle(
+                fontSize: 12,
+                color: _isAutoPilotOn ? Colors.green : Colors.grey,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Switch(
+              value: _isAutoPilotOn,
+              activeColor: Colors.green,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              onChanged: (val) {
+                setState(() => _isAutoPilotOn = val);
+                Fluttertoast.showToast(
+                    msg: val
+                        ? '🤖 Đã BẬT AI Lái tự động'
+                        : '✋ Đã TẮT Lái tự động');
+              },
+            ),
+          ],
+        ),
         GroupVideoCallButton(
           groupId: _groupChatId,
           groupName: widget.group.groupName,
@@ -1436,19 +1617,19 @@ class GroupChatPageState extends State<GroupChatPage>
     List<Map<dynamic, dynamic>> currentMediaGroup = [];
 
     for (int i = 0; i < rawMessages.length; i++) {
-      var msg = rawMessages[i];
-      int type = msg['type'] ?? 0;
-      bool isMedia = (type == TypeMessage.image || type == TypeMessage.video);
+      final msg = rawMessages[i];
+      final int type = msg['type'] ?? 0;
+      final bool isMedia =
+          (type == TypeMessage.image || type == TypeMessage.video);
 
       if (isMedia) {
         if (currentMediaGroup.isEmpty) {
           currentMediaGroup.add(msg);
         } else {
-          var prevMsg = currentMediaGroup.last;
-          int timeDiff = (int.parse(prevMsg['timestamp'] ?? '0') -
+          final prevMsg = currentMediaGroup.last;
+          final int timeDiff = (int.parse(prevMsg['timestamp'] ?? '0') -
                   int.parse(msg['timestamp'] ?? '0'))
               .abs();
-          // Group media sent by the same person within 10 seconds
           if (msg['idFrom'] == prevMsg['idFrom'] && timeDiff <= 10000) {
             currentMediaGroup.add(msg);
           } else {
@@ -1585,11 +1766,12 @@ class GroupChatPageState extends State<GroupChatPage>
                     ),
                     itemCount: messages.length,
                     itemBuilder: (context, i) {
-                      var m = messages[i];
-                      bool isVideo = m['type'] == TypeMessage.video;
-                      String url = m['content'] ?? '';
-                      final videoUrl = isVideo ? url.split('|').first : '';
-                      final thumbUrl = isVideo
+                      final m = messages[i];
+                      final bool isVideo = m['type'] == TypeMessage.video;
+                      final String url = m['content'] ?? '';
+                      final String videoUrl =
+                          isVideo ? url.split('|').first : '';
+                      final String thumbUrl = isVideo
                           ? (url.split('|').length > 1 ? url.split('|')[1] : '')
                           : url;
                       return GestureDetector(
@@ -1669,69 +1851,101 @@ class GroupChatPageState extends State<GroupChatPage>
     final bool hasReminder = localData['hasReminder'] ?? false;
     final String messageId = localData['messageId'] ?? '';
 
-    // --- Giai đoạn 3: Game Caro (Type 7) ---
+    // --- GIAI ĐOẠN 4: Geo-Locked Message ---
+    if (messageChat.type == TypeMessage.geoLocked) {
+      return SwipeToReplyWrapper(
+        isMe: isMe,
+        onSwipe: () => _setReply(messageChat, messageId),
+        child: Container(
+          margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (!isMe)
+                isLastInGroup
+                    ? _buildAvatar(messageChat.idFrom)
+                    : const SizedBox(width: 40),
+              GeoLockedMessageWidget(content: messageChat.content, isMe: isMe),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // --- GIAI ĐOẠN 3: Game Caro (Type 7) ---
     if (messageChat.type == 7) {
       return SwipeToReplyWrapper(
-          isMe: isMe,
-          onSwipe: () => _setReply(messageChat, messageId),
-          child: Container(
-              margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
-              alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-              child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    if (!isMe)
-                      isLastInGroup
-                          ? _buildAvatar(messageChat.idFrom)
-                          : const SizedBox(width: 40),
-                    TicTacToeMessageWidget(
-                      content: messageChat.content,
-                      messageId: messageId,
-                      groupId: _groupChatId,
-                      currentUserId: _currentUserId,
-                    )
-                  ])));
+        isMe: isMe,
+        onSwipe: () => _setReply(messageChat, messageId),
+        child: Container(
+          margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (!isMe)
+                isLastInGroup
+                    ? _buildAvatar(messageChat.idFrom)
+                    : const SizedBox(width: 40),
+              TicTacToeMessageWidget(
+                content: messageChat.content,
+                messageId: messageId,
+                groupId: _groupChatId,
+                currentUserId: _currentUserId,
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
-    // --- Giai đoạn 3: Thổi Bóng (Type 8) ---
+    // --- GIAI ĐOẠN 3: Thổi Bóng (Type 8) ---
     if (messageChat.type == 8) {
       return SwipeToReplyWrapper(
-          isMe: isMe,
-          onSwipe: () => _setReply(messageChat, messageId),
-          child: Container(
-              margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
-              alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-              child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    if (!isMe)
-                      isLastInGroup
-                          ? _buildAvatar(messageChat.idFrom)
-                          : const SizedBox(width: 40),
-                    BlowMessageWidget(secretText: messageChat.content)
-                  ])));
+        isMe: isMe,
+        onSwipe: () => _setReply(messageChat, messageId),
+        child: Container(
+          margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (!isMe)
+                isLastInGroup
+                    ? _buildAvatar(messageChat.idFrom)
+                    : const SizedBox(width: 40),
+              BlowMessageWidget(secretText: messageChat.content),
+            ],
+          ),
+        ),
+      );
     }
 
-    // --- Giai đoạn 3: Lắc Máy (Type 9) ---
+    // --- GIAI ĐOẠN 3: Lắc Máy (Type 9) ---
     if (messageChat.type == 9) {
       return SwipeToReplyWrapper(
-          isMe: isMe,
-          onSwipe: () => _setReply(messageChat, messageId),
-          child: Container(
-              margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
-              alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-              child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    if (!isMe)
-                      isLastInGroup
-                          ? _buildAvatar(messageChat.idFrom)
-                          : const SizedBox(width: 40),
-                    ShakeMessageWidget(secretText: messageChat.content)
-                  ])));
+        isMe: isMe,
+        onSwipe: () => _setReply(messageChat, messageId),
+        child: Container(
+          margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (!isMe)
+                isLastInGroup
+                    ? _buildAvatar(messageChat.idFrom)
+                    : const SizedBox(width: 40),
+              ShakeMessageWidget(secretText: messageChat.content),
+            ],
+          ),
+        ),
+      );
     }
 
     // --- Poll ---
@@ -1754,8 +1968,8 @@ class GroupChatPageState extends State<GroupChatPage>
                 content: messageChat.content,
                 messageId: messageId,
                 currentUserId: _currentUserId,
-                onVote: (mId, optId) {
-                  _chatProvider.votePoll(
+                onVote: (mId, optId) async {
+                  await _chatProvider.votePoll(
                       _groupChatId, mId, optId, _currentUserId);
                 },
               ),
@@ -2681,30 +2895,28 @@ class GroupChatPageState extends State<GroupChatPage>
           children: [
             _featureBtn(Icons.image_rounded, 'Ảnh', _onPickImage),
             _featureBtn(Icons.videocam_rounded, 'Video', _onPickVideo),
-
-            // --- Giai đoạn 3: Tính năng Viral & Game ---
             _featureBtn(Icons.games, 'Caro 3x3', () {
               setState(() => _showFeaturesMenu = false);
-              String gameState = jsonEncode({
+              final gameState = jsonEncode({
                 'board': ["", "", "", "", "", "", "", "", ""],
                 'turn': "",
                 'winner': "",
                 'playerX': "",
                 'playerO': ""
               });
-              _onSendMessage(gameState, 7); // 7 is TypeMessage.game
+              _onSendMessage(gameState, 7);
             }),
             _featureBtn(Icons.air, 'Thổi bóng', () {
               setState(() => _showFeaturesMenu = false);
-              _onSendMessage(
-                  "Bí mật: Hôm nay đi nhậu không?", 8); // 8 is TypeMessage.blow
+              _onSendMessage("Bí mật: Hôm nay đi nhậu không?", 8);
             }),
             _featureBtn(Icons.vibration, 'Lắc máy', () {
               setState(() => _showFeaturesMenu = false);
-              _onSendMessage(
-                  "Surprise! Quà của bạn đây 🎁", 9); // 9 is TypeMessage.shake
+              _onSendMessage("Surprise! Quà của bạn đây 🎁", 9);
             }),
-
+            // GIAI ĐOẠN 4: Tọa độ GPS
+            _featureBtn(
+                Icons.add_location_alt, 'Tọa độ', _sendGeoLockedMessage),
             _featureBtn(Icons.attach_file, 'Tài liệu', () {
               setState(() => _showFeaturesMenu = false);
               _onPickDocument();
@@ -2714,7 +2926,10 @@ class GroupChatPageState extends State<GroupChatPage>
               showDialog(
                 context: context,
                 builder: (_) => CreatePollDialog(
-                  onCreate: (question, options) {
+                  onCreate: (question, options,
+                      {bool isMultipleChoice = false,
+                      bool isAnonymous = false,
+                      DateTime? expiresAt}) {
                     final opts = options
                         .asMap()
                         .entries
@@ -2724,8 +2939,14 @@ class GroupChatPageState extends State<GroupChatPage>
                               'votes': <String>[],
                             })
                         .toList();
-                    final content =
-                        jsonEncode({'question': question, 'options': opts});
+                    final content = jsonEncode({
+                      'question': question,
+                      'options': opts,
+                      'isMultipleChoice': isMultipleChoice,
+                      'isAnonymous': isAnonymous,
+                      if (expiresAt != null)
+                        'expiresAt': expiresAt.toIso8601String(),
+                    });
                     _onSendMessage(content, TypeMessage.poll);
                   },
                 ),
@@ -2808,7 +3029,7 @@ class GroupChatPageState extends State<GroupChatPage>
                 },
               ),
             ),
-          // Reply preview — tap to scroll to original message (Giai đoạn 2)
+          // Reply preview — tap to scroll to original message
           if (_replyingTo != null)
             GestureDetector(
               onTap: () {
@@ -2950,8 +3171,7 @@ class GroupChatPageState extends State<GroupChatPage>
                     padding:
                         const EdgeInsets.only(right: 8, top: 12, bottom: 12),
                     child: TextField(
-                      controller:
-                          _chatInputController, // MentionTextEditingController
+                      controller: _chatInputController,
                       focusNode: _focusNode,
                       style: const TextStyle(
                           fontSize: 16, color: Color(0xFF111418)),
@@ -2964,6 +3184,14 @@ class GroupChatPageState extends State<GroupChatPage>
                       ),
                       onChanged: _handleTextChange,
                     ),
+                  ),
+                ),
+                // GIAI ĐOẠN 4: Nút Swipe Cards (AI Zero-Type)
+                BouncingWrapper(
+                  onTap: _triggerZeroTypeSwipe,
+                  child: const Padding(
+                    padding: EdgeInsets.all(10.0),
+                    child: Icon(Icons.style, color: Colors.purple, size: 26),
                   ),
                 ),
                 BouncingWrapper(

@@ -20,6 +20,7 @@ export 'create_poll_dialog.dart';
 export 'edit_message_dialog.dart';
 export 'enhanced_conversation_options.dart';
 export 'enhanced_message_options_dialog.dart';
+export 'geo_locked_message_widget.dart';
 export 'group_call_button.dart';
 export 'group_call_listener.dart';
 export 'improved_chat_widgets.dart';

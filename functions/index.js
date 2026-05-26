@@ -573,3 +573,46 @@ exports.weeklyAiRecap = functions.pubsub
       return null;
     }
   });
+// =====================================================
+// 15. ZERO-TYPE: GENERATE SWIPE REPLIES (GIAI ĐOẠN 4)
+// =====================================================
+exports.generateSwipeReplies = functions.https.onCall(async (data, context) => {
+  if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Yêu cầu đăng nhập.");
+  const {incomingMessage, contextMessages} = data;
+
+  try {
+    const model = genAI.getGenerativeModel({model: "gemini-2.0-flash"});
+    const prompt = `Dựa vào ngữ cảnh đoạn chat: "${contextMessages}".
+      Có một tin nhắn mới tới: "${incomingMessage}".
+      Hãy tạo 4 câu trả lời cực kỳ ngắn gọn (dưới 15 chữ), tự nhiên, phong cách gen Z.
+      Trả về ĐÚNG định dạng JSON mảng các chuỗi: ["câu 1", "câu 2", "câu 3", "câu 4"]`;
+
+    const result = await model.generateContent(prompt);
+    let text = result.response.text().trim().replace(/^```json/g, "").replace(/```$/g, "").trim();
+    return JSON.parse(text);
+  } catch (error) {
+    console.error("❌ Lỗi Generate Swipe Replies:", error);
+    return ["Ok nha", "Thế à?", "Chịu luôn á 😂", "Đỉnh!"];
+  }
+});
+
+// =====================================================
+// 16. AUTO-PILOT: DIGITAL TWIN REPLY (GIAI ĐOẠN 4)
+// =====================================================
+exports.generateAutoPilotReply = functions.https.onCall(async (data, context) => {
+  if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Yêu cầu đăng nhập.");
+  const {incomingMessage, myStyleContext} = data;
+
+  try {
+    const model = genAI.getGenerativeModel({model: "gemini-2.0-flash"});
+    const prompt = `Đóng vai tôi để trả lời tin nhắn tự động.
+      Phong cách ăn nói của tôi thường như sau: "${myStyleContext}".
+      Tin nhắn mới nhận: "${incomingMessage}".
+      Hãy tạo 1 câu trả lời ngắn gọn, chân thật nhất theo đúng phong cách của tôi. Không giải thích thêm.`;
+
+    const result = await model.generateContent(prompt);
+    return {reply: result.response.text().trim()};
+  } catch (error) {
+    return {reply: "Tôi đang bận, sẽ ntin lại sau nha."};
+  }
+});

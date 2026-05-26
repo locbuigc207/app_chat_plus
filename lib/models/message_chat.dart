@@ -18,6 +18,7 @@ class TypeMessage {
   static const int game = 7;
   static const int blow = 8;
   static const int shake = 9;
+  static const int geoLocked = 10;
 }
 
 // =========================================================
