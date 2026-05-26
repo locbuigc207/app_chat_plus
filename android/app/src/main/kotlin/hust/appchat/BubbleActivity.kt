@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.util.Log
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
+import androidx.activity.OnBackPressedCallback
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
@@ -15,29 +16,15 @@ import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.MethodChannel
 
 /**
- * FIXES APPLIED:
+ * CHANGES vs original:
  *
- * FIX-A — Engine warmup với readiness callback:
- * Trước: warmUpSharedEngine() tạo engine xong là coi ready, nhưng Dart VM
- * chưa chắc đã execute xong entry point.
- * Sau:  Thêm lifecycleChannel.appIsResumed() để signal Flutter engine
- * đang active, giúp Dart VM start sớm hơn. Giảm black screen 1-3s.
+ * FIX-BACK — Migrate onBackPressed() → OnBackPressedCallback:
+ *   onBackPressed() bị deprecated từ API 33 (Android 13) và bị ignore hoàn toàn
+ *   trên Android 14+ khi enableOnBackInvokedCallback="true" trong manifest.
+ *   Sau: Dùng onBackPressedDispatcher.addCallback() trong onCreate().
+ *   Behavior giữ nguyên: moveTaskToBack(true) thay vì finish().
  *
- * FIX-B — NavigationCompletedForUser Set có giới hạn 50 entries:
- * Trước: Set tích lũy vô hạn trong session dài.
- * Sau:  Tự động evict entry cũ nhất khi vượt quá 50.
- *
- * FIX-C — Retry interval giảm 200ms → 50ms, maxRetries tăng lên 40:
- * Trước: 10 retries × 200ms = 2000ms tổng — quá chậm trên flagship.
- * Sau:  40 retries × 50ms = 2000ms tổng — check thường xuyên hơn,
- * phản hồi nhanh hơn khi engine sẵn sàng.
- *
- * FIX-D — (UPDATED) Ghi đè trực tiếp onBackPressed()
- *
- * FIX-E — Guard check trong provideFlutterEngine:
- * Trước: Nếu engine trong cache đã bị destroyed (edge case), dùng lại
- * engine chết gây crash.
- * Sau:  Kiểm tra engine còn hoạt động trước khi reuse.
+ * FIX-A/B/C/D/E giữ nguyên từ bản gốc.
  */
 class BubbleActivity : FlutterActivity() {
 
@@ -53,7 +40,6 @@ class BubbleActivity : FlutterActivity() {
         private const val EXTRA_AVATAR_URL = "avatarUrl"
 
         private const val ENGINE_WARMUP_TIMEOUT_MS = 2000L
-        // FIX-C: giảm interval, tăng số lần retry
         private const val RETRY_INTERVAL_MS = 50L
         private const val MAX_NAVIGATION_CACHE = 50
 
@@ -70,20 +56,15 @@ class BubbleActivity : FlutterActivity() {
             addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
         }
 
-        /**
-         * FIX-A: Warm up engine với lifecycle signal để Dart VM start sớm.
-         */
         fun warmUpSharedEngine(context: Context) {
             val cache = FlutterEngineCache.getInstance()
             val existing = cache.get(SHARED_ENGINE_ID)
 
-            // FIX-E: kiểm tra engine còn sống không
             if (existing != null && existing.dartExecutor.isExecutingDart) {
                 Log.d(TAG, "♻️ Shared engine already warmed up and running")
                 return
             }
 
-            // Engine cũ đã chết — xóa khỏi cache và tạo mới
             if (existing != null) {
                 Log.w(TAG, "⚠️ Stale engine found in cache, recreating...")
                 cache.remove(SHARED_ENGINE_ID)
@@ -94,7 +75,6 @@ class BubbleActivity : FlutterActivity() {
             engine.dartExecutor.executeDartEntrypoint(
                 DartExecutor.DartEntrypoint.createDefault()
             )
-            // FIX-A: signal engine lifecycle để Dart VM khởi động nhanh hơn
             engine.lifecycleChannel.appIsResumed()
 
             cache.put(SHARED_ENGINE_ID, engine)
@@ -117,7 +97,6 @@ class BubbleActivity : FlutterActivity() {
 
     private var isFlutterReady = false
 
-    // FIX-B: giới hạn kích thước set
     private val navigationCompletedForUser = LinkedHashSet<String>()
 
     private val maxRetries = (ENGINE_WARMUP_TIMEOUT_MS / RETRY_INTERVAL_MS).toInt()
@@ -138,6 +117,15 @@ class BubbleActivity : FlutterActivity() {
             return
         }
 
+        // FIX-BACK: Thay thế onBackPressed() deprecated bằng OnBackPressedCallback.
+        // Hoạt động đúng trên Android 13+ với enableOnBackInvokedCallback="true".
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                Log.d(TAG, "⬅️ Back pressed — minimizing to bubble")
+                moveTaskToBack(true)
+            }
+        })
+
         if (savedInstanceState == null) {
             extractUserFromIntent(intent)
         }
@@ -151,13 +139,6 @@ class BubbleActivity : FlutterActivity() {
         }
     }
 
-    @Suppress("DEPRECATION")
-    override fun onBackPressed() {
-        Log.d(TAG, "⬅️ Back pressed — minimizing to bubble")
-        // Thu nhỏ ứng dụng xuống dạng bong bóng thay vì đóng hoàn toàn
-        moveTaskToBack(true)
-    }
-
     // ========================================
     // FLUTTER ENGINE
     // ========================================
@@ -166,7 +147,6 @@ class BubbleActivity : FlutterActivity() {
         val cache = FlutterEngineCache.getInstance()
         var engine = cache.get(SHARED_ENGINE_ID)
 
-        // FIX-E: validate engine còn alive
         if (engine != null && !engine.dartExecutor.isExecutingDart) {
             Log.w(TAG, "⚠️ Cached engine is dead, recreating...")
             cache.remove(SHARED_ENGINE_ID)
@@ -179,7 +159,7 @@ class BubbleActivity : FlutterActivity() {
             engine.dartExecutor.executeDartEntrypoint(
                 DartExecutor.DartEntrypoint.createDefault()
             )
-            engine.lifecycleChannel.appIsResumed() // FIX-A
+            engine.lifecycleChannel.appIsResumed()
             cache.put(SHARED_ENGINE_ID, engine)
             Log.d(TAG, "✅ Shared engine created and cached")
         } else {
@@ -251,7 +231,6 @@ class BubbleActivity : FlutterActivity() {
                 )
             )
 
-            // FIX-B: evict oldest khi vượt giới hạn
             if (navigationCompletedForUser.size >= MAX_NAVIGATION_CACHE) {
                 val oldest = navigationCompletedForUser.iterator().next()
                 navigationCompletedForUser.remove(oldest)
@@ -326,7 +305,6 @@ class BubbleActivity : FlutterActivity() {
                 }
             }
 
-            // Fallback: set ready sau 500ms nếu Flutter không gửi "flutterReady"
             mainHandler.postDelayed({
                 if (!isFinishing && !isFlutterReady) {
                     Log.d(TAG, "⏰ Flutter ready via fallback timeout")
@@ -394,7 +372,6 @@ class BubbleActivity : FlutterActivity() {
         pendingUserId    = null
         pendingUserName  = null
         pendingAvatarUrl = null
-        // Engine vẫn giữ trong cache để reuse
         Log.d(TAG, "ℹ️ Shared engine kept alive in cache")
         super.onDestroy()
     }

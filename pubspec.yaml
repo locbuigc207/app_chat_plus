@@ -65,7 +65,7 @@ dependencies:
 
   # Audio
   flutter_sound: ^9.16.0
-  audio_session: ^0.2.2
+  audio_session: ^0.1.21
 
   # Location
   geolocator: ^14.0.2
