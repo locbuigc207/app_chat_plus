@@ -546,7 +546,7 @@ class GroupChatPageState extends State<GroupChatPage>
   Future<void> _onPickDocument() async {
     HapticFeedback.lightImpact();
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
+      FilePickerResult? result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'doc', 'docx', 'xls', 'xlsx'],
       );

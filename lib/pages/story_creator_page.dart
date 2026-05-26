@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:deepar_flutter_plus/deepar_flutter_plus.dart';
-import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter/return_code.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -108,7 +108,7 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
                     ),
                   ),
                   const Spacer(),
-                  const SizedBox(width: 48), // Balance alignment
+                  const SizedBox(width: 48),
                 ],
               ),
             ),
@@ -141,6 +141,10 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tab button
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _TabBtn extends StatelessWidget {
   final String label;
@@ -176,6 +180,10 @@ class _TabBtn extends StatelessWidget {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Photo creator
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _PhotoCreator extends StatefulWidget {
   final String userId;
@@ -334,6 +342,10 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Picker prompt (empty state for Photo tab)
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _PickerPrompt extends StatelessWidget {
   final void Function(ImageSource) onPick;
   const _PickerPrompt({required this.onPick});
@@ -423,6 +435,10 @@ class _BigPickBtn extends StatelessWidget {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Text creator
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _TextCreator extends StatefulWidget {
   final String userId;
@@ -681,6 +697,10 @@ class _TextCreatorState extends State<_TextCreator> {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AR filter model
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _ArFilter {
   final String displayName;
   final String? assetPath;
@@ -724,6 +744,10 @@ class _ArFilter {
     }
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Video creator
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _VideoCreator extends StatefulWidget {
   final String userId;
@@ -795,12 +819,30 @@ class _VideoCreatorState extends State<_VideoCreator> {
     _deepArController.switchEffect(filter.assetPath ?? '');
   }
 
+  /// Chọn nhạc nền từ bộ nhớ thiết bị.
   Future<void> _pickMusic() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.audio);
-    if (result != null && result.files.single.path != null) {
-      setState(() => _selectedAudioPath = result.files.single.path);
-      await _audioPlayer.setFilePath(_selectedAudioPath!);
-      Fluttertoast.showToast(msg: 'Đã thêm nhạc nền!');
+    try {
+      // file_picker ^11: static method, không còn .platform
+      final FilePickerResult? result = await FilePicker.pickFiles(
+        type: FileType.audio,
+        allowMultiple: false,
+      );
+
+      // Kiểm tra an toàn xem có file nào được chọn không
+      if (result != null && result.files.isNotEmpty) {
+        // Dùng .first.path thay vì .single.path để tránh StateError
+        final String? path = result.files.first.path;
+        if (path != null) {
+          setState(() => _selectedAudioPath = path);
+          await _audioPlayer.setFilePath(path);
+          Fluttertoast.showToast(msg: '✅ Đã thêm nhạc nền!');
+        } else {
+          Fluttertoast.showToast(msg: '⚠️ Không thể đọc đường dẫn file này!');
+        }
+      }
+    } catch (e) {
+      debugPrint('FilePicker Error: $e');
+      Fluttertoast.showToast(msg: '❌ Lỗi chọn nhạc nền!');
     }
   }
 
@@ -846,7 +888,6 @@ class _VideoCreatorState extends State<_VideoCreator> {
       final cmd =
           "-i '$videoPath' -i '$audioPath' -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest '$output'";
 
-      // Sử dụng FFmpegKit.execute() để đợi hoàn thành một cách đồng bộ
       final session = await FFmpegKit.execute(cmd);
       final rc = await session.getReturnCode();
 
@@ -855,7 +896,6 @@ class _VideoCreatorState extends State<_VideoCreator> {
       } else {
         final logs = await session.getAllLogsAsString();
         debugPrint('FFmpeg Error Logs: $logs');
-
         if (mounted) setState(() => _isProcessing = false);
         Fluttertoast.showToast(msg: 'Lỗi ghép nhạc vào video!');
       }
@@ -925,8 +965,10 @@ class _VideoCreatorState extends State<_VideoCreator> {
                 children: [
                   CircularProgressIndicator(color: Colors.white),
                   SizedBox(height: 16),
-                  Text('Đang xử lý Video…',
-                      style: TextStyle(color: Colors.white, fontSize: 16)),
+                  Text(
+                    'Đang xử lý Video…',
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
                 ],
               ),
             ),
@@ -1012,6 +1054,10 @@ class _VideoCreatorState extends State<_VideoCreator> {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared widgets
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _SideBtn extends StatelessWidget {
   final IconData icon;
