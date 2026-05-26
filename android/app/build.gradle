@@ -50,8 +50,6 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
-        // Kotlin 2.3.x yêu cầu freeCompilerArgs để suppress một số warning mới
-        freeCompilerArgs += ["-Xjvm-default=all"]
     }
 
     lint {

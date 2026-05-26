@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.util.Log
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
+import androidx.activity.ComponentActivity          // FIX-BACK: needed for K2 compiler cast
 import androidx.activity.OnBackPressedCallback
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -23,6 +24,10 @@ import io.flutter.plugin.common.MethodChannel
  *   trên Android 14+ khi enableOnBackInvokedCallback="true" trong manifest.
  *   Sau: Dùng onBackPressedDispatcher.addCallback() trong onCreate().
  *   Behavior giữ nguyên: moveTaskToBack(true) thay vì finish().
+ *
+ *   FIX-BACK-K2: Kotlin 2.x K2 compiler không tự resolve 'onBackPressedDispatcher'
+ *   từ ComponentActivity qua FlutterActivity inheritance chain. Fix: explicit cast
+ *   (this as ComponentActivity).onBackPressedDispatcher trước khi addCallback.
  *
  * FIX-A/B/C/D/E giữ nguyên từ bản gốc.
  */
@@ -117,14 +122,18 @@ class BubbleActivity : FlutterActivity() {
             return
         }
 
-        // FIX-BACK: Thay thế onBackPressed() deprecated bằng OnBackPressedCallback.
-        // Hoạt động đúng trên Android 13+ với enableOnBackInvokedCallback="true".
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                Log.d(TAG, "⬅️ Back pressed — minimizing to bubble")
-                moveTaskToBack(true)
-            }
-        })
+        // FIX-BACK + FIX-BACK-K2:
+        // With Kotlin 2.x K2 compiler, 'onBackPressedDispatcher' inherited from
+        // ComponentActivity is not automatically resolved on 'this' (FlutterActivity).
+        // Explicit cast (this as ComponentActivity) forces the compiler to look up
+        // the property on the correct type.
+        (this as ComponentActivity).onBackPressedDispatcher
+            .addCallback(this, object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    Log.d(TAG, "⬅️ Back pressed — minimizing to bubble")
+                    moveTaskToBack(true)
+                }
+            })
 
         if (savedInstanceState == null) {
             extractUserFromIntent(intent)
