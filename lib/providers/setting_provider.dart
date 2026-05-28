@@ -19,6 +19,10 @@ class SettingProvider {
     return prefs.getString(key);
   }
 
+  bool? getBoolPref(String key) {
+    return prefs.getBool(key);
+  }
+
   Future<void> setPref(String key, dynamic value) async {
     if (value is String) {
       await prefs.setString(key, value);

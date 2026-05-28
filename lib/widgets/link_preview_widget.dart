@@ -1,3 +1,4 @@
+// link_preview_widget.dart
 import 'dart:async';
 
 import 'package:any_link_preview/any_link_preview.dart';
@@ -34,8 +35,7 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
     super.initState();
     _animController = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 400));
-    _fadeAnim =
-        CurvedAnimation(parent: _animController, curve: Curves.easeOut);
+    _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeOut);
     _slideAnim = Tween<Offset>(
       begin: const Offset(0, 0.12),
       end: Offset.zero,
@@ -59,10 +59,12 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
         if (!_hasFailed) _animController.forward();
       }
     } catch (_) {
-      if (mounted) setState(() {
-        _isLoading = false;
-        _hasFailed = true;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasFailed = true;
+        });
+      }
     }
   }
 
@@ -72,11 +74,50 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
     super.dispose();
   }
 
+  /// ✅ FIX: Dùng launchUrl với fallback, không kiểm tra canLaunchUrl trước
   Future<void> _launch() async {
     HapticFeedback.lightImpact();
-    final uri = Uri.parse(widget.url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    try {
+      final uri = Uri.parse(widget.url);
+      // Thử mở bằng browser ngoài trước
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      // Fallback: nếu không mở được, thử in-app webview
+      if (!launched) {
+        await launchUrl(
+          uri,
+          mode: LaunchMode.inAppWebView,
+          webViewConfiguration: const WebViewConfiguration(
+            enableJavaScript: true,
+            enableDomStorage: true,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Cannot launch URL: ${widget.url} — $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Không thể mở liên kết: ${widget.url}'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  void _copyLink() {
+    HapticFeedback.mediumImpact();
+    Clipboard.setData(ClipboardData(text: widget.url));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Link đã được sao chép'),
+          duration: Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -94,10 +135,8 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
     if (_hasFailed) return _buildFallback();
 
     final meta = _metadata!;
-    final hasImage =
-        meta.image != null && (meta.image?.isNotEmpty ?? false);
-    final title =
-    meta.title?.isNotEmpty == true ? meta.title! : _domain;
+    final hasImage = meta.image != null && (meta.image?.isNotEmpty ?? false);
+    final title = meta.title?.isNotEmpty == true ? meta.title! : _domain;
     final desc = meta.desc;
 
     return FadeTransition(
@@ -105,17 +144,8 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
       child: SlideTransition(
         position: _slideAnim,
         child: GestureDetector(
-          onTap: _launch,
-          onLongPress: () {
-            HapticFeedback.mediumImpact();
-            Clipboard.setData(ClipboardData(text: widget.url));
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Link đã được sao chép'),
-                duration: Duration(seconds: 2),
-              ),
-            );
-          },
+          onTap: _launch, // ✅ Tap mở link
+          onLongPress: _copyLink, // ✅ Long press sao chép
           child: Container(
             margin: const EdgeInsets.only(top: 8),
             decoration: BoxDecoration(
@@ -134,20 +164,14 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Hero image
                 if (hasImage) _buildImage(meta.image!),
-
-                // Content row
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Domain pill
                       _DomainPill(domain: _domain, isMe: widget.isMe),
                       const SizedBox(height: 6),
-
-                      // Title
                       Text(
                         title,
                         maxLines: 2,
@@ -161,8 +185,6 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
                           height: 1.3,
                         ),
                       ),
-
-                      // Description
                       if (desc != null && desc.isNotEmpty) ...[
                         const SizedBox(height: 4),
                         Text(
@@ -178,9 +200,8 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
                           ),
                         ),
                       ],
-
-                      // Open link row
                       const SizedBox(height: 8),
+                      // ✅ "Mở liên kết" row cũng tappable
                       Row(
                         children: [
                           Icon(
@@ -238,7 +259,6 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
               );
             },
           ),
-          // Bottom gradient for text readability
           Positioned(
             bottom: 0,
             left: 0,
@@ -308,9 +328,11 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
     );
   }
 
+  /// ✅ Fallback cũng tap được
   Widget _buildFallback() {
     return GestureDetector(
       onTap: _launch,
+      onLongPress: _copyLink,
       child: Container(
         margin: const EdgeInsets.only(top: 6),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -330,23 +352,30 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
           children: [
             Icon(Icons.link_rounded,
                 size: 16,
-                color: widget.isMe
-                    ? Colors.white70
-                    : const Color(0xFF6366F1)),
+                color: widget.isMe ? Colors.white70 : const Color(0xFF6366F1)),
             const SizedBox(width: 6),
             Flexible(
               child: Text(
-                _domain,
+                // ✅ Hiển thị URL đầy đủ thay vì chỉ domain
+                widget.url.length > 40
+                    ? '${widget.url.substring(0, 40)}…'
+                    : widget.url,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 12,
-                  color: widget.isMe
-                      ? Colors.white70
-                      : const Color(0xFF6366F1),
+                  color: widget.isMe ? Colors.white70 : const Color(0xFF6366F1),
                   decoration: TextDecoration.underline,
+                  decorationColor:
+                      widget.isMe ? Colors.white70 : const Color(0xFF6366F1),
                 ),
               ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.open_in_new_rounded,
+              size: 12,
+              color: widget.isMe ? Colors.white60 : const Color(0xFF6366F1),
             ),
           ],
         ),
@@ -393,9 +422,7 @@ class _DomainPill extends StatelessWidget {
             style: TextStyle(
               fontSize: 10.5,
               fontWeight: FontWeight.w600,
-              color: isMe
-                  ? Colors.white60
-                  : const Color(0xFF6366F1),
+              color: isMe ? Colors.white60 : const Color(0xFF6366F1),
               letterSpacing: 0.2,
             ),
           ),

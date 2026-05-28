@@ -90,7 +90,9 @@ class _SettingsPageState extends State<SettingsPage>
       _phoneNumber =
           _settingProvider.getPref(FirestoreConstants.phoneNumber) ?? '';
       _qrCode = _settingProvider.getPref(FirestoreConstants.qrCode) ?? '';
-      _is2FAEnabled = _settingProvider.getPref('is2FAEnabled') == true;
+
+      _is2FAEnabled = _settingProvider.getBoolPref('is2FAEnabled') ?? false;
+
       _twoFactorSecret = _settingProvider.getPref('twoFactorSecret') ?? '';
     });
     _nicknameCtrl = TextEditingController(text: _nickname);

@@ -5,6 +5,8 @@ import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ImprovedMessageBubble
 // ─────────────────────────────────────────────────────────────────────────────
@@ -228,6 +230,83 @@ class _BubbleBody extends StatelessWidget {
     return isDark ? const Color(0xFFF0F2F8) : const Color(0xFF1A1D2E);
   }
 
+  /// Render text với các URL được highlight và bấm được.
+  Widget _buildRichText(String text, Color baseColor) {
+    final RegExp urlExp = RegExp(
+      r'(?:(?:https?|ftp):\/\/|www\.)'
+      r'[\w\-]+(\.[\w\-]+)+'
+      r"(?:[\/\w\-._~:/?#\[\]@!$&'()*+,;=%]*)?", // Dùng ngoặc kép r"..." ở đây
+      caseSensitive: false,
+    );
+
+    final spans = <InlineSpan>[];
+    int lastEnd = 0;
+
+    for (final match in urlExp.allMatches(text)) {
+      // Text trước URL
+      if (match.start > lastEnd) {
+        spans.add(TextSpan(
+          text: text.substring(lastEnd, match.start),
+          style: TextStyle(color: baseColor, fontSize: 14.5, height: 1.45),
+        ));
+      }
+
+      // URL span — bấm được
+      var rawUrl = text.substring(match.start, match.end);
+      final linkUrl = rawUrl.startsWith('http') ? rawUrl : 'https://$rawUrl';
+
+      spans.add(
+        WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: GestureDetector(
+            onTap: () async {
+              HapticFeedback.lightImpact();
+              final uri = Uri.parse(linkUrl);
+              try {
+                final ok =
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                if (!ok) {
+                  await launchUrl(uri, mode: LaunchMode.inAppWebView);
+                }
+              } catch (_) {}
+            },
+            child: Text(
+              rawUrl,
+              style: TextStyle(
+                color: isMe ? const Color(0xFFBDD7FF) : const Color(0xFF4F46E5),
+                fontSize: 14.5,
+                height: 1.45,
+                decoration: TextDecoration.underline,
+                decorationColor:
+                    isMe ? const Color(0xFFBDD7FF) : const Color(0xFF4F46E5),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      lastEnd = match.end;
+    }
+
+    // Phần text còn lại sau URL cuối
+    if (lastEnd < text.length) {
+      spans.add(TextSpan(
+        text: text.substring(lastEnd),
+        style: TextStyle(color: baseColor, fontSize: 14.5, height: 1.45),
+      ));
+    }
+
+    // Nếu không có URL nào, render Text thường
+    if (spans.isEmpty) {
+      return Text(
+        text,
+        style: TextStyle(color: baseColor, fontSize: 14.5, height: 1.45),
+      );
+    }
+
+    return RichText(text: TextSpan(children: spans));
+  }
+
   @override
   Widget build(BuildContext context) {
     // URL detection
@@ -370,18 +449,11 @@ class _BubbleBody extends StatelessWidget {
             )
           else ...[
             // Content
-            Text(
-              content,
-              style: TextStyle(
-                color: _textColor,
-                fontSize: 14.5,
-                height: 1.45,
-              ),
-            ),
+            _buildRichText(content, _textColor),
             if (firstUrl != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
-                child: LinkPreviewWidget(url: firstUrl),
+                child: LinkPreviewWidget(url: firstUrl, isMe: isMe),
               ),
           ],
 
@@ -1269,7 +1341,6 @@ class _OnlineStatus extends StatelessWidget {
     );
   }
 
-  // Đã đổi tham số từ int (timestamp) sang DateTime
   String _formatLastSeen(DateTime dt) {
     final now = DateTime.now();
     final diff = now.difference(dt);

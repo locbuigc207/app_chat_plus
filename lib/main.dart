@@ -104,22 +104,13 @@ Future<void> main() async {
   ));
 }
 
-// ─── Firebase Initialization ──────────────────────────────────────────────────
-
 Future<void> _initializeFirebase() async {
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    // App Check – bảo vệ backend Firebase khỏi abuse
-    await FirebaseAppCheck.instance.activate(
-      androidProvider:
-          kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
-      appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
-    );
-
-    // Firestore offline persistence
+    // ✅ PHẢI set settings NGAY ĐÂY — trước AppCheck và mọi thứ khác
     try {
       FirebaseFirestore.instance.settings = const Settings(
         persistenceEnabled: true,
@@ -129,6 +120,13 @@ Future<void> _initializeFirebase() async {
     } catch (e) {
       debugPrint('⚠️ Offline Persistence (Web không hỗ trợ): $e');
     }
+
+    // App Check — sau khi settings đã được set
+    await FirebaseAppCheck.instance.activate(
+      androidProvider:
+          kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+      appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
+    );
 
     // Local DB (Hive)
     await LocalDbService().initialize();
@@ -891,7 +889,7 @@ class MyApp extends StatelessWidget {
             onGenerateRoute: AppRoutes.onGenerateRoute,
             // Builder để inject overlay (safe area, accessibility)
             builder: (context, child) => _AppBuilder(child: child),
-            home: appTree,
+            home: appTree, // <--- GIỮ LẠI ĐỂ RENDER APPTREE TRÊN ROOT
           );
         },
       ),
@@ -1042,8 +1040,9 @@ class AppRoutes {
   static const login = '/login';
 
   static Map<String, WidgetBuilder> get routes => {
-        home: (_) => const SplashPage(),
-        // Các route tĩnh thêm ở đây
+        // ĐÃ SỬA: Bỏ `home: (_) => const SplashPage()` để sửa lỗi
+        // 'home == null || !routes.containsKey(Navigator.defaultRouteName)'
+        // Vì MaterialApp đang dùng thuộc tính `home` để load `appTree`.
       };
 
   static Route<dynamic>? onGenerateRoute(RouteSettings settings) {
