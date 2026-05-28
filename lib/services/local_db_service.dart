@@ -1,117 +1,191 @@
+// ignore_for_file: avoid_print
+
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LOCAL DB SERVICE
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Lớp truy xuất dữ liệu cục bộ dùng Hive (encrypted AES-256).
+///
+/// Boxes:
+/// - `chat_messages`   — tin nhắn (key = `conversationId_messageId`)
+/// - `sync_queue`      — hàng đợi đồng bộ offline (auto-increment key)
+/// - `conversations`   — metadata preview hội thoại (key = conversationId)
+///
+/// Tất cả boxes dùng [HiveAesCipher] với key lưu trong [FlutterSecureStorage].
 class LocalDbService {
+  // ── Singleton ──────────────────────────────────────────────────────────────
+  LocalDbService._internal();
   static final LocalDbService _instance = LocalDbService._internal();
   factory LocalDbService() => _instance;
-  LocalDbService._internal();
 
-  final _secureStorage = const FlutterSecureStorage();
+  // ── Storage ────────────────────────────────────────────────────────────────
+  static const _kHiveKey = 'hive_secure_key_v2';
+  static const _kMessagesBox = 'chat_messages_v2';
+  static const _kSyncBox = 'sync_queue_v2';
+  static const _kConvoBox = 'conversations_v2';
+
+  final _secureStorage = const FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock_this_device,
+    ),
+  );
 
   late Box _messagesBox;
   late Box _syncQueueBox;
-  late Box _conversationsBox; // Box mới: lưu metadata hội thoại (preview)
+  late Box _conversationsBox;
 
+  bool _initialized = false;
+
+  // ── Public accessors ───────────────────────────────────────────────────────
   Box get messagesBox => _messagesBox;
   Box get syncQueueBox => _syncQueueBox;
   Box get conversationsBox => _conversationsBox;
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // INITIALIZE
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Khởi tạo Hive và mở tất cả các box với mã hóa AES-256.
+  /// Gọi một lần duy nhất khi app khởi động (trước `runApp`).
   Future<void> initialize() async {
+    if (_initialized) return;
+
     await Hive.initFlutter();
 
-    // 1. Lấy hoặc tạo Encryption Key cho Hive (AES-256)
-    String? encryptionKeyString =
-        await _secureStorage.read(key: 'hive_secure_key');
-    if (encryptionKeyString == null) {
-      final key = Hive.generateSecureKey();
-      await _secureStorage.write(
-        key: 'hive_secure_key',
-        value: base64UrlEncode(key),
-      );
-      encryptionKeyString = base64UrlEncode(key);
-    }
-    final encryptionKeyUint8List = base64Url.decode(encryptionKeyString);
+    final cipher = await _resolveEncryptionCipher();
 
-    // 2. Mở các Box với cấu hình Mã hóa bảo mật
     _messagesBox = await Hive.openBox(
-      'chat_messages',
-      encryptionCipher: HiveAesCipher(encryptionKeyUint8List),
+      _kMessagesBox,
+      encryptionCipher: cipher,
     );
-
     _syncQueueBox = await Hive.openBox(
-      'sync_queue',
-      encryptionCipher: HiveAesCipher(encryptionKeyUint8List),
+      _kSyncBox,
+      encryptionCipher: cipher,
     );
-
     _conversationsBox = await Hive.openBox(
-      'conversations',
-      encryptionCipher: HiveAesCipher(encryptionKeyUint8List),
+      _kConvoBox,
+      encryptionCipher: cipher,
     );
 
-    print("✅ Local Database (Hive) đã khởi tạo an toàn.");
+    _initialized = true;
+    debugPrint('[LocalDbService] ✅ Hive initialized — encrypted AES-256');
   }
 
-  // =========================================================
-  // MESSAGES
-  // =========================================================
+  Future<HiveAesCipher> _resolveEncryptionCipher() async {
+    String? keyStr = await _secureStorage.read(key: _kHiveKey);
 
-  /// Lưu (hoặc ghi đè) một tin nhắn vào Local DB.
+    if (keyStr == null) {
+      final newKey = Hive.generateSecureKey();
+      keyStr = base64UrlEncode(newKey);
+      await _secureStorage.write(key: _kHiveKey, value: keyStr);
+    }
+
+    return HiveAesCipher(base64Url.decode(keyStr));
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // MESSAGES
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Lưu (upsert) một tin nhắn.
   /// Key = `"<conversationId>_<messageId>"`.
   Future<void> saveMessage(
     String conversationId,
     String messageId,
-    Map<String, dynamic> messageData,
+    Map<String, dynamic> data,
   ) async {
-    final key = '${conversationId}_$messageId';
-    await _messagesBox.put(key, messageData);
+    assert(_initialized, 'LocalDbService chưa được khởi tạo');
+    await _messagesBox.put('${conversationId}_$messageId', data);
   }
 
-  /// Lấy toàn bộ tin nhắn của một hội thoại, sắp xếp mới nhất lên đầu.
+  /// Lấy toàn bộ tin nhắn của một cuộc hội thoại, sắp xếp mới nhất trước.
   List<Map<dynamic, dynamic>> getMessages(String conversationId) {
+    assert(_initialized, 'LocalDbService chưa được khởi tạo');
+    final prefix = '${conversationId}_';
+    final msgs = _messagesBox.keys
+        .where((k) => k.toString().startsWith(prefix))
+        .map((k) => _messagesBox.get(k) as Map<dynamic, dynamic>)
+        .toList();
+
+    msgs.sort((a, b) {
+      final ta = int.tryParse(a['timestamp']?.toString() ?? '0') ?? 0;
+      final tb = int.tryParse(b['timestamp']?.toString() ?? '0') ?? 0;
+      return tb.compareTo(ta); // Mới nhất trước
+    });
+
+    return msgs;
+  }
+
+  /// Lấy tin nhắn theo messageId (trả về null nếu không có).
+  Map<dynamic, dynamic>? getMessage(String conversationId, String messageId) {
+    assert(_initialized, 'LocalDbService chưa được khởi tạo');
+    return _messagesBox.get('${conversationId}_$messageId')
+        as Map<dynamic, dynamic>?;
+  }
+
+  /// Xóa một tin nhắn cụ thể.
+  Future<void> deleteMessage(String conversationId, String messageId) async {
+    assert(_initialized, 'LocalDbService chưa được khởi tạo');
+    await _messagesBox.delete('${conversationId}_$messageId');
+  }
+
+  /// Đếm số tin nhắn của một cuộc hội thoại.
+  int countMessages(String conversationId) {
     final prefix = '${conversationId}_';
     return _messagesBox.keys
-        .where((key) => key.toString().startsWith(prefix))
-        .map((key) => _messagesBox.get(key) as Map<dynamic, dynamic>)
-        .toList()
-      ..sort((a, b) => b['timestamp'].compareTo(a['timestamp']));
+        .where((k) => k.toString().startsWith(prefix))
+        .length;
   }
 
-  // =========================================================
-  // CONVERSATIONS (preview)
-  // =========================================================
+  /// Xóa toàn bộ tin nhắn của một cuộc hội thoại.
+  Future<void> clearConversationMessages(String conversationId) async {
+    assert(_initialized, 'LocalDbService chưa được khởi tạo');
+    final prefix = '${conversationId}_';
+    final keys = _messagesBox.keys
+        .where((k) => k.toString().startsWith(prefix))
+        .toList();
+    await _messagesBox.deleteAll(keys);
+    debugPrint(
+        '[LocalDbService] 🗑 Cleared ${keys.length} messages for $conversationId');
+  }
 
-  /// Cập nhật (hoặc tạo mới) metadata preview của một hội thoại.
-  ///
-  /// Được gọi ngay sau [saveMessage] để danh sách chat hiển thị
-  /// tin nhắn cuối mà không cần đợi mạng.
-  ///
-  /// Nếu document chưa tồn tại trong box, tạo mới với [participants]
-  /// được tách từ [conversationId] (format: `"userId1-userId2"`).
+  // ─────────────────────────────────────────────────────────────────────────
+  // CONVERSATIONS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Cập nhật (upsert) metadata preview của một cuộc hội thoại.
+  /// Giữ nguyên các field khác (vd: participants, peerName).
   Future<void> updateConversationPreview({
     required String conversationId,
     required String lastMessage,
     required String lastMessageTime,
     required int lastMessageType,
   }) async {
+    assert(_initialized, 'LocalDbService chưa được khởi tạo');
+
     final existing =
         _conversationsBox.get(conversationId) as Map<dynamic, dynamic>?;
 
     if (existing != null) {
-      // Ghi đè chỉ các field preview, giữ nguyên phần còn lại (e.g. participants)
       await _conversationsBox.put(conversationId, {
-        ...existing,
+        ...Map<String, dynamic>.from(existing),
         'lastMessage': lastMessage,
         'lastMessageTime': lastMessageTime,
         'lastMessageType': lastMessageType,
       });
     } else {
-      // Tạo mới – tách participants từ conversationId
-      final participants = conversationId.split('-');
-      await _conversationsBox.put(conversationId, {
+      // Tạo mới — suy ra participants từ conversationId (format: uid1-uid2)
+      final parts = conversationId.split('-');
+      await _conversationsBox.put(conversationId, <String, dynamic>{
         'conversationId': conversationId,
-        'participants': participants,
+        'participants': parts,
         'isGroup': false,
         'lastMessage': lastMessage,
         'lastMessageTime': lastMessageTime,
@@ -120,27 +194,96 @@ class LocalDbService {
     }
   }
 
-  /// Lấy metadata một hội thoại (hoặc null nếu chưa có).
+  /// Upsert toàn bộ metadata của một cuộc hội thoại.
+  Future<void> saveConversation(
+    String conversationId,
+    Map<String, dynamic> data,
+  ) async {
+    assert(_initialized, 'LocalDbService chưa được khởi tạo');
+    await _conversationsBox.put(conversationId, data);
+  }
+
   Map<dynamic, dynamic>? getConversation(String conversationId) {
+    assert(_initialized, 'LocalDbService chưa được khởi tạo');
     return _conversationsBox.get(conversationId) as Map<dynamic, dynamic>?;
   }
 
-  /// Lấy toàn bộ danh sách hội thoại, sắp xếp mới nhất lên đầu.
+  /// Lấy tất cả cuộc hội thoại, sắp xếp mới nhất trước.
   List<Map<dynamic, dynamic>> getAllConversations() {
-    return _conversationsBox.values.cast<Map<dynamic, dynamic>>().toList()
-      ..sort((a, b) =>
-          (b['lastMessageTime'] ?? '0').compareTo(a['lastMessageTime'] ?? '0'));
+    assert(_initialized, 'LocalDbService chưa được khởi tạo');
+    final list =
+        _conversationsBox.values.cast<Map<dynamic, dynamic>>().toList();
+
+    list.sort((a, b) {
+      final ta = int.tryParse(a['lastMessageTime']?.toString() ?? '0') ?? 0;
+      final tb = int.tryParse(b['lastMessageTime']?.toString() ?? '0') ?? 0;
+      return tb.compareTo(ta);
+    });
+
+    return list;
   }
 
-  // =========================================================
+  Future<void> deleteConversation(String conversationId) async {
+    assert(_initialized, 'LocalDbService chưa được khởi tạo');
+    await _conversationsBox.delete(conversationId);
+    await clearConversationMessages(conversationId);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   // SYNC QUEUE
-  // =========================================================
+  // ─────────────────────────────────────────────────────────────────────────
 
+  /// Thêm job vào hàng đợi đồng bộ.
   Future<void> addToSyncQueue(Map<String, dynamic> task) async {
-    await _syncQueueBox.add(task);
+    assert(_initialized, 'LocalDbService chưa được khởi tạo');
+    await _syncQueueBox.add(
+        {...task, 'retries': 0, 'addedAt': DateTime.now().toIso8601String()});
   }
 
-  Future<void> removeFromSyncQueue(int taskKey) async {
-    await _syncQueueBox.delete(taskKey);
+  Future<void> removeFromSyncQueue(int key) async {
+    assert(_initialized, 'LocalDbService chưa được khởi tạo');
+    await _syncQueueBox.delete(key);
   }
+
+  int get syncQueueLength => _syncQueueBox.length;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // MAINTENANCE
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Xóa toàn bộ dữ liệu (dùng khi logout).
+  Future<void> clearAll() async {
+    assert(_initialized, 'LocalDbService chưa được khởi tạo');
+    await Future.wait([
+      _messagesBox.clear(),
+      _syncQueueBox.clear(),
+      _conversationsBox.clear(),
+    ]);
+    debugPrint('[LocalDbService] 🧹 All local data cleared');
+  }
+
+  /// Xóa tin nhắn cũ hơn [days] ngày để giải phóng bộ nhớ.
+  Future<int> pruneOldMessages({int days = 30}) async {
+    assert(_initialized, 'LocalDbService chưa được khởi tạo');
+    final cutoff =
+        DateTime.now().subtract(Duration(days: days)).millisecondsSinceEpoch;
+
+    final toDelete = _messagesBox.keys.where((k) {
+      final msg = _messagesBox.get(k) as Map<dynamic, dynamic>?;
+      if (msg == null) return false;
+      final ts = int.tryParse(msg['timestamp']?.toString() ?? '0') ?? 0;
+      return ts < cutoff;
+    }).toList();
+
+    await _messagesBox.deleteAll(toDelete);
+    debugPrint('[LocalDbService] 🗑 Pruned ${toDelete.length} old messages');
+    return toDelete.length;
+  }
+
+  /// Kích thước ước tính (số entries).
+  Map<String, int> get stats => {
+        'messages': _messagesBox.length,
+        'syncQueue': _syncQueueBox.length,
+        'conversations': _conversationsBox.length,
+      };
 }

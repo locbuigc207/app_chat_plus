@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -6,32 +7,62 @@ import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
-/// [ChatProvider] – Offline-First Architecture
-///
-/// Luồng GỬI:
-///   sendMessage() → LocalDbService (Hive, status: pending)
-///                 → SyncQueue (Hive)
-///                 → SyncManager.startListening() [ngầm upload lên Firebase]
-///
-/// Luồng NHẬN:
-///   listenToFirebaseChanges() → snapshot → decrypt → LocalDbService (Hive, status: sent)
-///
-/// Media (ảnh/video) vẫn upload trực tiếp lên Firebase Storage vì file nhị phân
-/// không phù hợp để lưu vào Hive; chỉ URL cuối cùng được đưa vào queue.
+// =============================================================================
+// CONSTANTS
+// =============================================================================
+
+abstract class MessageStatus {
+  static const String pending = 'pending';
+  static const String sent = 'sent';
+  static const String delivered = 'delivered';
+  static const String failed = 'failed';
+}
+
+abstract class SyncJobType {
+  static const String sendMessage = 'send_message';
+  static const String aiResponse = 'ai_response';
+}
+
+// =============================================================================
+// ChatProvider – Offline-First Architecture
+// =============================================================================
+//
+// Luồng GỬI:
+//   sendMessage() / sendPollMessage()
+//     → LocalDbService (Hive, status: pending)
+//     → SyncQueue (Hive)
+//     → SyncManager.startListening() [ngầm upload lên Firebase]
+//
+// Luồng NHẬN:
+//   listenToFirebaseChanges() → snapshot → decrypt → LocalDbService (status: sent)
+//
+// Poll:
+//   sendPollMessage()  → đóng gói JSON → sendMessage (type = TypeMessage.poll)
+//   votePoll()         → Firestore Transaction (robust, backwards-compatible)
+//
+// Media (ảnh/video): nén qua MediaCompressionService → upload Firebase Storage
+//   → chỉ URL đưa vào queue.
+// =============================================================================
+
 class ChatProvider {
-  // ------------------------------------------------------------------
+  // ──────────────────────────────────────────────────────────────────────────
   // Dependencies
-  // ------------------------------------------------------------------
+  // ──────────────────────────────────────────────────────────────────────────
 
   final SharedPreferences prefs;
   final FirebaseFirestore firebaseFirestore;
   final FirebaseStorage firebaseStorage;
 
   final GeminiService _geminiService = GeminiService();
+
+  /// MediaCompressionService dùng API mới (compressImageFile / compressVideoFile)
   final MediaCompressionService _compressionService = MediaCompressionService();
+
   final LocalDbService _localDb = LocalDbService();
   final SyncManager _syncManager = SyncManager();
+  final _uuid = const Uuid();
 
   ChatProvider({
     required this.firebaseFirestore,
@@ -39,64 +70,51 @@ class ChatProvider {
     required this.firebaseStorage,
   });
 
-  // =========================================================
-  // UPLOAD FILE (public – dùng khi cần UploadTask để hiển thị progress)
-  // =========================================================
+  // ──────────────────────────────────────────────────────────────────────────
+  // UPLOAD FILE (public – dùng khi cần UploadTask để show progress)
+  // ──────────────────────────────────────────────────────────────────────────
 
   UploadTask uploadFile(File image, String fileName) {
-    final reference = firebaseStorage.ref().child(fileName);
-    return reference.putFile(image);
+    return firebaseStorage.ref().child(fileName).putFile(image);
   }
 
-  // =========================================================
-  // UPLOAD FILE & GET URL (internal)
-  // =========================================================
+  // ──────────────────────────────────────────────────────────────────────────
+  // INTERNAL: upload & get download URL
+  // ──────────────────────────────────────────────────────────────────────────
 
   Future<String> _uploadFileAndGetUrl(File file, String fileName) async {
-    final reference = firebaseStorage.ref().child(fileName);
-    final snapshot = await reference.putFile(file).whenComplete(() {});
+    final ref = firebaseStorage.ref().child(fileName);
+    final snapshot = await ref.putFile(file).whenComplete(() {});
     return snapshot.ref.getDownloadURL();
   }
 
-  // =========================================================
-  // UPLOAD FILE & GET URL (public – dùng cho Document/Tài liệu)
-  // =========================================================
+  // ──────────────────────────────────────────────────────────────────────────
+  // PUBLIC: upload document (PDF/DOC/XLS/PPT…) & get URL
+  // ──────────────────────────────────────────────────────────────────────────
 
-  /// Upload một tài liệu (PDF, DOC, DOCX, XLS, XLSX…) lên Firebase Storage
-  /// và trả về download URL.
-  ///
-  /// Path lưu trữ: `documents/{groupId}/{timestamp}_{fileName}`
-  ///
-  /// Trả về URL chuỗi nếu thành công, hoặc `null` nếu có lỗi.
   Future<String?> uploadFileAndGetUrl(File file, String groupId) async {
     try {
-      final String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
-      final String originalName = file.path.split('/').last;
-      final String storagePath =
-          '${FirestoreConstants.pathDocumentStorage}/$groupId/${timestamp}_$originalName';
+      final ts = DateTime.now().millisecondsSinceEpoch.toString();
+      final originalName = file.path.split('/').last;
+      final storagePath =
+          '${FirestoreConstants.pathDocumentStorage}/$groupId/${ts}_$originalName';
 
-      final Reference reference = firebaseStorage.ref().child(storagePath);
-      final UploadTask uploadTask = reference.putFile(
-        file,
-        SettableMetadata(
-          // Giữ MIME type gốc để trình duyệt/app biết cách xử lý khi mở
-          contentType: _resolveContentType(originalName),
-        ),
-      );
+      final uploadTask = firebaseStorage.ref().child(storagePath).putFile(
+            file,
+            SettableMetadata(contentType: _resolveContentType(originalName)),
+          );
 
-      final TaskSnapshot snapshot = await uploadTask.whenComplete(() {});
-      final String downloadUrl = await snapshot.ref.getDownloadURL();
-      return downloadUrl;
+      final snapshot = await uploadTask.whenComplete(() {});
+      return await snapshot.ref.getDownloadURL();
     } catch (e) {
-      print('❌ uploadFileAndGetUrl error: $e');
+      _log('❌ uploadFileAndGetUrl error: $e');
       return null;
     }
   }
 
-  /// Phân giải MIME type dựa trên phần mở rộng file.
   String _resolveContentType(String fileName) {
     final ext = fileName.split('.').last.toLowerCase();
-    const Map<String, String> mimeMap = {
+    const mimeMap = <String, String>{
       'pdf': 'application/pdf',
       'doc': 'application/msword',
       'docx':
@@ -112,98 +130,23 @@ class ChatProvider {
     return mimeMap[ext] ?? 'application/octet-stream';
   }
 
-  // =========================================================
-  // VOTE POLL – Firestore Transaction (thread-safe)
-  // =========================================================
+  // ──────────────────────────────────────────────────────────────────────────
+  // GET CHAT STREAM
+  // ──────────────────────────────────────────────────────────────────────────
 
-  /// Ghi nhận lượt bình chọn của [userId] cho option [optionId]
-  /// trong tin nhắn poll [messageId] thuộc cuộc hội thoại [groupChatId].
-  ///
-  /// Cơ chế hoạt động (dùng Firestore Transaction để tránh race-condition):
-  /// - Nếu user **chưa** vote option này → thêm userId vào mảng `votes` của option đó.
-  /// - Nếu user **đã** vote option này → rút userId ra (toggle off / bỏ phiếu lại).
-  /// - Mỗi user chỉ được vote **một** option tại một thời điểm: khi chọn option mới,
-  ///   userId sẽ tự động bị xóa khỏi option cũ (single-choice poll).
-  ///
-  /// Để hỗ trợ multi-choice, xóa phần "Xóa khỏi option cũ" bên dưới.
-  Future<void> votePoll(
-    String groupChatId,
-    String messageId,
-    String optionId,
-    String userId,
-  ) async {
-    final DocumentReference messageRef = firebaseFirestore
+  Stream<QuerySnapshot> getChatStream(String groupChatId, int limit) {
+    return firebaseFirestore
         .collection(FirestoreConstants.pathMessageCollection)
         .doc(groupChatId)
         .collection(groupChatId)
-        .doc(messageId);
-
-    try {
-      await firebaseFirestore.runTransaction((transaction) async {
-        final DocumentSnapshot snapshot = await transaction.get(messageRef);
-
-        if (!snapshot.exists) {
-          throw Exception('Poll message $messageId không tồn tại.');
-        }
-
-        final data = snapshot.data() as Map<String, dynamic>;
-
-        // Parse mảng options từ Firestore
-        // Mỗi option có dạng: { 'id': String, 'text': String, 'votes': List<String> }
-        final List<dynamic> rawOptions = List.from(data['options'] ?? []);
-
-        final List<Map<String, dynamic>> options =
-            rawOptions.map((o) => Map<String, dynamic>.from(o as Map)).toList();
-
-        // Kiểm tra option mục tiêu có tồn tại không
-        final int targetIndex =
-            options.indexWhere((o) => o['id'].toString() == optionId);
-        if (targetIndex == -1) {
-          throw Exception('Option $optionId không tồn tại trong poll này.');
-        }
-
-        // ------------------------------------------------------------------
-        // Xóa userId khỏi TẤT CẢ options (đảm bảo single-choice)
-        // Bỏ vòng lặp này nếu muốn hỗ trợ multi-choice.
-        // ------------------------------------------------------------------
-        for (final option in options) {
-          final List<dynamic> votes = List.from(option['votes'] ?? []);
-          votes.remove(userId);
-          option['votes'] = votes;
-        }
-
-        // ------------------------------------------------------------------
-        // Toggle vote trên option đã chọn
-        // ------------------------------------------------------------------
-        final List<dynamic> targetVotes =
-            List.from(options[targetIndex]['votes'] ?? []);
-
-        if (targetVotes.contains(userId)) {
-          // Đã vote → bỏ phiếu (toggle off)
-          targetVotes.remove(userId);
-        } else {
-          // Chưa vote → thêm phiếu
-          targetVotes.add(userId);
-        }
-        options[targetIndex]['votes'] = targetVotes;
-
-        // ------------------------------------------------------------------
-        // Ghi lại toàn bộ mảng options vào Firestore (trong transaction)
-        // ------------------------------------------------------------------
-        transaction.update(messageRef, {'options': options});
-      });
-    } on FirebaseException catch (e) {
-      print('❌ votePoll FirebaseException [${e.code}]: ${e.message}');
-      rethrow;
-    } catch (e) {
-      print('❌ votePoll error: $e');
-      rethrow;
-    }
+        .orderBy(FirestoreConstants.timestamp, descending: true)
+        .limit(limit)
+        .snapshots();
   }
 
-  // =========================================================
+  // ──────────────────────────────────────────────────────────────────────────
   // UPDATE FIRESTORE DOCUMENT (utility)
-  // =========================================================
+  // ──────────────────────────────────────────────────────────────────────────
 
   Future<void> updateDataFirestore(
     String collectionPath,
@@ -216,37 +159,10 @@ class ChatProvider {
         .update(dataNeedUpdate);
   }
 
-  // =========================================================
-  // GET CHAT STREAM  ← vẫn giữ cho compatibility; UI nên ưu tiên
-  //                    stream từ LocalDbService thay vì Firebase trực tiếp.
-  // =========================================================
+  // ──────────────────────────────────────────────────────────────────────────
+  // HÀM 1: GỬI TIN NHẮN VĂN BẢN / MEDIA – OFFLINE-FIRST
+  // ──────────────────────────────────────────────────────────────────────────
 
-  Stream<QuerySnapshot> getChatStream(String groupChatId, int limit) {
-    return firebaseFirestore
-        .collection(FirestoreConstants.pathMessageCollection)
-        .doc(groupChatId)
-        .collection(groupChatId)
-        .orderBy(FirestoreConstants.timestamp, descending: true)
-        .limit(limit)
-        .snapshots();
-  }
-
-  // =========================================================
-  // HÀM 1: GỬI TIN NHẮN – OFFLINE-FIRST
-  // =========================================================
-
-  /// Gửi tin nhắn theo mô hình Offline-First:
-  ///
-  /// 1. Lưu **plaintext** vào Hive ngay lập tức (status: `pending`) → UI render tức thì.
-  /// 2. Đẩy job vào **SyncQueue** (Hive) để SyncManager xử lý ngầm.
-  /// 3. Kích hoạt [SyncManager.startListening()] – nếu có mạng thì upload ngay,
-  ///    ngược lại job được giữ lại đến lần có kết nối.
-  /// 4. Nếu peer là AI Assistant, đặt thêm job `ai_response` vào queue.
-  ///
-  /// **Lưu ý bảo mật**: Hive được mã hóa ổ đĩa ở tầng [LocalDbService],
-  /// nên plaintext trong Hive vẫn được bảo vệ ở mức thiết bị.
-  /// Mã hóa E2EE (AES payload) chỉ xảy ra trong [SyncManager] ngay trước
-  /// khi ghi lên Firestore.
   Future<void> sendMessage(
     String content,
     int type,
@@ -254,23 +170,20 @@ class ChatProvider {
     String currentUserId,
     String peerId,
   ) async {
-    final String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+    final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
 
-    // ------------------------------------------------------------------
-    // BƯỚC 1: Lưu vào Local DB (Hive) → UI hiện ngay, không chờ mạng
-    // ------------------------------------------------------------------
-    final Map<String, dynamic> localMessage = {
+    // Bước 1: Lưu vào Local DB (Hive) – status: pending
+    final localMessage = <String, dynamic>{
       'messageId': timestamp,
       'idFrom': currentUserId,
       'idTo': peerId,
       'timestamp': timestamp,
-      'content': content, // plaintext – Hive đã mã hóa ổ đĩa
+      'content': content,
       'type': type,
-      'status': MessageStatus.pending, // 'pending'
+      'status': MessageStatus.pending,
     };
-    await _localDb.saveMessage(groupChatId, timestamp, localMessage);
 
-    // Cập nhật preview conversation ngay lập tức (offline)
+    await _localDb.saveMessage(groupChatId, timestamp, localMessage);
     await _localDb.updateConversationPreview(
       conversationId: groupChatId,
       lastMessage: content,
@@ -278,11 +191,9 @@ class ChatProvider {
       lastMessageType: type,
     );
 
-    // ------------------------------------------------------------------
-    // BƯỚC 2: Đẩy job vào Sync Queue
-    // ------------------------------------------------------------------
+    // Bước 2: Đẩy job vào Sync Queue
     await _localDb.addToSyncQueue({
-      'type': SyncJobType.sendMessage, // 'send_message'
+      'type': SyncJobType.sendMessage,
       'payload': {
         'conversationId': groupChatId,
         'messageId': timestamp,
@@ -294,10 +205,10 @@ class ChatProvider {
       },
     });
 
-    // Nếu peer là AI Assistant → thêm job yêu cầu AI reply
+    // Bước 2b: Nếu chat với AI → thêm job phản hồi AI
     if (peerId == AppConstants.aiAssistantId && type == TypeMessage.text) {
       await _localDb.addToSyncQueue({
-        'type': SyncJobType.aiResponse, // 'ai_response'
+        'type': SyncJobType.aiResponse,
         'payload': {
           'conversationId': groupChatId,
           'currentUserId': currentUserId,
@@ -306,25 +217,179 @@ class ChatProvider {
       });
     }
 
-    // ------------------------------------------------------------------
-    // BƯỚC 3: Kích hoạt SyncManager
-    // ------------------------------------------------------------------
+    // Bước 3: Kích hoạt SyncManager
     _syncManager.startListening();
   }
 
-  // =========================================================
-  // HÀM 2: LẮNG NGHE FIREBASE & CẬP NHẬT LOCAL DB
-  // =========================================================
+  // ──────────────────────────────────────────────────────────────────────────
+  // HÀM 2: GỬI POLL – OFFLINE-FIRST
+  // ──────────────────────────────────────────────────────────────────────────
 
-  /// Mở Firebase snapshot listener để kéo tin nhắn mới từ server về.
+  /// Đóng gói dữ liệu poll thành JSON và gửi như một tin nhắn type=poll.
   ///
-  /// Chỉ xử lý document chưa có trong Hive **hoặc** tin nhắn do người khác gửi
-  /// (để cập nhật status từ `pending` → `sent` cho tin của mình nếu cần).
+  /// [question]         Câu hỏi bình chọn
+  /// [optionTexts]      Danh sách văn bản các lựa chọn (min 2, max 10)
+  /// [isMultipleChoice] Cho phép chọn nhiều đáp án
+  /// [isAnonymous]      Ẩn danh – không hiển thị userId đã bình chọn
+  /// [expiresAt]        Thời hạn tự động đóng poll (null = không giới hạn)
+  Future<void> sendPollMessage({
+    required String question,
+    required List<String> optionTexts,
+    required String groupChatId,
+    required String currentUserId,
+    required String peerId,
+    bool isMultipleChoice = false,
+    bool isAnonymous = false,
+    DateTime? expiresAt,
+  }) async {
+    assert(optionTexts.length >= 2, 'Poll phải có ít nhất 2 lựa chọn');
+    assert(optionTexts.length <= 10, 'Poll tối đa 10 lựa chọn');
+
+    final options = optionTexts
+        .map(
+          (text) => <String, dynamic>{
+            'id': _uuid.v4(),
+            'text': text.trim(),
+            'votes': <String>[],
+          },
+        )
+        .toList();
+
+    final pollJson = jsonEncode(<String, dynamic>{
+      'question': question.trim(),
+      'options': options,
+      'isMultipleChoice': isMultipleChoice,
+      'isAnonymous': isAnonymous,
+      'expiresAt': expiresAt?.toIso8601String(),
+      'createdAt': DateTime.now().toIso8601String(),
+    });
+
+    await sendMessage(
+      pollJson,
+      TypeMessage.poll,
+      groupChatId,
+      currentUserId,
+      peerId,
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // HÀM 3: VOTE POLL – Firestore Transaction (Robust)
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /// Toggle vote của [userId] trên [optionId] trong poll [messageId].
   ///
-  /// Quy trình mỗi document:
-  /// 1. Kiểm tra Hive – bỏ qua nếu đã tồn tại và không phải tin đến.
-  /// 2. Giải mã E2EE nếu là văn bản.
-  /// 3. Lưu/ghi-đè vào Hive (status: `sent`).
+  /// - Single-choice: xoá userId khỏi tất cả options cũ trước khi thêm vào mới.
+  /// - Multiple-choice: chỉ toggle trên option đã chọn.
+  /// - Tương thích ngược: đọc options từ JSON content hoặc root field.
+  Future<void> votePoll({
+    required String groupChatId,
+    required String messageId,
+    required String optionId,
+    required String userId,
+  }) async {
+    final messageRef = firebaseFirestore
+        .collection(FirestoreConstants.pathMessageCollection)
+        .doc(groupChatId)
+        .collection(groupChatId)
+        .doc(messageId);
+
+    try {
+      await firebaseFirestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(messageRef);
+
+        if (!snapshot.exists) {
+          throw Exception('Poll message $messageId không tồn tại.');
+        }
+
+        final data = snapshot.data() as Map<String, dynamic>;
+
+        // 1. Đọc & parse JSON content
+        final contentStr = data[FirestoreConstants.content] as String? ?? '{}';
+        Map<String, dynamic> pollData;
+        try {
+          pollData = jsonDecode(contentStr) as Map<String, dynamic>;
+        } catch (_) {
+          pollData = {};
+        }
+
+        // 2. Kiểm tra poll đã hết hạn chưa
+        final expiresAtStr = pollData['expiresAt'] as String?;
+        if (expiresAtStr != null) {
+          final expiresAt = DateTime.tryParse(expiresAtStr);
+          if (expiresAt != null && DateTime.now().isAfter(expiresAt)) {
+            throw Exception('Poll đã hết hạn, không thể bình chọn.');
+          }
+        }
+
+        // 3. Lấy options (hỗ trợ tương thích ngược)
+        List<dynamic> rawOptions;
+        if (pollData['options'] is List &&
+            (pollData['options'] as List).isNotEmpty) {
+          rawOptions = List.from(pollData['options'] as List);
+        } else if (data['options'] is List) {
+          rawOptions = List.from(data['options'] as List);
+        } else {
+          throw Exception('Dữ liệu options không hợp lệ.');
+        }
+
+        final options =
+            rawOptions.map((o) => Map<String, dynamic>.from(o as Map)).toList();
+
+        // 4. Tìm option đích
+        final targetIndex =
+            options.indexWhere((o) => o['id'].toString() == optionId);
+        if (targetIndex == -1) {
+          final ids = options.map((e) => e['id']).toList();
+          throw Exception('Option $optionId không tồn tại. Hiện có: $ids');
+        }
+
+        // 5. Lấy config poll
+        final isMultipleChoice = (pollData['isMultipleChoice'] ??
+            data['isMultipleChoice'] ??
+            false) as bool;
+
+        // 6. Single-choice: clear tất cả votes cũ của user
+        if (!isMultipleChoice) {
+          for (final opt in options) {
+            final votes = List<dynamic>.from(opt['votes'] as List? ?? []);
+            votes.remove(userId);
+            opt['votes'] = votes;
+          }
+        }
+
+        // 7. Toggle vote trên option đích
+        final targetVotes =
+            List<dynamic>.from(options[targetIndex]['votes'] as List? ?? []);
+        if (targetVotes.contains(userId)) {
+          targetVotes.remove(userId);
+        } else {
+          targetVotes.add(userId);
+        }
+        options[targetIndex]['votes'] = targetVotes;
+
+        // 8. Ghi lại: cập nhật JSON content + root options (backwards compat)
+        pollData['options'] = options;
+
+        transaction.update(messageRef, {
+          FirestoreConstants.content: jsonEncode(pollData),
+          'options': options,
+          'lastVotedAt': FieldValue.serverTimestamp(),
+        });
+      });
+    } on FirebaseException catch (e) {
+      _log('❌ votePoll FirebaseException [${e.code}]: ${e.message}');
+      rethrow;
+    } catch (e) {
+      _log('❌ votePoll error: $e');
+      rethrow;
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // HÀM 4: LẮNG NGHE FIREBASE & CẬP NHẬT LOCAL DB
+  // ──────────────────────────────────────────────────────────────────────────
+
   void listenToFirebaseChanges(
     String groupChatId,
     String currentUserId,
@@ -340,57 +405,52 @@ class ChatProvider {
         .listen((snapshot) async {
       for (final doc in snapshot.docs) {
         final data = doc.data();
-        final String messageId = doc.id;
-        final bool isFromMe = data['idFrom'] == currentUserId;
+        final messageId = doc.id;
+        final isFromMe = data['idFrom'] == currentUserId;
+        final type = data['type'] as int? ?? TypeMessage.text;
 
-        // Bỏ qua nếu Hive đã có và là tin của chính mình
-        // (tin của mình đã được lưu lúc sendMessage())
-        if (isFromMe &&
-            _localDb.messagesBox.containsKey('${groupChatId}_$messageId')) {
-          // Chỉ cập nhật status → 'sent' nếu đang là 'pending'
-          final existing =
-              _localDb.messagesBox.get('${groupChatId}_$messageId');
-          if (existing != null && existing['status'] == MessageStatus.pending) {
-            await _localDb.saveMessage(
-              groupChatId,
-              messageId,
-              {...existing, 'status': MessageStatus.sent},
-            );
+        // Tin nhắn của mình → chỉ cập nhật status pending → sent
+        if (isFromMe) {
+          final key = '${groupChatId}_$messageId';
+          if (_localDb.messagesBox.containsKey(key)) {
+            final existing =
+                _localDb.messagesBox.get(key) as Map<String, dynamic>?;
+            if (existing != null &&
+                existing['status'] == MessageStatus.pending) {
+              await _localDb.saveMessage(
+                groupChatId,
+                messageId,
+                {...existing, 'status': MessageStatus.sent},
+              );
+            }
           }
           continue;
         }
 
-        // ------------------------------------------------------------------
-        // Giải mã E2EE tin nhắn kéo từ server
-        // Bỏ qua giải mã cho các loại không phải text (document, poll, media…)
-        // ------------------------------------------------------------------
-        String plainText = data['content'] as String? ?? '';
-        if (data['type'] == TypeMessage.text) {
+        // Tin nhắn của người khác → decrypt (chỉ text) → lưu local
+        String content = data[FirestoreConstants.content] as String? ?? '';
+
+        if (type == TypeMessage.text) {
           try {
-            plainText = await EncryptionService().decryptPayload(
-              plainText,
+            content = await EncryptionService().decryptPayload(
+              content,
               groupChatId,
               [currentUserId, peerId],
               currentUserId,
             );
           } catch (e) {
-            print('⚠️ Decrypt failed for $messageId: $e');
-            // Giữ nguyên ciphertext nếu giải mã lỗi, tránh mất tin
+            _log('⚠️ Decrypt failed for $messageId: $e');
           }
         }
 
-        // ------------------------------------------------------------------
-        // Lưu vào Hive
-        // ------------------------------------------------------------------
-        final Map<String, dynamic> updatedMessage = {
+        final updatedMessage = <String, dynamic>{
           'messageId': messageId,
           'idFrom': data['idFrom'],
           'idTo': data['idTo'],
           'timestamp': data['timestamp'],
-          'content': plainText,
-          'type': data['type'],
+          'content': content,
+          'type': type,
           'status': MessageStatus.sent,
-          // Giữ lại các field mở rộng nếu có (poll options, isViewOnce…)
           if (data.containsKey('options')) 'options': data['options'],
           if (data.containsKey('isViewOnce')) 'isViewOnce': data['isViewOnce'],
           if (data.containsKey('isPinned')) 'isPinned': data['isPinned'],
@@ -400,22 +460,22 @@ class ChatProvider {
           if (data.containsKey('scamReason')) 'scamReason': data['scamReason'],
           if (data.containsKey('hasReminder'))
             'hasReminder': data['hasReminder'],
+          if (data.containsKey('lastVotedAt'))
+            'lastVotedAt': data['lastVotedAt']?.toString(),
         };
+
         await _localDb.saveMessage(groupChatId, messageId, updatedMessage);
       }
     });
   }
 
-  // =========================================================
-  // HÀM 3: GỬI MEDIA (ảnh / video) – direct-upload + loading callback
-  // =========================================================
+  // ──────────────────────────────────────────────────────────────────────────
+  // HÀM 5: GỬI MEDIA (ảnh / video) – dùng API mới của MediaCompressionService
+  // ──────────────────────────────────────────────────────────────────────────
 
-  /// Upload media trực tiếp lên Firebase Storage (file nhị phân không qua Hive),
-  /// sau đó gọi [sendMessage] với URL → đưa URL vào Offline-First queue như bình thường.
+  /// Nén, upload ảnh hoặc video và gửi tin nhắn media.
   ///
-  /// [onLoadingStatusChanged] được gọi với `true` khi bắt đầu xử lý và `false`
-  /// khi hoàn tất (dù thành công hay lỗi) – dùng để bật/tắt loading indicator trên UI.
-  ///
+  /// [onProgress] nhận tiến trình nén video (0.0 → 1.0).
   /// Trả về `true` nếu thành công.
   Future<bool> sendMediaMessage({
     required File originalFile,
@@ -424,45 +484,51 @@ class ChatProvider {
     required String currentUserId,
     required String peerId,
     required Function(bool) onLoadingStatusChanged,
+    MediaCompressionConfig compressionConfig = MediaCompressionConfig.chat,
+    void Function(double progress)? onCompressionProgress,
   }) async {
-    // 1. Kích hoạt Loading UI trên màn hình Chat
     onLoadingStatusChanged(true);
 
     try {
-      File? fileToUpload;
-      File? videoThumbnail;
+      final ts = DateTime.now().millisecondsSinceEpoch.toString();
 
-      // 2. Nén file trước khi upload
+      // ── Nén file ──────────────────────────────────────────────────────────
+      final File compressedFile;
       if (isVideo) {
-        fileToUpload = await _compressionService.compressVideo(originalFile);
-        videoThumbnail =
-            await _compressionService.getVideoThumbnail(originalFile);
-      } else {
-        fileToUpload = await _compressionService.compressImage(originalFile);
-      }
-
-      if (fileToUpload == null) return false;
-
-      // 3. Upload lên Firebase Storage
-      final String ts = DateTime.now().millisecondsSinceEpoch.toString();
-      final String ext = isVideo ? 'mp4' : 'jpg';
-
-      final String fileUrl = await _uploadFileAndGetUrl(
-        fileToUpload,
-        '${FirestoreConstants.pathMediaStorage}/$groupChatId/$ts.$ext',
-      );
-
-      // 4. Tạo content payload (video kèm thumbnail URL)
-      String contentPayload = fileUrl;
-      if (isVideo && videoThumbnail != null) {
-        final String thumbnailUrl = await _uploadFileAndGetUrl(
-          videoThumbnail,
-          '${FirestoreConstants.pathMediaStorage}/$groupChatId/${ts}_thumb.jpg',
+        compressedFile = await _compressionService.compressVideoFile(
+          originalFile,
+          config: compressionConfig,
+          onProgress: onCompressionProgress,
         );
-        contentPayload = '$fileUrl|$thumbnailUrl';
+      } else {
+        compressedFile = await _compressionService.compressImageFile(
+          originalFile,
+          config: compressionConfig,
+        );
       }
 
-      // 5. Gửi qua Offline-First pipeline (URL media không mã hóa E2EE)
+      // ── Upload file chính ─────────────────────────────────────────────────
+      final ext = isVideo ? 'mp4' : 'jpg';
+      final storagePath =
+          '${FirestoreConstants.pathMediaStorage}/$groupChatId/$ts.$ext';
+
+      final fileUrl = await _uploadFileAndGetUrl(compressedFile, storagePath);
+
+      // ── Tạo payload (video có thêm thumbnail) ────────────────────────────
+      String contentPayload = fileUrl;
+
+      if (isVideo) {
+        final thumbnail =
+            await _compressionService.getVideoThumbnail(originalFile);
+        if (thumbnail != null) {
+          final thumbPath =
+              '${FirestoreConstants.pathMediaStorage}/$groupChatId/${ts}_thumb.jpg';
+          final thumbUrl = await _uploadFileAndGetUrl(thumbnail, thumbPath);
+          contentPayload = '$fileUrl|$thumbUrl';
+        }
+      }
+
+      // ── Gửi tin nhắn ──────────────────────────────────────────────────────
       await sendMessage(
         contentPayload,
         isVideo ? TypeMessage.video : TypeMessage.image,
@@ -472,30 +538,96 @@ class ChatProvider {
       );
 
       return true;
+    } on MediaCompressionException catch (e) {
+      _log('❌ sendMediaMessage compression error: $e');
+      return false;
     } catch (e) {
-      print('❌ Lỗi upload media: $e');
+      _log('❌ sendMediaMessage error: $e');
       return false;
     } finally {
-      // 6. Tắt Loading UI dù thành công hay thất bại
       onLoadingStatusChanged(false);
-      _compressionService.clearCache();
+      // Dọn cache sau khi gửi xong
+      _compressionService
+          .clearCache()
+          .catchError((e) => _log('⚠️ clearCache error: $e'));
     }
   }
-}
 
-// =============================================================================
-// CONSTANTS GỢI Ý – Thêm vào file constants tương ứng nếu chưa có
-// =============================================================================
+  // ──────────────────────────────────────────────────────────────────────────
+  // HÀM 6: GỬI MEDIA BATCH (nhiều ảnh cùng lúc)
+  // ──────────────────────────────────────────────────────────────────────────
 
-/// Trạng thái của một tin nhắn trong Local DB.
-abstract class MessageStatus {
-  static const String pending = 'pending'; // Chưa lên server
-  static const String sent = 'sent'; // Đã có trên server
-  static const String failed = 'failed'; // Gửi thất bại (mạng, server lỗi)
-}
+  /// Nén và gửi nhiều ảnh cùng lúc.
+  ///
+  /// [onProgress] nhận (sent, total) – số ảnh đã gửi / tổng số ảnh.
+  Future<int> sendImageBatch({
+    required List<File> files,
+    required String groupChatId,
+    required String currentUserId,
+    required String peerId,
+    required Function(bool) onLoadingStatusChanged,
+    MediaCompressionConfig compressionConfig = MediaCompressionConfig.chat,
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    if (files.isEmpty) return 0;
+    onLoadingStatusChanged(true);
 
-/// Loại job trong SyncQueue.
-abstract class SyncJobType {
-  static const String sendMessage = 'send_message';
-  static const String aiResponse = 'ai_response';
+    int successCount = 0;
+    try {
+      // Nén hàng loạt trước
+      final compressed = await _compressionService.compressImageBatch(
+        files,
+        config: compressionConfig,
+        onProgress: (done, total) => _log('🗜 Batch compress: $done/$total'),
+      );
+
+      for (int i = 0; i < compressed.length; i++) {
+        try {
+          final compressedFile = compressed[i].file;
+          final ts = DateTime.now().millisecondsSinceEpoch.toString() + '_$i';
+          final storagePath =
+              '${FirestoreConstants.pathMediaStorage}/$groupChatId/$ts.jpg';
+
+          final fileUrl =
+              await _uploadFileAndGetUrl(compressedFile, storagePath);
+          await sendMessage(
+            fileUrl,
+            TypeMessage.image,
+            groupChatId,
+            currentUserId,
+            peerId,
+          );
+          successCount++;
+          onProgress?.call(successCount, files.length);
+        } catch (e) {
+          _log('❌ sendImageBatch item $i error: $e');
+        }
+      }
+    } catch (e) {
+      _log('❌ sendImageBatch error: $e');
+    } finally {
+      onLoadingStatusChanged(false);
+      _compressionService
+          .clearCache()
+          .catchError((e) => _log('⚠️ clearCache error: $e'));
+    }
+    return successCount;
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // HÀM 7: HUỶ NÉN VIDEO
+  // ──────────────────────────────────────────────────────────────────────────
+
+  Future<void> cancelMediaCompression() async {
+    await _compressionService.cancelCompression();
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // UTILITY
+  // ──────────────────────────────────────────────────────────────────────────
+
+  void _log(String message) {
+    // ignore: avoid_print
+    print('[ChatProvider] $message');
+  }
 }

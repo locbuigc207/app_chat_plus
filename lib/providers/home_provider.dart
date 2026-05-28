@@ -1,29 +1,28 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/constants/firestore_constants.dart';
-import 'package:flutter_chat_demo/services/database_optimizer.dart';
 
-enum SearchType {
-  nickname,
-  phoneNumber,
-  qrCode,
-}
+enum SearchType { nickname, phoneNumber, qrCode, email }
 
 class HomeProvider {
   final FirebaseFirestore firebaseFirestore;
 
   HomeProvider({required this.firebaseFirestore});
 
+  // ─── Generic Firestore ────────────────────────────────────────────────────
+
   Future<void> updateDataFirestore(
     String collectionPath,
     String path,
-    Map<String, String> dataNeedUpdate,
+    Map<String, dynamic> dataNeedUpdate,
   ) {
     return firebaseFirestore
         .collection(collectionPath)
         .doc(path)
         .update(dataNeedUpdate);
   }
+
+  // ─── User Search ──────────────────────────────────────────────────────────
 
   Stream<QuerySnapshot> getStreamFireStore(
     String pathCollection,
@@ -33,15 +32,14 @@ class HomeProvider {
     if (textSearch?.isNotEmpty == true) {
       return firebaseFirestore
           .collection(pathCollection)
-          .limit(limit)
           .where(FirestoreConstants.nickname, isEqualTo: textSearch)
-          .snapshots();
-    } else {
-      return firebaseFirestore
-          .collection(pathCollection)
           .limit(limit)
           .snapshots();
     }
+    return firebaseFirestore
+        .collection(pathCollection)
+        .limit(limit)
+        .snapshots();
   }
 
   Stream<QuerySnapshot> searchByPhoneNumber(String phoneNumber, int limit) {
@@ -59,10 +57,7 @@ class HomeProvider {
         .limit(1)
         .get();
 
-    if (result.docs.isNotEmpty) {
-      return result.docs.first;
-    }
-    return null;
+    return result.docs.isNotEmpty ? result.docs.first : null;
   }
 
   Stream<QuerySnapshot> searchUsers(
@@ -85,6 +80,9 @@ class HomeProvider {
       case SearchType.qrCode:
         fieldName = FirestoreConstants.qrCode;
         break;
+      case SearchType.email:
+        fieldName = 'email';
+        break;
       case SearchType.nickname:
       default:
         fieldName = FirestoreConstants.nickname;
@@ -97,13 +95,132 @@ class HomeProvider {
         .limit(limit)
         .snapshots();
   }
-}
 
-class HomeProviderOptimized {
-  final FirebaseFirestore firebaseFirestore;
-  final DatabaseOptimizer _optimizer = DatabaseOptimizer();
+  /// Prefix search for nickname (e.g. "joh" matches "John").
+  Stream<QuerySnapshot> searchUsersByPrefix(
+    String prefix,
+    int limit,
+  ) {
+    final trimmed = prefix.trim();
+    if (trimmed.isEmpty) {
+      return firebaseFirestore
+          .collection(FirestoreConstants.pathUserCollection)
+          .limit(limit)
+          .snapshots();
+    }
 
-  HomeProviderOptimized({required this.firebaseFirestore});
+    // Phone number detection
+    if (RegExp(r'^[+\d][\d\s-]*$').hasMatch(trimmed)) {
+      return firebaseFirestore
+          .collection(FirestoreConstants.pathUserCollection)
+          .where(FirestoreConstants.phoneNumber, isEqualTo: trimmed)
+          .limit(limit)
+          .snapshots();
+    }
+
+    return firebaseFirestore
+        .collection(FirestoreConstants.pathUserCollection)
+        .where(FirestoreConstants.nickname, isGreaterThanOrEqualTo: trimmed)
+        .where(FirestoreConstants.nickname,
+            isLessThanOrEqualTo: '$trimmed\uf8ff')
+        .limit(limit)
+        .snapshots();
+  }
+
+  // ─── User Profile ─────────────────────────────────────────────────────────
+
+  Future<DocumentSnapshot?> getUserProfile(String userId) async {
+    try {
+      final doc = await firebaseFirestore
+          .collection(FirestoreConstants.pathUserCollection)
+          .doc(userId)
+          .get();
+      return doc.exists ? doc : null;
+    } catch (e) {
+      print('❌ Error getting user profile: $e');
+      return null;
+    }
+  }
+
+  Stream<DocumentSnapshot> watchUserProfile(String userId) {
+    return firebaseFirestore
+        .collection(FirestoreConstants.pathUserCollection)
+        .doc(userId)
+        .snapshots();
+  }
+
+  Future<void> updateUserProfile(
+    String userId,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      await firebaseFirestore
+          .collection(FirestoreConstants.pathUserCollection)
+          .doc(userId)
+          .update({
+        ...data,
+        'updatedAt': DateTime.now().millisecondsSinceEpoch.toString(),
+      });
+    } catch (e) {
+      print('❌ Error updating user profile: $e');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, DocumentSnapshot>> batchGetUserProfiles(
+    List<String> userIds,
+  ) async {
+    if (userIds.isEmpty) return {};
+
+    try {
+      // Firestore limits `whereIn` to 30 items
+      final chunks = <List<String>>[];
+      for (int i = 0; i < userIds.length; i += 30) {
+        chunks.add(userIds.sublist(
+            i, i + 30 > userIds.length ? userIds.length : i + 30));
+      }
+
+      final results = <DocumentSnapshot>[];
+      for (final chunk in chunks) {
+        final snap = await firebaseFirestore
+            .collection(FirestoreConstants.pathUserCollection)
+            .where(FieldPath.documentId, whereIn: chunk)
+            .get();
+        results.addAll(snap.docs);
+      }
+
+      return {for (final doc in results) doc.id: doc};
+    } catch (e) {
+      print('❌ Error batch loading profiles: $e');
+      return {};
+    }
+  }
+
+  // ─── Online Presence ──────────────────────────────────────────────────────
+
+  Future<void> setOnlineStatus(String userId, bool isOnline) async {
+    try {
+      await firebaseFirestore
+          .collection(FirestoreConstants.pathUserCollection)
+          .doc(userId)
+          .update({
+        'isOnline': isOnline,
+        'lastSeen': DateTime.now().millisecondsSinceEpoch.toString(),
+      });
+    } catch (e) {
+      print('❌ Error setting online status: $e');
+    }
+  }
+
+  Stream<bool> watchOnlineStatus(String userId) {
+    return firebaseFirestore
+        .collection(FirestoreConstants.pathUserCollection)
+        .doc(userId)
+        .snapshots()
+        .map((snap) => snap.data()?['isOnline'] as bool? ?? false);
+  }
+
+  // ─── Conversations (paginated) ────────────────────────────────────────────
 
   Stream<List<QueryDocumentSnapshot>> getConversationsOptimized(
     String userId, {
@@ -116,95 +233,6 @@ class HomeProviderOptimized {
         .orderBy('lastMessageTime', descending: true)
         .limit(limit)
         .snapshots()
-        .map((snapshot) => snapshot.docs);
+        .map((s) => s.docs);
   }
-
-  Future<Map<String, DocumentSnapshot>> batchLoadUserProfiles(
-    List<String> userIds,
-  ) async {
-    final results = await _optimizer.batchGet(
-      collection: FirestoreConstants.pathUserCollection,
-      docIds: userIds,
-    );
-    return {
-      for (final doc in results) doc.id: doc,
-    };
-  }
-
-  Stream<QuerySnapshot> searchUsersOptimized(
-    String searchTerm,
-    int limit,
-  ) {
-    final query = searchTerm.trim();
-    if (query.isEmpty) {
-      return Stream.value(
-        MockQuerySnapshot(docs: []),
-      );
-    }
-    final isPhoneNumber = RegExp(r'^[+\d][\d\s-]*$').hasMatch(query);
-    if (isPhoneNumber) {
-      return firebaseFirestore
-          .collection(FirestoreConstants.pathUserCollection)
-          .where(FirestoreConstants.phoneNumber, isEqualTo: query)
-          .limit(limit)
-          .snapshots();
-    } else {
-      return firebaseFirestore
-          .collection(FirestoreConstants.pathUserCollection)
-          .where(FirestoreConstants.nickname, isGreaterThanOrEqualTo: query)
-          .where(FirestoreConstants.nickname,
-              isLessThanOrEqualTo: '$query\uf8ff')
-          .limit(limit)
-          .snapshots();
-    }
-  }
-
-  Future<void> updateDataFirestoreOptimistic(
-    String collectionPath,
-    String docId,
-    Map<String, dynamic> data,
-  ) async {
-    _optimizer.clearCacheEntry(collectionPath, docId);
-    try {
-      await firebaseFirestore
-          .collection(collectionPath)
-          .doc(docId)
-          .update(data);
-    } catch (e) {
-      print('❌ Update failed: $e');
-      rethrow;
-    }
-  }
-
-  Map<String, dynamic> getCacheStats() {
-    return _optimizer.getCacheStats();
-  }
-
-  void clearCache() {
-    _optimizer.clearCache();
-  }
-}
-
-class MockQuerySnapshot implements QuerySnapshot {
-  @override
-  final List<QueryDocumentSnapshot> docs;
-
-  MockQuerySnapshot({required this.docs});
-
-  @override
-  List<DocumentChange> get docChanges => [];
-
-  @override
-  SnapshotMetadata get metadata => MockSnapshotMetadata();
-
-  @override
-  int get size => docs.length;
-}
-
-class MockSnapshotMetadata implements SnapshotMetadata {
-  @override
-  bool get hasPendingWrites => false;
-
-  @override
-  bool get isFromCache => false;
 }

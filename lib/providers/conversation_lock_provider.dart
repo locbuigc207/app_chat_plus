@@ -1,48 +1,125 @@
-
 import 'dart:convert';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
+enum LockType { pin, none }
+
+class LockStatus {
+  final bool isLocked;
+  final LockType lockType;
+  final int failedAttempts;
+  final bool temporarilyLocked;
+  final DateTime? lockedUntil;
+  final bool messagesAutoDeleted;
+
+  const LockStatus({
+    required this.isLocked,
+    required this.lockType,
+    required this.failedAttempts,
+    required this.temporarilyLocked,
+    this.lockedUntil,
+    this.messagesAutoDeleted = false,
+  });
+
+  bool get isAccessible => !temporarilyLocked;
+  int get remainingAttempts => (5 - failedAttempts).clamp(0, 5);
+
+  factory LockStatus.unlocked() => const LockStatus(
+    isLocked: false,
+    lockType: LockType.none,
+    failedAttempts: 0,
+    temporarilyLocked: false,
+  );
+
+  factory LockStatus.fromMap(Map<String, dynamic> data) {
+    final lockedUntil = data['lockedUntil'] as Timestamp?;
+    final unlockTime = lockedUntil?.toDate();
+    final isTemporarilyLocked =
+        unlockTime != null && DateTime.now().isBefore(unlockTime);
+
+    return LockStatus(
+      isLocked: data['isLocked'] as bool? ?? true,
+      lockType: LockType.pin,
+      failedAttempts: data['failedAttempts'] as int? ?? 0,
+      temporarilyLocked: isTemporarilyLocked,
+      lockedUntil: unlockTime,
+      messagesAutoDeleted: data['messagesAutoDeleted'] as bool? ?? false,
+    );
+  }
+}
+
+class VerifyResult {
+  final bool success;
+  final String message;
+  final int failedAttempts;
+  final bool locked;
+
+  const VerifyResult({
+    required this.success,
+    required this.message,
+    required this.failedAttempts,
+    this.locked = false,
+  });
+}
+
 class ConversationLockProvider {
   final FirebaseFirestore firebaseFirestore;
 
+  static const int _maxFailedAttempts = 5;
+  static const int _lockDurationMinutes = 30;
+  static const int _batchSize = 500;
+  static const String _locksCollection = 'conversation_locks';
+
   ConversationLockProvider({required this.firebaseFirestore});
+
+  // ─── Hashing ──────────────────────────────────────────────────────────────
 
   String _hashPIN(String pin) {
     final bytes = utf8.encode(pin);
-    final hash = sha256.convert(bytes);
-    return hash.toString();
+    return sha256.convert(bytes).toString();
   }
+
+  // ─── Lock Management ──────────────────────────────────────────────────────
 
   Future<bool> setConversationPIN({
     required String conversationId,
     required String pin,
   }) async {
     try {
+      if (pin.length < 4) return false;
+
       final hashedPin = _hashPIN(pin);
-      await firebaseFirestore
-          .collection('conversation_locks')
-          .doc(conversationId)
-          .set({
+      final now = FieldValue.serverTimestamp();
+
+      final batch = firebaseFirestore.batch();
+
+      final lockRef = firebaseFirestore
+          .collection(_locksCollection)
+          .doc(conversationId);
+
+      batch.set(lockRef, {
         'conversationId': conversationId,
         'hashedPin': hashedPin,
         'isLocked': true,
         'failedAttempts': 0,
         'lockedUntil': null,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
+        'messagesAutoDeleted': false,
+        'createdAt': now,
+        'updatedAt': now,
       });
-      await firebaseFirestore
+
+      final convRef = firebaseFirestore
           .collection(FirestoreConstants.pathConversationCollection)
-          .doc(conversationId)
-          .set({
+          .doc(conversationId);
+
+      batch.set(convRef, {
         'isLocked': true,
         'lockType': 'pin',
         'lockedAt': DateTime.now().millisecondsSinceEpoch.toString(),
       }, SetOptions(merge: true));
-      print('✅ PIN lock set successfully');
+
+      await batch.commit();
       return true;
     } catch (e) {
       print('❌ Error setting PIN: $e');
@@ -50,179 +127,45 @@ class ConversationLockProvider {
     }
   }
 
-  Future<Map<String, dynamic>> verifyPIN({
+  Future<bool> changePIN({
     required String conversationId,
-    required String enteredPin,
+    required String currentPin,
+    required String newPin,
   }) async {
     try {
-      print('🔍 Verifying PIN for: $conversationId');
-      final lockDoc = await firebaseFirestore
-          .collection('conversation_locks')
-          .doc(conversationId)
-          .get();
+      final verifyResult = await verifyPIN(
+        conversationId: conversationId,
+        enteredPin: currentPin,
+      );
+      if (!verifyResult.success) return false;
 
-      if (!lockDoc.exists) {
-        return {'success': false, 'message': 'No PIN set', 'failedAttempts': 0};
-      }
-
-      final data = lockDoc.data()!;
-      final savedHashedPin = data['hashedPin'] as String;
-      final failedAttempts = (data['failedAttempts'] as int?) ?? 0;
-      final lockedUntil = data['lockedUntil'] as Timestamp?;
-
-      if (lockedUntil != null) {
-        final now = DateTime.now();
-        final unlockTime = lockedUntil.toDate();
-        if (now.isBefore(unlockTime)) {
-          final remaining = unlockTime.difference(now).inMinutes + 1;
-          return {
-            'success': false,
-            'message': 'Locked for $remaining minutes.',
-            'failedAttempts': failedAttempts,
-            'locked': true,
-          };
-        } else {
-          await firebaseFirestore
-              .collection('conversation_locks')
-              .doc(conversationId)
-              .update({'lockedUntil': null, 'failedAttempts': 0});
-        }
-      }
-
-      final isCorrect = _hashPIN(enteredPin) == savedHashedPin;
-      if (isCorrect) {
-        await firebaseFirestore
-            .collection('conversation_locks')
-            .doc(conversationId)
-            .update({
-          'failedAttempts': 0,
-          'lockedUntil': null,
-          'lastAccessedAt': FieldValue.serverTimestamp(),
-        });
-        return {'success': true, 'message': 'PIN correct', 'failedAttempts': 0};
-      } else {
-        final newFailed = failedAttempts + 1;
-        final Map<String, dynamic> updateData = {
-          'failedAttempts': newFailed,
-          'updatedAt': FieldValue.serverTimestamp(),
-        };
-        if (newFailed >= 5) {
-          updateData['lockedUntil'] = Timestamp.fromDate(
-              DateTime.now().add(const Duration(minutes: 30)));
-        }
-        await firebaseFirestore
-            .collection('conversation_locks')
-            .doc(conversationId)
-            .update(updateData);
-        return {
-          'success': false,
-          'message': newFailed >= 5
-              ? 'Too many failed attempts. Locked 30 minutes.'
-              : 'Incorrect PIN. ${5 - newFailed} attempts remaining.',
-          'failedAttempts': newFailed,
-          'locked': newFailed >= 5,
-        };
-      }
+      return setConversationPIN(
+        conversationId: conversationId,
+        pin: newPin,
+      );
     } catch (e) {
-      print('❌ Error verifying PIN: $e');
-      return {'success': false, 'message': 'Error: $e', 'failedAttempts': 0};
-    }
-  }
-
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  Future<void> autoDeleteMessagesAfterFailedAttempts({
-    required String conversationId,
-  }) async {
-    try {
-      print('🗑️ Starting auto-delete for: $conversationId');
-
-      final messagesSnapshot = await firebaseFirestore
-          .collection(FirestoreConstants.pathMessageCollection)
-          .doc(conversationId)
-          .collection(conversationId)
-          .get();
-
-      if (messagesSnapshot.docs.isEmpty) {
-        print('ℹ️ No messages to delete');
-        return;
-      }
-
-      print('🗑️ Deleting ${messagesSnapshot.docs.length} messages');
-
-      
-      WriteBatch currentBatch = firebaseFirestore.batch();
-      int count = 0;
-      int totalDeleted = 0;
-
-      for (final doc in messagesSnapshot.docs) {
-        currentBatch.update(doc.reference, {
-          'isDeleted': true,
-          'content': 'Messages deleted due to security breach',
-          'deletedAt': DateTime.now().millisecondsSinceEpoch.toString(),
-        });
-        count++;
-        totalDeleted++;
-
-        if (count >= 500) {
-          await currentBatch.commit();
-          
-          currentBatch = firebaseFirestore.batch();
-          count = 0;
-          print('✅ Committed batch ($totalDeleted total so far)');
-        }
-      }
-
-      
-      if (count > 0) {
-        await currentBatch.commit();
-        print('✅ Committed final batch');
-      }
-
-      print('✅ All $totalDeleted messages deleted');
-
-      await firebaseFirestore
-          .collection('conversation_locks')
-          .doc(conversationId)
-          .update({
-        'messagesAutoDeleted': true,
-        'autoDeletedAt': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      print('❌ Error auto-deleting messages: $e');
-      rethrow;
+      print('❌ Error changing PIN: $e');
+      return false;
     }
   }
 
   Future<bool> removeConversationLock(String conversationId) async {
     try {
-      await firebaseFirestore
-          .collection('conversation_locks')
-          .doc(conversationId)
-          .delete();
-      await firebaseFirestore
-          .collection(FirestoreConstants.pathConversationCollection)
-          .doc(conversationId)
-          .set({'isLocked': false, 'lockType': null}, SetOptions(merge: true));
+      final batch = firebaseFirestore.batch();
+
+      batch.delete(
+        firebaseFirestore.collection(_locksCollection).doc(conversationId),
+      );
+
+      batch.set(
+        firebaseFirestore
+            .collection(FirestoreConstants.pathConversationCollection)
+            .doc(conversationId),
+        {'isLocked': false, 'lockType': null},
+        SetOptions(merge: true),
+      );
+
+      await batch.commit();
       return true;
     } catch (e) {
       print('❌ Error removing lock: $e');
@@ -230,34 +173,190 @@ class ConversationLockProvider {
     }
   }
 
-  Future<Map<String, dynamic>?> getConversationLockStatus(
+  // ─── PIN Verification ─────────────────────────────────────────────────────
+
+  Future<VerifyResult> verifyPIN({
+    required String conversationId,
+    required String enteredPin,
+  }) async {
+    try {
+      final lockDoc = await firebaseFirestore
+          .collection(_locksCollection)
+          .doc(conversationId)
+          .get();
+
+      if (!lockDoc.exists) {
+        return const VerifyResult(
+          success: false,
+          message: 'No PIN set for this conversation',
+          failedAttempts: 0,
+        );
+      }
+
+      final data = lockDoc.data()!;
+      final savedHash = data['hashedPin'] as String;
+      final failedAttempts = data['failedAttempts'] as int? ?? 0;
+      final lockedUntil = data['lockedUntil'] as Timestamp?;
+
+      // Check temporary lock
+      if (lockedUntil != null) {
+        final now = DateTime.now();
+        final unlockTime = lockedUntil.toDate();
+
+        if (now.isBefore(unlockTime)) {
+          final remaining = unlockTime.difference(now).inMinutes + 1;
+          return VerifyResult(
+            success: false,
+            message: 'Too many failed attempts. Try again in $remaining minutes.',
+            failedAttempts: failedAttempts,
+            locked: true,
+          );
+        } else {
+          // Lock expired — reset
+          await firebaseFirestore
+              .collection(_locksCollection)
+              .doc(conversationId)
+              .update({'lockedUntil': null, 'failedAttempts': 0});
+        }
+      }
+
+      final isCorrect = _hashPIN(enteredPin) == savedHash;
+
+      if (isCorrect) {
+        await firebaseFirestore
+            .collection(_locksCollection)
+            .doc(conversationId)
+            .update({
+          'failedAttempts': 0,
+          'lockedUntil': null,
+          'lastAccessedAt': FieldValue.serverTimestamp(),
+        });
+
+        return const VerifyResult(
+          success: true,
+          message: 'Access granted',
+          failedAttempts: 0,
+        );
+      } else {
+        final newFailed = failedAttempts + 1;
+        final Map<String, dynamic> update = {
+          'failedAttempts': newFailed,
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
+
+        bool willLock = false;
+        if (newFailed >= _maxFailedAttempts) {
+          willLock = true;
+          update['lockedUntil'] = Timestamp.fromDate(
+            DateTime.now().add(Duration(minutes: _lockDurationMinutes)),
+          );
+        }
+
+        await firebaseFirestore
+            .collection(_locksCollection)
+            .doc(conversationId)
+            .update(update);
+
+        // Auto-delete messages after max failed attempts
+        if (willLock) {
+          await autoDeleteMessagesAfterFailedAttempts(
+              conversationId: conversationId);
+        }
+
+        final remaining = _maxFailedAttempts - newFailed;
+        return VerifyResult(
+          success: false,
+          message: willLock
+              ? 'Too many failed attempts. Conversation locked for $_lockDurationMinutes minutes and messages deleted.'
+              : 'Incorrect PIN. $remaining attempt${remaining == 1 ? '' : 's'} remaining.',
+          failedAttempts: newFailed,
+          locked: willLock,
+        );
+      }
+    } catch (e) {
+      print('❌ Error verifying PIN: $e');
+      return VerifyResult(
+        success: false,
+        message: 'An error occurred. Please try again.',
+        failedAttempts: 0,
+      );
+    }
+  }
+
+  // ─── Auto-Delete on Security Breach ──────────────────────────────────────
+
+  Future<void> autoDeleteMessagesAfterFailedAttempts({
+    required String conversationId,
+  }) async {
+    try {
+      final messagesSnapshot = await firebaseFirestore
+          .collection(FirestoreConstants.pathMessageCollection)
+          .doc(conversationId)
+          .collection(conversationId)
+          .get();
+
+      if (messagesSnapshot.docs.isEmpty) return;
+
+      WriteBatch batch = firebaseFirestore.batch();
+      int count = 0;
+      int total = 0;
+      final now = DateTime.now().millisecondsSinceEpoch.toString();
+
+      for (final doc in messagesSnapshot.docs) {
+        batch.update(doc.reference, {
+          'isDeleted': true,
+          'content': 'Messages deleted due to security breach',
+          'deletedAt': now,
+        });
+        count++;
+        total++;
+
+        if (count >= _batchSize) {
+          await batch.commit();
+          batch = firebaseFirestore.batch();
+          count = 0;
+        }
+      }
+
+      if (count > 0) await batch.commit();
+
+      await firebaseFirestore
+          .collection(_locksCollection)
+          .doc(conversationId)
+          .update({
+        'messagesAutoDeleted': true,
+        'autoDeletedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Clear last message preview
+      await firebaseFirestore
+          .collection(FirestoreConstants.pathConversationCollection)
+          .doc(conversationId)
+          .update({
+        FirestoreConstants.lastMessage: '🔒 Messages were cleared',
+        FirestoreConstants.lastMessageTime:
+        DateTime.now().millisecondsSinceEpoch.toString(),
+      });
+
+      print('✅ Auto-deleted $total messages due to security breach');
+    } catch (e) {
+      print('❌ Error auto-deleting messages: $e');
+      rethrow;
+    }
+  }
+
+  // ─── Status Queries ───────────────────────────────────────────────────────
+
+  Future<LockStatus?> getConversationLockStatus(
       String conversationId) async {
     try {
       final lockDoc = await firebaseFirestore
-          .collection('conversation_locks')
+          .collection(_locksCollection)
           .doc(conversationId)
           .get();
 
       if (!lockDoc.exists) return null;
-
-      final data = lockDoc.data()!;
-      final lockedUntil = data['lockedUntil'] as Timestamp?;
-      final failedAttempts = (data['failedAttempts'] as int?) ?? 0;
-      bool isTemporarilyLocked = false;
-      DateTime? unlockTime;
-
-      if (lockedUntil != null) {
-        unlockTime = lockedUntil.toDate();
-        isTemporarilyLocked = DateTime.now().isBefore(unlockTime);
-      }
-
-      return {
-        'isLocked': data['isLocked'] ?? true,
-        'lockType': 'pin',
-        'failedAttempts': failedAttempts,
-        'temporarilyLocked': isTemporarilyLocked,
-        'lockedUntil': unlockTime,
-      };
+      return LockStatus.fromMap(lockDoc.data()!);
     } catch (e) {
       print('❌ Error getting lock status: $e');
       return null;
@@ -266,16 +365,22 @@ class ConversationLockProvider {
 
   Future<int> getFailedAttempts(String conversationId) async {
     try {
-      final lockDoc = await firebaseFirestore
-          .collection('conversation_locks')
+      final doc = await firebaseFirestore
+          .collection(_locksCollection)
           .doc(conversationId)
           .get();
-      if (lockDoc.exists) {
-        return (lockDoc.data()?['failedAttempts'] as int?) ?? 0;
-      }
-      return 0;
-    } catch (e) {
+      return (doc.data()?['failedAttempts'] as int?) ?? 0;
+    } catch (_) {
       return 0;
     }
+  }
+
+  Stream<LockStatus?> watchLockStatus(String conversationId) {
+    return firebaseFirestore
+        .collection(_locksCollection)
+        .doc(conversationId)
+        .snapshots()
+        .map((snap) =>
+    snap.exists ? LockStatus.fromMap(snap.data()!) : null);
   }
 }

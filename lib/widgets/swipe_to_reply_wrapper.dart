@@ -2,17 +2,43 @@ import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 
+/// Widget bọc ngoài cho tính năng vuốt-để-trả-lời (swipe-to-reply) —
+/// chuẩn WhatsApp / Telegram.
+///
+/// Tính năng nâng cấp so với bản gốc:
+///  • Spring physics bật ngược chân thực hơn (mass/stiffness/damping tinh chỉnh)
+///  • Icon reply scale + fade + rotate theo chiều vuốt
+///  • Giới hạn kéo mềm (rubber-band) khi vượt ngưỡng
+///  • Hỗ trợ cả tin nhắn trái (bạn) và phải (mình) với logic đối xứng
+///  • Haptic 2 tầng: lightImpact khi chạm ngưỡng, mediumImpact khi xác nhận
+///  • Callback onSwipe an toàn — chỉ gọi 1 lần mỗi gesture
+///  • maxDragDistance tuỳ chỉnh (mặc định 72px)
 class SwipeToReplyWrapper extends StatefulWidget {
-  final Widget child;
-  final VoidCallback onSwipe;
-  final bool isMe; // Để xác định vuốt từ bên nào
-
   const SwipeToReplyWrapper({
     super.key,
     required this.child,
     required this.onSwipe,
     required this.isMe,
+    this.swipeThreshold = 56.0,
+    this.maxDragDistance = 80.0,
+    this.iconColor,
   });
+
+  final Widget child;
+  final VoidCallback onSwipe;
+
+  /// true → tin nhắn của mình (bên phải, vuốt sang trái).
+  /// false → tin nhắn của đối phương (bên trái, vuốt sang phải).
+  final bool isMe;
+
+  /// Khoảng cách vuốt để kích hoạt reply (px).
+  final double swipeThreshold;
+
+  /// Giới hạn kéo tối đa trước khi rubber-band (px).
+  final double maxDragDistance;
+
+  /// Màu icon reply. Mặc định dùng màu scheme.
+  final Color? iconColor;
 
   @override
   State<SwipeToReplyWrapper> createState() => _SwipeToReplyWrapperState();
@@ -20,109 +46,150 @@ class SwipeToReplyWrapper extends StatefulWidget {
 
 class _SwipeToReplyWrapperState extends State<SwipeToReplyWrapper>
     with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  double _dragExtent = 0.0;
-  bool _hasTriggeredHaptic = false;
+  late final AnimationController _spring = AnimationController(vsync: this);
 
-  // Ngưỡng vuốt tối đa để kích hoạt Reply
-  final double _swipeThreshold = 60.0;
+  double _drag = 0.0;
+  bool _triggered = false; // Đã kích hoạt haptic threshold chưa
+  bool _fired = false; // Đã gọi onSwipe chưa trong gesture này
+
+  // ─── Drag direction sign ───────────────────────────────────────────────────
+  // isMe → vuốt trái → drag âm; !isMe → vuốt phải → drag dương
+  int get _sign => widget.isMe ? -1 : 1;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this);
-    _controller.addListener(() {
-      setState(() {
-        _dragExtent = _controller.value;
-      });
-    });
+    _spring.addListener(() => setState(() => _drag = _spring.value));
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _spring.dispose();
     super.dispose();
   }
 
-  void _onHorizontalDragUpdate(DragUpdateDetails details) {
-    // Nếu là tin nhắn của mình, vuốt sang trái (âm). Nếu là của bạn, vuốt sang phải (dương)
-    if (widget.isMe && details.delta.dx > 0) return; // Khóa chiều ngược lại
-    if (!widget.isMe && details.delta.dx < 0) return;
+  // ─── Gesture handlers ──────────────────────────────────────────────────────
+
+  void _onDragUpdate(DragUpdateDetails d) {
+    final delta = d.delta.dx;
+
+    // Chặn chiều ngược lại ngay từ đầu
+    if (widget.isMe && delta > 0 && _drag >= 0) return;
+    if (!widget.isMe && delta < 0 && _drag <= 0) return;
 
     setState(() {
-      _dragExtent += details.delta.dx;
+      final raw = _drag + delta;
+      final abs = raw.abs();
 
-      // Giảm xóc (Friction) khi kéo quá xa
-      if (_dragExtent.abs() > _swipeThreshold + 20) {
-        _dragExtent += (details.delta.dx * 0.1);
+      if (abs <= widget.swipeThreshold) {
+        // Kéo tự do trong vùng ngưỡng
+        _drag = raw;
+      } else if (abs <= widget.maxDragDistance) {
+        // Vùng rubber-band: ma sát tăng dần
+        final over = abs - widget.swipeThreshold;
+        final friction = 1.0 - (over / widget.maxDragDistance) * 0.85;
+        _drag = raw.sign *
+            (widget.swipeThreshold + over * friction.clamp(0.05, 1.0));
+      } else {
+        // Hard cap
+        _drag = _sign * widget.maxDragDistance;
       }
     });
 
-    // Kích hoạt rung nhẹ 1 lần duy nhất khi chạm ngưỡng
-    if (_dragExtent.abs() >= _swipeThreshold && !_hasTriggeredHaptic) {
-      _hasTriggeredHaptic = true;
-      HapticFeedback.lightImpact(); // Micro-interaction rung phản hồi
-    } else if (_dragExtent.abs() < _swipeThreshold) {
-      _hasTriggeredHaptic = false;
+    // Haptic khi chạm ngưỡng
+    if (_drag.abs() >= widget.swipeThreshold && !_triggered) {
+      _triggered = true;
+      HapticFeedback.lightImpact();
+    } else if (_drag.abs() < widget.swipeThreshold * 0.8) {
+      _triggered = false;
     }
   }
 
-  void _onHorizontalDragEnd(DragEndDetails details) {
-    if (_dragExtent.abs() >= _swipeThreshold) {
+  void _onDragEnd(DragEndDetails d) {
+    // Kích hoạt callback chỉ 1 lần
+    if (_drag.abs() >= widget.swipeThreshold && !_fired) {
+      _fired = true;
+      HapticFeedback.mediumImpact();
       widget.onSwipe();
-      HapticFeedback.mediumImpact(); // Rung mạnh hơn khi chốt lệnh Reply
     }
 
-    // Hiệu ứng lò xo (Spring Physics) kéo tin nhắn bật ngược lại
-    final spring = SpringDescription(
-      mass: 30,
-      stiffness: 1,
-      damping: 1,
-    );
+    _fired = false;
+    _triggered = false;
+    _snapBack(d.velocity.pixelsPerSecond.dx);
+  }
 
+  void _snapBack(double velocityX) {
+    final spring = SpringDescription(
+      mass: 1.0,
+      stiffness: 300.0,
+      damping: 22.0,
+    );
     final simulation = SpringSimulation(
       spring,
-      _dragExtent, // Vị trí bắt đầu
-      0.0, // Vị trí kết thúc (Về 0)
-      details.velocity.pixelsPerSecond.dx, // Vận tốc quán tính
+      _drag,
+      0.0,
+      velocityX * 0.25, // Dùng 1 phần vận tốc cho tự nhiên hơn
     );
-
-    _controller.animateWith(simulation);
-    _hasTriggeredHaptic = false;
+    _spring.animateWith(simulation);
   }
+
+  // ─── Derived values ────────────────────────────────────────────────────────
+
+  /// Tiến độ 0→1 dựa trên khoảng cách kéo so với ngưỡng.
+  double get _progress => (_drag.abs() / widget.swipeThreshold).clamp(0.0, 1.0);
+
+  /// Góc xoay icon reply (−π/6 → 0) khi tiến độ tăng.
+  double get _iconRotation => (1 - _progress) * 0.4 * -_sign.toDouble();
+
+  // ─── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    // Biểu tượng Reply hiện ra mờ dần dựa trên khoảng cách vuốt
-    final double iconOpacity =
-        (_dragExtent.abs() / _swipeThreshold).clamp(0.0, 1.0);
+    final scheme = Theme.of(context).colorScheme;
+    final iconColor = widget.iconColor ?? scheme.onSurfaceVariant;
 
     return GestureDetector(
-      // 🚀 Nhận diện vuốt kể cả ở vùng trống ngang hàng với tin nhắn
       behavior: HitTestBehavior.translucent,
-      onHorizontalDragUpdate: _onHorizontalDragUpdate,
-      onHorizontalDragEnd: _onHorizontalDragEnd,
+      onHorizontalDragUpdate: _onDragUpdate,
+      onHorizontalDragEnd: _onDragEnd,
       child: Stack(
         alignment: widget.isMe ? Alignment.centerRight : Alignment.centerLeft,
+        clipBehavior: Clip.none,
         children: [
-          // Icon Reply hiển thị ngầm phía dưới
-          Opacity(
-            opacity: iconOpacity,
+          // ── Reply icon ──────────────────────────────────────────────────
+          Positioned(
+            left: widget.isMe ? null : 0,
+            right: widget.isMe ? 0 : null,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Transform.scale(
-                scale: iconOpacity,
-                child: const Icon(
-                  Icons.reply_rounded,
-                  color: Colors.grey,
-                  size: 24,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Opacity(
+                opacity: _progress,
+                child: Transform.scale(
+                  scale: 0.6 + _progress * 0.4, // 0.6 → 1.0
+                  child: Transform.rotate(
+                    angle: _iconRotation,
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: iconColor.withOpacity(0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.reply_rounded,
+                        color: _progress >= 1.0 ? scheme.primary : iconColor,
+                        size: 18,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
-          // Khối tin nhắn chính bị dịch chuyển
+
+          // ── Tin nhắn dịch chuyển ─────────────────────────────────────────
           Transform.translate(
-            offset: Offset(_dragExtent, 0),
+            offset: Offset(_drag, 0),
             child: widget.child,
           ),
         ],

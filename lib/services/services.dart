@@ -12,7 +12,6 @@ export 'group_call_service.dart';
 export 'local_db_service.dart';
 export 'media_compression_service.dart';
 export 'notification_service.dart';
-export 'offline_manager.dart';
 export 'push_notification_service.dart';
 export 'realtime_ai_service.dart';
 export 'sync_manager.dart';

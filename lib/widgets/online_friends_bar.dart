@@ -1,10 +1,11 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:provider/provider.dart';
 
+/// Scrollable horizontal bar showing currently online friends.
+/// Optimised with const constructors, RepaintBoundary, and image caching.
 class OnlineFriendsBar extends StatefulWidget {
   final String currentUserId;
 
@@ -24,74 +25,55 @@ class _OnlineFriendsBarState extends State<OnlineFriendsBar>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); 
-
+    super.build(context);
     final presenceProvider = context.read<UserPresenceProvider>();
 
     return Container(
-      height: 100,
+      height: 98,
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 5,
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
             offset: const Offset(0, 2),
           ),
         ],
       ),
       child: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: presenceProvider.getOnlineFriends(widget.currentUserId),
+        stream: presenceProvider.getOnlineFriendsStream(widget.currentUserId),
         builder: (context, snapshot) {
-          
+          // Loading
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
               child: SizedBox(
-                width: 20,
-                height: 20,
+                width: 22,
+                height: 22,
                 child: CircularProgressIndicator(
-                  strokeWidth: 2,
+                  strokeWidth: 2.5,
                   color: ColorConstants.themeColor,
                 ),
               ),
             );
           }
 
-          
+          // Error
           if (snapshot.hasError) {
-            return Center(
-              child: Text(
-                'Unable to load online friends',
-                style: TextStyle(
-                  color: ColorConstants.greyColor,
-                  fontSize: 12,
-                ),
-              ),
-            );
-          }
-
-          final onlineFriends = snapshot.hasData
-              ? snapshot.data!
-                  .where((user) => user['id'] != widget.currentUserId)
-                  .toList()
-              : [];
-
-          if (onlineFriends.isEmpty) {
             return Center(
               child: Row(
                 mainAxisSize: MainAxisSize.min,
-                children: const [
+                children: [
                   Icon(
-                    Icons.wifi_off,
-                    color: ColorConstants.greyColor,
-                    size: 20,
+                    Icons.cloud_off_rounded,
+                    size: 18,
+                    color: ColorConstants.greyColor.withOpacity(0.6),
                   ),
-                  SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   Text(
-                    'No friends online',
+                    'Không thể tải danh sách',
                     style: TextStyle(
-                      color: ColorConstants.greyColor,
-                      fontSize: 14,
+                      fontSize: 12,
+                      color: ColorConstants.greyColor.withOpacity(0.7),
                     ),
                   ),
                 ],
@@ -99,20 +81,51 @@ class _OnlineFriendsBarState extends State<OnlineFriendsBar>
             );
           }
 
-          
+          final onlineFriends = (snapshot.data ?? [])
+              .where((u) => u['id'] != widget.currentUserId)
+              .toList();
+
+          // Empty
+          if (onlineFriends.isEmpty) {
+            return Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFD1D5DB),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Không có bạn bè trực tuyến',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: ColorConstants.greyColor.withOpacity(0.7),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+
           return ListView.builder(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             itemCount: onlineFriends.length,
-            
-            itemExtent: 78, 
+            itemExtent: 76,
             addAutomaticKeepAlives: true,
             addRepaintBoundaries: true,
-            cacheExtent: 400, 
+            cacheExtent: 400,
             itemBuilder: (context, index) {
+              final friend = onlineFriends[index];
               return _OnlineFriendItem(
-                key: ValueKey(onlineFriends[index]['id']),
-                friend: onlineFriends[index],
+                key: ValueKey(friend['id']),
+                friend: friend,
+                isFirst: index == 0,
               );
             },
           );
@@ -122,79 +135,127 @@ class _OnlineFriendsBarState extends State<OnlineFriendsBar>
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
 
-class _OnlineFriendItem extends StatelessWidget {
+class _OnlineFriendItem extends StatefulWidget {
   final Map<String, dynamic> friend;
+  final bool isFirst;
 
   const _OnlineFriendItem({
     super.key,
     required this.friend,
+    this.isFirst = false,
   });
 
   @override
+  State<_OnlineFriendItem> createState() => _OnlineFriendItemState();
+}
+
+class _OnlineFriendItemState extends State<_OnlineFriendItem>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _pulseCtrl;
+  late Animation<double> _pulseAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat(reverse: true);
+    _pulseAnim = Tween<double>(begin: 0.7, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulseCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    
+    final nickname = widget.friend['nickname']?.toString() ?? 'User';
+    final photoUrl = widget.friend['photoUrl']?.toString() ?? '';
+
     return RepaintBoundary(
       child: GestureDetector(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ChatPage(
-                arguments: ChatPageArguments(
-                  peerId: friend['id'],
-                  peerAvatar: friend['photoUrl'],
-                  peerNickname: friend['nickname'],
-                ),
-              ),
-            ),
-          );
-        },
+        onTap: () => _navigate(context),
         child: Container(
-          width: 70, 
-          padding: const EdgeInsets.symmetric(horizontal: 4),
+          width: 70,
+          padding: const EdgeInsets.symmetric(horizontal: 3),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              
+              // ── Avatar with online indicator ─────────────────────────
               SizedBox(
                 width: 60,
                 height: 60,
                 child: Stack(
                   children: [
-                    
-                    Hero(
-                      tag: 'avatar_${friend['id']}',
-                      child: Container(
-                        width: 60,
-                        height: 60,
+                    // Ring
+                    Positioned.fill(
+                      child: DecoratedBox(
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          border: Border.all(
-                            color: ColorConstants.primaryColor,
-                            width: 2,
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              ColorConstants.primaryColor,
+                              ColorConstants.primaryColor.withOpacity(0.6),
+                            ],
                           ),
-                        ),
-                        child: ClipOval(
-                          child: _buildAvatar(),
                         ),
                       ),
                     ),
-
-                    
-                    Positioned(
-                      right: 2,
-                      bottom: 2,
-                      child: Container(
-                        width: 16,
-                        height: 16,
-                        decoration: BoxDecoration(
-                          color: Colors.green,
-                          shape: BoxShape.circle,
-                          border: Border.all(
+                    // Avatar
+                    Center(
+                      child: Hero(
+                        tag: 'avatar_${widget.friend['id']}',
+                        child: Container(
+                          width: 54,
+                          height: 54,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
                             color: Colors.white,
-                            width: 2,
                           ),
+                          child: ClipOval(child: _buildAvatarImage(photoUrl)),
+                        ),
+                      ),
+                    ),
+                    // Online dot with pulse
+                    Positioned(
+                      right: 1,
+                      bottom: 1,
+                      child: AnimatedBuilder(
+                        animation: _pulseAnim,
+                        builder: (_, __) => Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Container(
+                              width: 18,
+                              height: 18,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.green
+                                    .withOpacity(0.3 * _pulseAnim.value),
+                              ),
+                            ),
+                            Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: const Color(0xFF34C759),
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 2,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -202,21 +263,19 @@ class _OnlineFriendItem extends StatelessWidget {
                 ),
               ),
 
-              const SizedBox(height: 4),
+              const SizedBox(height: 5),
 
-              
-              SizedBox(
-                width: 70,
-                child: Text(
-                  friend['nickname']?.toString() ?? 'User',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: ColorConstants.primaryColor,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
+              // ── Name ─────────────────────────────────────────────────
+              Text(
+                nickname,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF374151),
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
               ),
             ],
           ),
@@ -225,45 +284,58 @@ class _OnlineFriendItem extends StatelessWidget {
     );
   }
 
-  
-  Widget _buildAvatar() {
-    final photoUrl = friend['photoUrl']?.toString() ?? '';
-
-    if (photoUrl.isEmpty) {
-      return const Icon(
-        Icons.account_circle,
-        size: 56,
-        color: ColorConstants.greyColor,
-      );
-    }
+  Widget _buildAvatarImage(String photoUrl) {
+    if (photoUrl.isEmpty) return _placeholder();
 
     return Image.network(
       photoUrl,
       fit: BoxFit.cover,
-      
-      cacheWidth: 120, 
-      cacheHeight: 120,
-      
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) return child;
-        return Center(
-          child: SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              value: loadingProgress.expectedTotalBytes != null
-                  ? loadingProgress.cumulativeBytesLoaded /
-                      loadingProgress.expectedTotalBytes!
-                  : null,
+      cacheWidth: 108,
+      cacheHeight: 108,
+      loadingBuilder: (_, child, progress) {
+        if (progress == null) return child;
+        return Container(
+          color: ColorConstants.greyColor2,
+          child: Center(
+            child: SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                value: progress.expectedTotalBytes != null
+                    ? progress.cumulativeBytesLoaded /
+                        progress.expectedTotalBytes!
+                    : null,
+                color: ColorConstants.primaryColor,
+              ),
             ),
           ),
         );
       },
-      errorBuilder: (_, __, ___) => const Icon(
-        Icons.account_circle,
-        size: 56,
-        color: ColorConstants.greyColor,
+      errorBuilder: (_, __, ___) => _placeholder(),
+    );
+  }
+
+  Widget _placeholder() => Container(
+        color: ColorConstants.greyColor2,
+        child: Icon(
+          Icons.account_circle_rounded,
+          size: 54,
+          color: ColorConstants.greyColor.withOpacity(0.5),
+        ),
+      );
+
+  void _navigate(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatPage(
+          arguments: ChatPageArguments(
+            peerId: widget.friend['id'],
+            peerAvatar: widget.friend['photoUrl'] ?? '',
+            peerNickname: widget.friend['nickname'] ?? 'User',
+          ),
+        ),
       ),
     );
   }

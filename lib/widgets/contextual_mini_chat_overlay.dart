@@ -1,28 +1,44 @@
-
-
-
-
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../services/contextual_bubble_service.dart';
+import '../models/models.dart';
+import '../services/services.dart';
 import 'bubble_adaptive_ui.dart';
 import 'secure_view_once_widget.dart';
 import 'shared_space_widget.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────────
+const _kOverlayWidth = 348.0;
+const _kCollapsedHeight = 56.0;
+const _kExpandedHeight = 540.0;
+const _kSharedHeight = 500.0;
+const _kBorderRadius = 18.0;
+const _kShadowBlur = 32.0;
+const _kDefaultTopOffset = 90.0;
+const _kDefaultLeftOffset = 18.0;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// OVERLAY WIDGET
+// ─────────────────────────────────────────────────────────────────────────────
 
-
-
+/// Floating, draggable, animated mini-chat overlay.
+///
+/// Renders on top of everything else using [Positioned].
+/// Passes [chatContent] through as the main body — no routing required.
 class ContextualMiniChatOverlay extends StatefulWidget {
   final String userId;
   final String userName;
   final String avatarUrl;
   final String conversationId;
   final String currentUserId;
-  final Widget chatContent; 
+
+  /// The actual chat view (e.g. `ChatPage(isMiniChat: true)`).
+  final Widget chatContent;
+
   final VoidCallback onMinimize;
   final VoidCallback onClose;
 
@@ -45,242 +61,284 @@ class ContextualMiniChatOverlay extends StatefulWidget {
 
 class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     with TickerProviderStateMixin {
-  final _contextService = ContextualBubbleService();
+  // ── Services ──────────────────────────────────────────────────────────────
+  final _ctxSvc = ContextualBubbleService();
+  BubbleContext _ctx =
+      BubbleContext(mode: BubbleMode.normal, updatedAt: DateTime.now());
+  StreamSubscription<BubbleContext>? _ctxSub;
 
-  
-  Offset _position = const Offset(20, 100);
-  bool _isDragging = false;
+  // ── Position ──────────────────────────────────────────────────────────────
+  Offset _pos = const Offset(_kDefaultLeftOffset, _kDefaultTopOffset);
+  bool _dragging = false;
+
+  // ── UI state ──────────────────────────────────────────────────────────────
   bool _isExpanded = true;
-  bool _isSharedSpaceOpen = false;
-  bool _isSecureModeOn = false;
+  bool _isSharedOpen = false;
+  bool _isSecureOn = false;
+  int _activeTab = 0; // 0 = chat, 1 = shared
 
-  static const double _width = 340;
-  static const double _collapsedHeight = 56;
-  static const double _expandedHeight = 520;
-  static const double _sharedSpaceHeight = 480;
-
-  
+  // ── Animations ────────────────────────────────────────────────────────────
+  late AnimationController _slideIn;
   late AnimationController _expandAnim;
-  late AnimationController _sharedSpaceAnim;
-  late AnimationController _slideInAnim;
+  late AnimationController _sharedAnim;
+  late AnimationController _dragScale;
   late Animation<double> _expandCurve;
+  late Animation<double> _dragScaleCurve;
 
-  
-  BubbleContext _context = BubbleContext(
-    mode: BubbleMode.normal,
-    updatedAt: DateTime.now(),
-  );
-  StreamSubscription? _contextSub;
+  // ─────────────────────────────────────────────────────────────────────────
+  // LIFECYCLE
+  // ─────────────────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
 
+    _slideIn = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 420))
+      ..forward();
+
     _expandAnim = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 350),
+      duration: const Duration(milliseconds: 340),
       value: 1.0,
     );
-    _expandCurve = CurvedAnimation(
-      parent: _expandAnim,
-      curve: Curves.easeInOutCubic,
-    );
+    _expandCurve =
+        CurvedAnimation(parent: _expandAnim, curve: Curves.easeInOutCubic);
 
-    _sharedSpaceAnim = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
+    _sharedAnim = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 380));
 
-    _slideInAnim = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 500),
-    )..forward();
+    _dragScale = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 120));
+    _dragScaleCurve = Tween<double>(begin: 1.0, end: 0.97)
+        .animate(CurvedAnimation(parent: _dragScale, curve: Curves.easeIn));
 
-    _contextSub = _contextService.contextStream.listen((ctx) {
-      if (mounted) setState(() => _context = ctx);
+    _ctxSub = _ctxSvc.contextStream.listen((ctx) {
+      if (mounted) setState(() => _ctx = ctx);
     });
   }
 
   @override
   void dispose() {
+    _ctxSub?.cancel();
+    _slideIn.dispose();
     _expandAnim.dispose();
-    _sharedSpaceAnim.dispose();
-    _slideInAnim.dispose();
-    _contextSub?.cancel();
+    _sharedAnim.dispose();
+    _dragScale.dispose();
     super.dispose();
   }
 
-  
+  // ─────────────────────────────────────────────────────────────────────────
+  // HELPERS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  double get _targetHeight {
+    if (!_isExpanded) return _kCollapsedHeight;
+    if (_isSharedOpen) return _kSharedHeight;
+    return _kExpandedHeight;
+  }
 
   void _toggleExpand() {
     setState(() => _isExpanded = !_isExpanded);
-    if (_isExpanded) {
-      _expandAnim.forward();
-    } else {
-      _expandAnim.reverse();
-      _isSharedSpaceOpen = false;
-      _sharedSpaceAnim.reverse();
+    _isExpanded ? _expandAnim.forward() : _expandAnim.reverse();
+    if (!_isExpanded) {
+      _isSharedOpen = false;
+      _sharedAnim.reverse();
     }
     HapticFeedback.lightImpact();
   }
 
-  void _toggleSharedSpace() {
-    setState(() => _isSharedSpaceOpen = !_isSharedSpaceOpen);
-    if (_isSharedSpaceOpen) {
-      _sharedSpaceAnim.forward();
-      _contextService.activateSharedMode();
-    } else {
-      _sharedSpaceAnim.reverse();
-      _contextService.resetToNormal();
-    }
+  void _openTab(int tab) {
+    if (_activeTab == tab) return;
+    setState(() => _activeTab = tab);
+    if (tab == 1 && !_isSharedOpen) _toggleShared();
+    if (tab == 0 && _isSharedOpen) _toggleShared();
+    HapticFeedback.selectionClick();
+  }
+
+  void _toggleShared() {
+    setState(() => _isSharedOpen = !_isSharedOpen);
+    _isSharedOpen ? _sharedAnim.forward() : _sharedAnim.reverse();
+    _isSharedOpen ? _ctxSvc.activateSharedMode() : _ctxSvc.resetToNormal();
     HapticFeedback.mediumImpact();
   }
 
-  void _toggleSecureMode() {
-    setState(() => _isSecureModeOn = !_isSecureModeOn);
-    if (_isSecureModeOn) {
-      _contextService.activateSecureMode();
-    } else {
-      _contextService.resetToNormal();
-    }
+  void _toggleSecure() {
+    setState(() => _isSecureOn = !_isSecureOn);
+    _isSecureOn ? _ctxSvc.activateSecureMode() : _ctxSvc.resetToNormal();
     HapticFeedback.heavyImpact();
   }
 
-  double get _currentHeight {
-    if (!_isExpanded) return _collapsedHeight;
-    if (_isSharedSpaceOpen) return _sharedSpaceHeight;
-    return _expandedHeight;
+  void _setMode(BubbleMode mode) {
+    if (_ctx.mode == mode) {
+      _ctxSvc.resetToNormal();
+    } else {
+      _ctxSvc.analyzeMessage(
+        content: mode.name,
+        messageType: 0,
+      );
+    }
+    HapticFeedback.selectionClick();
   }
 
-  
+  // ─────────────────────────────────────────────────────────────────────────
+  // DRAG
+  // ─────────────────────────────────────────────────────────────────────────
 
-  @override
-  Widget build(BuildContext context) {
-    final screenSize = MediaQuery.of(context).size;
-
-    return Positioned(
-      left: _clampX(screenSize),
-      top: _clampY(screenSize),
-      child: SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(0, 0.3),
-          end: Offset.zero,
-        ).animate(CurvedAnimation(
-          parent: _slideInAnim,
-          curve: Curves.easeOutBack,
-        )),
-        child: FadeTransition(
-          opacity: _slideInAnim,
-          child: GestureDetector(
-            onPanStart: (_) => setState(() => _isDragging = true),
-            onPanUpdate: (d) => _onPanUpdate(d, screenSize),
-            onPanEnd: (_) => setState(() => _isDragging = false),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 350),
-              curve: Curves.easeInOutCubic,
-              width: _width,
-              height: _currentHeight,
-              child: _buildCard(context),
-            ),
-          ),
-        ),
-      ),
-    );
+  void _onPanStart(DragStartDetails _) {
+    setState(() => _dragging = true);
+    _dragScale.forward();
   }
-
-  double _clampX(Size screen) => _position.dx.clamp(0, screen.width - _width);
-
-  double _clampY(Size screen) => _position.dy
-      .clamp(0, screen.height - _currentHeight.clamp(0, screen.height));
 
   void _onPanUpdate(DragUpdateDetails d, Size screen) {
     setState(() {
-      _position = Offset(
-        (_position.dx + d.delta.dx).clamp(0, screen.width - _width),
-        (_position.dy + d.delta.dy).clamp(0, screen.height - _currentHeight),
+      _pos = Offset(
+        (_pos.dx + d.delta.dx).clamp(0, screen.width - _kOverlayWidth),
+        (_pos.dy + d.delta.dy).clamp(0, screen.height - _targetHeight),
       );
     });
   }
 
-  Widget _buildCard(BuildContext ctx) {
-    return Material(
-      elevation: _isDragging ? 20 : 12,
-      borderRadius: BorderRadius.circular(18),
-      shadowColor: Colors.black.withOpacity(0.3),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
-        child: Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFFF8F9FE),
-          ),
-          child: Column(
-            children: [
-              
-              BubbleAdaptiveHeader(
-                context: _context,
-                peerName: widget.userName,
-                peerAvatar: widget.avatarUrl,
-                conversationId: widget.conversationId,
-                currentUserId: widget.currentUserId,
-                onMinimize: widget.onMinimize,
-                onClose: widget.onClose,
-              ),
+  void _onPanEnd(DragEndDetails _) {
+    setState(() => _dragging = false);
+    _dragScale.reverse();
+    _snapIfNeeded();
+  }
 
-              
-              if (_isExpanded) _buildFeatureBar(),
+  /// Snap to nearest horizontal edge if close to it.
+  void _snapIfNeeded() {
+    final screenWidth = _lastScreenWidth;
+    if (screenWidth <= 0) return;
+    const snapThreshold = 60.0;
+    if (_pos.dx < snapThreshold) {
+      setState(() => _pos = Offset(8, _pos.dy));
+    } else if (_pos.dx > screenWidth - _kOverlayWidth - snapThreshold) {
+      setState(() => _pos = Offset(screenWidth - _kOverlayWidth - 8, _pos.dy));
+    }
+  }
 
-              
-              Expanded(
-                child: _buildContent(),
-              ),
+  double _lastScreenWidth = 0;
 
-              
-              if (_isExpanded) _buildBottomBar(),
-            ],
+  // ─────────────────────────────────────────────────────────────────────────
+  // BUILD
+  // ─────────────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final screen = MediaQuery.of(context).size;
+    _lastScreenWidth = screen.width;
+
+    final clampedX = _pos.dx.clamp(0.0, screen.width - _kOverlayWidth);
+    final clampedY = _pos.dy
+        .clamp(0.0, screen.height - _targetHeight.clamp(0, screen.height));
+
+    return Positioned(
+      left: clampedX,
+      top: clampedY,
+      child: _buildAnimatedEntry(),
+    );
+  }
+
+  Widget _buildAnimatedEntry() {
+    return FadeTransition(
+      opacity: CurvedAnimation(parent: _slideIn, curve: Curves.easeOut),
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 0.25),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(parent: _slideIn, curve: Curves.easeOutBack)),
+        child: ScaleTransition(
+          scale: _dragScaleCurve,
+          child: GestureDetector(
+            onPanStart: _onPanStart,
+            onPanUpdate: (d) => _onPanUpdate(d, MediaQuery.of(context).size),
+            onPanEnd: _onPanEnd,
+            child: _buildCard(),
           ),
         ),
       ),
     );
   }
 
-  
+  Widget _buildCard() {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 360),
+      curve: Curves.easeInOutCubic,
+      width: _kOverlayWidth,
+      height: _targetHeight,
+      child: Material(
+        elevation: _dragging ? 28 : 16,
+        borderRadius: BorderRadius.circular(_kBorderRadius),
+        shadowColor: Colors.black.withOpacity(0.4),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(_kBorderRadius),
+          child: _buildCardContent(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCardContent() {
+    return Container(
+      decoration: const BoxDecoration(color: Color(0xFFF5F7FD)),
+      child: Column(
+        children: [
+          // ── Adaptive header ─────────────────────────────────────────────
+          BubbleAdaptiveHeader(
+            bubbleCtx: _ctx, // Changed from 'context' to 'bubbleCtx'
+            peerName: widget.userName,
+            peerAvatar: widget.avatarUrl,
+            // Removed 'conversationId' and 'currentUserId' as they aren't defined in the constructor
+            onMinimize: widget.onMinimize,
+            onClose: widget.onClose,
+          ),
+
+          // ── Feature bar (only when expanded) ────────────────────────────
+          if (_isExpanded) _buildFeatureBar(),
+
+          // ── Content ──────────────────────────────────────────────────────
+          Expanded(child: _buildContent()),
+
+          // ── Bottom bar (only when expanded) ─────────────────────────────
+          if (_isExpanded) _buildBottomBar(),
+        ],
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // FEATURE BAR
+  // ─────────────────────────────────────────────────────────────────────────
 
   Widget _buildFeatureBar() {
     return Container(
-      height: 40,
+      height: 42,
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(
-          bottom: BorderSide(color: Color(0xFFEEF1F8), width: 1),
-        ),
+        border: Border(bottom: BorderSide(color: Color(0xFFEEF1F8))),
       ),
       child: Row(
         children: [
-          _buildFeatureTab(
+          _FeatureTab(
             icon: Icons.chat_bubble_outline_rounded,
             label: 'Chat',
-            isActive: !_isSharedSpaceOpen,
-            onTap: () {
-              if (_isSharedSpaceOpen) _toggleSharedSpace();
-            },
+            isActive: _activeTab == 0,
+            onTap: () => _openTab(0),
           ),
-          _buildFeatureTab(
+          _FeatureTab(
             icon: Icons.palette_outlined,
             label: 'Space',
-            isActive: _isSharedSpaceOpen,
-            badge: null,
-            onTap: _toggleSharedSpace,
+            isActive: _activeTab == 1,
+            onTap: () => _openTab(1),
           ),
           const Spacer(),
-          
-          _buildModeChip(),
+          _ModePill(mode: _ctx.mode),
           const SizedBox(width: 6),
-          
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: SecureModeToggle(
-              isActive: _isSecureModeOn,
-              onChanged: (_) => _toggleSecureMode(),
+              isActive: _isSecureOn,
+              onChanged: (_) => _toggleSecure(),
             ),
           ),
         ],
@@ -288,271 +346,271 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     );
   }
 
-  Widget _buildFeatureTab({
-    required IconData icon,
-    required String label,
-    required bool isActive,
-    required VoidCallback onTap,
-    String? badge,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: isActive ? const Color(0xFF2196F3) : Colors.transparent,
-              width: 2,
-            ),
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              icon,
-              size: 15,
-              color:
-                  isActive ? const Color(0xFF2196F3) : const Color(0xFF9AA5B8),
-            ),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-                color: isActive
-                    ? const Color(0xFF2196F3)
-                    : const Color(0xFF9AA5B8),
-              ),
-            ),
-            if (badge != null) ...[
-              const SizedBox(width: 3),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE53935),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  badge,
-                  style: const TextStyle(color: Colors.white, fontSize: 8),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildModeChip() {
-    final modeData = _getModeData(_context.mode);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: modeData.color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(modeData.icon, size: 10, color: modeData.color),
-          const SizedBox(width: 3),
-          Text(
-            modeData.label,
-            style: TextStyle(
-              color: modeData.color,
-              fontSize: 9,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  _ModeData _getModeData(BubbleMode mode) {
-    switch (mode) {
-      case BubbleMode.work:
-        return _ModeData(Icons.work_rounded, const Color(0xFF4CAF50), 'Work');
-      case BubbleMode.media:
-        return _ModeData(
-            Icons.music_note_rounded, const Color(0xFFE91E63), 'Media');
-      case BubbleMode.location:
-        return _ModeData(
-            Icons.location_on_rounded, const Color(0xFF4CAF50), 'Location');
-      case BubbleMode.shared:
-        return _ModeData(
-            Icons.palette_rounded, const Color(0xFF9C27B0), 'Shared');
-      case BubbleMode.secure:
-        return _ModeData(
-            Icons.shield_rounded, const Color(0xFF1565C0), 'Secure');
-      default:
-        return _ModeData(Icons.chat_rounded, const Color(0xFF9AA5B8), 'Normal');
-    }
-  }
-
-  
+  // ─────────────────────────────────────────────────────────────────────────
+  // CONTENT
+  // ─────────────────────────────────────────────────────────────────────────
 
   Widget _buildContent() {
     if (!_isExpanded) {
-      return _buildCollapsedPreview();
-    }
-
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 300),
-      child: _isSharedSpaceOpen
-          ? SharedSpaceWidget(
-              key: const ValueKey('shared'),
-              conversationId: widget.conversationId,
-              currentUserId: widget.currentUserId,
-              peerName: widget.userName,
-            )
-          : _buildChatWithSecureOverlay(),
-    );
-  }
-
-  Widget _buildChatWithSecureOverlay() {
-    return SecureOverlayManager(
-      isActive: _isSecureModeOn,
-      onSecureStateChanged: () => HapticFeedback.heavyImpact(),
-      child: widget.chatContent,
-    );
-  }
-
-  Widget _buildCollapsedPreview() {
-    return GestureDetector(
-      onTap: _toggleExpand,
-      child: Container(
-        color: Colors.transparent,
-        child: Center(
+      return GestureDetector(
+        onTap: _toggleExpand,
+        child: Container(
+          color: Colors.transparent,
+          alignment: Alignment.center,
           child: Text(
-            'Chạm để mở rộng',
+            '↑ Chạm để mở rộng',
             style: TextStyle(
               color: const Color(0xFF9AA5B8).withOpacity(0.8),
               fontSize: 11,
             ),
           ),
         ),
-      ),
+      );
+    }
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 280),
+      transitionBuilder: (child, anim) =>
+          FadeTransition(opacity: anim, child: child),
+      child: _activeTab == 1
+          ? SharedSpaceWidget(
+              key: const ValueKey('shared'),
+              conversationId: widget.conversationId,
+              currentUserId: widget.currentUserId,
+              peerName: widget.userName,
+            )
+          : SecureOverlayManager(
+              key: const ValueKey('chat'),
+              isActive: _isSecureOn,
+              onSecureStateChanged: () => HapticFeedback.heavyImpact(),
+              child: widget.chatContent,
+            ),
     );
   }
 
-  
+  // ─────────────────────────────────────────────────────────────────────────
+  // BOTTOM BAR
+  // ─────────────────────────────────────────────────────────────────────────
 
   Widget _buildBottomBar() {
     return Container(
-      height: 36,
+      height: 38,
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(
-          top: BorderSide(color: Color(0xFFEEF1F8), width: 1),
-        ),
+        border: Border(top: BorderSide(color: Color(0xFFEEF1F8))),
       ),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         children: [
-          const SizedBox(width: 10),
-          
-          GestureDetector(
+          // Collapse/Expand toggle
+          _BottomBarBtn(
+            icon: _isExpanded
+                ? Icons.keyboard_arrow_down_rounded
+                : Icons.keyboard_arrow_up_rounded,
+            label: _isExpanded ? 'Thu gọn' : 'Mở rộng',
             onTap: _toggleExpand,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEEF1F8),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    _isExpanded
-                        ? Icons.keyboard_arrow_down_rounded
-                        : Icons.keyboard_arrow_up_rounded,
-                    size: 14,
-                    color: const Color(0xFF9AA5B8),
-                  ),
-                  const SizedBox(width: 2),
-                  Text(
-                    _isExpanded ? 'Thu gọn' : 'Mở rộng',
-                    style:
-                        const TextStyle(color: Color(0xFF9AA5B8), fontSize: 10),
-                  ),
-                ],
-              ),
-            ),
           ),
           const Spacer(),
-          
-          _buildQuickModeBtn(
-            Icons.work_outline_rounded,
-            BubbleMode.work,
-            'Work',
+          // Quick-mode buttons
+          _QuickModeBtn(
+            icon: Icons.work_outline_rounded,
+            mode: BubbleMode.work,
+            current: _ctx.mode,
+            onTap: () => _setMode(BubbleMode.work),
           ),
-          _buildQuickModeBtn(
-            Icons.music_note_outlined,
-            BubbleMode.media,
-            'Media',
+          _QuickModeBtn(
+            icon: Icons.music_note_outlined,
+            mode: BubbleMode.media,
+            current: _ctx.mode,
+            onTap: () => _setMode(BubbleMode.media),
           ),
-          _buildQuickModeBtn(
-            Icons.location_on_outlined,
-            BubbleMode.location,
-            'Location',
+          _QuickModeBtn(
+            icon: Icons.location_on_outlined,
+            mode: BubbleMode.location,
+            current: _ctx.mode,
+            onTap: () => _setMode(BubbleMode.location),
           ),
-          const SizedBox(width: 8),
         ],
       ),
     );
   }
+}
 
-  Widget _buildQuickModeBtn(
-    IconData icon,
-    BubbleMode mode,
-    String tooltip,
-  ) {
-    final isActive = _context.mode == mode;
-    return Tooltip(
-      message: tooltip,
-      child: GestureDetector(
-        onTap: () {
-          if (isActive) {
-            _contextService.resetToNormal();
-          } else {
-            
-            _contextService.analyzeMessage(
-              content: tooltip.toLowerCase(),
-              messageType: 0,
-            );
-          }
-          HapticFeedback.selectionClick();
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          width: 28,
-          height: 28,
-          margin: const EdgeInsets.only(right: 4),
-          decoration: BoxDecoration(
-            color: isActive
-                ? const Color(0xFF2196F3).withOpacity(0.12)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(7),
+// ─────────────────────────────────────────────────────────────────────────────
+// SMALL WIDGETS
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _FeatureTab extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _FeatureTab({
+    required this.icon,
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isActive ? const Color(0xFF1E88E5) : const Color(0xFF9AA5B8);
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        height: double.infinity,
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: isActive ? const Color(0xFF1E88E5) : Colors.transparent,
+              width: 2,
+            ),
           ),
-          child: Icon(
-            icon,
-            size: 15,
-            color: isActive ? const Color(0xFF2196F3) : const Color(0xFF9AA5B8),
-          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                color: color,
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
+class _ModePill extends StatelessWidget {
+  final BubbleMode mode;
+  const _ModePill({required this.mode});
 
+  @override
+  Widget build(BuildContext context) {
+    final (icon, color, label) = _data(mode);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 10, color: color),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-class _ModeData {
+  static (IconData, Color, String) _data(BubbleMode m) {
+    switch (m) {
+      case BubbleMode.work:
+        return (Icons.work_rounded, const Color(0xFF66BB6A), 'Work');
+      case BubbleMode.media:
+        return (Icons.music_note_rounded, const Color(0xFFE91E63), 'Media');
+      case BubbleMode.location:
+        return (Icons.location_on_rounded, const Color(0xFF43A047), 'Location');
+      case BubbleMode.shared:
+        return (Icons.palette_rounded, const Color(0xFF7E57C2), 'Shared');
+      case BubbleMode.secure:
+        return (Icons.shield_rounded, const Color(0xFF1565C0), 'Secure');
+      default:
+        return (Icons.chat_rounded, const Color(0xFF9AA5B8), 'Normal');
+    }
+  }
+}
+
+class _BottomBarBtn extends StatelessWidget {
   final IconData icon;
-  final Color color;
   final String label;
-  const _ModeData(this.icon, this.color, this.label);
+  final VoidCallback onTap;
+
+  const _BottomBarBtn({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEEF1F8),
+          borderRadius: BorderRadius.circular(7),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 14, color: const Color(0xFF9AA5B8)),
+            const SizedBox(width: 3),
+            Text(label,
+                style: const TextStyle(color: Color(0xFF9AA5B8), fontSize: 10)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickModeBtn extends StatelessWidget {
+  final IconData icon;
+  final BubbleMode mode;
+  final BubbleMode current;
+  final VoidCallback onTap;
+
+  const _QuickModeBtn({
+    required this.icon,
+    required this.mode,
+    required this.current,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isActive = current == mode;
+    return Tooltip(
+      message: ContextualBubbleService.labelFor(mode),
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: 30,
+          height: 30,
+          margin: const EdgeInsets.only(right: 3),
+          decoration: BoxDecoration(
+            color: isActive
+                ? const Color(0xFF1E88E5).withOpacity(0.12)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            size: 16,
+            color: isActive ? const Color(0xFF1E88E5) : const Color(0xFF9AA5B8),
+          ),
+        ),
+      ),
+    );
+  }
 }

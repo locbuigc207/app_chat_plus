@@ -1,9 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GroupMediaPage
+// ─────────────────────────────────────────────────────────────────────────────
 
 class GroupMediaPage extends StatefulWidget {
   const GroupMediaPage({
@@ -24,12 +29,28 @@ class _GroupMediaPageState extends State<GroupMediaPage>
   late TabController _tabController;
   List<DocumentSnapshot> _allMessages = [];
   bool _isLoading = true;
+  int _selectedImageIndex = -1;
+
+  // ── colour palette ─────────────────────────────────────────────────────────
+  static const _bg = Color(0xFF0D0F14);
+  static const _surface = Color(0xFF181B24);
+  static const _accent = Color(0xFF4F8EF7);
+  static const _textPrimary = Color(0xFFEEF2FF);
+  static const _textSecondary = Color(0xFF8B93B0);
+  static const _divider = Color(0xFF252A3A);
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() => setState(() {}));
     _loadAllMessages();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadAllMessages() async {
@@ -40,7 +61,7 @@ class _GroupMediaPageState extends State<GroupMediaPage>
           .collection(widget.groupId)
           .where('isDeleted', isEqualTo: false)
           .orderBy(FirestoreConstants.timestamp, descending: true)
-          .limit(200)
+          .limit(300)
           .get();
       if (mounted) {
         setState(() {
@@ -53,14 +74,15 @@ class _GroupMediaPageState extends State<GroupMediaPage>
     }
   }
 
-  List<DocumentSnapshot> get _images => _allMessages
-      .where((d) =>
-          (d.data() as Map<String, dynamic>?)?['type'] == TypeMessage.image)
-      .toList();
+  List<DocumentSnapshot> get _images => _allMessages.where((d) {
+        final data = d.data() as Map<String, dynamic>?;
+        return data?['type'] == TypeMessage.image;
+      }).toList();
 
-  List<DocumentSnapshot> get _voiceMessages => _allMessages
-      .where((d) => (d.data() as Map<String, dynamic>?)?['type'] == 3)
-      .toList();
+  List<DocumentSnapshot> get _voiceMessages => _allMessages.where((d) {
+        final data = d.data() as Map<String, dynamic>?;
+        return data?['type'] == 3;
+      }).toList();
 
   List<DocumentSnapshot> get _links => _allMessages.where((d) {
         final data = d.data() as Map<String, dynamic>?;
@@ -71,179 +93,514 @@ class _GroupMediaPageState extends State<GroupMediaPage>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('${widget.groupName} Media',
-            style: const TextStyle(color: ColorConstants.primaryColor)),
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: ColorConstants.primaryColor,
-          unselectedLabelColor: ColorConstants.greyColor,
-          indicatorColor: ColorConstants.primaryColor,
-          tabs: const [
-            Tab(icon: Icon(Icons.image), text: 'Photos'),
-            Tab(icon: Icon(Icons.mic), text: 'Voice'),
-            Tab(icon: Icon(Icons.link), text: 'Links'),
+    return Theme(
+      data: ThemeData.dark(),
+      child: Scaffold(
+        backgroundColor: _bg,
+        body: NestedScrollView(
+          headerSliverBuilder: (context, innerBoxIsScrolled) => [
+            _buildSliverAppBar(innerBoxIsScrolled),
           ],
+          body: _isLoading
+              ? const Center(
+                  child: CircularProgressIndicator(
+                      color: _accent, strokeWidth: 2.5))
+              : TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildImagesTab(),
+                    _buildVoiceTab(),
+                    _buildLinksTab(),
+                  ],
+                ),
         ),
       ),
-      body: _isLoading
-          ? const Center(
-              child:
-                  CircularProgressIndicator(color: ColorConstants.themeColor))
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                _buildImagesTab(),
-                _buildVoiceTab(),
-                _buildLinksTab(),
-              ],
-            ),
     );
   }
 
+  SliverAppBar _buildSliverAppBar(bool innerBoxIsScrolled) {
+    final tabs = [
+      _TabInfo(
+          icon: Icons.image_rounded, label: 'Photos', count: _images.length),
+      _TabInfo(
+          icon: Icons.mic_rounded,
+          label: 'Voice',
+          count: _voiceMessages.length),
+      _TabInfo(icon: Icons.link_rounded, label: 'Links', count: _links.length),
+    ];
+
+    return SliverAppBar(
+      pinned: true,
+      floating: true,
+      forceElevated: innerBoxIsScrolled,
+      backgroundColor: _bg,
+      elevation: 0,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_ios_new_rounded,
+            color: _textPrimary, size: 20),
+        onPressed: () => Navigator.pop(context),
+      ),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Media & Files',
+              style: TextStyle(
+                  color: _textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700)),
+          Text(widget.groupName,
+              style: const TextStyle(color: _textSecondary, fontSize: 12)),
+        ],
+      ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.refresh_rounded, color: _textSecondary),
+          onPressed: () {
+            setState(() => _isLoading = true);
+            _loadAllMessages();
+          },
+        ),
+      ],
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(56),
+        child: Container(
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: _divider, width: .8)),
+          ),
+          child: TabBar(
+            controller: _tabController,
+            indicatorColor: _accent,
+            indicatorWeight: 2.5,
+            indicatorSize: TabBarIndicatorSize.label,
+            labelColor: _accent,
+            unselectedLabelColor: _textSecondary,
+            labelStyle:
+                const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+            unselectedLabelStyle:
+                const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+            tabs: tabs.map((t) {
+              return Tab(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(t.icon, size: 16),
+                    const SizedBox(width: 6),
+                    Text(t.label),
+                    if (t.count > 0) ...[
+                      const SizedBox(width: 6),
+                      _CountBadge(count: t.count),
+                    ],
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── photos tab ─────────────────────────────────────────────────────────────
+
   Widget _buildImagesTab() {
     if (_images.isEmpty) {
-      return const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.image_not_supported,
-                size: 64, color: ColorConstants.greyColor),
-            SizedBox(height: 12),
-            Text('No photos yet',
-                style: TextStyle(color: ColorConstants.greyColor)),
-          ],
-        ),
+      return _EmptyState(
+        icon: Icons.image_not_supported_rounded,
+        title: 'No photos yet',
+        subtitle: 'Photos shared in the group will appear here',
       );
     }
     return GridView.builder(
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(4),
+      physics: const BouncingScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        crossAxisSpacing: 4,
-        mainAxisSpacing: 4,
+        crossAxisSpacing: 3,
+        mainAxisSpacing: 3,
       ),
       itemCount: _images.length,
       itemBuilder: (_, i) {
         final data = _images[i].data() as Map<String, dynamic>? ?? {};
         final url = data['content'] as String? ?? '';
+        final isSelected = _selectedImageIndex == i;
+
         return GestureDetector(
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => FullPhotoPage(url: url)),
-          ),
-          child: Container(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => FullPhotoPage(url: url)),
+            );
+          },
+          onLongPress: () {
+            HapticFeedback.mediumImpact();
+            setState(() => _selectedImageIndex = isSelected ? -1 : i);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              color: ColorConstants.greyColor2,
+              border:
+                  isSelected ? Border.all(color: _accent, width: 2.5) : null,
             ),
-            clipBehavior: Clip.hardEdge,
-            child: Image.network(url,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const Icon(Icons.broken_image,
-                    color: ColorConstants.greyColor)),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.network(
+                  url,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (_, child, prog) {
+                    if (prog == null) return child;
+                    return Container(
+                      color: _surface,
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          value: prog.expectedTotalBytes != null
+                              ? prog.cumulativeBytesLoaded /
+                                  prog.expectedTotalBytes!
+                              : null,
+                          color: _accent,
+                          strokeWidth: 1.5,
+                        ),
+                      ),
+                    );
+                  },
+                  errorBuilder: (_, __, ___) => Container(
+                    color: _surface,
+                    child: const Icon(Icons.broken_image_rounded,
+                        color: _textSecondary),
+                  ),
+                ),
+                if (isSelected)
+                  Container(
+                    color: _accent.withOpacity(.25),
+                    alignment: Alignment.center,
+                    child: const Icon(Icons.check_circle_rounded,
+                        color: Colors.white, size: 28),
+                  ),
+                // Timestamp overlay
+                Positioned(
+                  bottom: 4,
+                  right: 4,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      _formatShortDate(data['timestamp'] as String? ?? '0'),
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },
     );
   }
 
+  // ── voice tab ──────────────────────────────────────────────────────────────
+
   Widget _buildVoiceTab() {
     if (_voiceMessages.isEmpty) {
-      return const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.mic_off, size: 64, color: ColorConstants.greyColor),
-            SizedBox(height: 12),
-            Text('No voice messages yet',
-                style: TextStyle(color: ColorConstants.greyColor)),
-          ],
-        ),
+      return _EmptyState(
+        icon: Icons.mic_off_rounded,
+        title: 'No voice messages',
+        subtitle: 'Voice messages shared here will appear',
       );
     }
     return ListView.builder(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      physics: const BouncingScrollPhysics(),
       itemCount: _voiceMessages.length,
       itemBuilder: (_, i) {
         final data = _voiceMessages[i].data() as Map<String, dynamic>? ?? {};
         final ts = data['timestamp'] as String? ?? '0';
-        DateTime dt = DateTime.now();
-        try {
-          dt = DateTime.fromMillisecondsSinceEpoch(int.parse(ts));
-        } catch (_) {}
-        return Card(
-          margin: const EdgeInsets.only(bottom: 8),
+        final dt = _parseTimestamp(ts);
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          decoration: BoxDecoration(
+            color: _surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _divider, width: .8),
+          ),
           child: ListTile(
-            leading: const CircleAvatar(
-              backgroundColor: ColorConstants.primaryColor,
-              child: Icon(Icons.mic, color: Colors.white),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            leading: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [_accent, Color(0xFF6B4AE8)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child:
+                  const Icon(Icons.mic_rounded, color: Colors.white, size: 22),
             ),
-            title: const Text('Voice Message'),
+            title: const Text('Voice Message',
+                style: TextStyle(
+                    color: _textPrimary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14.5)),
             subtitle: Text(
-                '${dt.day}/${dt.month}/${dt.year} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}'),
+              _formatFullDate(dt),
+              style: const TextStyle(color: _textSecondary, fontSize: 12.5),
+            ),
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: _accent.withOpacity(.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.play_arrow_rounded, color: _accent, size: 18),
+                  SizedBox(width: 2),
+                  Text('Play',
+                      style: TextStyle(
+                          color: _accent,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
           ),
         );
       },
     );
   }
 
+  // ── links tab ──────────────────────────────────────────────────────────────
+
   Widget _buildLinksTab() {
     if (_links.isEmpty) {
-      return const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.link_off, size: 64, color: ColorConstants.greyColor),
-            SizedBox(height: 12),
-            Text('No links shared yet',
-                style: TextStyle(color: ColorConstants.greyColor)),
-          ],
-        ),
+      return _EmptyState(
+        icon: Icons.link_off_rounded,
+        title: 'No links shared',
+        subtitle: 'URLs and links shared in the group appear here',
       );
     }
     return ListView.builder(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      physics: const BouncingScrollPhysics(),
       itemCount: _links.length,
       itemBuilder: (_, i) {
         final data = _links[i].data() as Map<String, dynamic>? ?? {};
         final content = data['content'] as String? ?? '';
+        final ts = data['timestamp'] as String? ?? '0';
+        final dt = _parseTimestamp(ts);
 
         final urlReg = RegExp(r'https?://[^\s]+');
         final match = urlReg.firstMatch(content);
         final url = match?.group(0) ?? content;
 
-        return Card(
-          margin: const EdgeInsets.only(bottom: 8),
-          child: ListTile(
-            leading: const CircleAvatar(
-              backgroundColor: ColorConstants.primaryColor,
-              child: Icon(Icons.link, color: Colors.white),
+        final domain = Uri.tryParse(url)?.host.replaceFirst('www.', '') ?? url;
+
+        return GestureDetector(
+          onTap: () async {
+            HapticFeedback.lightImpact();
+            try {
+              final uri = Uri.parse(url);
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            } catch (_) {}
+          },
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            decoration: BoxDecoration(
+              color: _surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _divider, width: .8),
             ),
-            title: Text(url,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                    color: ColorConstants.primaryColor,
-                    decoration: TextDecoration.underline)),
-            onTap: () async {
-              try {
-                final uri = Uri.parse(url);
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(uri, mode: LaunchMode.externalApplication);
-                }
-              } catch (_) {}
-            },
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Link icon
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF43C6AC).withOpacity(.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: const Color(0xFF43C6AC).withOpacity(.3),
+                          width: .8),
+                    ),
+                    child: const Icon(Icons.public_rounded,
+                        color: Color(0xFF43C6AC), size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  // URL info
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          domain,
+                          style: const TextStyle(
+                              color: Color(0xFF43C6AC),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13.5),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          url,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: _textSecondary,
+                              fontSize: 12,
+                              decoration: TextDecoration.underline,
+                              decorationColor: Color(0xFF8B93B0)),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _formatFullDate(dt),
+                          style: const TextStyle(
+                              color: _textSecondary, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.open_in_new_rounded,
+                      color: _textSecondary, size: 16),
+                ],
+              ),
+            ),
           ),
         );
       },
     );
   }
 
+  // ── helpers ────────────────────────────────────────────────────────────────
+
+  DateTime _parseTimestamp(String ts) {
+    try {
+      return DateTime.fromMillisecondsSinceEpoch(int.parse(ts));
+    } catch (_) {
+      return DateTime.now();
+    }
+  }
+
+  String _formatShortDate(String ts) {
+    final dt = _parseTimestamp(ts);
+    return '${dt.day}/${dt.month}';
+  }
+
+  String _formatFullDate(DateTime dt) {
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+    return '${months[dt.month - 1]} ${dt.day}  •  ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+// ── tab info helper ────────────────────────────────────────────────────────
+
+class _TabInfo {
+  const _TabInfo(
+      {required this.icon, required this.label, required this.count});
+  final IconData icon;
+  final String label;
+  final int count;
+}
+
+// ── count badge ────────────────────────────────────────────────────────────
+
+class _CountBadge extends StatelessWidget {
+  const _CountBadge({required this.count});
+  final int count;
+
   @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: const Color(0xFF4F8EF7).withOpacity(.2),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        '$count',
+        style: const TextStyle(
+            color: Color(0xFF4F8EF7),
+            fontSize: 11,
+            fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+// ── empty state ────────────────────────────────────────────────────────────
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: const Color(0xFF181B24),
+              shape: BoxShape.circle,
+              border: Border.all(color: const Color(0xFF252A3A), width: .8),
+            ),
+            child: Icon(icon, size: 44, color: const Color(0xFF8B93B0)),
+          ),
+          const SizedBox(height: 20),
+          Text(title,
+              style: const TextStyle(
+                  color: Color(0xFFEEF2FF),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40),
+            child: Text(subtitle,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    color: Color(0xFF8B93B0), fontSize: 14, height: 1.5)),
+          ),
+        ],
+      ),
+    );
   }
 }

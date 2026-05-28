@@ -1,4 +1,3 @@
-
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,383 +6,340 @@ import 'package:flutter/foundation.dart';
 
 import '../models/call_model.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CallService
+// Handles all Firestore signalling for calls: initiate, answer, decline,
+// end, history, and real-time streaming.
+// ─────────────────────────────────────────────────────────────────────────────
+
 class CallService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  CallService._();
+  static final CallService instance = CallService._();
 
-  static const String _callsCollection = 'calls';
-  static const int _callTimeoutSeconds = 30;
+  final FirebaseFirestore _db   = FirebaseFirestore.instance;
+  final FirebaseAuth      _auth = FirebaseAuth.instance;
 
-  
-  CollectionReference get callCollection =>
-      _firestore.collection(_callsCollection);
+  static const String _col               = 'calls';
+  static const int    _timeoutSeconds    = 45;
+  static const int    _historyLimit      = 50;
 
-  
+  /// Active-call statuses — used in multiple queries.
+  static const List<String> _activeStatuses = [
+    'calling', 'ringing', 'dialing', 'connected', 'accepted',
+  ];
 
-  
-  
+  // ── Convenience ───────────────────────────────────────────────────────────
+
+  CollectionReference<Map<String, dynamic>> get _calls =>
+      _db.collection(_col);
+
+  String? get _uid => _auth.currentUser?.uid;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STREAMS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Emits the latest incoming call for the signed-in user, or null.
   Stream<CallModel?> get incomingCallStream {
-    final uid = _auth.currentUser?.uid;
+    final uid = _uid;
     if (uid == null) return Stream.value(null);
 
-    return _firestore
-        .collection(_callsCollection)
+    return _calls
         .where('calleeId', isEqualTo: uid)
         .where('status', whereIn: ['calling', 'ringing', 'dialing'])
+        .orderBy('createdAt', descending: true)
         .limit(1)
         .snapshots()
-        .map((snap) {
-          if (snap.docs.isEmpty) return null;
-          try {
-            return CallModel.fromDocument(snap.docs.first);
-          } catch (e) {
-            debugPrint('❌ Error parsing incoming call: $e');
-            return null;
-          }
-        });
+        .map((snap) => snap.docs.isEmpty ? null : _parseDoc(snap.docs.first));
   }
 
-  
+  /// Watches a single call document by ID.
+  Stream<CallModel?> watchCall(String callId) =>
+      _calls.doc(callId).snapshots().map(
+            (doc) => doc.exists ? _parseDoc(doc) : null,
+      );
 
-  
-  
-  Stream<CallModel?> listenToIncomingCall(String userId) {
-    
-    return callCollection
-        .where('receiverId', isEqualTo: userId)
-        .where('status', isEqualTo: 'dialing')
-        .snapshots()
-        .map((snapshot) {
-      if (snapshot.docs.isEmpty) return null;
-      try {
-        return CallModel.fromMap(
-            snapshot.docs.first.data() as Map<String, dynamic>);
-      } catch (e) {
-        debugPrint('❌ Error parsing incoming call (listenToIncomingCall): $e');
-        return null;
+  /// Live call history stream (as caller OR callee), merged and sorted.
+  Stream<List<CallModel>> get callHistoryStream {
+    final uid = _uid;
+    if (uid == null) return Stream.value([]);
+
+    final asCaller = _calls
+        .where('callerId', isEqualTo: uid)
+        .where('status', whereIn: ['ended', 'missed', 'declined'])
+        .orderBy('createdAt', descending: true)
+        .limit(_historyLimit)
+        .snapshots();
+
+    final asCallee = _calls
+        .where('calleeId', isEqualTo: uid)
+        .where('status', whereIn: ['ended', 'missed', 'declined'])
+        .orderBy('createdAt', descending: true)
+        .limit(_historyLimit)
+        .snapshots();
+
+    return _mergeQuerySnapshots([asCaller, asCallee]).map((docs) {
+      final seen = <String>{};
+      final calls = <CallModel>[];
+      for (final doc in docs) {
+        if (seen.add(doc.id)) {
+          final c = _parseDoc(doc);
+          if (c != null) calls.add(c);
+        }
       }
+      calls.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return calls.take(_historyLimit).toList();
     });
   }
 
-  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CALL LIFECYCLE
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  Stream<CallModel?> watchCall(String callId) {
-    return _firestore
-        .collection(_callsCollection)
-        .doc(callId)
-        .snapshots()
-        .map((doc) {
-      if (!doc.exists) return null;
-      try {
-        return CallModel.fromDocument(doc);
-      } catch (e) {
-        debugPrint('❌ Error parsing call: $e');
-        return null;
-      }
-    });
-  }
-
-  
-
-  
+  /// Creates a new outgoing call document. Returns the [CallModel] or null on error.
   Future<CallModel?> initiateCall({
     required String calleeId,
     required String calleeName,
     required String calleeAvatar,
     required CallType callType,
   }) async {
+    final uid = _uid;
+    if (uid == null) {
+      debugPrint('❌ [CallService] initiateCall: user not signed in');
+      return null;
+    }
+
     try {
-      final caller = _auth.currentUser;
-      if (caller == null) throw Exception('Chưa đăng nhập');
+      // Fetch caller profile
+      final callerSnap = await _db.collection('users').doc(uid).get();
+      final callerData = callerSnap.data() ?? {};
+      final callerName   = callerData['nickname']  as String? ??
+          _auth.currentUser?.displayName ?? 'User';
+      final callerAvatar = callerData['photoUrl'] as String? ?? '';
 
-      
-      final callerDoc =
-          await _firestore.collection('users').doc(caller.uid).get();
-      final callerData = callerDoc.data() ?? {};
-      final callerName =
-          callerData['nickname'] as String? ?? caller.displayName ?? 'User';
-      final callerAvatarUrl = callerData['photoUrl'] as String? ?? '';
-
-      
-      final existingCall = await _getActiveCallForUser(calleeId);
-      if (existingCall != null) {
-        debugPrint('⚠️ Callee đang trong cuộc gọi khác');
+      // Guard: callee already in a call?
+      final busyCall = await _findActiveCallForUser(calleeId);
+      if (busyCall != null) {
+        debugPrint('⚠️ [CallService] Callee is busy (callId=${busyCall.callId})');
         return null;
       }
 
-      final callId = _generateCallId();
-      final channelName =
-          'call_${callId.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_')}';
+      final callId     = _buildCallId(uid);
+      final channel    = 'call_${callId.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_')}';
+      final now        = DateTime.now();
+      final expiresAt  = now.add(Duration(seconds: _timeoutSeconds));
 
       final call = CallModel(
-        callId: callId,
-        callerId: caller.uid,
-        callerName: callerName,
-        callerAvatar: callerAvatarUrl,
-        calleeId: calleeId,
-        calleeName: calleeName,
+        callId:       callId,
+        callerId:     uid,
+        callerName:   callerName,
+        callerAvatar: callerAvatar,
+        calleeId:     calleeId,
+        calleeName:   calleeName,
         calleeAvatar: calleeAvatar,
-        channelName: channelName,
-        callType: callType,
-        status: CallStatus.calling,
-        token: null,
-        createdAt: DateTime.now(),
+        channelName:  channel,
+        callType:     callType,
+        status:       CallStatus.calling,
+        token:        null,
+        createdAt:    now,
+        expiresAt:    expiresAt,
       );
 
-      await _firestore
-          .collection(_callsCollection)
-          .doc(callId)
-          .set(call.toJson());
+      await _calls.doc(callId).set(call.toJson());
+      debugPrint('✅ [CallService] Call created: $callId');
 
-      debugPrint('✅ Cuộc gọi được tạo: $callId');
-
-      
-      _scheduleCallTimeout(callId);
-
+      _scheduleTimeout(callId);
       return call;
-    } catch (e) {
-      debugPrint('❌ Lỗi tạo cuộc gọi: $e');
+    } catch (e, st) {
+      debugPrint('❌ [CallService] initiateCall error: $e\n$st');
       return null;
     }
   }
 
-  
-
-  
-  
-  Future<void> makeCall(CallModel call) async {
-    await callCollection.doc(call.callId).set(call.toMap());
-  }
-
-  
-
+  /// Accepts an incoming call. Returns true on success.
   Future<bool> answerCall(String callId) async {
     try {
-      await _firestore.collection(_callsCollection).doc(callId).update({
-        'status': CallStatus.connected.name,
-        'connectedAt': DateTime.now().millisecondsSinceEpoch.toString(),
+      await _calls.doc(callId).update({
+        'status':      CallStatus.connected.name,
+        'connectedAt': _tsNow(),
       });
-      debugPrint('✅ Cuộc gọi được chấp nhận: $callId');
+      debugPrint('✅ [CallService] Call answered: $callId');
       return true;
     } catch (e) {
-      debugPrint('❌ Lỗi chấp nhận cuộc gọi: $e');
+      debugPrint('❌ [CallService] answerCall: $e');
       return false;
     }
   }
 
-  
-
+  /// Declines an incoming call.
   Future<bool> declineCall(String callId) async {
     try {
-      await _firestore
-          .collection(_callsCollection)
-          .doc(callId)
-          .update({'status': CallStatus.declined.name});
-      debugPrint('✅ Cuộc gọi bị từ chối: $callId');
+      await _calls.doc(callId).update({'status': CallStatus.declined.name});
+      debugPrint('✅ [CallService] Call declined: $callId');
       return true;
     } catch (e) {
-      debugPrint('❌ Lỗi từ chối cuộc gọi: $e');
+      debugPrint('❌ [CallService] declineCall: $e');
       return false;
     }
   }
 
-  
-
-  
-  Future<void> updateCallStatus(String callId, String status) async {
-    await callCollection.doc(callId).update({'status': status});
-  }
-
-  
-
-  
-  
-  Future<bool> endCall(
-    String callId, {
-    int? durationSeconds,
-    bool deleteAfter = false,
-  }) async {
+  /// Ends an active call. Optionally records [durationSeconds].
+  Future<bool> endCall(String callId, {int? durationSeconds}) async {
     try {
       final updates = <String, dynamic>{
-        'status': CallStatus.ended.name,
-        'endedAt': DateTime.now().millisecondsSinceEpoch.toString(),
+        'status':  CallStatus.ended.name,
+        'endedAt': _tsNow(),
       };
-      if (durationSeconds != null) {
-        updates['durationSeconds'] = durationSeconds;
-      }
-
-      await _firestore.collection(_callsCollection).doc(callId).update(updates);
-      debugPrint('✅ Cuộc gọi kết thúc: $callId');
-
-      if (deleteAfter) {
-        Future.delayed(const Duration(seconds: 2), () {
-          callCollection.doc(callId).delete();
-        });
-      }
-
+      if (durationSeconds != null) updates['durationSeconds'] = durationSeconds;
+      await _calls.doc(callId).update(updates);
+      debugPrint('✅ [CallService] Call ended: $callId (${durationSeconds}s)');
       return true;
     } catch (e) {
-      debugPrint('❌ Lỗi kết thúc cuộc gọi: $e');
+      debugPrint('❌ [CallService] endCall: $e');
       return false;
     }
   }
 
-  
-
+  /// Marks a call as missed if it is still active.
   Future<void> markCallMissed(String callId) async {
     try {
-      final doc =
-          await _firestore.collection(_callsCollection).doc(callId).get();
+      final doc = await _calls.doc(callId).get();
       if (!doc.exists) return;
-
-      final call = CallModel.fromDocument(doc);
-      if (call.isActive) {
-        await _firestore
-            .collection(_callsCollection)
-            .doc(callId)
-            .update({'status': CallStatus.missed.name});
-        debugPrint('✅ Cuộc gọi nhỡ: $callId');
+      final call = _parseDoc(doc);
+      if (call != null && call.isActive) {
+        await _calls.doc(callId).update({'status': CallStatus.missed.name});
+        debugPrint('✅ [CallService] Call missed: $callId');
       }
     } catch (e) {
-      debugPrint('❌ Lỗi đánh dấu cuộc gọi nhỡ: $e');
+      debugPrint('❌ [CallService] markCallMissed: $e');
     }
   }
 
-  
-
-  
-  Stream<List<CallModel>> getCallHistory({int limit = 30}) {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) return Stream.value([]);
-
-    final asCaller = _firestore
-        .collection(_callsCollection)
-        .where('callerId', isEqualTo: uid)
-        .orderBy('createdAt', descending: true)
-        .limit(limit)
-        .snapshots();
-
-    final asCallee = _firestore
-        .collection(_callsCollection)
-        .where('calleeId', isEqualTo: uid)
-        .orderBy('createdAt', descending: true)
-        .limit(limit)
-        .snapshots();
-
-    return StreamZip([asCaller, asCallee]).map((snapshots) {
-      final callerDocs = (snapshots[0] as QuerySnapshot).docs;
-      final calleeDocs = (snapshots[1] as QuerySnapshot).docs;
-
-      final seen = <String>{};
-      final all = <CallModel>[];
-
-      for (final doc in [...callerDocs, ...calleeDocs]) {
-        if (seen.contains(doc.id)) continue;
-        seen.add(doc.id);
-        try {
-          all.add(CallModel.fromDocument(doc));
-        } catch (_) {}
-      }
-
-      all.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      return all.take(limit).toList();
-    });
+  /// Updates the Agora RTC token stored in the call document (set by server).
+  Future<void> updateToken(String callId, String token) async {
+    try {
+      await _calls.doc(callId).update({'token': token});
+    } catch (e) {
+      debugPrint('❌ [CallService] updateToken: $e');
+    }
   }
 
-  
+  /// Generic status updater for edge cases.
+  Future<void> updateCallStatus(String callId, String status) async {
+    try {
+      await _calls.doc(callId).update({'status': status});
+    } catch (e) {
+      debugPrint('❌ [CallService] updateCallStatus: $e');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FETCH HELPERS
+  // ═══════════════════════════════════════════════════════════════════════════
 
   Future<CallModel?> getCall(String callId) async {
     try {
-      final doc =
-          await _firestore.collection(_callsCollection).doc(callId).get();
-      if (!doc.exists) return null;
+      final doc = await _calls.doc(callId).get();
+      return doc.exists ? _parseDoc(doc) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<List<CallModel>> getCallHistory({int limit = 30}) async {
+    final uid = _uid;
+    if (uid == null) return [];
+    try {
+      final callerSnap = await _calls
+          .where('callerId', isEqualTo: uid)
+          .orderBy('createdAt', descending: true)
+          .limit(limit)
+          .get();
+      final calleeSnap = await _calls
+          .where('calleeId', isEqualTo: uid)
+          .orderBy('createdAt', descending: true)
+          .limit(limit)
+          .get();
+
+      final seen  = <String>{};
+      final calls = <CallModel>[];
+      for (final doc in [...callerSnap.docs, ...calleeSnap.docs]) {
+        if (seen.add(doc.id)) {
+          final c = _parseDoc(doc);
+          if (c != null) calls.add(c);
+        }
+      }
+      calls.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return calls.take(limit).toList();
+    } catch (e) {
+      debugPrint('❌ [CallService] getCallHistory: $e');
+      return [];
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PRIVATE HELPERS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  CallModel? _parseDoc(DocumentSnapshot<Object?> doc) {
+    try {
       return CallModel.fromDocument(doc);
     } catch (e) {
+      debugPrint('❌ [CallService] parse error (${doc.id}): $e');
       return null;
     }
   }
 
-  
-
-  Future<CallModel?> _getActiveCallForUser(String userId) async {
+  Future<CallModel?> _findActiveCallForUser(String userId) async {
     try {
-      final asCallerSnap = await _firestore
-          .collection(_callsCollection)
-          .where('callerId', isEqualTo: userId)
-          .where('status', whereIn: [
-            'dialing',
-            'calling',
-            'ringing',
-            'connected',
-            'accepted'
-          ])
-          .limit(1)
-          .get();
-
-      if (asCallerSnap.docs.isNotEmpty) {
-        return CallModel.fromDocument(asCallerSnap.docs.first);
+      for (final field in ['callerId', 'calleeId']) {
+        final snap = await _calls
+            .where(field, isEqualTo: userId)
+            .where('status', whereIn: _activeStatuses)
+            .limit(1)
+            .get();
+        if (snap.docs.isNotEmpty) return _parseDoc(snap.docs.first);
       }
-
-      final asCalleeSnap = await _firestore
-          .collection(_callsCollection)
-          .where('calleeId', isEqualTo: userId)
-          .where('status', whereIn: [
-            'dialing',
-            'calling',
-            'ringing',
-            'connected',
-            'accepted'
-          ])
-          .limit(1)
-          .get();
-
-      if (asCalleeSnap.docs.isNotEmpty) {
-        return CallModel.fromDocument(asCalleeSnap.docs.first);
-      }
-
       return null;
     } catch (e) {
-      debugPrint('❌ Lỗi kiểm tra cuộc gọi active: $e');
+      debugPrint('❌ [CallService] _findActiveCallForUser: $e');
       return null;
     }
   }
 
-  void _scheduleCallTimeout(String callId) {
-    Timer(Duration(seconds: _callTimeoutSeconds), () {
-      markCallMissed(callId);
-    });
+  void _scheduleTimeout(String callId) {
+    Timer(Duration(seconds: _timeoutSeconds), () => markCallMissed(callId));
   }
 
-  String _generateCallId() {
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final uid = (_auth.currentUser?.uid ?? 'anon').substring(0, 8);
-    return '${uid}_$timestamp';
+  String _buildCallId(String uid) {
+    final prefix = uid.length >= 8 ? uid.substring(0, 8) : uid;
+    return '${prefix}_${DateTime.now().millisecondsSinceEpoch}';
   }
-}
 
+  String _tsNow() => DateTime.now().millisecondsSinceEpoch.toString();
 
-
-
-
-class StreamZip<T> extends StreamView<List<T>> {
-  StreamZip(List<Stream<T>> streams) : super(_buildStream(streams));
-
-  static Stream<List<T>> _buildStream<T>(List<Stream<T>> streams) {
-    final controller = StreamController<List<T>>();
-    final latest = List<T?>.filled(streams.length, null);
+  /// Merges multiple query snapshot streams, emitting a flat list of docs.
+  Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _mergeQuerySnapshots(
+      List<Stream<QuerySnapshot<Map<String, dynamic>>>> streams,
+      ) {
+    final controller =
+    StreamController<List<QueryDocumentSnapshot<Map<String, dynamic>>>>();
+    final latest =
+    List<List<QueryDocumentSnapshot<Map<String, dynamic>>>>.filled(
+        streams.length, []);
     final initialized = List<bool>.filled(streams.length, false);
-    final subs = <StreamSubscription<T>>[];
+    final subs = <StreamSubscription>[];
 
     void tryEmit() {
-      if (initialized.every((v) => v)) {
-        controller.add(List<T>.from(latest.map((e) => e as T)));
+      if (!initialized.contains(false)) {
+        controller.add(latest.expand((d) => d).toList());
       }
     }
 
     for (int i = 0; i < streams.length; i++) {
       final sub = streams[i].listen(
-        (value) {
-          latest[i] = value;
+            (snap) {
+          latest[i]      = snap.docs;
           initialized[i] = true;
           tryEmit();
         },
@@ -393,9 +349,7 @@ class StreamZip<T> extends StreamView<List<T>> {
     }
 
     controller.onCancel = () {
-      for (final s in subs) {
-        s.cancel();
-      }
+      for (final s in subs) s.cancel();
     };
 
     return controller.stream;

@@ -2,108 +2,109 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart'; // provides debugPrint
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/models/bubble_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Service that wraps the Android Bubble API (Android 11+ / API 30+).
+/// Uses [MethodChannel] for imperative calls and [EventChannel] for
+/// native → Dart events (bubble click, dismiss, expand, etc.).
 class BubbleServiceV2 {
-  static const MethodChannel _channel = MethodChannel('chat_bubbles_v2');
-  static const EventChannel _eventChannel =
-      EventChannel('chat_bubble_events_v2');
+  // ── Channels ──────────────────────────────────────────────────────────────
+  static const _method = MethodChannel('chat_bubbles_v2');
+  static const _event = EventChannel('chat_bubble_events_v2');
 
+  // ── Singleton ─────────────────────────────────────────────────────────────
   static final BubbleServiceV2 _instance = BubbleServiceV2._internal();
   factory BubbleServiceV2() => _instance;
+  BubbleServiceV2._internal();
 
-  BubbleServiceV2._internal() {
-    _initialize();
-  }
-
+  // ── State ─────────────────────────────────────────────────────────────────
   bool _isInitialized = false;
   bool _isDisposing = false;
   bool _isBubbleApiSupported = false;
+
   StreamSubscription<dynamic>? _eventSubscription;
   SharedPreferences? _prefs;
 
   final Map<String, BubbleData> _activeBubbles = {};
 
-  StreamController<BubbleClickEvent>? _bubbleClickController;
-  StreamController<Map<String, BubbleData>>? _activeBubblesController;
+  // ── Stream controllers ────────────────────────────────────────────────────
+  StreamController<BubbleClickEvent>? _clickCtrl;
+  StreamController<Map<String, BubbleData>>? _bubblesCtrl;
 
   Stream<BubbleClickEvent> get bubbleClickStream {
-    if (_bubbleClickController == null || _bubbleClickController!.isClosed) {
-      _bubbleClickController = StreamController<BubbleClickEvent>.broadcast();
-    }
-    return _bubbleClickController!.stream;
+    _ensureClickCtrl();
+    return _clickCtrl!.stream;
   }
 
   Stream<Map<String, BubbleData>> get activeBubblesStream {
-    if (_activeBubblesController == null ||
-        _activeBubblesController!.isClosed) {
-      _activeBubblesController =
-          StreamController<Map<String, BubbleData>>.broadcast();
-    }
-    return _activeBubblesController!.stream;
+    _ensureBubblesCtrl();
+    return _bubblesCtrl!.stream;
   }
 
-  // ---------------------------------------------------------------------------
-  // INIT
-  // ---------------------------------------------------------------------------
+  void _ensureClickCtrl() {
+    if (_clickCtrl == null || _clickCtrl!.isClosed) {
+      _clickCtrl = StreamController<BubbleClickEvent>.broadcast();
+    }
+  }
 
-  Future<void> _initialize() async {
+  void _ensureBubblesCtrl() {
+    if (_bubblesCtrl == null || _bubblesCtrl!.isClosed) {
+      _bubblesCtrl = StreamController<Map<String, BubbleData>>.broadcast();
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // INITIALISATION
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Must be called once (e.g. from [UnifiedBubbleService]).
+  Future<void> initialize() async {
     if (_isInitialized || _isDisposing) return;
-
     try {
       _isBubbleApiSupported = await checkBubbleApiSupport();
       if (!_isBubbleApiSupported) {
-        debugPrint('⚠️ BubbleServiceV2: Bubble API not supported');
+        debugPrint('⚠️ BubbleServiceV2: Bubble API not supported on device');
         return;
       }
-
-      _bubbleClickController ??= StreamController<BubbleClickEvent>.broadcast();
-      _activeBubblesController ??=
-          StreamController<Map<String, BubbleData>>.broadcast();
-
+      _ensureClickCtrl();
+      _ensureBubblesCtrl();
       _setupEventListener();
       _prefs = await SharedPreferences.getInstance();
       await _restoreBubbles();
-
       _isInitialized = true;
       debugPrint('✅ BubbleServiceV2 initialized');
-    } catch (e) {
-      debugPrint('❌ BubbleServiceV2 init failed: $e');
+    } catch (e, st) {
+      debugPrint('❌ BubbleServiceV2 init failed: $e\n$st');
     }
   }
 
   Future<bool> checkBubbleApiSupport() async {
     if (!Platform.isAndroid) return false;
     try {
-      final result = await _channel.invokeMethod<bool>('checkBubbleApiSupport');
-      return result ?? false;
+      return await _method.invokeMethod<bool>('checkBubbleApiSupport') ?? false;
     } catch (e) {
       debugPrint('❌ checkBubbleApiSupport: $e');
       return false;
     }
   }
 
-  // ---------------------------------------------------------------------------
+  // ═══════════════════════════════════════════════════════════════════════════
   // EVENT LISTENER
-  // ---------------------------------------------------------------------------
+  // ═══════════════════════════════════════════════════════════════════════════
 
   void _setupEventListener() {
     _eventSubscription?.cancel();
-
     try {
-      _eventSubscription = _eventChannel.receiveBroadcastStream().listen(
-        (event) {
-          if (_isDisposing) return;
-          if (event is Map) {
-            _handleBubbleEvent(Map<String, dynamic>.from(event));
-          }
+      _eventSubscription = _event.receiveBroadcastStream().listen(
+        (raw) {
+          if (_isDisposing || raw is! Map) return;
+          _handleEvent(Map<String, dynamic>.from(raw as Map));
         },
-        onError: (error) {
-          debugPrint('❌ BubbleServiceV2 event error: $error');
-        },
+        onError: (Object err) =>
+            debugPrint('❌ BubbleServiceV2 event error: $err'),
         cancelOnError: false,
       );
       debugPrint('✅ BubbleServiceV2 event listener active');
@@ -112,65 +113,88 @@ class BubbleServiceV2 {
     }
   }
 
-  void _handleBubbleEvent(Map<String, dynamic> event) {
+  void _handleEvent(Map<String, dynamic> event) {
     final type = event['type'] as String?;
-    if (type == 'click') {
-      final userId = event['userId'] as String?;
-      final userName = event['userName'] as String? ?? '';
-      final avatarUrl = event['avatarUrl'] as String? ?? '';
-      final message = event['message'] as String? ?? '';
-
-      if (userId != null) {
-        final ctrl = _bubbleClickController;
-        if (ctrl != null && !ctrl.isClosed) {
-          ctrl.add(BubbleClickEvent(
-            userId: userId,
-            userName: userName,
-            avatarUrl: avatarUrl,
-            message: message,
-          ));
-        }
-      }
+    switch (type) {
+      case 'click':
+        _onBubbleClick(event);
+        break;
+      case 'dismiss':
+        _onBubbleDismiss(event);
+        break;
+      case 'expand':
+        debugPrint('🔔 Bubble expanded: ${event['userId']}');
+        break;
+      default:
+        debugPrint('⚠️ Unknown bubble event type: $type');
     }
   }
 
-  // ---------------------------------------------------------------------------
+  void _onBubbleClick(Map<String, dynamic> event) {
+    final userId = event['userId'] as String?;
+    if (userId == null) return;
+    _ensureClickCtrl();
+    if (!(_clickCtrl?.isClosed ?? true)) {
+      _clickCtrl!.add(BubbleClickEvent(
+        userId: userId,
+        userName: event['userName'] as String? ?? '',
+        avatarUrl: event['avatarUrl'] as String? ?? '',
+        message: event['message'] as String? ?? '',
+      ));
+    }
+  }
+
+  void _onBubbleDismiss(Map<String, dynamic> event) {
+    final userId = event['userId'] as String?;
+    if (userId != null) {
+      _activeBubbles.remove(userId);
+      _emitActiveBubbles();
+      _saveBubbles();
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // BUBBLE MANAGEMENT
-  // ---------------------------------------------------------------------------
+  // ═══════════════════════════════════════════════════════════════════════════
 
   Future<bool> showBubble({
     required String userId,
     required String userName,
     required String message,
     String? avatarUrl,
+    bool isOnline = false,
   }) async {
     if (!_isBubbleApiSupported) return false;
 
     try {
+      // If already active, just update
       if (_activeBubbles.containsKey(userId)) {
         return await updateBubble(userId: userId, message: message);
       }
 
-      final result = await _channel.invokeMethod<bool>('showBubble', {
-        'userId': userId,
-        'userName': userName,
-        'message': message,
-        'avatarUrl': avatarUrl ?? '',
-      });
+      final success = await _method.invokeMethod<bool>('showBubble', {
+            'userId': userId,
+            'userName': userName,
+            'message': message,
+            'avatarUrl': avatarUrl ?? '',
+            'isOnline': isOnline,
+          }) ??
+          false;
 
-      if (result == true) {
+      if (success) {
         _activeBubbles[userId] = BubbleData(
           userId: userId,
           userName: userName,
           avatarUrl: avatarUrl ?? '',
           lastMessage: message,
           timestamp: DateTime.now(),
+          isOnline: isOnline,
         );
         _emitActiveBubbles();
         await _saveBubbles();
-        return true;
+        debugPrint('🫧 Bubble shown for $userName');
       }
-      return false;
+      return success;
     } catch (e) {
       debugPrint('❌ showBubble: $e');
       return false;
@@ -180,31 +204,30 @@ class BubbleServiceV2 {
   Future<bool> updateBubble({
     required String userId,
     required String message,
+    bool incrementUnread = true,
   }) async {
     if (!_isBubbleApiSupported) return false;
+    final existing = _activeBubbles[userId];
+    if (existing == null) return false;
+
     try {
-      final bubble = _activeBubbles[userId];
-      if (bubble == null) return false;
+      final success = await _method.invokeMethod<bool>('updateBubble', {
+            'userId': userId,
+            'message': message,
+          }) ??
+          false;
 
-      final result = await _channel.invokeMethod<bool>('updateBubble', {
-        'userId': userId,
-        'message': message,
-      });
-
-      if (result == true) {
-        _activeBubbles[userId] = BubbleData(
-          userId: bubble.userId,
-          userName: bubble.userName,
-          avatarUrl: bubble.avatarUrl,
+      if (success) {
+        _activeBubbles[userId] = existing.copyWith(
           lastMessage: message,
           timestamp: DateTime.now(),
-          unreadCount: bubble.unreadCount + 1,
+          unreadCount:
+              incrementUnread ? existing.unreadCount + 1 : existing.unreadCount,
         );
         _emitActiveBubbles();
         await _saveBubbles();
-        return true;
       }
-      return false;
+      return success;
     } catch (e) {
       debugPrint('❌ updateBubble: $e');
       return false;
@@ -214,16 +237,15 @@ class BubbleServiceV2 {
   Future<bool> hideBubble(String userId) async {
     if (!_isBubbleApiSupported) return false;
     try {
-      final result = await _channel.invokeMethod<bool>('hideBubble', {
-        'userId': userId,
-      });
-      if (result == true) {
+      final success =
+          await _method.invokeMethod<bool>('hideBubble', {'userId': userId}) ??
+              false;
+      if (success) {
         _activeBubbles.remove(userId);
         _emitActiveBubbles();
         await _saveBubbles();
-        return true;
       }
-      return false;
+      return success;
     } catch (e) {
       debugPrint('❌ hideBubble: $e');
       return false;
@@ -233,7 +255,7 @@ class BubbleServiceV2 {
   Future<void> hideAllBubbles() async {
     if (!_isBubbleApiSupported) return;
     try {
-      await _channel.invokeMethod('hideAllBubbles');
+      await _method.invokeMethod('hideAllBubbles');
       _activeBubbles.clear();
       _emitActiveBubbles();
       await _clearSavedBubbles();
@@ -242,21 +264,89 @@ class BubbleServiceV2 {
     }
   }
 
-  // ---------------------------------------------------------------------------
+  Future<bool> clearUnread(String userId) async {
+    final existing = _activeBubbles[userId];
+    if (existing == null) return false;
+    _activeBubbles[userId] = existing.copyWith(unreadCount: 0);
+    _emitActiveBubbles();
+    await _saveBubbles();
+    return true;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ADVANCED NATIVE METHODS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Future<bool> sendMessage({
+    required String userId,
+    required String userName,
+    required String message,
+    required String avatarUrl,
+    String messageType = 'text',
+  }) async {
+    try {
+      return await _method.invokeMethod<bool>('sendMessage', {
+            'userId': userId,
+            'userName': userName,
+            'message': message,
+            'avatarUrl': avatarUrl,
+            'messageType': messageType,
+          }) ??
+          false;
+    } catch (e) {
+      debugPrint('❌ sendMessage: $e');
+      return false;
+    }
+  }
+
+  Future<int> getShortcutCount() async {
+    try {
+      return await _method.invokeMethod<int>('getShortcutCount') ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  Future<bool> verifyShortcut(String userId) async {
+    try {
+      return await _method
+              .invokeMethod<bool>('verifyShortcut', {'userId': userId}) ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<Map<String, dynamic>> getBubbleStats() async {
+    try {
+      final result = await _method.invokeMethod<Map>('getBubbleStats');
+      return result?.cast<String, dynamic>() ?? {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> logBubbleState() async {
+    try {
+      await _method.invokeMethod('logBubbleState');
+    } catch (_) {}
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // PERSISTENCE
-  // ---------------------------------------------------------------------------
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  static const _prefKey = 'bubbles_v2';
 
   Future<void> _saveBubbles() async {
     try {
       await _initPrefs();
       if (_activeBubbles.isEmpty) {
-        await _prefs?.remove('bubbles_v2');
+        await _prefs?.remove(_prefKey);
         return;
       }
       final data = _activeBubbles.map((k, v) => MapEntry(k, v.toJson()));
-      final jsonStr = jsonEncode(data);
-      await _prefs?.setString('bubbles_v2', jsonStr);
-      debugPrint('💾 Saved ${_activeBubbles.length} bubbles');
+      await _prefs?.setString(_prefKey, jsonEncode(data));
     } catch (e) {
       debugPrint('❌ _saveBubbles: $e');
     }
@@ -265,36 +355,26 @@ class BubbleServiceV2 {
   Future<void> _restoreBubbles() async {
     try {
       await _initPrefs();
-      final jsonStr = _prefs?.getString('bubbles_v2');
-      if (jsonStr == null || jsonStr.isEmpty) {
-        debugPrint('ℹ️ No saved bubbles to restore');
-        return;
-      }
+      final raw = _prefs?.getString(_prefKey);
+      if (raw == null || raw.isEmpty) return;
 
-      final Map<String, dynamic> decoded =
-          jsonDecode(jsonStr) as Map<String, dynamic>;
-
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
       int restored = 0;
       for (final entry in decoded.entries) {
         try {
-          final bubbleData = BubbleData.fromJson(
+          final data = BubbleData.fromJson(
               Map<String, dynamic>.from(entry.value as Map));
-
-          final age = DateTime.now().difference(bubbleData.timestamp);
-          if (age.inMinutes >= 1440) {
-            debugPrint('⏰ Skipping stale bubble: ${bubbleData.userName}');
-            continue;
-          }
-
-          _activeBubbles[entry.key] = bubbleData;
+          if (!data.isValid || data.isStale) continue;
+          _activeBubbles[entry.key] = data;
           restored++;
         } catch (e) {
           debugPrint('⚠️ Failed to restore bubble ${entry.key}: $e');
         }
       }
-
-      debugPrint('📦 Restored $restored bubbles');
-      if (restored > 0) _emitActiveBubbles();
+      if (restored > 0) {
+        _emitActiveBubbles();
+        debugPrint('📦 Restored $restored bubble(s)');
+      }
     } catch (e) {
       debugPrint('❌ _restoreBubbles: $e');
       await _clearSavedBubbles();
@@ -304,7 +384,7 @@ class BubbleServiceV2 {
   Future<void> _clearSavedBubbles() async {
     try {
       await _initPrefs();
-      await _prefs?.remove('bubbles_v2');
+      await _prefs?.remove(_prefKey);
     } catch (e) {
       debugPrint('❌ _clearSavedBubbles: $e');
     }
@@ -314,80 +394,52 @@ class BubbleServiceV2 {
     _prefs ??= await SharedPreferences.getInstance();
   }
 
-  // ---------------------------------------------------------------------------
+  // ═══════════════════════════════════════════════════════════════════════════
   // HELPERS
-  // ---------------------------------------------------------------------------
+  // ═══════════════════════════════════════════════════════════════════════════
 
   void _emitActiveBubbles() {
-    final ctrl = _activeBubblesController;
-    if (ctrl != null && !ctrl.isClosed) {
-      ctrl.add(Map.from(_activeBubbles));
+    _ensureBubblesCtrl();
+    if (!(_bubblesCtrl?.isClosed ?? true)) {
+      _bubblesCtrl!.add(Map.unmodifiable(_activeBubbles));
     }
   }
 
-  // ---------------------------------------------------------------------------
+  // ═══════════════════════════════════════════════════════════════════════════
   // GETTERS
-  // ---------------------------------------------------------------------------
+  // ═══════════════════════════════════════════════════════════════════════════
 
   bool get isSupported => _isBubbleApiSupported;
   bool get isInitialized => _isInitialized;
-
   bool isBubbleActive(String userId) => _activeBubbles.containsKey(userId);
-
   Map<String, BubbleData> get activeBubbles => Map.unmodifiable(_activeBubbles);
-
   int get activeBubbleCount => _activeBubbles.length;
+  BubbleData? getBubble(String userId) => _activeBubbles[userId];
 
-  Future<int> getShortcutCount() async {
-    try {
-      final result = await _channel.invokeMethod<int>('getShortcutCount');
-      return result ?? 0;
-    } catch (_) {
-      return 0;
-    }
-  }
-
-  Future<bool> verifyShortcut(String userId) async {
-    try {
-      final result = await _channel
-          .invokeMethod<bool>('verifyShortcut', {'userId': userId});
-      return result ?? false;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // DISPOSE / REINIT
-  // ---------------------------------------------------------------------------
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LIFECYCLE
+  // ═══════════════════════════════════════════════════════════════════════════
 
   void dispose() {
     if (_isDisposing) return;
     _isDisposing = true;
-
     debugPrint('🗑️ BubbleServiceV2 disposing...');
 
     _eventSubscription?.cancel();
     _eventSubscription = null;
 
-    if (_bubbleClickController != null && !_bubbleClickController!.isClosed) {
-      _bubbleClickController!.close();
-    }
-    if (_activeBubblesController != null &&
-        !_activeBubblesController!.isClosed) {
-      _activeBubblesController!.close();
-    }
-    _bubbleClickController = null;
-    _activeBubblesController = null;
+    if (!(_clickCtrl?.isClosed ?? true)) _clickCtrl!.close();
+    if (!(_bubblesCtrl?.isClosed ?? true)) _bubblesCtrl!.close();
+    _clickCtrl = null;
+    _bubblesCtrl = null;
 
     _isInitialized = false;
     _isDisposing = false;
-
     debugPrint('✅ BubbleServiceV2 disposed');
   }
 
   Future<void> reinitialize() async {
     if (_isInitialized) return;
-    await _initialize();
+    await initialize();
   }
 }

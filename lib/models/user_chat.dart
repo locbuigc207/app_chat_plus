@@ -22,6 +22,29 @@ class UserChat {
     this.twoFactorSecret = '',
   });
 
+  // Bổ sung hàm copyWith tại đây
+  UserChat copyWith({
+    String? id,
+    String? photoUrl,
+    String? nickname,
+    String? aboutMe,
+    String? phoneNumber,
+    String? qrCode,
+    bool? is2FAEnabled,
+    String? twoFactorSecret,
+  }) {
+    return UserChat(
+      id: id ?? this.id,
+      photoUrl: photoUrl ?? this.photoUrl,
+      nickname: nickname ?? this.nickname,
+      aboutMe: aboutMe ?? this.aboutMe,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
+      qrCode: qrCode ?? this.qrCode,
+      is2FAEnabled: is2FAEnabled ?? this.is2FAEnabled,
+      twoFactorSecret: twoFactorSecret ?? this.twoFactorSecret,
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       FirestoreConstants.nickname: nickname,

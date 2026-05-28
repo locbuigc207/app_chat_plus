@@ -2,6 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+// ─────────────────────────────────────────────────────────────
+// CallTimerWidget
+//
+// Ticks every second, showing elapsed time since [startTime].
+// Format: MM:SS  or  H:MM:SS for calls over an hour.
+// ─────────────────────────────────────────────────────────────
 
 class CallTimerWidget extends StatefulWidget {
   final DateTime startTime;
@@ -42,13 +48,15 @@ class _CallTimerWidgetState extends State<CallTimerWidget> {
 
   String _format(Duration d) {
     final h = d.inHours;
-    final m = d.inMinutes % 60;
-    final s = d.inSeconds % 60;
+    final m = d.inMinutes.remainder(60);
+    final s = d.inSeconds.remainder(60);
     if (h > 0) {
-      return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+      return '$h:${_pad(m)}:${_pad(s)}';
     }
-    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    return '${_pad(m)}:${_pad(s)}';
   }
+
+  String _pad(int n) => n.toString().padLeft(2, '0');
 
   @override
   Widget build(BuildContext context) {
@@ -59,7 +67,8 @@ class _CallTimerWidgetState extends State<CallTimerWidget> {
             color: Colors.white,
             fontSize: 14,
             fontWeight: FontWeight.w500,
-            letterSpacing: 1.2,
+            letterSpacing: 1.5,
+            fontFeatures: [FontFeature.tabularFigures()],
           ),
     );
   }

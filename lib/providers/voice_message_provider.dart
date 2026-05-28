@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_sound/flutter_sound.dart';
@@ -7,316 +8,515 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Models
+// ─────────────────────────────────────────────────────────────────────────────
+
+class PlaybackProgress {
+  final Duration position;
+  final Duration duration;
+  final bool isPlaying;
+  final bool isPaused;
+  final double speed;
+  final double progress; // 0.0–1.0
+
+  PlaybackProgress({
+    required this.position,
+    required this.duration,
+    this.isPlaying = false,
+    this.isPaused = false,
+    this.speed = 1.0,
+  }) : progress = duration.inMilliseconds > 0
+            ? (position.inMilliseconds / duration.inMilliseconds)
+                .clamp(0.0, 1.0)
+            : 0.0;
+
+  static PlaybackProgress get initial => PlaybackProgress(
+        position: Duration.zero,
+        duration: Duration.zero,
+      );
+}
+
+class RecordingState {
+  final bool isRecording;
+  final Duration duration;
+  final double amplitude; // 0.0–1.0, normalised decibel level
+  final List<double> waveformData; // recent amplitude samples for UI
+
+  const RecordingState({
+    this.isRecording = false,
+    this.duration = Duration.zero,
+    this.amplitude = 0.0,
+    this.waveformData = const [],
+  });
+}
+
+class VoiceUploadResult {
+  final String url;
+  final Duration duration;
+  final int fileSizeBytes;
+
+  const VoiceUploadResult({
+    required this.url,
+    required this.duration,
+    required this.fileSizeBytes,
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Provider
+// ─────────────────────────────────────────────────────────────────────────────
+
 class VoiceMessageProvider {
   final FirebaseStorage firebaseStorage;
+
   FlutterSoundRecorder? _recorder;
   FlutterSoundPlayer? _player;
 
   bool _isRecorderInitialized = false;
   bool _isPlayerInitialized = false;
   String? _currentRecordingPath;
+  DateTime? _recordingStartTime;
 
-  // Cache: url → local path, tránh download lại nhiều lần
+  // Waveform sampling
+  final List<double> _waveformSamples = [];
+  static const int _maxWaveformSamples = 60;
+  Timer? _waveformTimer;
+
+  // Download cache: url → local path
   final Map<String, String> _downloadCache = {};
 
-  final _playbackProgressController =
-      StreamController<PlaybackProgress>.broadcast();
-  Stream<PlaybackProgress> get playbackProgressStream =>
-      _playbackProgressController.stream;
+  // Playback state
+  double _playbackSpeed = 1.0;
+  String? _currentPlayingUrl;
+
+  // Stream controllers
+  final _playbackController = StreamController<PlaybackProgress>.broadcast();
+  final _recordingController = StreamController<RecordingState>.broadcast();
+
+  Stream<PlaybackProgress> get playbackStream => _playbackController.stream;
+  Stream<RecordingState> get recordingStream => _recordingController.stream;
 
   VoiceMessageProvider({required this.firebaseStorage}) {
     _recorder = FlutterSoundRecorder();
     _player = FlutterSoundPlayer();
   }
 
-  // ─────────────────────────────────────────────
-  // Download
-  // ─────────────────────────────────────────────
-
-  /// Download voice message từ [url] về bộ nhớ tạm, trả về local path.
-  /// Kết quả được cache — cùng URL sẽ không download lại.
-  Future<String?> downloadVoiceMessage(String url) async {
-    if (_downloadCache.containsKey(url)) {
-      final cached = _downloadCache[url]!;
-      if (await File(cached).exists()) return cached;
-      _downloadCache.remove(url); // file bị xoá ngoài app, xoá cache
-    }
-
-    try {
-      final directory = await getTemporaryDirectory();
-      final fileName = 'voice_${Uri.encodeComponent(url).hashCode.abs()}.aac';
-      final localPath = '${directory.path}/$fileName';
-
-      final response = await http.get(Uri.parse(url));
-      if (response.statusCode != 200) {
-        print('❌ Failed to download voice message: ${response.statusCode}');
-        return null;
-      }
-
-      await File(localPath).writeAsBytes(response.bodyBytes);
-      _downloadCache[url] = localPath;
-      print('✅ Voice message downloaded: $localPath');
-      return localPath;
-    } catch (e) {
-      print('❌ Error downloading voice message: $e');
-      return null;
-    }
-  }
-
-  // ─────────────────────────────────────────────
-  // Recorder
-  // ─────────────────────────────────────────────
+  // ───────────────────────────────────────────────
+  // Recorder init
+  // ───────────────────────────────────────────────
 
   Future<bool> initRecorder() async {
     if (_isRecorderInitialized) return true;
-
     try {
       final status = await Permission.microphone.request();
       if (!status.isGranted) {
         print('❌ Microphone permission denied');
         return false;
       }
-
       await _recorder?.openRecorder();
       await _recorder
-          ?.setSubscriptionDuration(const Duration(milliseconds: 100));
-
+          ?.setSubscriptionDuration(const Duration(milliseconds: 80));
       _isRecorderInitialized = true;
-      print('✅ Voice recorder initialized');
+      print('✅ Recorder initialized');
       return true;
     } catch (e) {
-      print('❌ Error initializing recorder: $e');
+      print('❌ initRecorder error: $e');
       _isRecorderInitialized = false;
       return false;
     }
   }
 
+  // ───────────────────────────────────────────────
+  // Recording
+  // ───────────────────────────────────────────────
+
   Future<bool> startRecording() async {
     try {
       if (!_isRecorderInitialized) {
-        final initialized = await initRecorder();
-        if (!initialized) return false;
+        if (!await initRecorder()) return false;
       }
-
       if (_recorder?.isRecording ?? false) {
         print('⚠️ Already recording');
         return false;
       }
 
-      final directory = await getTemporaryDirectory();
+      final dir = await getTemporaryDirectory();
       final fileName = 'voice_${DateTime.now().millisecondsSinceEpoch}.aac';
-      _currentRecordingPath = '${directory.path}/$fileName';
+      _currentRecordingPath = '${dir.path}/$fileName';
+      _recordingStartTime = DateTime.now();
+      _waveformSamples.clear();
 
       await _recorder?.startRecorder(
         toFile: _currentRecordingPath,
         codec: Codec.aacADTS,
+        bitRate: 128000,
+        sampleRate: 44100,
       );
+
+      // Subscribe to recorder progress for waveform
+      _recorder?.onProgress?.listen(_handleRecorderProgress);
 
       print('🎤 Recording started: $_currentRecordingPath');
       return true;
     } catch (e) {
-      print('❌ Error starting recording: $e');
+      print('❌ startRecording error: $e');
       return false;
     }
   }
 
+  void _handleRecorderProgress(RecordingDisposition event) {
+    final decibels = event.decibels ?? 0.0;
+    // Normalize: typical voice range is -60dB to 0dB
+    final normalised = ((decibels + 60) / 60).clamp(0.0, 1.0);
+
+    _waveformSamples.add(normalised);
+    if (_waveformSamples.length > _maxWaveformSamples) {
+      _waveformSamples.removeAt(0);
+    }
+
+    _recordingController.add(RecordingState(
+      isRecording: true,
+      duration: event.duration,
+      amplitude: normalised,
+      waveformData: List.unmodifiable(_waveformSamples),
+    ));
+  }
+
   Future<String?> stopRecording() async {
     try {
-      if (_recorder == null || !(_recorder!.isRecording)) {
+      if (!(_recorder?.isRecording ?? false)) {
         print('⚠️ Not recording');
         return null;
       }
-
-      final path = await _recorder?.stopRecorder();
-      final recordingPath = _currentRecordingPath;
+      _waveformTimer?.cancel();
+      await _recorder?.stopRecorder();
+      final path = _currentRecordingPath;
       _currentRecordingPath = null;
+      _recordingStartTime = null;
 
-      print('🎤 Recording stopped: $recordingPath');
-      return recordingPath ?? path;
+      _recordingController.add(const RecordingState());
+      print('🎤 Recording stopped: $path');
+      return path;
     } catch (e) {
-      print('❌ Error stopping recording: $e');
+      print('❌ stopRecording error: $e');
       return null;
     }
   }
 
   Future<void> cancelRecording() async {
     try {
+      _waveformTimer?.cancel();
       if (_recorder?.isRecording ?? false) {
         await _recorder?.stopRecorder();
       }
-
       if (_currentRecordingPath != null) {
-        final file = File(_currentRecordingPath!);
-        if (await file.exists()) await file.delete();
+        final f = File(_currentRecordingPath!);
+        if (await f.exists()) await f.delete();
       }
       _currentRecordingPath = null;
+      _recordingStartTime = null;
+      _waveformSamples.clear();
+      _recordingController.add(const RecordingState());
       print('🎤 Recording cancelled');
     } catch (e) {
-      print('❌ Error cancelling recording: $e');
+      print('❌ cancelRecording error: $e');
     }
   }
 
-  Stream<RecordingDisposition>? get recordingStream => _recorder?.onProgress;
+  Duration get currentRecordingDuration {
+    if (_recordingStartTime == null) return Duration.zero;
+    return DateTime.now().difference(_recordingStartTime!);
+  }
 
-  // ─────────────────────────────────────────────
+  bool get isRecording => _recorder?.isRecording ?? false;
+
+  // ───────────────────────────────────────────────
   // Upload
-  // ─────────────────────────────────────────────
+  // ───────────────────────────────────────────────
 
-  Future<String?> uploadVoiceMessage(String filePath, String fileName) async {
+  Future<VoiceUploadResult?> uploadVoiceMessage(
+    String filePath,
+    String fileName, {
+    void Function(double progress)? onProgress,
+  }) async {
     try {
       final file = File(filePath);
       if (!await file.exists()) {
-        print('❌ File does not exist: $filePath');
+        print('❌ File not found: $filePath');
         return null;
       }
 
+      final fileSize = await file.length();
       final reference = firebaseStorage.ref().child('voice_messages/$fileName');
-      final uploadTask = reference.putFile(
-        file,
-        SettableMetadata(contentType: 'audio/aac'),
+
+      final metadata = SettableMetadata(
+        contentType: 'audio/aac',
+        customMetadata: {
+          'uploadedAt': DateTime.now().millisecondsSinceEpoch.toString(),
+          'fileSizeBytes': fileSize.toString(),
+        },
       );
+
+      final uploadTask = reference.putFile(file, metadata);
+
+      if (onProgress != null) {
+        uploadTask.snapshotEvents.listen((event) {
+          final progress = event.bytesTransferred / event.totalBytes;
+          onProgress(progress.clamp(0.0, 1.0));
+        });
+      }
 
       final snapshot = await uploadTask;
       final url = await snapshot.ref.getDownloadURL();
 
+      // Clean up local file
       try {
         await file.delete();
       } catch (_) {}
 
-      print('✅ Voice message uploaded: $url');
-      return url;
+      // Approximate duration from file size (128kbps AAC)
+      final estimatedDuration = Duration(seconds: (fileSize / 16000).round());
+
+      print('✅ Voice uploaded: $url');
+      return VoiceUploadResult(
+        url: url,
+        duration: estimatedDuration,
+        fileSizeBytes: fileSize,
+      );
     } catch (e) {
-      print('❌ Error uploading voice message: $e');
+      print('❌ uploadVoiceMessage error: $e');
       return null;
     }
   }
 
-  // ─────────────────────────────────────────────
-  // Player (flutter_sound — dùng cho các nơi khác nếu cần)
-  // ─────────────────────────────────────────────
+  // ───────────────────────────────────────────────
+  // Download with cache
+  // ───────────────────────────────────────────────
+
+  Future<String?> downloadVoiceMessage(String url) async {
+    if (_downloadCache.containsKey(url)) {
+      final cached = _downloadCache[url]!;
+      if (await File(cached).exists()) return cached;
+      _downloadCache.remove(url);
+    }
+
+    try {
+      final dir = await getTemporaryDirectory();
+      final hash = url.hashCode.abs();
+      final localPath = '${dir.path}/voice_$hash.aac';
+
+      final response =
+          await http.get(Uri.parse(url)).timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200) {
+        print('❌ Download failed: HTTP ${response.statusCode}');
+        return null;
+      }
+
+      await File(localPath).writeAsBytes(response.bodyBytes);
+      _downloadCache[url] = localPath;
+      print('✅ Voice downloaded: $localPath');
+      return localPath;
+    } catch (e) {
+      print('❌ downloadVoiceMessage error: $e');
+      return null;
+    }
+  }
+
+  void clearDownloadCache() {
+    _downloadCache.clear();
+    print('✅ Download cache cleared');
+  }
+
+  // ───────────────────────────────────────────────
+  // Player init
+  // ───────────────────────────────────────────────
 
   Future<bool> initPlayer() async {
     if (_isPlayerInitialized) return true;
-
     try {
       await _player?.openPlayer();
-      await _player?.setSubscriptionDuration(const Duration(milliseconds: 100));
+      await _player?.setSubscriptionDuration(const Duration(milliseconds: 80));
       _isPlayerInitialized = true;
-      print('✅ Voice player initialized');
+      print('✅ Player initialized');
       return true;
     } catch (e) {
-      print('❌ Error initializing player: $e');
+      print('❌ initPlayer error: $e');
       _isPlayerInitialized = false;
       return false;
     }
   }
 
-  Future<void> playVoiceMessage(String url) async {
+  // ───────────────────────────────────────────────
+  // Playback
+  // ───────────────────────────────────────────────
+
+  Future<bool> playVoiceMessage(
+    String url, {
+    double speed = 1.0,
+    Duration? startPosition,
+  }) async {
     try {
       if (!_isPlayerInitialized) {
-        final initialized = await initPlayer();
-        if (!initialized) return;
+        if (!await initPlayer()) return false;
       }
 
-      if (_player?.isPlaying ?? false) await _player?.stopPlayer();
+      if (_player?.isPlaying ?? false) {
+        await _player?.stopPlayer();
+      }
+
+      _currentPlayingUrl = url;
+      _playbackSpeed = speed.clamp(0.5, 3.0);
+
+      // Download to local cache for reliable playback
+      final localPath = await downloadVoiceMessage(url);
+      final playUri = localPath ?? url;
 
       await _player?.startPlayer(
-        fromURI: url,
+        fromURI: playUri,
         codec: Codec.aacADTS,
         whenFinished: () {
-          _playbackProgressController.add(PlaybackProgress(
-            position: Duration.zero,
-            duration: Duration.zero,
-            isPlaying: false,
-          ));
+          _currentPlayingUrl = null;
+          _playbackController.add(PlaybackProgress.initial);
         },
       );
 
+      // Set playback speed
+      await _player?.setSpeed(_playbackSpeed);
+
+      // Seek if requested
+      if (startPosition != null) {
+        await _player?.seekToPlayer(startPosition);
+      }
+
+      // Stream progress
       _player?.onProgress?.listen((event) {
-        _playbackProgressController.add(PlaybackProgress(
+        _playbackController.add(PlaybackProgress(
           position: event.position,
           duration: event.duration,
           isPlaying: true,
+          speed: _playbackSpeed,
         ));
       });
 
-      print('🔊 Playing voice message');
+      print('🔊 Playing: $url at ${_playbackSpeed}x');
+      return true;
     } catch (e) {
-      print('❌ Error playing voice message: $e');
+      print('❌ playVoiceMessage error: $e');
+      return false;
+    }
+  }
+
+  Future<void> pausePlayback() async {
+    try {
+      if (_player?.isPlaying ?? false) {
+        await _player?.pausePlayer();
+        print('⏸ Paused');
+      }
+    } catch (e) {
+      print('❌ pausePlayback error: $e');
+    }
+  }
+
+  Future<void> resumePlayback() async {
+    try {
+      if (_player?.isPaused ?? false) {
+        await _player?.resumePlayer();
+        print('▶️ Resumed');
+      }
+    } catch (e) {
+      print('❌ resumePlayback error: $e');
     }
   }
 
   Future<void> stopPlayback() async {
     try {
       await _player?.stopPlayer();
-      print('🔊 Playback stopped');
+      _currentPlayingUrl = null;
+      _playbackController.add(PlaybackProgress.initial);
+      print('⏹ Stopped');
     } catch (e) {
-      print('❌ Error stopping playback: $e');
+      print('❌ stopPlayback error: $e');
     }
   }
 
-  Future<void> pausePlayback() async {
+  Future<void> seekTo(Duration position) async {
     try {
-      await _player?.pausePlayer();
-      print('🔊 Playback paused');
+      await _player?.seekToPlayer(position);
     } catch (e) {
-      print('❌ Error pausing playback: $e');
+      print('❌ seekTo error: $e');
     }
   }
 
-  Future<void> resumePlayback() async {
+  /// Change playback speed on the fly. [speed] is clamped to [0.5, 3.0].
+  Future<void> setPlaybackSpeed(double speed) async {
     try {
-      await _player?.resumePlayer();
-      print('🔊 Playback resumed');
+      _playbackSpeed = speed.clamp(0.5, 3.0);
+      await _player?.setSpeed(_playbackSpeed);
+      print('⚡ Speed set to ${_playbackSpeed}x');
     } catch (e) {
-      print('❌ Error resuming playback: $e');
+      print('❌ setPlaybackSpeed error: $e');
     }
   }
 
-  Stream<PlaybackDisposition>? get playbackStream => _player?.onProgress;
+  /// Cycle through preset speeds: 1.0 → 1.5 → 2.0 → 0.75 → 1.0
+  double cycleSpeed() {
+    const presets = [1.0, 1.5, 2.0, 0.75];
+    final idx = presets.indexOf(_playbackSpeed);
+    final next = presets[(idx + 1) % presets.length];
+    setPlaybackSpeed(next);
+    return next;
+  }
 
-  bool get isRecording => _recorder?.isRecording ?? false;
   bool get isPlaying => _player?.isPlaying ?? false;
   bool get isPaused => _player?.isPaused ?? false;
+  String? get currentPlayingUrl => _currentPlayingUrl;
+  double get playbackSpeed => _playbackSpeed;
 
-  // ─────────────────────────────────────────────
+  bool isPlayingUrl(String url) => _currentPlayingUrl == url && isPlaying;
+
+  // ───────────────────────────────────────────────
+  // Waveform generation (for display before playback)
+  // ───────────────────────────────────────────────
+
+  /// Generate a fake-but-plausible waveform of [bars] bars for display.
+  /// Pass in the seed from the message ID for deterministic output.
+  static List<double> generateWaveformPreview({int bars = 30, int seed = 42}) {
+    final rng = math.Random(seed);
+    return List.generate(bars, (i) {
+      final base = 0.2 + rng.nextDouble() * 0.6;
+      final envelope = math.sin(i / bars * math.pi); // natural bell shape
+      return (base * envelope).clamp(0.05, 1.0);
+    });
+  }
+
+  // ───────────────────────────────────────────────
   // Dispose
-  // ─────────────────────────────────────────────
+  // ───────────────────────────────────────────────
 
   Future<void> dispose() async {
-    try {
-      if (_isRecorderInitialized) {
+    _waveformTimer?.cancel();
+
+    if (_isRecorderInitialized) {
+      try {
         if (_recorder?.isRecording ?? false) await _recorder?.stopRecorder();
         await _recorder?.closeRecorder();
-        _isRecorderInitialized = false;
-      }
+      } catch (_) {}
+      _isRecorderInitialized = false;
+    }
 
-      if (_isPlayerInitialized) {
+    if (_isPlayerInitialized) {
+      try {
         if (_player?.isPlaying ?? false) await _player?.stopPlayer();
         await _player?.closePlayer();
-        _isPlayerInitialized = false;
-      }
-
-      await _playbackProgressController.close();
-      print('✅ Voice provider disposed');
-    } catch (e) {
-      print('❌ Error disposing voice provider: $e');
+      } catch (_) {}
+      _isPlayerInitialized = false;
     }
+
+    await _playbackController.close();
+    await _recordingController.close();
+    _downloadCache.clear();
+    print('✅ VoiceMessageProvider disposed');
   }
-}
-
-// ─────────────────────────────────────────────
-// Models
-// ─────────────────────────────────────────────
-
-class PlaybackProgress {
-  final Duration position;
-  final Duration duration;
-  final bool isPlaying;
-
-  PlaybackProgress({
-    required this.position,
-    required this.duration,
-    required this.isPlaying,
-  });
 }

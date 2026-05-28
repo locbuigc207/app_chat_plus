@@ -1,22 +1,18 @@
-
-
-
 import 'dart:ui' show Color;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-
-
-
-
+// ─────────────────────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────────────────────
 
 enum StoryType { image, text, video }
 
 enum StoryPrivacy { everyone, friends }
 
-
-
-
+// ─────────────────────────────────────────────────────────────────────────────
+// StoryView
+// ─────────────────────────────────────────────────────────────────────────────
 
 class StoryView {
   final String userId;
@@ -31,26 +27,60 @@ class StoryView {
     required this.viewedAt,
   });
 
+  factory StoryView.fromJson(Map<String, dynamic> json) => StoryView(
+        userId: json['userId']?.toString() ?? '',
+        userName: json['userName']?.toString() ?? '',
+        photoUrl: json['photoUrl']?.toString() ?? '',
+        viewedAt: _parseDate(json['viewedAt']),
+      );
+
   Map<String, dynamic> toJson() => {
         'userId': userId,
         'userName': userName,
         'photoUrl': photoUrl,
         'viewedAt': viewedAt.millisecondsSinceEpoch.toString(),
       };
+}
 
-  factory StoryView.fromJson(Map<String, dynamic> json) => StoryView(
+// ─────────────────────────────────────────────────────────────────────────────
+// StoryReaction
+// ─────────────────────────────────────────────────────────────────────────────
+
+class StoryReaction {
+  final String userId;
+  final String userName;
+  final String photoUrl;
+  final String emoji;
+  final DateTime reactedAt;
+
+  const StoryReaction({
+    required this.userId,
+    required this.userName,
+    required this.photoUrl,
+    required this.emoji,
+    required this.reactedAt,
+  });
+
+  factory StoryReaction.fromJson(Map<String, dynamic> json) => StoryReaction(
         userId: json['userId']?.toString() ?? '',
         userName: json['userName']?.toString() ?? '',
         photoUrl: json['photoUrl']?.toString() ?? '',
-        viewedAt: DateTime.fromMillisecondsSinceEpoch(
-          int.tryParse(json['viewedAt']?.toString() ?? '0') ?? 0,
-        ),
+        emoji: json['emoji']?.toString() ?? '❤️',
+        reactedAt: _parseDate(json['reactedAt']),
       );
+
+  Map<String, dynamic> toJson() => {
+        'userId': userId,
+        'userName': userName,
+        'photoUrl': photoUrl,
+        'emoji': emoji,
+        'reactedAt': reactedAt.millisecondsSinceEpoch.toString(),
+      };
 }
 
-
-
-
+// ─────────────────────────────────────────────────────────────────────────────
+// Story
+// ─────────────────────────────────────────────────────────────────────────────
 
 class Story {
   final String id;
@@ -59,6 +89,7 @@ class Story {
   final String userPhotoUrl;
   final StoryType type;
   final String? mediaUrl;
+  final String? thumbnailUrl;
   final String? textContent;
   final String? caption;
   final Color? backgroundColor;
@@ -68,8 +99,10 @@ class Story {
   final DateTime createdAt;
   final DateTime expiresAt;
   final List<StoryView> views;
+  final List<StoryReaction> reactions;
   final StoryPrivacy privacy;
   final bool isDeleted;
+  final Duration? videoDuration;
 
   const Story({
     required this.id,
@@ -78,6 +111,7 @@ class Story {
     required this.userPhotoUrl,
     required this.type,
     this.mediaUrl,
+    this.thumbnailUrl,
     this.textContent,
     this.caption,
     this.backgroundColor,
@@ -87,22 +121,45 @@ class Story {
     required this.createdAt,
     required this.expiresAt,
     this.views = const [],
+    this.reactions = const [],
     this.privacy = StoryPrivacy.friends,
     this.isDeleted = false,
+    this.videoDuration,
   });
 
-  
+  // ── Computed properties ──────────────────────────────────────────────────
 
   bool get isExpired => DateTime.now().isAfter(expiresAt);
   bool get isActive => !isExpired && !isDeleted;
   int get viewCount => views.length;
 
+  Duration get remainingTime {
+    final r = expiresAt.difference(DateTime.now());
+    return r.isNegative ? Duration.zero : r;
+  }
+
+  /// Duration each story segment is shown in the viewer.
+  Duration get displayDuration {
+    if (type == StoryType.video && videoDuration != null) {
+      return videoDuration!.clamp(
+        const Duration(seconds: 1),
+        const Duration(seconds: 15),
+      );
+    }
+    return const Duration(seconds: 5);
+  }
+
   bool isViewedBy(String uid) => views.any((v) => v.userId == uid);
 
-  Duration get remainingTime =>
-      isExpired ? Duration.zero : expiresAt.difference(DateTime.now());
+  String? reactionBy(String uid) {
+    try {
+      return reactions.firstWhere((r) => r.userId == uid).emoji;
+    } catch (_) {
+      return null;
+    }
+  }
 
-  
+  // ── Serialization ────────────────────────────────────────────────────────
 
   Map<String, dynamic> toJson() => {
         'userId': userId,
@@ -110,6 +167,7 @@ class Story {
         'userPhotoUrl': userPhotoUrl,
         'type': type.index,
         'mediaUrl': mediaUrl,
+        'thumbnailUrl': thumbnailUrl,
         'textContent': textContent,
         'caption': caption,
         'backgroundColor': backgroundColor?.value,
@@ -119,8 +177,11 @@ class Story {
         'createdAt': createdAt.millisecondsSinceEpoch.toString(),
         'expiresAt': expiresAt.millisecondsSinceEpoch.toString(),
         'views': views.map((v) => v.toJson()).toList(),
+        'reactions': reactions.map((r) => r.toJson()).toList(),
         'privacy': privacy.index,
         'isDeleted': isDeleted,
+        if (videoDuration != null)
+          'videoDurationMs': videoDuration!.inMilliseconds,
       };
 
   factory Story.fromDocument(DocumentSnapshot doc) {
@@ -129,25 +190,18 @@ class Story {
   }
 
   factory Story.fromJson(Map<String, dynamic> data, String id) {
-    
     Color? parseColor(dynamic raw) {
       if (raw == null) return null;
       if (raw is int) return Color(raw);
-      
       if (raw is double) return Color(raw.toInt());
       return null;
     }
 
-    
-    int parseTs(dynamic raw) => int.tryParse(raw?.toString() ?? '0') ?? 0;
-
-    
     int safeIdx(dynamic raw, int maxIdx) {
       final i = raw is int ? raw : int.tryParse(raw?.toString() ?? '0') ?? 0;
       return i.clamp(0, maxIdx);
     }
 
-    
     final List<StoryView> views = [];
     final rawViews = data['views'];
     if (rawViews is List) {
@@ -155,6 +209,18 @@ class Story {
         if (v is Map<String, dynamic>) {
           try {
             views.add(StoryView.fromJson(v));
+          } catch (_) {}
+        }
+      }
+    }
+
+    final List<StoryReaction> reactions = [];
+    final rawReactions = data['reactions'];
+    if (rawReactions is List) {
+      for (final r in rawReactions) {
+        if (r is Map<String, dynamic>) {
+          try {
+            reactions.add(StoryReaction.fromJson(r));
           } catch (_) {}
         }
       }
@@ -168,26 +234,30 @@ class Story {
       type:
           StoryType.values[safeIdx(data['type'], StoryType.values.length - 1)],
       mediaUrl: data['mediaUrl']?.toString(),
+      thumbnailUrl: data['thumbnailUrl']?.toString(),
       textContent: data['textContent']?.toString(),
       caption: data['caption']?.toString(),
       backgroundColor: parseColor(data['backgroundColor']),
       textColor: parseColor(data['textColor']),
       fontFamily: data['fontFamily']?.toString(),
       fontSize: (data['fontSize'] as num?)?.toDouble() ?? 28.0,
-      createdAt:
-          DateTime.fromMillisecondsSinceEpoch(parseTs(data['createdAt'])),
-      expiresAt:
-          DateTime.fromMillisecondsSinceEpoch(parseTs(data['expiresAt'])),
+      createdAt: _parseDate(data['createdAt']),
+      expiresAt: _parseDate(data['expiresAt']),
       views: views,
+      reactions: reactions,
       privacy: StoryPrivacy
           .values[safeIdx(data['privacy'], StoryPrivacy.values.length - 1)],
       isDeleted: data['isDeleted'] == true,
+      videoDuration: data['videoDurationMs'] != null
+          ? Duration(milliseconds: data['videoDurationMs'] as int)
+          : null,
     );
   }
 
   Story copyWith({
     bool? isDeleted,
     List<StoryView>? views,
+    List<StoryReaction>? reactions,
     String? caption,
   }) =>
       Story(
@@ -197,6 +267,7 @@ class Story {
         userPhotoUrl: userPhotoUrl,
         type: type,
         mediaUrl: mediaUrl,
+        thumbnailUrl: thumbnailUrl,
         textContent: textContent,
         caption: caption ?? this.caption,
         backgroundColor: backgroundColor,
@@ -206,14 +277,16 @@ class Story {
         createdAt: createdAt,
         expiresAt: expiresAt,
         views: views ?? this.views,
+        reactions: reactions ?? this.reactions,
         privacy: privacy,
         isDeleted: isDeleted ?? this.isDeleted,
+        videoDuration: videoDuration,
       );
 }
 
-
-
-
+// ─────────────────────────────────────────────────────────────────────────────
+// UserStories
+// ─────────────────────────────────────────────────────────────────────────────
 
 class UserStories {
   final String userId;
@@ -236,9 +309,36 @@ class UserStories {
     return active;
   }
 
+  Story? get latestStory =>
+      activeStories.isNotEmpty ? activeStories.last : null;
+
   bool hasUnseenStoriesBy(String viewerId) =>
       activeStories.any((s) => !s.isViewedBy(viewerId));
 
-  Story? get latestStory =>
-      activeStories.isNotEmpty ? activeStories.last : null;
+  int unseenCountBy(String viewerId) =>
+      activeStories.where((s) => !s.isViewedBy(viewerId)).length;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+DateTime _parseDate(dynamic value) {
+  if (value == null) return DateTime.now();
+  if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+  if (value is String) {
+    final ms = int.tryParse(value);
+    if (ms != null) return DateTime.fromMillisecondsSinceEpoch(ms);
+    return DateTime.tryParse(value) ?? DateTime.now();
+  }
+  if (value is Timestamp) return value.toDate();
+  return DateTime.now();
+}
+
+extension DurationClamp on Duration {
+  Duration clamp(Duration min, Duration max) {
+    if (this < min) return min;
+    if (this > max) return max;
+    return this;
+  }
 }

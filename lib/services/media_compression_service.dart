@@ -1,83 +1,520 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:video_compress/video_compress.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MediaCompressionConfig
+// ─────────────────────────────────────────────────────────────────────────────
+
+class MediaCompressionConfig {
+  final int imageQuality;
+  final int imageMaxDimension;
+  final int imageSizeThresholdBytes;
+
+  final VideoQuality videoQuality;
+  final bool videoIncludeAudio;
+  final int videoFrameRate;
+  final int videoSizeThresholdBytes;
+
+  final int thumbnailQuality;
+  final int thumbnailMaxDimension;
+
+  const MediaCompressionConfig({
+    this.imageQuality = 78,
+    this.imageMaxDimension = 1280,
+    this.imageSizeThresholdBytes = 100 * 1024,
+    this.videoQuality = VideoQuality.Res640x480Quality,
+    this.videoIncludeAudio = true,
+    this.videoFrameRate = 30,
+    this.videoSizeThresholdBytes = 512 * 1024,
+    this.thumbnailQuality = 60,
+    this.thumbnailMaxDimension = 480,
+  });
+
+  static const chat = MediaCompressionConfig();
+
+  static const highQuality = MediaCompressionConfig(
+    imageQuality: 90,
+    imageMaxDimension: 1920,
+    videoQuality: VideoQuality.Res1280x720Quality,
+    videoFrameRate: 30,
+  );
+
+  static const lowBandwidth = MediaCompressionConfig(
+    imageQuality: 60,
+    imageMaxDimension: 800,
+    videoQuality: VideoQuality.LowQuality,
+    thumbnailQuality: 40,
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CompressionResult
+// ─────────────────────────────────────────────────────────────────────────────
+
+class CompressionResult {
+  final File file;
+  final int originalSizeBytes;
+  final int compressedSizeBytes;
+  final double compressionRatio;
+  final Duration elapsed;
+  final bool wasCompressed;
+
+  const CompressionResult({
+    required this.file,
+    required this.originalSizeBytes,
+    required this.compressedSizeBytes,
+    required this.compressionRatio,
+    required this.elapsed,
+    required this.wasCompressed,
+  });
+
+  String get summary =>
+      '${_fmtSize(originalSizeBytes)} → ${_fmtSize(compressedSizeBytes)} '
+      '(−${(compressionRatio * 100).round()}%) in ${elapsed.inMilliseconds}ms';
+
+  static String _fmtSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1048576) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / 1048576).toStringAsFixed(2)} MB';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MediaCompressionException
+// ─────────────────────────────────────────────────────────────────────────────
+
+class MediaCompressionException implements Exception {
+  final String message;
+  final Object? cause;
+  const MediaCompressionException(this.message, {this.cause});
+
+  @override
+  String toString() => 'MediaCompressionException: $message'
+      '${cause != null ? ' (caused by: $cause)' : ''}';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MediaCompressionService
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// ObservableBuilder<T> của video_compress KHÔNG phải là Dart Stream.
+// API đúng:
+//   Subscription sub = VideoCompress.compressProgress$.subscribe((p) { ... });
+//   sub.unsubscribe();
+//
+// Để expose dưới dạng Stream<double> ra ngoài, ta dùng StreamController làm bridge.
+// ─────────────────────────────────────────────────────────────────────────────
+
 class MediaCompressionService {
+  MediaCompressionService._internal();
   static final MediaCompressionService _instance =
       MediaCompressionService._internal();
   factory MediaCompressionService() => _instance;
-  MediaCompressionService._internal();
 
-  /// 1. NÉN HÌNH ẢNH (Giảm ~80% dung lượng, giữ nguyên độ nét)
-  Future<File?> compressImage(File file) async {
+  // Internal Subscription từ video_compress (kiểu Subscription, không phải StreamSubscription)
+  Subscription? _progressSub;
+
+  // StreamController bridge: chuyển ObservableBuilder → Stream<double> cho caller
+  StreamController<double>? _progressController;
+
+  // ── Public stream (0.0 → 1.0) ────────────────────────────────────────────
+  //
+  // Mỗi lần gọi getter này sẽ trả về stream hiện tại (hoặc empty nếu chưa nén).
+  // Caller nên lắng nghe trước khi gọi compressVideo().
+  //
+  Stream<double> get compressionProgressStream =>
+      _progressController?.stream ?? const Stream.empty();
+
+  // ── Khởi tạo bridge khi bắt đầu nén video ────────────────────────────────
+  void _startProgressBridge(void Function(double)? externalCallback) {
+    _stopProgressBridge(); // đảm bảo không bị leak
+
+    _progressController = StreamController<double>.broadcast();
+
+    _progressSub = VideoCompress.compressProgress$.subscribe((progress) {
+      // progress từ video_compress là num (thường int hoặc double, 0–100)
+      final normalized = ((progress as num) / 100.0).clamp(0.0, 1.0);
+      if (!(_progressController?.isClosed ?? true)) {
+        _progressController?.add(normalized);
+      }
+      externalCallback?.call(normalized);
+    });
+  }
+
+  // ── Dọn bridge sau khi nén xong / huỷ ────────────────────────────────────
+  void _stopProgressBridge() {
+    _progressSub?.unsubscribe();
+    _progressSub = null;
+    _progressController?.close();
+    _progressController = null;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 1. NÉN ẢNH
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Future<CompressionResult> compressImage(
+    File file, {
+    MediaCompressionConfig config = MediaCompressionConfig.chat,
+  }) async {
+    final watch = Stopwatch()..start();
+    final originalSize = await file.length();
+
+    if (originalSize < config.imageSizeThresholdBytes) {
+      watch.stop();
+      return CompressionResult(
+        file: file,
+        originalSizeBytes: originalSize,
+        compressedSizeBytes: originalSize,
+        compressionRatio: 0,
+        elapsed: watch.elapsed,
+        wasCompressed: false,
+      );
+    }
+
     try {
       final dir = await getTemporaryDirectory();
-      // Chuyển đổi sang định dạng JPEG để tối ưu nhất cho thiết bị di động
-      final targetPath =
-          "${dir.absolute.path}/temp_img_${DateTime.now().millisecondsSinceEpoch}.jpg";
+      final ext = _resolveImageExt(file.path);
+      final format = _resolveCompressFormat(ext);
+      final targetPath = p.join(
+        dir.path,
+        'cimg_${_ts()}_${p.basenameWithoutExtension(file.path)}.$ext',
+      );
 
-      var result = await FlutterImageCompress.compressAndGetFile(
+      final result = await FlutterImageCompress.compressAndGetFile(
         file.absolute.path,
         targetPath,
-        quality: 75, // Chất lượng tối ưu (Zalo/Messenger thường dùng 70-80)
-        minWidth: 1280, // Giới hạn độ phân giải tối đa
-        minHeight: 1280,
-        format: CompressFormat.jpeg,
+        quality: config.imageQuality,
+        minWidth: config.imageMaxDimension,
+        minHeight: config.imageMaxDimension,
+        format: format,
+        keepExif: false,
+        autoCorrectionAngle: true,
       );
 
-      if (result != null) {
-        print(
-            "📸 Nén ảnh thành công: ${file.lengthSync()} bytes -> ${File(result.path).lengthSync()} bytes");
-        return File(result.path);
+      if (result == null) {
+        throw MediaCompressionException(
+            'compressAndGetFile trả về null cho ${file.path}');
       }
-      return null;
+
+      final compressed = File(result.path);
+      final compressedSize = await compressed.length();
+      watch.stop();
+
+      if (compressedSize >= originalSize) {
+        await compressed.delete().catchError((_) {});
+        _log('⚠️ Nén ảnh không hiệu quả, giữ file gốc.');
+        return CompressionResult(
+          file: file,
+          originalSizeBytes: originalSize,
+          compressedSizeBytes: originalSize,
+          compressionRatio: 0,
+          elapsed: watch.elapsed,
+          wasCompressed: false,
+        );
+      }
+
+      final ratio = 1 - compressedSize / originalSize;
+      final res = CompressionResult(
+        file: compressed,
+        originalSizeBytes: originalSize,
+        compressedSizeBytes: compressedSize,
+        compressionRatio: ratio,
+        elapsed: watch.elapsed,
+        wasCompressed: true,
+      );
+      _log('📸 ${res.summary}');
+      return res;
+    } on MediaCompressionException {
+      rethrow;
     } catch (e) {
-      print("❌ Lỗi nén ảnh: $e");
-      return file; // Fallback: Trả về file gốc nếu lỗi
+      _log('❌ compressImage: $e');
+      watch.stop();
+      return CompressionResult(
+        file: file,
+        originalSizeBytes: originalSize,
+        compressedSizeBytes: originalSize,
+        compressionRatio: 0,
+        elapsed: watch.elapsed,
+        wasCompressed: false,
+      );
     }
   }
 
-  /// 2. NÉN VIDEO (Chuyển đổi bitrate phần cứng)
-  Future<File?> compressVideo(File file) async {
+  /// Shortcut trả về [File] (backward-compatible).
+  Future<File> compressImageFile(
+    File file, {
+    MediaCompressionConfig config = MediaCompressionConfig.chat,
+  }) async {
+    final result = await compressImage(file, config: config);
+    return result.file;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 2. NÉN VIDEO
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Future<CompressionResult> compressVideo(
+    File file, {
+    MediaCompressionConfig config = MediaCompressionConfig.chat,
+    void Function(double progress)? onProgress,
+  }) async {
+    final watch = Stopwatch()..start();
+    final originalSize = await file.length();
+
+    if (originalSize < config.videoSizeThresholdBytes) {
+      watch.stop();
+      return CompressionResult(
+        file: file,
+        originalSizeBytes: originalSize,
+        compressedSizeBytes: originalSize,
+        compressionRatio: 0,
+        elapsed: watch.elapsed,
+        wasCompressed: false,
+      );
+    }
+
+    // Khởi tạo bridge ObservableBuilder → Stream + callback
+    _startProgressBridge(onProgress);
+
     try {
-      print("🎥 Đang nén video... Vui lòng chờ.");
+      _log('🎥 Bắt đầu nén video: ${_fmtSize(originalSize)}');
+
       final info = await VideoCompress.compressVideo(
         file.path,
-        quality: VideoQuality.Res640x480Quality, // Chuẩn nén tin nhắn chat
+        quality: config.videoQuality,
         deleteOrigin: false,
-        includeAudio: true,
+        includeAudio: config.videoIncludeAudio,
+        frameRate: config.videoFrameRate,
       );
 
-      if (info != null && info.file != null) {
-        print("🎥 Nén video xong: ${info.filesize} bytes");
-        return info.file!;
+      _stopProgressBridge();
+
+      if (info?.file == null) {
+        throw MediaCompressionException('VideoCompress trả về null');
       }
-      return null;
-    } catch (e) {
-      print("❌ Lỗi nén video: $e");
-      return file;
-    }
-  }
 
-  /// 3. TRÍCH XUẤT ẢNH THUMBNAIL TỪ VIDEO (Dùng để hiển thị ngoài UI)
-  Future<File?> getVideoThumbnail(File file) async {
-    try {
-      final thumbnailFile = await VideoCompress.getFileThumbnail(
-        file.path,
-        quality: 50, // Thumbnail chỉ cần chất lượng thấp
-        position: -1, // Lấy frame giữa video
+      final compressedFile = info!.file!;
+      final compressedSize = info.filesize ?? await compressedFile.length();
+      watch.stop();
+
+      if (compressedSize >= originalSize) {
+        _log('⚠️ Nén video không hiệu quả, giữ file gốc.');
+        return CompressionResult(
+          file: file,
+          originalSizeBytes: originalSize,
+          compressedSizeBytes: originalSize,
+          compressionRatio: 0,
+          elapsed: watch.elapsed,
+          wasCompressed: false,
+        );
+      }
+
+      final ratio = 1 - compressedSize / originalSize;
+      final res = CompressionResult(
+        file: compressedFile,
+        originalSizeBytes: originalSize,
+        compressedSizeBytes: compressedSize,
+        compressionRatio: ratio,
+        elapsed: watch.elapsed,
+        wasCompressed: true,
       );
-      return thumbnailFile;
+      _log('✅ Video: ${res.summary}');
+      return res;
+    } on MediaCompressionException {
+      _stopProgressBridge();
+      rethrow;
     } catch (e) {
-      print("❌ Lỗi lấy thumbnail: $e");
+      _stopProgressBridge();
+      _log('❌ compressVideo: $e');
+      watch.stop();
+      return CompressionResult(
+        file: file,
+        originalSizeBytes: originalSize,
+        compressedSizeBytes: originalSize,
+        compressionRatio: 0,
+        elapsed: watch.elapsed,
+        wasCompressed: false,
+      );
+    }
+  }
+
+  /// Shortcut trả về [File] (backward-compatible).
+  Future<File> compressVideoFile(
+    File file, {
+    MediaCompressionConfig config = MediaCompressionConfig.chat,
+    void Function(double)? onProgress,
+  }) async {
+    final result =
+        await compressVideo(file, config: config, onProgress: onProgress);
+    return result.file;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 3. THUMBNAIL VIDEO
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Future<File?> getVideoThumbnail(
+    File file, {
+    int quality = 60,
+    int positionMs = -1,
+    int maxDimension = 480,
+  }) async {
+    try {
+      final thumb = await VideoCompress.getFileThumbnail(
+        file.path,
+        quality: quality,
+        position: positionMs,
+      );
+
+      final result = await compressImage(
+        thumb,
+        config: MediaCompressionConfig(
+          imageQuality: quality,
+          imageMaxDimension: maxDimension,
+          imageSizeThresholdBytes: 0,
+        ),
+      );
+      return result.file;
+    } catch (e) {
+      _log('❌ getVideoThumbnail: $e');
       return null;
     }
   }
 
-  /// 4. Dọn dẹp cache sau khi gửi xong
+  // ══════════════════════════════════════════════════════════════════════════
+  // 4. NÉN HÀNG LOẠT
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Future<List<CompressionResult>> compressImageBatch(
+    List<File> files, {
+    MediaCompressionConfig config = MediaCompressionConfig.chat,
+    int maxConcurrent = 3,
+    void Function(int done, int total)? onProgress,
+  }) async {
+    final results = <CompressionResult>[];
+    int done = 0;
+
+    for (int i = 0; i < files.length; i += maxConcurrent) {
+      final batch =
+          files.sublist(i, (i + maxConcurrent).clamp(0, files.length));
+      final batchResults = await Future.wait(
+        batch.map((f) => compressImage(f, config: config)),
+      );
+      results.addAll(batchResults);
+      done += batch.length;
+      onProgress?.call(done, files.length);
+    }
+    return results;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 5. KIỂM TRA LOẠI FILE
+  // ══════════════════════════════════════════════════════════════════════════
+
+  static bool isImageFile(String path) {
+    final ext = p.extension(path).toLowerCase().replaceAll('.', '');
+    return {'jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'gif'}.contains(ext);
+  }
+
+  static bool isVideoFile(String path) {
+    final ext = p.extension(path).toLowerCase().replaceAll('.', '');
+    return {'mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v', '3gp'}.contains(ext);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 6. HUỶ & DỌN CACHE
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Future<void> cancelCompression() async {
+    _stopProgressBridge();
+    await VideoCompress.cancelCompression();
+    _log('⛔ Đã huỷ nén video.');
+  }
+
   Future<void> clearCache() async {
-    await VideoCompress.deleteAllCache();
+    try {
+      await VideoCompress.deleteAllCache();
+    } catch (e) {
+      _log('⚠️ clearVideoCache: $e');
+    }
+
+    try {
+      final tmp = await getTemporaryDirectory();
+      final entities = tmp.listSync();
+      int deleted = 0;
+      for (final entity in entities) {
+        if (entity is File) {
+          final name = p.basename(entity.path);
+          if (name.startsWith('cimg_') ||
+              name.startsWith('temp_img_') ||
+              name.contains('_thumb')) {
+            await entity.delete().catchError((_) {});
+            deleted++;
+          }
+        }
+      }
+      _log('🗑️ Đã xoá $deleted file cache.');
+    } catch (e) {
+      _log('⚠️ clearImageCache: $e');
+    }
+  }
+
+  Future<int> getCacheSizeBytes() async {
+    int total = 0;
+    try {
+      final tmp = await getTemporaryDirectory();
+      final entities = tmp.listSync();
+      for (final entity in entities) {
+        if (entity is File) {
+          final name = p.basename(entity.path);
+          if (name.startsWith('cimg_') || name.contains('_thumb')) {
+            total += await entity.length().catchError((_) => 0);
+          }
+        }
+      }
+    } catch (_) {}
+    return total;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PRIVATE HELPERS
+  // ══════════════════════════════════════════════════════════════════════════
+
+  String _resolveImageExt(String path) {
+    final ext = p.extension(path).toLowerCase().replaceAll('.', '');
+    if (['heic', 'heif'].contains(ext)) return 'jpg';
+    if (ext == 'webp') return 'webp';
+    if (ext == 'png') return 'png';
+    return 'jpg';
+  }
+
+  CompressFormat _resolveCompressFormat(String ext) {
+    switch (ext) {
+      case 'webp':
+        return CompressFormat.webp;
+      case 'png':
+        return CompressFormat.png;
+      default:
+        return CompressFormat.jpeg;
+    }
+  }
+
+  String _ts() => DateTime.now().millisecondsSinceEpoch.toString();
+
+  String _fmtSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1048576) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / 1048576).toStringAsFixed(2)} MB';
+  }
+
+  void _log(String msg) {
+    if (kDebugMode) debugPrint('[MediaCompress] $msg');
   }
 }

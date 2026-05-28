@@ -16,6 +16,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// StoryCreatorPage
+// ─────────────────────────────────────────────────────────────────────────────
+
 class StoryCreatorPage extends StatefulWidget {
   final String userId;
   final String userName;
@@ -42,9 +46,7 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
     super.initState();
     _tab = TabController(length: 3, vsync: this)
       ..addListener(() {
-        if (_tab.indexIsChanging) {
-          setState(() => _tabIndex = _tab.index);
-        }
+        if (_tab.indexIsChanging) setState(() => _tabIndex = _tab.index);
       });
   }
 
@@ -71,41 +73,12 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
                     onPressed: () => Navigator.pop(context),
                   ),
                   const Spacer(),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white12,
-                      borderRadius: BorderRadius.circular(22),
-                    ),
-                    padding: const EdgeInsets.all(3),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _TabBtn(
-                          label: '📸  Photo',
-                          selected: _tabIndex == 0,
-                          onTap: () {
-                            _tab.animateTo(0);
-                            setState(() => _tabIndex = 0);
-                          },
-                        ),
-                        _TabBtn(
-                          label: '✍️  Text',
-                          selected: _tabIndex == 1,
-                          onTap: () {
-                            _tab.animateTo(1);
-                            setState(() => _tabIndex = 1);
-                          },
-                        ),
-                        _TabBtn(
-                          label: '🎥  Video',
-                          selected: _tabIndex == 2,
-                          onTap: () {
-                            _tab.animateTo(2);
-                            setState(() => _tabIndex = 2);
-                          },
-                        ),
-                      ],
-                    ),
+                  _TabSelector(
+                    index: _tabIndex,
+                    onSelect: (i) {
+                      _tab.animateTo(i);
+                      setState(() => _tabIndex = i);
+                    },
                   ),
                   const Spacer(),
                   const SizedBox(width: 48),
@@ -143,46 +116,61 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tab button
+// Tab Selector
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _TabBtn extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+class _TabSelector extends StatelessWidget {
+  final int index;
+  final void Function(int) onSelect;
 
-  const _TabBtn({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
+  static const _tabs = [
+    (icon: '📸', label: 'Photo'),
+    (icon: '✍️', label: 'Text'),
+    (icon: '🎥', label: 'Video'),
+  ];
+
+  const _TabSelector({required this.index, required this.onSelect});
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? Colors.white : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: selected ? Colors.black : Colors.white70,
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
-          ),
-        ),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white12,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      padding: const EdgeInsets.all(3),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: List.generate(_tabs.length, (i) {
+          final t = _tabs[i];
+          final sel = i == index;
+          return GestureDetector(
+            onTap: () => onSelect(i),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: sel ? Colors.white : Colors.transparent,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                '${t.icon}  ${t.label}',
+                style: TextStyle(
+                  color: sel ? Colors.black : Colors.white70,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          );
+        }),
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Photo creator
+// Photo Creator
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _PhotoCreator extends StatefulWidget {
@@ -221,27 +209,28 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
     );
     if (picked != null && mounted) {
       setState(() => _image = File(picked.path));
+      HapticFeedback.lightImpact();
     }
   }
 
   Future<void> _publish() async {
     if (_image == null) return;
     setState(() => _loading = true);
+    HapticFeedback.mediumImpact();
 
     try {
       final id = await context.read<StoryProvider>().createImageStory(
-            userId: widget.userId,
-            userName: widget.userName,
-            userPhotoUrl: widget.userPhotoUrl,
-            imageFile: _image!,
-            caption: _captionCtrl.text.trim().isEmpty
-                ? null
-                : _captionCtrl.text.trim(),
-            privacy: _privacy,
-          );
+        userId: widget.userId,
+        userName: widget.userName,
+        userPhotoUrl: widget.userPhotoUrl,
+        imageFile: _image!,
+        caption: _captionCtrl.text.trim().isEmpty
+            ? null
+            : _captionCtrl.text.trim(),
+        privacy: _privacy,
+      );
 
       if (!mounted) return;
-
       if (id != null) {
         Navigator.of(context).pop(true);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -254,11 +243,20 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  void _togglePrivacy() {
+    setState(() {
+      _privacy = _privacy == StoryPrivacy.friends
+          ? StoryPrivacy.everyone
+          : StoryPrivacy.friends;
+    });
+    HapticFeedback.selectionClick();
   }
 
   @override
@@ -272,7 +270,27 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
       child: Stack(
         fit: StackFit.expand,
         children: [
+          // Background image
           Image.file(_image!, fit: BoxFit.cover),
+
+          // Dark gradient bottom
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: 260,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [Colors.black.withOpacity(0.7), Colors.transparent],
+                ),
+              ),
+            ),
+          ),
+
+          // Side buttons
           Positioned(
             top: 16,
             right: 16,
@@ -295,47 +313,52 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
                       ? Icons.people
                       : Icons.public,
                   label: _privacy == StoryPrivacy.friends ? 'Friends' : 'All',
-                  onTap: () => setState(() {
-                    _privacy = _privacy == StoryPrivacy.friends
-                        ? StoryPrivacy.everyone
-                        : StoryPrivacy.friends;
-                  }),
+                  onTap: _togglePrivacy,
+                  iconColor: _privacy == StoryPrivacy.friends
+                      ? Colors.amber
+                      : Colors.greenAccent,
                 ),
               ],
             ),
           ),
+
+          // Caption input
           Positioned(
             bottom: bottomInset > 0 ? bottomInset + 16 : 96,
             left: 16,
             right: 16,
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.black45,
+                color: Colors.black54,
                 borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: Colors.white24),
               ),
               child: TextField(
                 controller: _captionCtrl,
-                style: const TextStyle(color: Colors.white),
+                style: const TextStyle(color: Colors.white, fontSize: 15),
                 decoration: const InputDecoration(
                   hintText: 'Add a caption…',
-                  hintStyle: TextStyle(color: Colors.white54),
+                  hintStyle: TextStyle(color: Colors.white38),
                   contentPadding:
-                      EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                   border: InputBorder.none,
+                  prefixIcon:
+                  Icon(Icons.edit_note, color: Colors.white38, size: 22),
                 ),
                 maxLines: 3,
                 minLines: 1,
               ),
             ),
           ),
-          Positioned(
-            bottom: 32,
-            left: 16,
-            right: 16,
-            child: bottomInset > 0
-                ? const SizedBox.shrink()
-                : _PublishBtn(loading: _loading, onTap: _publish),
-          ),
+
+          // Publish button
+          if (bottomInset == 0)
+            Positioned(
+              bottom: 32,
+              left: 16,
+              right: 16,
+              child: _PublishBtn(loading: _loading, onTap: _publish),
+            ),
         ],
       ),
     );
@@ -343,7 +366,7 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Picker prompt (empty state for Photo tab)
+// Picker prompt (empty state)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _PickerPrompt extends StatelessWidget {
@@ -360,36 +383,42 @@ class _PickerPrompt extends StatelessWidget {
             width: 100,
             height: 100,
             decoration: BoxDecoration(
-              color: Colors.white10,
-              borderRadius: BorderRadius.circular(50),
+              gradient: const LinearGradient(
+                colors: [Color(0xFF2196F3), Color(0xFF7C4DFF)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(30),
             ),
             child: const Icon(Icons.add_photo_alternate,
-                color: Colors.white54, size: 48),
+                color: Colors.white, size: 50),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
           const Text(
-            'Share a photo',
+            'Share a Photo',
             style: TextStyle(
-                color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700),
+                color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
           const Text(
             'Choose or take a photo to share as status',
             style: TextStyle(color: Colors.white54, fontSize: 14),
           ),
-          const SizedBox(height: 40),
+          const SizedBox(height: 44),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               _BigPickBtn(
                 icon: Icons.collections,
                 label: 'Gallery',
+                gradient: const [Color(0xFF7C4DFF), Color(0xFF2196F3)],
                 onTap: () => onPick(ImageSource.gallery),
               ),
               const SizedBox(width: 24),
               _BigPickBtn(
                 icon: Icons.camera_alt,
                 label: 'Camera',
+                gradient: const [Color(0xFFFF6B35), Color(0xFFFF2D55)],
                 onTap: () => onPick(ImageSource.camera),
               ),
             ],
@@ -403,11 +432,13 @@ class _PickerPrompt extends StatelessWidget {
 class _BigPickBtn extends StatelessWidget {
   final IconData icon;
   final String label;
+  final List<Color> gradient;
   final VoidCallback onTap;
 
   const _BigPickBtn({
     required this.icon,
     required this.label,
+    required this.gradient,
     required this.onTap,
   });
 
@@ -418,18 +449,27 @@ class _BigPickBtn extends StatelessWidget {
       child: Column(
         children: [
           Container(
-            width: 64,
-            height: 64,
+            width: 72,
+            height: 72,
             decoration: BoxDecoration(
-              color: Colors.white12,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white24),
+              gradient:
+              LinearGradient(colors: gradient, begin: Alignment.topLeft),
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: [
+                BoxShadow(
+                    color: gradient.last.withOpacity(0.4),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6)),
+              ],
             ),
-            child: Icon(icon, color: Colors.white, size: 30),
+            child: Icon(icon, color: Colors.white, size: 32),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Text(label,
-              style: const TextStyle(color: Colors.white70, fontSize: 13)),
+              style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500)),
         ],
       ),
     );
@@ -437,7 +477,7 @@ class _BigPickBtn extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Text creator
+// Text Creator
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _TextCreator extends StatefulWidget {
@@ -463,20 +503,24 @@ class _TextCreatorState extends State<_TextCreator> {
   int _bgIdx = 0;
   int _fontIdx = 0;
   int _colorIdx = 0;
-  double _fontSize = 28.0;
+  double _fontSize = 30.0;
+  TextAlign _align = TextAlign.center;
 
   static const _bgs = <List<int>>[
     [0xFF1A1A2E, 0xFF16213E],
     [0xFF833AB4, 0xFFFD1D1D],
-    [0xFF0F2027, 0xFF203A43],
+    [0xFF0F2027, 0xFF2C5364],
     [0xFFf7971e, 0xFFffd200],
     [0xFF11998e, 0xFF38ef7d],
     [0xFF6a3093, 0xFFa044ff],
     [0xFF1D976C, 0xFF93F9B9],
     [0xFFFC5C7D, 0xFF6A82FB],
+    [0xFF373B44, 0xFF4286f4],
+    [0xFFcb2d3e, 0xFFef473a],
   ];
 
   static const _fontFamilies = <String?>[null, 'Georgia', 'Courier New'];
+  static const _fontLabels = ['Default', 'Serif', 'Mono'];
 
   static const _textColors = <int>[
     0xFFFFFFFF,
@@ -484,6 +528,7 @@ class _TextCreatorState extends State<_TextCreator> {
     0xFFFFB347,
     0xFF87CEEB,
     0xFF90EE90,
+    0xFFFF69B4,
   ];
 
   Color get _bg1 => Color(_bgs[_bgIdx][0]);
@@ -500,22 +545,22 @@ class _TextCreatorState extends State<_TextCreator> {
     final text = _ctrl.text.trim();
     if (text.isEmpty) return;
     setState(() => _loading = true);
+    HapticFeedback.mediumImpact();
 
     try {
       final id = await context.read<StoryProvider>().createTextStory(
-            userId: widget.userId,
-            userName: widget.userName,
-            userPhotoUrl: widget.userPhotoUrl,
-            textContent: text,
-            backgroundColor: _bg1,
-            textColor: _tc,
-            fontFamily: _fontFamilies[_fontIdx],
-            fontSize: _fontSize,
-            privacy: _privacy,
-          );
+        userId: widget.userId,
+        userName: widget.userName,
+        userPhotoUrl: widget.userPhotoUrl,
+        textContent: text,
+        backgroundColor: _bg1,
+        textColor: _tc,
+        fontFamily: _fontFamilies[_fontIdx],
+        fontSize: _fontSize,
+        privacy: _privacy,
+      );
 
       if (!mounted) return;
-
       if (id != null) {
         Navigator.of(context).pop(true);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -528,7 +573,7 @@ class _TextCreatorState extends State<_TextCreator> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -540,8 +585,9 @@ class _TextCreatorState extends State<_TextCreator> {
     return Stack(
       fit: StackFit.expand,
       children: [
+        // Background
         AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
+          duration: const Duration(milliseconds: 350),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -550,6 +596,8 @@ class _TextCreatorState extends State<_TextCreator> {
             ),
           ),
         ),
+
+        // Text input centred
         Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -557,7 +605,7 @@ class _TextCreatorState extends State<_TextCreator> {
               controller: _ctrl,
               autofocus: false,
               maxLines: null,
-              textAlign: TextAlign.center,
+              textAlign: _align,
               style: TextStyle(
                 color: _tc,
                 fontSize: _fontSize,
@@ -578,6 +626,8 @@ class _TextCreatorState extends State<_TextCreator> {
             ),
           ),
         ),
+
+        // Right-side controls
         Positioned(
           top: 16,
           right: 16,
@@ -585,9 +635,9 @@ class _TextCreatorState extends State<_TextCreator> {
             children: [
               _SideBtn(
                 icon: Icons.text_fields,
-                label: 'Font',
+                label: _fontLabels[_fontIdx],
                 onTap: () => setState(
-                    () => _fontIdx = (_fontIdx + 1) % _fontFamilies.length),
+                        () => _fontIdx = (_fontIdx + 1) % _fontFamilies.length),
               ),
               const SizedBox(height: 12),
               _SideBtn(
@@ -595,7 +645,25 @@ class _TextCreatorState extends State<_TextCreator> {
                 label: 'Color',
                 iconColor: _tc,
                 onTap: () => setState(
-                    () => _colorIdx = (_colorIdx + 1) % _textColors.length),
+                        () => _colorIdx = (_colorIdx + 1) % _textColors.length),
+              ),
+              const SizedBox(height: 12),
+              _SideBtn(
+                icon: _align == TextAlign.center
+                    ? Icons.format_align_center
+                    : _align == TextAlign.left
+                    ? Icons.format_align_left
+                    : Icons.format_align_right,
+                label: 'Align',
+                onTap: () => setState(() {
+                  if (_align == TextAlign.center) {
+                    _align = TextAlign.left;
+                  } else if (_align == TextAlign.left) {
+                    _align = TextAlign.right;
+                  } else {
+                    _align = TextAlign.center;
+                  }
+                }),
               ),
               const SizedBox(height: 12),
               _SideBtn(
@@ -608,10 +676,15 @@ class _TextCreatorState extends State<_TextCreator> {
                       ? StoryPrivacy.everyone
                       : StoryPrivacy.friends;
                 }),
+                iconColor: _privacy == StoryPrivacy.friends
+                    ? Colors.amber
+                    : Colors.greenAccent,
               ),
             ],
           ),
         ),
+
+        // Bottom controls
         Positioned(
           bottom: 96,
           left: 0,
@@ -619,12 +692,12 @@ class _TextCreatorState extends State<_TextCreator> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Font size slider
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Row(
                   children: [
-                    const Icon(Icons.text_decrease,
-                        color: Colors.white54, size: 16),
+                    const Icon(Icons.text_decrease, color: Colors.white54, size: 16),
                     Expanded(
                       child: SliderTheme(
                         data: const SliderThemeData(
@@ -637,19 +710,20 @@ class _TextCreatorState extends State<_TextCreator> {
                         child: Slider(
                           value: _fontSize,
                           min: 14,
-                          max: 54,
+                          max: 60,
                           onChanged: (v) => setState(() => _fontSize = v),
                         ),
                       ),
                     ),
-                    const Icon(Icons.text_increase,
-                        color: Colors.white54, size: 16),
+                    const Icon(Icons.text_increase, color: Colors.white54, size: 16),
                   ],
                 ),
               ),
               const SizedBox(height: 10),
+
+              // Background gradient swatches
               SizedBox(
-                height: 44,
+                height: 48,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -657,12 +731,15 @@ class _TextCreatorState extends State<_TextCreator> {
                   itemBuilder: (_, i) {
                     final sel = i == _bgIdx;
                     return GestureDetector(
-                      onTap: () => setState(() => _bgIdx = i),
+                      onTap: () {
+                        setState(() => _bgIdx = i);
+                        HapticFeedback.selectionClick();
+                      },
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
                         margin: const EdgeInsets.only(right: 10),
-                        width: sel ? 42 : 32,
-                        height: sel ? 42 : 32,
+                        width: sel ? 44 : 34,
+                        height: sel ? 44 : 34,
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [Color(_bgs[i][0]), Color(_bgs[i][1])],
@@ -673,6 +750,14 @@ class _TextCreatorState extends State<_TextCreator> {
                           border: sel
                               ? Border.all(color: Colors.white, width: 2.5)
                               : null,
+                          boxShadow: sel
+                              ? [
+                            BoxShadow(
+                              color: Color(_bgs[i][1]).withOpacity(0.5),
+                              blurRadius: 8,
+                            )
+                          ]
+                              : null,
                         ),
                       ),
                     );
@@ -682,6 +767,8 @@ class _TextCreatorState extends State<_TextCreator> {
             ],
           ),
         ),
+
+        // Publish button
         Positioned(
           bottom: 32,
           left: 16,
@@ -698,7 +785,7 @@ class _TextCreatorState extends State<_TextCreator> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AR filter model
+// AR Filter model
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ArFilter {
@@ -710,8 +797,8 @@ class _ArFilter {
   static const _ArFilter none = _ArFilter(displayName: 'None');
 
   static String _toDisplayName(String assetPath) {
-    final fileName = assetPath.split('/').last;
-    final withoutExt = fileName.replaceAll('.deepar', '');
+    final withoutExt =
+    assetPath.split('/').last.replaceAll('.deepar', '');
     return withoutExt
         .split('_')
         .map((w) => w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}')
@@ -722,20 +809,16 @@ class _ArFilter {
     try {
       final manifestJson = await rootBundle.loadString('AssetManifest.json');
       final manifest = json.decode(manifestJson) as Map<String, dynamic>;
-
       final effectPaths = manifest.keys
-          .where((key) =>
-              key.startsWith('assets/effects/') && key.endsWith('.deepar'))
+          .where((k) =>
+      k.startsWith('assets/effects/') && k.endsWith('.deepar'))
           .toList()
         ..sort();
 
       return [
         _ArFilter.none,
         ...effectPaths.map(
-          (path) => _ArFilter(
-            displayName: _toDisplayName(path),
-            assetPath: path,
-          ),
+              (p) => _ArFilter(displayName: _toDisplayName(p), assetPath: p),
         ),
       ];
     } catch (e) {
@@ -746,7 +829,7 @@ class _ArFilter {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Video creator
+// Video Creator
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _VideoCreator extends StatefulWidget {
@@ -764,18 +847,23 @@ class _VideoCreator extends StatefulWidget {
   State<_VideoCreator> createState() => _VideoCreatorState();
 }
 
-class _VideoCreatorState extends State<_VideoCreator> {
+class _VideoCreatorState extends State<_VideoCreator>
+    with SingleTickerProviderStateMixin {
   static const _androidKey =
       '694aafc68314126d55d03f1cb2b23ce05f57467994107fb3895aab7f7060c2a5863a6c28f29a341b';
   static const _iosKey = 'YOUR_IOS_DEEPAR_KEY_HERE';
 
   late DeepArControllerPlus _deepArController;
   final AudioPlayer _audioPlayer = AudioPlayer();
+  late AnimationController _pulseCtrl;
 
   bool _isInitialized = false;
   bool _isRecording = false;
   bool _isProcessing = false;
   String? _selectedAudioPath;
+  String? _selectedAudioName;
+  int _recordSeconds = 0;
+  static const int _maxSeconds = 15;
 
   List<_ArFilter> _filters = [];
   int _currentFilterIndex = 0;
@@ -783,6 +871,10 @@ class _VideoCreatorState extends State<_VideoCreator> {
   @override
   void initState() {
     super.initState();
+    _pulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    )..repeat(reverse: true);
     _initAll();
   }
 
@@ -808,54 +900,73 @@ class _VideoCreatorState extends State<_VideoCreator> {
       );
       if (mounted) setState(() => _isInitialized = true);
     } else {
-      Fluttertoast.showToast(msg: 'Cần cấp quyền Camera & Mic để quay Story!');
+      Fluttertoast.showToast(msg: 'Camera & Mic permissions required!');
       if (mounted) Navigator.pop(context);
     }
   }
 
-  void _switchFilter(int index) {
-    setState(() => _currentFilterIndex = index);
-    final filter = _filters[index];
-    _deepArController.switchEffect(filter.assetPath ?? '');
+  void _switchFilter(int i) {
+    setState(() => _currentFilterIndex = i);
+    _deepArController.switchEffect(_filters[i].assetPath ?? '');
+    HapticFeedback.selectionClick();
   }
 
-  /// Chọn nhạc nền từ bộ nhớ thiết bị.
   Future<void> _pickMusic() async {
     try {
-      // file_picker ^11: static method, không còn .platform
-      final FilePickerResult? result = await FilePicker.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.audio,
         allowMultiple: false,
       );
-
-      // Kiểm tra an toàn xem có file nào được chọn không
       if (result != null && result.files.isNotEmpty) {
-        // Dùng .first.path thay vì .single.path để tránh StateError
-        final String? path = result.files.first.path;
+        final path = result.files.first.path;
+        final name = result.files.first.name;
         if (path != null) {
-          setState(() => _selectedAudioPath = path);
+          setState(() {
+            _selectedAudioPath = path;
+            _selectedAudioName =
+            name.length > 20 ? '${name.substring(0, 20)}…' : name;
+          });
           await _audioPlayer.setFilePath(path);
-          Fluttertoast.showToast(msg: '✅ Đã thêm nhạc nền!');
-        } else {
-          Fluttertoast.showToast(msg: '⚠️ Không thể đọc đường dẫn file này!');
+          Fluttertoast.showToast(msg: '✅ Music added!');
         }
       }
     } catch (e) {
       debugPrint('FilePicker Error: $e');
-      Fluttertoast.showToast(msg: '❌ Lỗi chọn nhạc nền!');
+      Fluttertoast.showToast(msg: '❌ Could not pick audio!');
     }
   }
 
   Future<void> _startRecording() async {
-    setState(() => _isRecording = true);
+    setState(() {
+      _isRecording = true;
+      _recordSeconds = 0;
+    });
+    HapticFeedback.heavyImpact();
+
     if (_selectedAudioPath != null) {
       await _audioPlayer.seek(Duration.zero);
       _audioPlayer.play();
     }
+
     await _deepArController.startVideoRecording();
+
+    // Count seconds up to max
+    _countUp();
+  }
+
+  void _countUp() async {
+    while (_isRecording && _recordSeconds < _maxSeconds) {
+      await Future.delayed(const Duration(seconds: 1));
+      if (!mounted) return;
+      setState(() => _recordSeconds++);
+    }
+    if (_isRecording && _recordSeconds >= _maxSeconds) {
+      await _stopRecording();
+    }
   }
 
   Future<void> _stopRecording() async {
+    if (!_isRecording) return;
     if (_selectedAudioPath != null) await _audioPlayer.stop();
 
     try {
@@ -864,22 +975,25 @@ class _VideoCreatorState extends State<_VideoCreator> {
         _isRecording = false;
         _isProcessing = true;
       });
+      HapticFeedback.mediumImpact();
 
       if (_selectedAudioPath != null) {
         await _mergeAudioAndVideo(videoFile.path, _selectedAudioPath!);
       } else {
-        await _uploadStory(videoFile.path);
+        await _uploadStory(videoFile.path,
+            Duration(seconds: _recordSeconds.clamp(1, _maxSeconds)));
       }
     } catch (e) {
       setState(() {
         _isRecording = false;
         _isProcessing = false;
       });
-      Fluttertoast.showToast(msg: 'Lỗi khi kết thúc quay video!');
+      Fluttertoast.showToast(msg: 'Error stopping recording!');
     }
   }
 
-  Future<void> _mergeAudioAndVideo(String videoPath, String audioPath) async {
+  Future<void> _mergeAudioAndVideo(
+      String videoPath, String audioPath) async {
     try {
       final dir = await getApplicationDocumentsDirectory();
       final output =
@@ -892,32 +1006,34 @@ class _VideoCreatorState extends State<_VideoCreator> {
       final rc = await session.getReturnCode();
 
       if (ReturnCode.isSuccess(rc)) {
-        await _uploadStory(output);
+        await _uploadStory(output,
+            Duration(seconds: _recordSeconds.clamp(1, _maxSeconds)));
       } else {
         final logs = await session.getAllLogsAsString();
-        debugPrint('FFmpeg Error Logs: $logs');
+        debugPrint('FFmpeg logs: $logs');
         if (mounted) setState(() => _isProcessing = false);
-        Fluttertoast.showToast(msg: 'Lỗi ghép nhạc vào video!');
+        Fluttertoast.showToast(msg: 'Error merging audio!');
       }
     } catch (e) {
       if (mounted) setState(() => _isProcessing = false);
-      Fluttertoast.showToast(msg: 'Đã xảy ra sự cố: $e');
+      Fluttertoast.showToast(msg: 'Error: $e');
     }
   }
 
-  Future<void> _uploadStory(String finalPath) async {
+  Future<void> _uploadStory(String finalPath, Duration duration) async {
     try {
       await context.read<StoryProvider>().createVideoStory(
-            userId: widget.userId,
-            userName: widget.userName,
-            userPhotoUrl: widget.userPhotoUrl,
-            videoFile: File(finalPath),
-            privacy: StoryPrivacy.friends,
-          );
-      Fluttertoast.showToast(msg: 'Đăng Story thành công!');
+        userId: widget.userId,
+        userName: widget.userName,
+        userPhotoUrl: widget.userPhotoUrl,
+        videoFile: File(finalPath),
+        videoDuration: duration,
+        privacy: StoryPrivacy.friends,
+      );
+      Fluttertoast.showToast(msg: '✅ Story published!');
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      Fluttertoast.showToast(msg: 'Lỗi đăng Story: $e');
+      Fluttertoast.showToast(msg: 'Upload error: $e');
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
@@ -925,37 +1041,99 @@ class _VideoCreatorState extends State<_VideoCreator> {
 
   @override
   void dispose() {
-    if (_isInitialized) {
-      _deepArController.destroy();
-    }
+    if (_isInitialized) _deepArController.destroy();
     _audioPlayer.dispose();
+    _pulseCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     if (!_isInitialized) {
-      return const Center(
-        child: CircularProgressIndicator(color: ColorConstants.primaryColor),
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(color: ColorConstants.primaryColor),
+            const SizedBox(height: 16),
+            const Text('Initializing camera…',
+                style: TextStyle(color: Colors.white54)),
+          ],
+        ),
       );
     }
 
     return Stack(
       fit: StackFit.expand,
       children: [
+        // Camera preview
         Positioned.fill(child: DeepArPreviewPlus(_deepArController)),
+
+        // Music button top-right
         Positioned(
           top: 16,
           right: 16,
-          child: _SideBtn(
-            icon:
-                _selectedAudioPath != null ? Icons.music_note : Icons.music_off,
-            label: _selectedAudioPath != null ? 'Music ✓' : 'Music',
-            iconColor:
-                _selectedAudioPath != null ? Colors.greenAccent : Colors.white,
-            onTap: _pickMusic,
+          child: Column(
+            children: [
+              _SideBtn(
+                icon: _selectedAudioPath != null
+                    ? Icons.music_note
+                    : Icons.music_off,
+                label: _selectedAudioName ?? 'Music',
+                iconColor: _selectedAudioPath != null
+                    ? Colors.greenAccent
+                    : Colors.white,
+                onTap: _pickMusic,
+              ),
+            ],
           ),
         ),
+
+        // Recording timer
+        if (_isRecording)
+          Positioned(
+            top: 16,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AnimatedBuilder(
+                      animation: _pulseCtrl,
+                      builder: (_, __) => Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Color.lerp(
+                              Colors.red, Colors.red.withOpacity(0.2),
+                              _pulseCtrl.value),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${_recordSeconds}s / ${_maxSeconds}s',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+        // Processing overlay
         if (_isProcessing)
           Container(
             color: Colors.black87,
@@ -965,14 +1143,14 @@ class _VideoCreatorState extends State<_VideoCreator> {
                 children: [
                   CircularProgressIndicator(color: Colors.white),
                   SizedBox(height: 16),
-                  Text(
-                    'Đang xử lý Video…',
-                    style: TextStyle(color: Colors.white, fontSize: 16),
-                  ),
+                  Text('Processing video…',
+                      style: TextStyle(color: Colors.white, fontSize: 16)),
                 ],
               ),
             ),
           ),
+
+        // Bottom controls
         if (!_isProcessing)
           Positioned(
             bottom: 32,
@@ -981,6 +1159,7 @@ class _VideoCreatorState extends State<_VideoCreator> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // Filter carousel
                 if (_filters.isNotEmpty)
                   SizedBox(
                     height: 80,
@@ -999,7 +1178,15 @@ class _VideoCreatorState extends State<_VideoCreator> {
                             margin: const EdgeInsets.symmetric(horizontal: 6),
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: Colors.white24,
+                              gradient: sel
+                                  ? const LinearGradient(
+                                colors: [
+                                  Color(0xFF2196F3),
+                                  Color(0xFF7C4DFF)
+                                ],
+                              )
+                                  : null,
+                              color: sel ? null : Colors.white24,
                               border: Border.all(
                                 color: sel ? Colors.white : Colors.transparent,
                                 width: 3,
@@ -1013,7 +1200,7 @@ class _VideoCreatorState extends State<_VideoCreator> {
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 10,
+                                  fontSize: 9,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -1023,28 +1210,48 @@ class _VideoCreatorState extends State<_VideoCreator> {
                       },
                     ),
                   ),
-                const SizedBox(height: 20),
+
+                const SizedBox(height: 16),
+
+                // Record button
                 GestureDetector(
                   onLongPressStart: (_) => _startRecording(),
                   onLongPressEnd: (_) => _stopRecording(),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
-                    width: 80,
-                    height: 80,
+                    width: 84,
+                    height: 84,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 4),
-                      color: _isRecording ? Colors.red : Colors.white38,
+                      border: Border.all(
+                          color: _isRecording ? Colors.red : Colors.white,
+                          width: 4),
+                      gradient: _isRecording
+                          ? const LinearGradient(
+                        colors: [Color(0xFFFF2D55), Color(0xFFFF6B35)],
+                      )
+                          : null,
+                      color: _isRecording ? null : Colors.white30,
+                      boxShadow: _isRecording
+                          ? [
+                        const BoxShadow(
+                          color: Colors.red,
+                          blurRadius: 20,
+                          spreadRadius: 2,
+                        )
+                      ]
+                          : null,
                     ),
                     child: _isRecording
                         ? const Icon(Icons.stop, color: Colors.white, size: 40)
                         : const Icon(Icons.videocam,
-                            color: Colors.white, size: 36),
+                        color: Colors.white, size: 36),
                   ),
                 ),
+
                 const SizedBox(height: 10),
                 Text(
-                  _isRecording ? 'Đang quay… thả để dừng' : 'Nhấn giữ để quay',
+                  _isRecording ? 'Release to stop' : 'Hold to record',
                   style: const TextStyle(color: Colors.white70, fontSize: 13),
                 ),
               ],
@@ -1079,18 +1286,26 @@ class _SideBtn extends StatelessWidget {
       child: Column(
         children: [
           Container(
-            width: 46,
-            height: 46,
+            width: 48,
+            height: 48,
             decoration: BoxDecoration(
-              color: Colors.black38,
+              color: Colors.black45,
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white24),
             ),
             child: Icon(icon, color: iconColor ?? Colors.white, size: 22),
           ),
           const SizedBox(height: 4),
-          Text(label,
-              style: const TextStyle(color: Colors.white70, fontSize: 10)),
+          SizedBox(
+            width: 56,
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.white70, fontSize: 10),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
     );
@@ -1116,48 +1331,48 @@ class _PublishBtn extends StatelessWidget {
       onTap: active ? onTap : null,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        height: 52,
+        height: 54,
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: active
                 ? [const Color(0xFF2196F3), const Color(0xFF1565C0)]
                 : [Colors.grey.shade700, Colors.grey.shade800],
           ),
-          borderRadius: BorderRadius.circular(26),
+          borderRadius: BorderRadius.circular(27),
           boxShadow: active
               ? [
-                  BoxShadow(
-                    color: const Color(0xFF2196F3).withOpacity(0.4),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
-                  )
-                ]
+            BoxShadow(
+              color: const Color(0xFF2196F3).withOpacity(0.45),
+              blurRadius: 18,
+              offset: const Offset(0, 6),
+            )
+          ]
               : null,
         ),
         child: Center(
           child: loading
               ? const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                      color: Colors.white, strokeWidth: 2.5),
-                )
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(
+                color: Colors.white, strokeWidth: 2.5),
+          )
               : const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.send_rounded, color: Colors.white, size: 20),
-                    SizedBox(width: 8),
-                    Text(
-                      'Share to Status',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.4,
-                      ),
-                    ),
-                  ],
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.send_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Share to Status',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
                 ),
+              ),
+            ],
+          ),
         ),
       ),
     );

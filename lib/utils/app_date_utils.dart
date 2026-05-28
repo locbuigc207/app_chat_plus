@@ -1,29 +1,48 @@
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+/// Tiện ích xử lý ngày giờ toàn diện cho ứng dụng chat
 class AppDateUtils {
-  
-  static String formatMessageTime(String timestamp, BuildContext context) {
+  AppDateUtils._(); // Ngăn khởi tạo
+
+  // ─── Hằng số ───────────────────────────────────────────────────────────────
+  static const _secondsPerMinute = 60;
+  static const _minutesPerHour = 60;
+  static const _hoursPerDay = 24;
+  static const _daysPerWeek = 7;
+  static const _daysPerYear = 365;
+
+  // ─── Format thời gian tin nhắn ─────────────────────────────────────────────
+
+  /// Format timestamp của tin nhắn theo dạng tương đối hoặc tuyệt đối
+  /// [timestamp]: Milliseconds since epoch dạng String hoặc int
+  /// [context]: BuildContext để lấy locale
+  static String formatMessageTime(dynamic timestamp, BuildContext context) {
     try {
-      final dateTime = DateTime.fromMillisecondsSinceEpoch(
-        int.parse(timestamp),
-      );
+      final ms = timestamp is int ? timestamp : int.parse(timestamp.toString());
+      final dateTime = DateTime.fromMillisecondsSinceEpoch(ms);
+      return _formatRelative(dateTime, context, short: true);
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /// Format timestamp cho header ngày trong cuộc trò chuyện
+  static String formatDateHeader(dynamic timestamp, BuildContext context) {
+    try {
+      final ms = timestamp is int ? timestamp : int.parse(timestamp.toString());
+      final dateTime = DateTime.fromMillisecondsSinceEpoch(ms);
+      final locale = _locale(context);
       final now = DateTime.now();
-      final diff = now.difference(dateTime);
 
-      final locale = Localizations.localeOf(context).languageCode;
-
-      if (diff.inSeconds < 60) {
-        return locale == 'vi' ? 'Vừa xong' : 'Just now';
-      } else if (diff.inMinutes < 60) {
-        return locale == 'vi'
-            ? '${diff.inMinutes} phút trước'
-            : '${diff.inMinutes}m ago';
-      } else if (diff.inHours < 24) {
-        return DateFormat.Hm(locale).format(dateTime);
-      } else if (diff.inDays < 7) {
-        return DateFormat.E(locale).format(dateTime);
+      if (_isSameDay(dateTime, now)) {
+        return locale == 'vi' ? 'Hôm nay' : 'Today';
+      } else if (_isSameDay(dateTime, now.subtract(const Duration(days: 1)))) {
+        return locale == 'vi' ? 'Hôm qua' : 'Yesterday';
+      } else if (now.difference(dateTime).inDays < _daysPerWeek) {
+        return DateFormat.EEEE(locale).format(dateTime); // Monday, Tuesday...
+      } else if (dateTime.year == now.year) {
+        return DateFormat('d MMM', locale).format(dateTime);
       } else {
         return DateFormat.yMMMd(locale).format(dateTime);
       }
@@ -32,58 +51,185 @@ class AppDateUtils {
     }
   }
 
-  
+  /// Format thời gian gần đây nhất (last seen)
   static String formatLastSeen(DateTime lastSeen, BuildContext context) {
-    final now = DateTime.now();
-    final diff = now.difference(lastSeen);
-    final locale = Localizations.localeOf(context).languageCode;
-
-    if (diff.inMinutes < 1) {
-      return locale == 'vi' ? 'Vừa xong' : 'Just now';
-    } else if (diff.inMinutes < 60) {
-      return locale == 'vi'
-          ? '${diff.inMinutes} phút trước'
-          : '${diff.inMinutes}m ago';
-    } else if (diff.inHours < 24) {
-      return locale == 'vi'
-          ? '${diff.inHours} giờ trước'
-          : '${diff.inHours}h ago';
-    } else if (diff.inDays < 7) {
-      return locale == 'vi'
-          ? '${diff.inDays} ngày trước'
-          : '${diff.inDays}d ago';
-    } else {
-      return DateFormat.yMMMd(locale).format(lastSeen);
-    }
+    return _formatRelative(lastSeen, context, short: false);
   }
 
-  
-  static String formatReminderTime(String timestamp, BuildContext context) {
+  /// Format thời gian nhắc nhở
+  static String formatReminderTime(dynamic timestamp, BuildContext context) {
     try {
-      final dateTime = DateTime.fromMillisecondsSinceEpoch(
-        int.parse(timestamp),
-      );
-      final locale = Localizations.localeOf(context).languageCode;
+      final ms = timestamp is int ? timestamp : int.parse(timestamp.toString());
+      final dateTime = DateTime.fromMillisecondsSinceEpoch(ms);
+      final locale = _locale(context);
+      final now = DateTime.now();
 
+      if (_isSameDay(dateTime, now)) {
+        return '${locale == "vi" ? "Hôm nay" : "Today"} ${DateFormat.Hm(locale).format(dateTime)}';
+      } else if (_isSameDay(dateTime, now.add(const Duration(days: 1)))) {
+        return '${locale == "vi" ? "Ngày mai" : "Tomorrow"} ${DateFormat.Hm(locale).format(dateTime)}';
+      }
       return DateFormat('MMM dd, HH:mm', locale).format(dateTime);
     } catch (_) {
       return '';
     }
   }
 
-  
-  static bool isToday(DateTime date) {
-    final now = DateTime.now();
-    return date.year == now.year &&
-        date.month == now.month &&
-        date.day == now.day;
+  /// Format thời gian đầy đủ cho detail view
+  static String formatFullDateTime(dynamic timestamp, BuildContext context) {
+    try {
+      final ms = timestamp is int ? timestamp : int.parse(timestamp.toString());
+      final dateTime = DateTime.fromMillisecondsSinceEpoch(ms);
+      final locale = _locale(context);
+      return DateFormat('dd/MM/yyyy, HH:mm', locale).format(dateTime);
+    } catch (_) {
+      return '';
+    }
   }
 
-  
-  static bool isYesterday(DateTime date) {
-    final yesterday = DateTime.now().subtract(const Duration(days: 1));
-    return date.year == yesterday.year &&
-        date.month == yesterday.month &&
-        date.day == yesterday.day;
+  /// Format thời gian cho call duration (giây → mm:ss hoặc hh:mm:ss)
+  static String formatCallDuration(int totalSeconds) {
+    final h = totalSeconds ~/ 3600;
+    final m = (totalSeconds % 3600) ~/ 60;
+    final s = totalSeconds % 60;
+    if (h > 0) {
+      return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    }
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
+
+  /// Format thời lượng ngắn gọn (cho voice message)
+  static String formatAudioDuration(Duration duration) {
+    final m = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  // ─── Kiểm tra ngày ─────────────────────────────────────────────────────────
+
+  static bool isToday(DateTime date) => _isSameDay(date, DateTime.now());
+
+  static bool isYesterday(DateTime date) =>
+      _isSameDay(date, DateTime.now().subtract(const Duration(days: 1)));
+
+  static bool isTomorrow(DateTime date) =>
+      _isSameDay(date, DateTime.now().add(const Duration(days: 1)));
+
+  static bool isThisWeek(DateTime date) {
+    final now = DateTime.now();
+    return now.difference(date).inDays < _daysPerWeek && date.isBefore(now);
+  }
+
+  static bool isThisYear(DateTime date) => date.year == DateTime.now().year;
+
+  static bool isSameDay(DateTime a, DateTime b) => _isSameDay(a, b);
+
+  /// Kiểm tra có cần hiển thị header ngày không (2 tin nhắn cách nhau > 1 giờ)
+  static bool shouldShowDateHeader(
+      dynamic prevTimestamp, dynamic currentTimestamp) {
+    try {
+      final prev = _parseMs(prevTimestamp);
+      final curr = _parseMs(currentTimestamp);
+      if (prev == null || curr == null) return false;
+      return !_isSameDay(
+        DateTime.fromMillisecondsSinceEpoch(prev),
+        DateTime.fromMillisecondsSinceEpoch(curr),
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Kiểm tra 2 tin nhắn có cùng phút không (gom nhóm bubble)
+  static bool isWithinGroupingWindow(dynamic ts1, dynamic ts2,
+      {Duration window = const Duration(minutes: 2)}) {
+    try {
+      final ms1 = _parseMs(ts1);
+      final ms2 = _parseMs(ts2);
+      if (ms1 == null || ms2 == null) return false;
+      final diff = (ms1 - ms2).abs();
+      return diff <= window.inMilliseconds;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // ─── Private helpers ────────────────────────────────────────────────────────
+
+  static String _locale(BuildContext context) {
+    try {
+      return Localizations.localeOf(context).languageCode;
+    } catch (_) {
+      return 'en';
+    }
+  }
+
+  static bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  static int? _parseMs(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    return int.tryParse(value.toString());
+  }
+
+  static String _formatRelative(
+    DateTime dateTime,
+    BuildContext context, {
+    required bool short,
+  }) {
+    final now = DateTime.now();
+    final diff = now.difference(dateTime);
+    final locale = _locale(context);
+    final isVi = locale == 'vi';
+
+    if (diff.inSeconds < _secondsPerMinute) {
+      return isVi ? 'Vừa xong' : 'Just now';
+    } else if (diff.inMinutes < _minutesPerHour) {
+      final m = diff.inMinutes;
+      if (short) return isVi ? '${m}ph' : '${m}m';
+      return isVi ? '$m phút trước' : '${m}m ago';
+    } else if (diff.inHours < _hoursPerDay) {
+      if (short) return DateFormat.Hm(locale).format(dateTime);
+      final h = diff.inHours;
+      return isVi ? '$h giờ trước' : '${h}h ago';
+    } else if (diff.inDays == 1) {
+      return isVi
+          ? 'Hôm qua ${DateFormat.Hm(locale).format(dateTime)}'
+          : 'Yesterday ${DateFormat.Hm(locale).format(dateTime)}';
+    } else if (diff.inDays < _daysPerWeek) {
+      if (short) return DateFormat.E(locale).format(dateTime);
+      final d = diff.inDays;
+      return isVi ? '$d ngày trước' : '${d}d ago';
+    } else if (diff.inDays < _daysPerYear) {
+      return DateFormat('d MMM', locale).format(dateTime);
+    } else {
+      return DateFormat.yMMMd(locale).format(dateTime);
+    }
+  }
+
+  // ─── Parse helpers ──────────────────────────────────────────────────────────
+
+  /// Parse DateTime an toàn từ milliseconds
+  static DateTime? parseTimestamp(dynamic timestamp) {
+    try {
+      final ms = _parseMs(timestamp);
+      if (ms == null) return null;
+      return DateTime.fromMillisecondsSinceEpoch(ms);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Chuyển DateTime → milliseconds string
+  static String toTimestamp(DateTime dateTime) =>
+      dateTime.millisecondsSinceEpoch.toString();
+
+  /// Lấy đầu ngày (00:00:00)
+  static DateTime startOfDay(DateTime date) =>
+      DateTime(date.year, date.month, date.day);
+
+  /// Lấy cuối ngày (23:59:59.999)
+  static DateTime endOfDay(DateTime date) =>
+      DateTime(date.year, date.month, date.day, 23, 59, 59, 999);
 }

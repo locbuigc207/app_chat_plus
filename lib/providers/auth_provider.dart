@@ -10,6 +10,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/e2ee_service.dart';
 
+// ─── Status Enum ──────────────────────────────────────────────────────────────
+
 enum Status {
   uninitialized,
   authenticated,
@@ -19,7 +21,11 @@ enum Status {
   authenticateCanceled,
 }
 
+// ─── AuthProvider ──────────────────────────────────────────────────────────────
+
 class AuthProvider extends ChangeNotifier {
+  // ── Dependencies ────────────────────────────────────────────────────────────
+
   final GoogleSignIn googleSignIn = GoogleSignIn(
     clientId: kIsWeb ? dotenv.env['WEB_CLIENT_ID'] : null,
     scopes: [
@@ -27,6 +33,7 @@ class AuthProvider extends ChangeNotifier {
       'https://www.googleapis.com/auth/contacts.readonly',
     ],
   );
+
   final FirebaseAuth firebaseAuth;
   final FirebaseFirestore firebaseFirestore;
   final SharedPreferences prefs;
@@ -37,48 +44,48 @@ class AuthProvider extends ChangeNotifier {
     required this.firebaseFirestore,
   });
 
-  Status _status = Status.uninitialized;
+  // ── State ────────────────────────────────────────────────────────────────────
 
+  Status _status = Status.uninitialized;
   Status get status => _status;
 
+  /// Firebase UID hiện tại (từ SharedPreferences).
   String? get userFirebaseId => prefs.getString(FirestoreConstants.id);
+  String? get currentUserName => prefs.getString(FirestoreConstants.nickname);
+  String? get currentUserAvatar => prefs.getString(FirestoreConstants.photoUrl);
 
+  /// Lưu tạm thông tin user khi đang chờ xác thực 2FA.
   UserChat? tempUserChat;
 
-  // =========================================================
-  // IS LOGGED IN
-  // =========================================================
+  // ── Is Logged In ─────────────────────────────────────────────────────────────
 
+  /// Kiểm tra phiên đăng nhập còn hợp lệ không.
   Future<bool> isLoggedIn() async {
     try {
       final currentUser = firebaseAuth.currentUser;
-      if (currentUser != null &&
-          prefs.getString(FirestoreConstants.id)?.isNotEmpty == true) {
-        return true;
-      }
-      return false;
-    } catch (e) {
+      final savedId = prefs.getString(FirestoreConstants.id);
+      return currentUser != null && savedId != null && savedId.isNotEmpty;
+    } catch (_) {
       return false;
     }
   }
 
-  // =========================================================
-  // GENERATE QR CODE
-  // =========================================================
+  // ── Generate QR Code ─────────────────────────────────────────────────────────
 
   String _generateQRCode(String userId) {
     return 'CHATAPP_${userId}_${DateTime.now().millisecondsSinceEpoch}';
   }
 
-  // =========================================================
-  // SIGN IN
-  // =========================================================
+  // ── Sign In with Google ───────────────────────────────────────────────────────
 
+  /// Xử lý đăng nhập Google.
+  /// Returns: 'success' | 'requires_2fa' | 'canceled' | 'error'
   Future<String> handleSignIn() async {
     _status = Status.authenticating;
     notifyListeners();
 
     try {
+      // 1. Google OAuth flow
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
 
       if (googleUser == null) {
@@ -95,9 +102,9 @@ class AuthProvider extends ChangeNotifier {
         idToken: googleAuth.idToken,
       );
 
+      // 2. Firebase sign in
       final UserCredential userCredential =
           await firebaseAuth.signInWithCredential(credential);
-
       final User? firebaseUser = userCredential.user;
 
       if (firebaseUser == null) {
@@ -106,180 +113,248 @@ class AuthProvider extends ChangeNotifier {
         return 'error';
       }
 
-      // 🔐 Khởi tạo cặp khóa E2EE ngay sau khi xác thực Firebase thành công
-      print('🔑 Đang khởi tạo cặp khóa E2EE cho User...');
+      // 3. Khởi tạo E2EE keys
+      debugPrint('🔑 Khởi tạo cặp khóa E2EE...');
       await E2EEService().generateAndStoreUserKeys(firebaseUser.uid);
-      print('✅ Khởi tạo khóa E2EE thành công!');
+      debugPrint('✅ Khóa E2EE đã được khởi tạo thành công!');
 
+      // 4. Kiểm tra Firestore
       final result = await firebaseFirestore
           .collection(FirestoreConstants.pathUserCollection)
           .where(FirestoreConstants.id, isEqualTo: firebaseUser.uid)
           .get();
 
-      final documents = result.docs;
-
-      if (documents.isEmpty) {
-        // Người dùng mới: tạo document trên Firestore
-        final qrCode = _generateQRCode(firebaseUser.uid);
-
-        await firebaseFirestore
-            .collection(FirestoreConstants.pathUserCollection)
-            .doc(firebaseUser.uid)
-            .set({
-          FirestoreConstants.nickname: firebaseUser.displayName ?? '',
-          FirestoreConstants.photoUrl: firebaseUser.photoURL ?? '',
-          FirestoreConstants.id: firebaseUser.uid,
-          FirestoreConstants.phoneNumber: firebaseUser.phoneNumber ?? '',
-          FirestoreConstants.qrCode: qrCode,
-          FirestoreConstants.createdAt:
-              DateTime.now().millisecondsSinceEpoch.toString(),
-          FirestoreConstants.chattingWith: null,
-          FirestoreConstants.aboutMe: '',
-          'is2FAEnabled': false,
-          'twoFactorSecret': '',
-        });
-
-        await _saveUserToPrefs(
-          firebaseUser.uid,
-          firebaseUser.displayName ?? '',
-          firebaseUser.photoURL ?? '',
-          firebaseUser.phoneNumber ?? '',
-          qrCode,
-          '',
-          false,
-          '',
-        );
-
-        _status = Status.authenticated;
-        notifyListeners();
-        return 'success';
+      if (result.docs.isEmpty) {
+        // ── New user: tạo document ──
+        return await _createNewUser(firebaseUser);
       } else {
-        // Người dùng cũ: đọc dữ liệu từ Firestore
-        final documentSnapshot = documents.first;
-        final userChat = UserChat.fromDocument(documentSnapshot);
-
-        String qrCode = userChat.qrCode;
-        if (qrCode.isEmpty) {
-          qrCode = _generateQRCode(firebaseUser.uid);
-          await firebaseFirestore
-              .collection(FirestoreConstants.pathUserCollection)
-              .doc(firebaseUser.uid)
-              .update({FirestoreConstants.qrCode: qrCode});
-        }
-
-        if (userChat.is2FAEnabled) {
-          // Yêu cầu xác thực 2FA trước khi hoàn tất đăng nhập
-          tempUserChat = userChat;
-          _status = Status.uninitialized;
-          notifyListeners();
-          return 'requires_2fa';
-        } else {
-          await _saveUserToPrefs(
-            userChat.id,
-            userChat.nickname,
-            userChat.photoUrl,
-            userChat.phoneNumber,
-            qrCode,
-            userChat.aboutMe,
-            false,
-            '',
-          );
-          _status = Status.authenticated;
-          notifyListeners();
-          return 'success';
-        }
+        // ── Existing user: đọc dữ liệu ──
+        return await _handleExistingUser(firebaseUser, result.docs.first);
       }
     } catch (e) {
-      print('❌ Sign in error: $e');
+      debugPrint('❌ Sign in error: $e');
       _status = Status.authenticateError;
       notifyListeners();
       return 'error';
     }
   }
 
-  // =========================================================
-  // COMPLETE 2FA LOGIN
-  // =========================================================
+  Future<String> _createNewUser(User firebaseUser) async {
+    final qrCode = _generateQRCode(firebaseUser.uid);
 
-  /// Hoàn tất đăng nhập sau khi người dùng xác thực 2FA thành công.
-  Future<void> complete2FALogin() async {
-    if (tempUserChat != null) {
-      await _saveUserToPrefs(
-        tempUserChat!.id,
-        tempUserChat!.nickname,
-        tempUserChat!.photoUrl,
-        tempUserChat!.phoneNumber,
-        tempUserChat!.qrCode,
-        tempUserChat!.aboutMe,
-        true,
-        tempUserChat!.twoFactorSecret,
-      );
-      tempUserChat = null;
-      _status = Status.authenticated;
+    await firebaseFirestore
+        .collection(FirestoreConstants.pathUserCollection)
+        .doc(firebaseUser.uid)
+        .set({
+      FirestoreConstants.nickname: firebaseUser.displayName ?? '',
+      FirestoreConstants.photoUrl: firebaseUser.photoURL ?? '',
+      FirestoreConstants.id: firebaseUser.uid,
+      FirestoreConstants.phoneNumber: firebaseUser.phoneNumber ?? '',
+      FirestoreConstants.qrCode: qrCode,
+      FirestoreConstants.createdAt:
+          DateTime.now().millisecondsSinceEpoch.toString(),
+      FirestoreConstants.chattingWith: null,
+      FirestoreConstants.aboutMe: '',
+      'is2FAEnabled': false,
+      'twoFactorSecret': '',
+    });
+
+    await _saveUserToPrefs(
+      id: firebaseUser.uid,
+      nickname: firebaseUser.displayName ?? '',
+      photoUrl: firebaseUser.photoURL ?? '',
+      phoneNumber: firebaseUser.phoneNumber ?? '',
+      qrCode: qrCode,
+      aboutMe: '',
+      is2FAEnabled: false,
+      twoFactorSecret: '',
+    );
+
+    _status = Status.authenticated;
+    notifyListeners();
+    return 'success';
+  }
+
+  Future<String> _handleExistingUser(
+      User firebaseUser, DocumentSnapshot documentSnapshot) async {
+    final userChat = UserChat.fromDocument(documentSnapshot);
+
+    // Cập nhật QR code nếu trống
+    String qrCode = userChat.qrCode;
+    if (qrCode.isEmpty) {
+      qrCode = _generateQRCode(firebaseUser.uid);
+      await firebaseFirestore
+          .collection(FirestoreConstants.pathUserCollection)
+          .doc(firebaseUser.uid)
+          .update({FirestoreConstants.qrCode: qrCode});
+    }
+
+    // Yêu cầu 2FA nếu bật
+    if (userChat.is2FAEnabled) {
+      tempUserChat = userChat.copyWith(qrCode: qrCode);
+      _status = Status.uninitialized;
       notifyListeners();
+      return 'requires_2fa';
+    }
+
+    await _saveUserToPrefs(
+      id: userChat.id,
+      nickname: userChat.nickname,
+      photoUrl: userChat.photoUrl,
+      phoneNumber: userChat.phoneNumber,
+      qrCode: qrCode,
+      aboutMe: userChat.aboutMe,
+      is2FAEnabled: false,
+      twoFactorSecret: '',
+    );
+
+    _status = Status.authenticated;
+    notifyListeners();
+    return 'success';
+  }
+
+  // ── Complete 2FA Login ────────────────────────────────────────────────────────
+
+  /// Gọi sau khi xác thực 2FA thành công để hoàn tất đăng nhập.
+  Future<void> complete2FALogin() async {
+    if (tempUserChat == null) return;
+
+    await _saveUserToPrefs(
+      id: tempUserChat!.id,
+      nickname: tempUserChat!.nickname,
+      photoUrl: tempUserChat!.photoUrl,
+      phoneNumber: tempUserChat!.phoneNumber,
+      qrCode: tempUserChat!.qrCode,
+      aboutMe: tempUserChat!.aboutMe,
+      is2FAEnabled: true,
+      twoFactorSecret: tempUserChat!.twoFactorSecret,
+    );
+
+    tempUserChat = null;
+    _status = Status.authenticated;
+    notifyListeners();
+  }
+
+  // ── Save User to Prefs ────────────────────────────────────────────────────────
+
+  Future<void> _saveUserToPrefs({
+    required String id,
+    required String nickname,
+    required String photoUrl,
+    required String phoneNumber,
+    required String qrCode,
+    required String aboutMe,
+    required bool is2FAEnabled,
+    required String twoFactorSecret,
+  }) async {
+    await Future.wait([
+      prefs.setString(FirestoreConstants.id, id),
+      prefs.setString(FirestoreConstants.nickname, nickname),
+      prefs.setString(FirestoreConstants.photoUrl, photoUrl),
+      prefs.setString(FirestoreConstants.phoneNumber, phoneNumber),
+      prefs.setString(FirestoreConstants.qrCode, qrCode),
+      prefs.setString(FirestoreConstants.aboutMe, aboutMe),
+      prefs.setBool('is2FAEnabled', is2FAEnabled),
+      prefs.setString('twoFactorSecret', twoFactorSecret),
+    ]);
+  }
+
+  // ── Refresh User Profile ──────────────────────────────────────────────────────
+
+  /// Làm mới dữ liệu hồ sơ từ Firestore (dùng sau khi cập nhật profile).
+  Future<void> refreshUserProfile() async {
+    final userId = userFirebaseId;
+    if (userId == null) return;
+
+    try {
+      final doc = await firebaseFirestore
+          .collection(FirestoreConstants.pathUserCollection)
+          .doc(userId)
+          .get();
+
+      if (doc.exists) {
+        final userChat = UserChat.fromDocument(doc);
+        await _saveUserToPrefs(
+          id: userChat.id,
+          nickname: userChat.nickname,
+          photoUrl: userChat.photoUrl,
+          phoneNumber: userChat.phoneNumber,
+          qrCode: userChat.qrCode,
+          aboutMe: userChat.aboutMe,
+          is2FAEnabled: userChat.is2FAEnabled,
+          twoFactorSecret: userChat.twoFactorSecret,
+        );
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('⚠️ Refresh profile error: $e');
     }
   }
 
-  // =========================================================
-  // SAVE USER TO PREFS
-  // =========================================================
-
-  Future<void> _saveUserToPrefs(
-    String id,
-    String nickname,
-    String photoUrl,
-    String phoneNumber,
-    String qrCode,
-    String aboutMe,
-    bool is2FAEnabled,
-    String secret,
-  ) async {
-    await prefs.setString(FirestoreConstants.id, id);
-    await prefs.setString(FirestoreConstants.nickname, nickname);
-    await prefs.setString(FirestoreConstants.photoUrl, photoUrl);
-    await prefs.setString(FirestoreConstants.phoneNumber, phoneNumber);
-    await prefs.setString(FirestoreConstants.qrCode, qrCode);
-    await prefs.setString(FirestoreConstants.aboutMe, aboutMe);
-    await prefs.setBool('is2FAEnabled', is2FAEnabled);
-    await prefs.setString('twoFactorSecret', secret);
-  }
-
-  // =========================================================
-  // HANDLE EXCEPTION
-  // =========================================================
+  // ── Handle Exception ──────────────────────────────────────────────────────────
 
   void handleException() {
     _status = Status.authenticateException;
     notifyListeners();
   }
 
-  // =========================================================
-  // SIGN OUT
-  // =========================================================
+  // ── Sign Out ──────────────────────────────────────────────────────────────────
 
-  /// Đăng xuất và dọn dẹp toàn bộ dữ liệu nhạy cảm:
-  /// - Xóa khóa RSA cục bộ và cache khóa phiên E2EE
-  /// - Ngắt kết nối Google Sign-In
+  /// Đăng xuất hoàn toàn:
+  /// - Xóa khóa E2EE cục bộ
+  /// - Đăng xuất Firebase & Google
   /// - Xóa SharedPreferences
   Future<void> handleSignOut() async {
     _status = Status.uninitialized;
 
     try {
-      // 🔐 Xóa khóa E2EE để tránh user khác dùng nhầm Private Key cũ
-      print('🗑️ Đang xóa khóa E2EE cục bộ...');
+      // Xóa khóa E2EE trước khi đăng xuất
+      debugPrint('🗑️ Đang xóa khóa E2EE cục bộ...');
       await E2EEService().clearKeysOnLogout();
-      print('✅ Đã xóa khóa E2EE thành công!');
+      debugPrint('✅ Đã xóa khóa E2EE!');
 
-      await firebaseAuth.signOut();
-      await googleSignIn.disconnect();
-      await googleSignIn.signOut();
+      await Future.wait([
+        firebaseAuth.signOut(),
+        googleSignIn.disconnect().catchError((_) => null),
+        googleSignIn.signOut(),
+      ]);
+
       await prefs.clear();
-
-      print('✅ Sign out successful');
+      debugPrint('✅ Đăng xuất thành công!');
     } catch (e) {
-      print('⚠️ Sign out error: $e');
+      debugPrint('⚠️ Sign out error: $e');
     }
 
     notifyListeners();
+  }
+
+  // ── Delete Account ────────────────────────────────────────────────────────────
+
+  /// Xóa tài khoản vĩnh viễn.
+  Future<bool> deleteAccount() async {
+    try {
+      final userId = userFirebaseId;
+      if (userId == null) return false;
+
+      // Xóa document trên Firestore
+      await firebaseFirestore
+          .collection(FirestoreConstants.pathUserCollection)
+          .doc(userId)
+          .delete();
+
+      // Xóa Firebase Auth user
+      await firebaseAuth.currentUser?.delete();
+
+      // Xóa keys & prefs
+      await E2EEService().clearKeysOnLogout();
+      await prefs.clear();
+
+      _status = Status.uninitialized;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('❌ Delete account error: $e');
+      return false;
+    }
   }
 }

@@ -1,4 +1,3 @@
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
@@ -15,6 +14,15 @@ class Conversation {
   final List<String> archivedBy;
   final String contextType;
 
+  final int? unreadCount;
+  final String? peerPhotoUrl;
+  final bool? isOnline;
+  final String? peerName;
+  final bool? isTyping;
+  final bool? isSentByMe;
+  final bool? isRead;
+  final bool? isArchived;
+
   const Conversation({
     required this.id,
     required this.isGroup,
@@ -27,6 +35,14 @@ class Conversation {
     this.isMuted = false,
     this.archivedBy = const [],
     this.contextType = 'default',
+    this.unreadCount = 0,
+    this.peerPhotoUrl,
+    this.isOnline = false,
+    this.peerName,
+    this.isTyping = false,
+    this.isSentByMe = false,
+    this.isRead = false,
+    this.isArchived = false,
   });
 
   Map<String, dynamic> toJson() {
@@ -107,6 +123,8 @@ class Conversation {
         isMuted: data['isMuted'] ?? false,
         archivedBy: getListString(data['archivedBy']),
         contextType: data['contextType'] ?? 'default',
+        unreadCount: data['unreadCount'] ?? 0,
+        isArchived: data['isArchived'] ?? false,
       );
     } catch (e) {
       return Conversation(

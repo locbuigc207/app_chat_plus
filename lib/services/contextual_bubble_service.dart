@@ -1,245 +1,371 @@
-
-
-
+// ignore_for_file: avoid_print
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
+import '../models/models.dart';
 
-enum BubbleMode {
-  normal,    
-  work,      
-  media,     
-  location,  
-  shared,    
-  secure,    
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// SERVICE
+// ─────────────────────────────────────────────────────────────────────────────
 
-
-class BubbleContext {
-  final BubbleMode mode;
-  final String? detectedTopic;
-  final Map<String, dynamic>? extraData;
-  final DateTime updatedAt;
-
-  const BubbleContext({
-    required this.mode,
-    this.detectedTopic,
-    this.extraData,
-    required this.updatedAt,
-  });
-
-  BubbleContext copyWith({
-    BubbleMode? mode,
-    String? detectedTopic,
-    Map<String, dynamic>? extraData,
-  }) =>
-      BubbleContext(
-        mode: mode ?? this.mode,
-        detectedTopic: detectedTopic ?? this.detectedTopic,
-        extraData: extraData ?? this.extraData,
-        updatedAt: DateTime.now(),
-      );
-}
-
-
+/// Singleton service that analyses chat messages and emits [BubbleContext]
+/// state changes in real time.
+///
+/// Usage:
+/// ```dart
+/// final svc = ContextualBubbleService();
+/// svc.analyzeMessage(content: text, messageType: 0);
+/// svc.contextStream.listen((ctx) { /* rebuild UI */ });
+/// ```
 class ContextualBubbleService extends ChangeNotifier {
+  // ── Singleton ──────────────────────────────────────────────────────────────
   static final ContextualBubbleService _instance =
-  ContextualBubbleService._internal();
+      ContextualBubbleService._internal();
   factory ContextualBubbleService() => _instance;
   ContextualBubbleService._internal();
 
-  
-  BubbleContext _currentContext = BubbleContext(
+  // ── State ──────────────────────────────────────────────────────────────────
+  BubbleContext _ctx = BubbleContext(
     mode: BubbleMode.normal,
     updatedAt: DateTime.now(),
   );
 
-  
+  BubbleContext get currentContext => _ctx;
+  BubbleMode get currentMode => _ctx.mode;
+
+  // ── Stream ─────────────────────────────────────────────────────────────────
+  final _streamCtrl = StreamController<BubbleContext>.broadcast();
+  Stream<BubbleContext> get contextStream => _streamCtrl.stream;
+
+  // ── Media counter ──────────────────────────────────────────────────────────
   int _recentMediaCount = 0;
-  Timer? _mediaCountResetTimer;
+  Timer? _mediaResetTimer;
+  static const _mediaThreshold = 2;
+  static const _mediaResetWindow = Duration(minutes: 5);
 
-  
-  final _contextController =
-  StreamController<BubbleContext>.broadcast();
+  // ── Auto-reset timers ──────────────────────────────────────────────────────
+  Timer? _normalResetTimer;
+  static const _autoResetDelay = Duration(minutes: 15);
+  static const _locationResetDelay = Duration(minutes: 30);
 
-  Stream<BubbleContext> get contextStream => _contextController.stream;
-  BubbleContext get currentContext => _currentContext;
-  BubbleMode get currentMode => _currentContext.mode;
+  // ── Message-type constants (mirrors ChatMessage.messageType) ──────────────
+  static const _typeText = 0;
+  static const _typeImage = 1;
+  static const _typeVideo = 2;
+  static const _typeAudio = 3;
+  static const _typeFile = 4;
+  static const _typeLocation = 5;
+  static const _typeSticker = 6;
+  static const _typeGif = 7;
 
-  
-  static const _workKeywords = [
-    'task', 'deadline', 'meeting', 'project', 'report', 'review',
-    'sprint', 'ticket', 'jira', 'trello', 'asana', 'figma',
-    'pr', 'pull request', 'deploy', 'release', 'bug', 'fix',
-    'công việc', 'nhiệm vụ', 'họp', 'dự án', 'deadline', 'báo cáo',
-    'kế hoạch', 'tiến độ', 'file', 'tài liệu', 'gửi file', 'send file',
-    'urgent', 'asap', 'schedule', 'calendar', 'email', 'call',
+  // ── Work keywords ─────────────────────────────────────────────────────────
+  static const _workKeywords = <String>[
+    // English
+    'task', 'tasks', 'deadline', 'deadlines', 'meeting', 'meetings',
+    'project', 'projects', 'report', 'reports', 'review', 'reviews',
+    'sprint', 'ticket', 'tickets', 'jira', 'trello', 'asana', 'figma',
+    'notion', 'pr ', 'pull request', 'deploy', 'deployment', 'release',
+    'bug', 'fix', 'hotfix', 'issue', 'issues', 'milestone',
+    'urgent', 'asap', 'priority', 'schedule', 'calendar', 'action item',
+    'follow up', 'follow-up', 'deliverable', 'okr', 'kpi',
+    // Vietnamese
+    'công việc', 'nhiệm vụ', 'họp', 'dự án', 'báo cáo',
+    'kế hoạch', 'tiến độ', 'gửi file', 'nộp báo cáo',
+    'hạn chót', 'khẩn', 'quan trọng', 'cần làm ngay',
+    'lịch họp', 'tài liệu', 'trình bày',
   ];
 
-  
-  static const _locationKeywords = [
-    'where are you', 'location', 'maps', 'địa chỉ', 'vị trí',
-    'bạn đang ở đâu', 'meet', 'gặp nhau', 'đến đây', 'đường đi',
-    'navigate', 'direction', 'ở đây', 'chỗ này', 'nơi này',
+  // ── Location keywords ─────────────────────────────────────────────────────
+  static const _locationKeywords = <String>[
+    'where are you',
+    'your location',
+    'location',
+    'maps',
+    'navigate',
+    'direction',
+    'meet',
+    'gps',
+    'coordinates',
+    'address',
+    'bạn đang ở đâu',
+    'vị trí',
+    'địa chỉ',
+    'đang ở đâu',
+    'gặp nhau',
+    'đến đây',
+    'đường đi',
+    'chỉ đường',
+    'bản đồ',
+    'ở chỗ này',
+    'ở đây',
+    'chỗ này',
+    'nơi này',
   ];
 
-  
+  // ── URL patterns ──────────────────────────────────────────────────────────
+  static final _googleMapsPattern = RegExp(
+      r'https?://(?:www\.)?(?:google\.com/maps|goo\.gl/maps|maps\.app\.goo\.gl)[^\s]*');
+  static final _locationEmojiPattern = RegExp(r'📍');
 
-  
+  // ─────────────────────────────────────────────────────────────────────────
+  // PUBLIC API
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Analyse a message and update context accordingly.
+  ///
+  /// [messageType] values:
+  ///  0 = text, 1 = image, 2 = video, 3 = audio, 4 = file,
+  ///  5 = location, 6 = sticker, 7 = gif
   void analyzeMessage({
     required String content,
-    required int messageType, 
+    required int messageType,
     bool isFromCurrentUser = true,
+    Map<String, dynamic>? extra,
   }) {
-    
-    if (messageType == 1 || messageType == 3) {
-      _recentMediaCount++;
-      _mediaCountResetTimer?.cancel();
-      _mediaCountResetTimer = Timer(const Duration(minutes: 5), () {
-        _recentMediaCount = 0;
-      });
-
-      if (_recentMediaCount >= 2) {
-        _updateMode(BubbleMode.media);
-        return;
-      }
+    try {
+      _analyzeInternal(
+        content: content,
+        messageType: messageType,
+        isFromCurrentUser: isFromCurrentUser,
+        extra: extra,
+      );
+    } catch (e, st) {
+      debugPrint('ContextualBubbleService.analyzeMessage error: $e\n$st');
     }
-
-    
-    if (messageType == 0 && _isLocationMessage(content)) {
-      _updateMode(BubbleMode.location, extraData: {
-        'mapsUrl': _extractMapsUrl(content),
-      });
-      return;
-    }
-
-    
-    if (messageType == 0 && _containsWorkKeywords(content)) {
-      final topic = _extractWorkTopic(content);
-      _updateMode(BubbleMode.work, detectedTopic: topic);
-      return;
-    }
-
-    
-    _scheduleNormalReset();
   }
 
-  
-  void activateSharedMode({Map<String, dynamic>? extraData}) {
-    _updateMode(BubbleMode.shared, extraData: extraData);
-  }
+  /// Forcefully activate shared-space mode.
+  void activateSharedMode({Map<String, dynamic>? extraData}) =>
+      _transition(BubbleMode.shared, extraData: extraData);
 
-  
-  void activateSecureMode() {
-    _updateMode(BubbleMode.secure);
-  }
+  /// Forcefully activate anti-shoulder-surf secure mode.
+  void activateSecureMode() => _transition(BubbleMode.secure);
 
-  
-  void resetToNormal() {
-    _updateMode(BubbleMode.normal);
-  }
+  /// Reset to normal mode immediately.
+  void resetToNormal() => _transition(BubbleMode.normal);
 
-  
+  /// Push updated GPS coordinates while in location mode.
   void updateLocationData({
     required double myLat,
     required double myLng,
     required double peerLat,
     required double peerLng,
     String? peerName,
+    String? mapsUrl,
   }) {
-    if (_currentContext.mode == BubbleMode.location) {
-      final distance = _calculateDistance(myLat, myLng, peerLat, peerLng);
-      _updateMode(BubbleMode.location, extraData: {
-        ...?_currentContext.extraData,
-        'myLat': myLat,
-        'myLng': myLng,
-        'peerLat': peerLat,
-        'peerLng': peerLng,
-        'distance': distance,
-        'peerName': peerName,
-      });
+    if (_ctx.mode != BubbleMode.location) return;
+    final distance = _haversineKm(myLat, myLng, peerLat, peerLng);
+    _transition(BubbleMode.location, extraData: {
+      ...?_ctx.extraData,
+      'myLat': myLat,
+      'myLng': myLng,
+      'peerLat': peerLat,
+      'peerLng': peerLng,
+      'distance': distance,
+      if (peerName != null) 'peerName': peerName,
+      if (mapsUrl != null) 'mapsUrl': mapsUrl,
+    });
+  }
+
+  /// Returns a human-readable label for [mode].
+  static String labelFor(BubbleMode mode) {
+    switch (mode) {
+      case BubbleMode.work:
+        return 'Work';
+      case BubbleMode.media:
+        return 'Media';
+      case BubbleMode.location:
+        return 'Location';
+      case BubbleMode.shared:
+        return 'Shared';
+      case BubbleMode.secure:
+        return 'Secure';
+      default:
+        return 'Normal';
     }
   }
 
-  
+  // ─────────────────────────────────────────────────────────────────────────
+  // INTERNAL
+  // ─────────────────────────────────────────────────────────────────────────
 
-  void _updateMode(
-      BubbleMode mode, {
-        String? detectedTopic,
-        Map<String, dynamic>? extraData,
-      }) {
-    final newContext = _currentContext.copyWith(
+  void _analyzeInternal({
+    required String content,
+    required int messageType,
+    required bool isFromCurrentUser,
+    Map<String, dynamic>? extra,
+  }) {
+    // 1. Native location message type
+    if (messageType == _typeLocation) {
+      final mapsUrl = extra?['mapsUrl'] as String? ?? _extractMapsUrl(content);
+      _transition(BubbleMode.location, extraData: {
+        if (mapsUrl != null) 'mapsUrl': mapsUrl,
+        ...?extra,
+      });
+      return;
+    }
+
+    // 2. Media messages (image / video / audio / gif)
+    if (messageType == _typeImage ||
+        messageType == _typeVideo ||
+        messageType == _typeAudio ||
+        messageType == _typeGif) {
+      _recentMediaCount++;
+      _mediaResetTimer?.cancel();
+      _mediaResetTimer = Timer(_mediaResetWindow, () {
+        _recentMediaCount = 0;
+        if (_ctx.mode == BubbleMode.media) _scheduleAutoReset(_autoResetDelay);
+      });
+      if (_recentMediaCount >= _mediaThreshold) {
+        _transition(BubbleMode.media, extraData: {
+          'mediaCount': _recentMediaCount,
+          'lastType': messageType,
+        });
+        return;
+      }
+    }
+
+    // 3. File share → work mode
+    if (messageType == _typeFile) {
+      _transition(BubbleMode.work,
+          detectedTopic: 'file', extraData: {'fileName': extra?['fileName']});
+      return;
+    }
+
+    // 4. Text analysis (only run on text messages)
+    if (messageType != _typeText) return;
+
+    // 4a. Location mention in text
+    if (_isLocationContent(content)) {
+      _transition(BubbleMode.location, extraData: {
+        'mapsUrl': _extractMapsUrl(content),
+      });
+      return;
+    }
+
+    // 4b. Work keywords
+    if (_hasWorkKeyword(content)) {
+      _transition(BubbleMode.work, detectedTopic: _extractWorkTopic(content));
+      return;
+    }
+
+    // 4c. If currently in non-sticky mode, schedule revert to normal
+    if (_ctx.mode != BubbleMode.secure && _ctx.mode != BubbleMode.shared) {
+      _scheduleAutoReset(_autoResetDelay);
+    }
+  }
+
+  void _transition(
+    BubbleMode mode, {
+    String? detectedTopic,
+    Map<String, dynamic>? extraData,
+  }) {
+    // Don't interrupt secure or shared unless explicitly resetting
+    if (mode != BubbleMode.secure && _ctx.mode == BubbleMode.secure) return;
+    if (mode != BubbleMode.shared &&
+        _ctx.mode == BubbleMode.shared &&
+        mode != BubbleMode.normal) return;
+
+    final newCtx = _ctx.copyWith(
       mode: mode,
       detectedTopic: detectedTopic,
       extraData: extraData,
     );
-    _currentContext = newContext;
-    _contextController.add(newContext);
+    if (newCtx == _ctx) return; // no actual change
+
+    _normalResetTimer?.cancel();
+    _ctx = newCtx;
+    _streamCtrl.add(newCtx);
     notifyListeners();
-    debugPrint('🎯 BubbleMode changed to: ${mode.name}');
+
+    debugPrint('🎯 BubbleMode → ${mode.name}'
+        '${detectedTopic != null ? " ($detectedTopic)" : ""}');
+
+    // Auto-reset location after extended idle
+    if (mode == BubbleMode.location) {
+      _scheduleAutoReset(_locationResetDelay);
+    }
   }
 
-  Timer? _normalResetTimer;
-
-  void _scheduleNormalReset() {
+  void _scheduleAutoReset(Duration delay) {
     _normalResetTimer?.cancel();
-    _normalResetTimer = Timer(const Duration(minutes: 10), () {
-      if (_currentContext.mode != BubbleMode.secure &&
-          _currentContext.mode != BubbleMode.shared) {
-        _updateMode(BubbleMode.normal);
+    _normalResetTimer = Timer(delay, () {
+      if (_ctx.mode != BubbleMode.secure && _ctx.mode != BubbleMode.shared) {
+        _transition(BubbleMode.normal);
       }
     });
   }
 
-  bool _isLocationMessage(String content) {
-    return content.contains('maps.google.com') ||
-        content.contains('📍 Location') ||
-        _locationKeywords.any((kw) => content.toLowerCase().contains(kw));
+  // ── Text analysis helpers ─────────────────────────────────────────────────
+
+  bool _isLocationContent(String content) {
+    if (_locationEmojiPattern.hasMatch(content)) return true;
+    if (_googleMapsPattern.hasMatch(content)) return true;
+    final lower = content.toLowerCase();
+    return _locationKeywords.any((kw) => lower.contains(kw));
   }
 
   String? _extractMapsUrl(String content) {
-    final urlPattern = RegExp(r'https://www\.google\.com/maps[^\s]+');
-    final match = urlPattern.firstMatch(content);
+    final match = _googleMapsPattern.firstMatch(content);
     return match?.group(0);
   }
 
-  bool _containsWorkKeywords(String content) {
+  bool _hasWorkKeyword(String content) {
     final lower = content.toLowerCase();
     return _workKeywords.any((kw) => lower.contains(kw));
   }
 
   String _extractWorkTopic(String content) {
     final lower = content.toLowerCase();
-    if (lower.contains('task') || lower.contains('nhiệm vụ')) return 'task';
-    if (lower.contains('meeting') || lower.contains('họp')) return 'meeting';
-    if (lower.contains('deadline')) return 'deadline';
-    if (lower.contains('file') || lower.contains('tài liệu')) return 'file';
+    if (lower.contains('task') ||
+        lower.contains('nhiệm vụ') ||
+        lower.contains('việc')) return 'task';
+    if (lower.contains('meeting') ||
+        lower.contains('họp') ||
+        lower.contains('lịch họp')) return 'meeting';
+    if (lower.contains('deadline') || lower.contains('hạn chót')) {
+      return 'deadline';
+    }
+    if (lower.contains('file') ||
+        lower.contains('tài liệu') ||
+        lower.contains('gửi file')) return 'file';
+    if (lower.contains('deploy') ||
+        lower.contains('release') ||
+        lower.contains('sprint')) return 'engineering';
+    if (lower.contains('bug') ||
+        lower.contains('fix') ||
+        lower.contains('issue')) return 'bug';
     return 'work';
   }
 
-  double _calculateDistance(
+  // ── Haversine distance ────────────────────────────────────────────────────
+
+  static double _haversineKm(
       double lat1, double lon1, double lat2, double lon2) {
-    const earthRadius = 6371.0; 
-    final dLat = _toRad(lat2 - lat1);
-    final dLon = _toRad(lon2 - lon1);
-    final a = (dLat / 2 * dLat / 2) +
-        (dLon / 2 * dLon / 2) *
-            (_toRad(lat1).abs()) *
-            (_toRad(lat2).abs());
-    final c = 2 * (a < 1 ? a : 1);
-    return earthRadius * c;
+    const R = 6371.0;
+    final dLat = _rad(lat2 - lat1);
+    final dLon = _rad(lon2 - lon1);
+    final a = math.pow(math.sin(dLat / 2), 2) +
+        math.cos(_rad(lat1)) *
+            math.cos(_rad(lat2)) *
+            math.pow(math.sin(dLon / 2), 2);
+    final c = 2 * math.asin(math.sqrt(a.clamp(0.0, 1.0)));
+    return R * c;
   }
 
-  double _toRad(double deg) => deg * 3.14159265 / 180;
+  static double _rad(double deg) => deg * math.pi / 180;
 
-  
+  // ─────────────────────────────────────────────────────────────────────────
+  // DISPOSE
+  // ─────────────────────────────────────────────────────────────────────────
 
   @override
   void dispose() {
-    _contextController.close();
-    _mediaCountResetTimer?.cancel();
+    _streamCtrl.close();
+    _mediaResetTimer?.cancel();
     _normalResetTimer?.cancel();
     super.dispose();
   }

@@ -8,4 +8,7 @@ class AppConstants {
   static const String aiAssistantName = "Gemini AI Assistant";
   static const String aiAssistantAvatar =
       "https://ui-avatars.com/api/?name=Gemini+AI&background=1A73E8&color=fff";
+  static const String messageChannelId = "message_channel";
+  static const String reminderChannelId = "reminder_channel";
+  static const String callChannelId = "call_channel";
 }

@@ -1,48 +1,131 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+/// Widget bọc ngoài cho hiệu ứng bounce khi nhấn — chuẩn iOS/Material3.
+///
+/// Tính năng:
+///  • Scale bounce với spring physics (easeOutBack)
+///  • Haptic feedback phân tầng: selectionClick → tap / mediumImpact → longPress
+///  • Hỗ trợ onTap, onLongPress, onDoubleTap
+///  • scaleFactor tuỳ chỉnh (mặc định 0.92 — chuẩn Apple)
+///  • Tự động cancel nếu drag ra ngoài (không fire tap nhầm)
 class BouncingWrapper extends StatefulWidget {
-  final Widget child;
-  final VoidCallback onTap;
-  final VoidCallback? onLongPress;
-  final double scaleFactor;
-
   const BouncingWrapper({
     super.key,
     required this.child,
     required this.onTap,
     this.onLongPress,
-    this.scaleFactor = 0.92, // Mức độ thu nhỏ khi bấm (0.92 là chuẩn Apple)
+    this.onDoubleTap,
+    this.scaleFactor = 0.92,
+    this.duration = const Duration(milliseconds: 90),
+    this.reverseDuration = const Duration(milliseconds: 200),
+    this.enabled = true,
+    this.hapticOnTap = true,
+    this.hapticOnLongPress = true,
   });
+
+  final Widget child;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+  final VoidCallback? onDoubleTap;
+
+  /// Tỉ lệ thu nhỏ khi nhấn xuống (0.0 → 1.0). Mặc định 0.92.
+  final double scaleFactor;
+
+  /// Thời gian thu nhỏ khi nhấn xuống.
+  final Duration duration;
+
+  /// Thời gian phục hồi (bounce back) sau khi thả.
+  final Duration reverseDuration;
+
+  /// Tắt tương tác (hiển thị opacity mờ).
+  final bool enabled;
+
+  final bool hapticOnTap;
+  final bool hapticOnLongPress;
 
   @override
   State<BouncingWrapper> createState() => _BouncingWrapperState();
 }
 
-class _BouncingWrapperState extends State<BouncingWrapper> {
-  bool _isPressed = false;
+class _BouncingWrapperState extends State<BouncingWrapper>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ac = AnimationController(
+    vsync: this,
+    duration: widget.duration,
+    reverseDuration: widget.reverseDuration,
+    lowerBound: 0,
+    upperBound: 1,
+  );
+
+  late final Animation<double> _scale = Tween<double>(
+    begin: 1.0,
+    end: widget.scaleFactor,
+  ).animate(CurvedAnimation(parent: _ac, curve: Curves.easeOut));
+
+  bool _cancelled = false;
+
+  @override
+  void dispose() {
+    _ac.dispose();
+    super.dispose();
+  }
+
+  // ─── Handlers ──────────────────────────────────────────────────────────────
+
+  void _onTapDown(TapDownDetails _) {
+    if (!widget.enabled) return;
+    _cancelled = false;
+    if (widget.hapticOnTap) HapticFeedback.selectionClick();
+    _ac.forward();
+  }
+
+  void _onTapUp(TapUpDetails _) {
+    if (!widget.enabled || _cancelled) return;
+    _ac.reverse().then((_) {
+      if (!_cancelled) widget.onTap();
+    });
+  }
+
+  void _onTapCancel() {
+    _cancelled = true;
+    _ac.reverse();
+  }
+
+  void _onLongPress() {
+    if (!widget.enabled) return;
+    if (widget.hapticOnLongPress) HapticFeedback.mediumImpact();
+    _ac.reverse();
+    widget.onLongPress?.call();
+  }
+
+  void _onDoubleTap() {
+    if (!widget.enabled) return;
+    HapticFeedback.lightImpact();
+    widget.onDoubleTap?.call();
+  }
+
+  // ─── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      // Đảm bảo nhận tap kể cả khi child có khoảng trống
       behavior: HitTestBehavior.opaque,
-      onTapDown: (_) {
-        HapticFeedback.selectionClick(); // Rung micro-interaction siêu nhẹ
-        setState(() => _isPressed = true);
-      },
-      onTapUp: (_) {
-        setState(() => _isPressed = false);
-        widget.onTap();
-      },
-      onTapCancel: () {
-        setState(() => _isPressed = false);
-      },
-      onLongPress: widget.onLongPress,
-      child: AnimatedScale(
-        scale: _isPressed ? widget.scaleFactor : 1.0,
-        duration: const Duration(milliseconds: 100),
-        curve: Curves.easeOutBack,
+      onTapDown: _onTapDown,
+      onTapUp: _onTapUp,
+      onTapCancel: _onTapCancel,
+      onLongPress: widget.onLongPress != null ? _onLongPress : null,
+      onDoubleTap: widget.onDoubleTap != null ? _onDoubleTap : null,
+      child: AnimatedBuilder(
+        animation: _scale,
+        builder: (_, child) => Transform.scale(
+          scale: _scale.value,
+          child: AnimatedOpacity(
+            opacity: widget.enabled ? 1.0 : 0.45,
+            duration: const Duration(milliseconds: 180),
+            child: child,
+          ),
+        ),
         child: widget.child,
       ),
     );

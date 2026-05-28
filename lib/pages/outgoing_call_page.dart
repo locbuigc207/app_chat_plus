@@ -1,11 +1,16 @@
-
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/call_model.dart';
 import '../services/call_service.dart';
 import 'call_page.dart';
+
+// ─────────────────────────────────────────────────────────────
+// OutgoingCallPage
+// ─────────────────────────────────────────────────────────────
 
 class OutgoingCallPage extends StatefulWidget {
   final CallModel call;
@@ -17,21 +22,38 @@ class OutgoingCallPage extends StatefulWidget {
 }
 
 class _OutgoingCallPageState extends State<OutgoingCallPage>
-    with SingleTickerProviderStateMixin {
-  final _callService = CallService();
+    with TickerProviderStateMixin {
+  final _callService = CallService.instance;
   StreamSubscription? _callStatusSub;
-  late AnimationController _waveController;
   bool _dismissed = false;
+
+  late final AnimationController _waveController;
+  late final AnimationController _entryController;
+  late final Animation<double> _fadeIn;
+  late final Animation<Offset> _slideUp;
 
   @override
   void initState() {
     super.initState();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
     _waveController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2000),
+      duration: const Duration(milliseconds: 2200),
     )..repeat();
 
+    _entryController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+
+    _fadeIn = CurvedAnimation(parent: _entryController, curve: Curves.easeOut);
+
+    _slideUp = Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero)
+        .animate(CurvedAnimation(
+            parent: _entryController, curve: Curves.easeOutCubic));
+
+    _entryController.forward();
     _watchCallStatus();
   }
 
@@ -40,9 +62,11 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
       if (call == null || _dismissed || !mounted) return;
 
       switch (call.status) {
+        case CallStatus.accepted:
         case CallStatus.connected:
           _callStatusSub?.cancel();
           _dismissed = true;
+          SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
               builder: (_) => CallPage(call: call, isOutgoing: true),
@@ -51,14 +75,27 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
           break;
         case CallStatus.declined:
           _showEndDialog(
-              'Bị từ chối', '${widget.call.calleeName} đã từ chối cuộc gọi.');
+            'Bị từ chối',
+            '${widget.call.calleeName} đã từ chối cuộc gọi.',
+            Icons.call_end_rounded,
+            Colors.orangeAccent,
+          );
           break;
         case CallStatus.missed:
           _showEndDialog(
-              'Không có phản hồi', '${widget.call.calleeName} không trả lời.');
+            'Không có phản hồi',
+            '${widget.call.calleeName} không trả lời.',
+            Icons.phone_missed_rounded,
+            Colors.redAccent,
+          );
           break;
         case CallStatus.failed:
-          _showEndDialog('Cuộc gọi thất bại', 'Không thể kết nối cuộc gọi.');
+          _showEndDialog(
+            'Cuộc gọi thất bại',
+            'Không thể kết nối. Vui lòng thử lại.',
+            Icons.error_outline_rounded,
+            Colors.grey,
+          );
           break;
         default:
           break;
@@ -66,7 +103,8 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
     });
   }
 
-  void _showEndDialog(String title, String message) {
+  void _showEndDialog(
+      String title, String message, IconData icon, Color color) {
     if (!mounted || _dismissed) return;
     _dismissed = true;
 
@@ -74,15 +112,31 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
-        title: Text(title),
-        content: Text(message),
+        backgroundColor: const Color(0xFF1A1F36),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(icon, color: color, size: 22),
+            const SizedBox(width: 10),
+            Text(title,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
+        content: Text(message,
+            style: const TextStyle(color: Colors.white70, fontSize: 14)),
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.of(context).pop(); 
-              Navigator.of(context).pop(); 
+              Navigator.of(context).pop();
+              if (mounted) {
+                SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+                Navigator.of(context).pop();
+              }
             },
-            child: const Text('OK'),
+            child: const Text('OK', style: TextStyle(color: Color(0xFF5C6BC0))),
           ),
         ],
       ),
@@ -90,16 +144,23 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
   }
 
   Future<void> _cancelCall() async {
+    if (_dismissed) return;
     _dismissed = true;
+    HapticFeedback.mediumImpact();
     await _callService.endCall(widget.call.callId);
-    if (mounted) Navigator.of(context).pop();
+    if (mounted) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      Navigator.of(context).pop();
+    }
   }
 
   @override
   void dispose() {
     _dismissed = true;
     _waveController.dispose();
+    _entryController.dispose();
     _callStatusSub?.cancel();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
@@ -115,119 +176,134 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
         if (!didPop) _cancelCall();
       },
       child: Scaffold(
-        body: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: isVideo
-                  ? const [Color(0xFF0f3460), Color(0xFF16213e)]
-                  : const [Color(0xFF0D47A1), Color(0xFF1565C0)],
+        backgroundColor: Colors.black,
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Background
+            if (avatar.isNotEmpty)
+              Image.network(avatar,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) =>
+                      const ColoredBox(color: Color(0xFF0A0E1A))),
+            BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: isVideo
+                        ? const [Color(0xBB0D1B4B), Color(0xEE000000)]
+                        : const [Color(0xBB0D3A8B), Color(0xEE000B2E)],
+                  ),
+                ),
+              ),
             ),
-          ),
-          child: SafeArea(
-            child: Column(
-              children: [
-                const SizedBox(height: 24),
 
-                
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(isVideo ? Icons.videocam : Icons.phone,
-                          color: Colors.white, size: 15),
-                      const SizedBox(width: 6),
-                      Text(
-                        isVideo ? 'Đang gọi video…' : 'Đang gọi thoại…',
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const Spacer(),
-
-                
-                _AnimatedCallingAvatar(
-                  controller: _waveController,
-                  avatarUrl: avatar,
-                  name: name,
-                ),
-                const SizedBox(height: 32),
-
-                
-                Text(name,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 30,
-                        fontWeight: FontWeight.bold)),
-                const SizedBox(height: 10),
-
-                
-                _RingingDotsText(label: 'Đang đổ chuông'),
-
-                const Spacer(),
-
-                
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 56),
+            SafeArea(
+              child: FadeTransition(
+                opacity: _fadeIn,
+                child: SlideTransition(
+                  position: _slideUp,
                   child: Column(
-                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      GestureDetector(
-                        onTap: _cancelCall,
-                        child: Container(
-                          width: 72,
-                          height: 72,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE53935),
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFFE53935).withOpacity(0.4),
-                                blurRadius: 16,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: const Icon(Icons.call_end,
-                              color: Colors.white, size: 32),
+                      const SizedBox(height: 20),
+
+                      // Call type chip
+                      _OutgoingBadge(isVideo: isVideo),
+
+                      const Spacer(flex: 2),
+
+                      // Animated avatar
+                      _AnimatedWaveAvatar(
+                        controller: _waveController,
+                        avatarUrl: avatar,
+                        name: name,
+                      ),
+                      const SizedBox(height: 36),
+
+                      // Name
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 32,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.8,
                         ),
+                        textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 10),
-                      const Text('Huỷ',
-                          style:
-                              TextStyle(color: Colors.white70, fontSize: 14)),
+
+                      // Ringing dots
+                      _RingingDotsText(
+                          label: isVideo ? 'Đang gọi video' : 'Đang đổ chuông'),
+
+                      const Spacer(flex: 2),
+
+                      // Cancel button
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 60),
+                        child: _CancelButton(onTap: _cancelCall),
+                      ),
                     ],
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+// Sub-widgets
+// ─────────────────────────────────────────────────────────────
 
+class _OutgoingBadge extends StatelessWidget {
+  final bool isVideo;
+  const _OutgoingBadge({required this.isVideo});
 
-class _AnimatedCallingAvatar extends StatelessWidget {
-  final Animation<double> controller;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isVideo ? Icons.videocam_rounded : Icons.phone_rounded,
+            color: Colors.white70,
+            size: 16,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            isVideo ? 'Đang gọi video…' : 'Đang gọi thoại…',
+            style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+                fontWeight: FontWeight.w500),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AnimatedWaveAvatar extends StatelessWidget {
+  final AnimationController controller;
   final String avatarUrl;
   final String name;
 
-  const _AnimatedCallingAvatar({
+  const _AnimatedWaveAvatar({
     required this.controller,
     required this.avatarUrl,
     required this.name,
@@ -244,16 +320,14 @@ class _AnimatedCallingAvatar extends StatelessWidget {
             builder: (_, __) {
               final progress = (controller.value + (i * 0.33)) % 1.0;
               return Opacity(
-                opacity: (1 - progress).clamp(0.0, 1.0),
+                opacity: ((1.0 - progress) * 0.4).clamp(0, 1),
                 child: Container(
-                  width: 110 + (progress * 90),
-                  height: 110 + (progress * 90),
+                  width: 116 + (progress * 100),
+                  height: 116 + (progress * 100),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.35),
-                      width: 1.5,
-                    ),
+                        color: Colors.white.withOpacity(0.5), width: 1.5),
                   ),
                 ),
               );
@@ -261,11 +335,17 @@ class _AnimatedCallingAvatar extends StatelessWidget {
           );
         }),
         Container(
-          width: 108,
-          height: 108,
+          width: 114,
+          height: 114,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 2.5),
+            border: Border.all(color: Colors.white.withOpacity(0.8), width: 3),
+            boxShadow: [
+              BoxShadow(
+                  color: const Color(0xFF1E88E5).withOpacity(0.3),
+                  blurRadius: 40,
+                  spreadRadius: 8),
+            ],
           ),
           child: ClipOval(
             child: avatarUrl.isNotEmpty
@@ -281,19 +361,94 @@ class _AnimatedCallingAvatar extends StatelessWidget {
 
   Widget _defaultAvatar() {
     return Container(
-      color: Colors.blueGrey[700],
+      decoration: const BoxDecoration(
+        gradient:
+            LinearGradient(colors: [Color(0xFF3949AB), Color(0xFF1E88E5)]),
+      ),
       child: Center(
         child: Text(
           name.isNotEmpty ? name[0].toUpperCase() : '?',
           style: const TextStyle(
-              color: Colors.white, fontSize: 40, fontWeight: FontWeight.bold),
+              color: Colors.white, fontSize: 42, fontWeight: FontWeight.bold),
         ),
       ),
     );
   }
 }
 
+class _CancelButton extends StatefulWidget {
+  final VoidCallback onTap;
+  const _CancelButton({required this.onTap});
 
+  @override
+  State<_CancelButton> createState() => _CancelButtonState();
+}
+
+class _CancelButtonState extends State<_CancelButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 100));
+    _scale = Tween<double>(begin: 1.0, end: 0.88)
+        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => _ctrl.forward(),
+      onTapUp: (_) {
+        _ctrl.reverse();
+        widget.onTap();
+      },
+      onTapCancel: () => _ctrl.reverse(),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ScaleTransition(
+            scale: _scale,
+            child: Container(
+              width: 74,
+              height: 74,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE53935),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFE53935).withOpacity(0.45),
+                    blurRadius: 20,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.call_end_rounded,
+                  color: Colors.white, size: 32),
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Huỷ',
+            style: TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+                fontWeight: FontWeight.w500),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _RingingDotsText extends StatefulWidget {
   final String label;
@@ -325,7 +480,10 @@ class _RingingDotsTextState extends State<_RingingDotsText> {
   Widget build(BuildContext context) {
     return Text(
       '${widget.label}${'.' * _dots}',
-      style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 16),
+      style: TextStyle(
+          color: Colors.white.withOpacity(0.65),
+          fontSize: 16,
+          letterSpacing: 0.3),
     );
   }
 }

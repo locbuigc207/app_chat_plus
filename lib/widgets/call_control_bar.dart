@@ -1,9 +1,11 @@
-
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+// ─────────────────────────────────────────────────────────────
+// CallControlBar
+// ─────────────────────────────────────────────────────────────
 
 class CallControlBar extends StatelessWidget {
   final bool isVideoCall;
@@ -34,69 +36,78 @@ class CallControlBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 32),
+      padding: const EdgeInsets.only(bottom: 36, left: 16, right: 16),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(40),
+        borderRadius: BorderRadius.circular(48),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 30.0, sigmaY: 30.0),
+          filter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
           child: Container(
-            padding:
-            const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(40),
-              border: Border.all(
-                  color: Colors.white.withOpacity(0.2), width: 1),
+              color: Colors.white.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(48),
+              border:
+                  Border.all(color: Colors.white.withOpacity(0.18), width: 1),
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 32,
+                    offset: const Offset(0, 8)),
+              ],
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                
-                _ControlButton(
-                  icon: isMuted
-                      ? Icons.mic_off_rounded
-                      : Icons.mic_none_rounded,
+                // Mute
+                _ControlBtn(
+                  icon:
+                      isMuted ? Icons.mic_off_rounded : Icons.mic_none_rounded,
                   label: isMuted ? 'Bật mic' : 'Tắt mic',
                   isActive: isMuted,
+                  activeColor: Colors.redAccent,
                   onTap: () {
                     HapticFeedback.lightImpact();
                     onMuteTap();
                   },
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 12),
 
-                
-                _ControlButton(
+                // Speaker
+                _ControlBtn(
                   icon: isSpeakerOn
                       ? Icons.volume_up_rounded
                       : Icons.hearing_rounded,
                   label: isSpeakerOn ? 'Loa ngoài' : 'Tai nghe',
                   isActive: isSpeakerOn,
+                  activeColor: const Color(0xFF42A5F5),
                   onTap: () {
                     HapticFeedback.lightImpact();
                     onSpeakerTap();
                   },
                 ),
 
-                
+                // Video-only controls
                 if (isVideoCall) ...[
-                  const SizedBox(width: 16),
-                  _ControlButton(
+                  const SizedBox(width: 12),
+                  _ControlBtn(
                     icon: isCameraOff
                         ? Icons.videocam_off_rounded
-                        : Icons.videocam_outlined,
+                        : Icons.videocam_rounded,
                     label: isCameraOff ? 'Bật cam' : 'Tắt cam',
                     isActive: isCameraOff,
+                    activeColor: Colors.orangeAccent,
                     onTap: () {
                       HapticFeedback.lightImpact();
                       onCameraTap?.call();
                     },
                   ),
-                  const SizedBox(width: 16),
-                  _ControlButton(
+                  const SizedBox(width: 12),
+                  _ControlBtn(
                     icon: Icons.flip_camera_ios_rounded,
-                    label: 'Đổi cam',
+                    label: isFrontCamera ? 'Cam sau' : 'Cam trước',
                     isActive: false,
+                    activeColor: Colors.white,
                     onTap: () {
                       HapticFeedback.selectionClick();
                       onSwitchCameraTap?.call();
@@ -104,10 +115,10 @@ class CallControlBar extends StatelessWidget {
                   ),
                 ],
 
-                const SizedBox(width: 24),
+                const SizedBox(width: 16),
 
-                
-                _EndCallButton(onTap: onEndCall),
+                // End call
+                _EndCallBtn(onTap: onEndCall),
               ],
             ),
           ),
@@ -117,106 +128,183 @@ class CallControlBar extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+// Control button
+// ─────────────────────────────────────────────────────────────
 
-class _ControlButton extends StatelessWidget {
+class _ControlBtn extends StatefulWidget {
   final IconData icon;
   final String label;
   final bool isActive;
+  final Color activeColor;
   final VoidCallback onTap;
 
-  const _ControlButton({
+  const _ControlBtn({
     required this.icon,
     required this.label,
     required this.isActive,
+    required this.activeColor,
     required this.onTap,
   });
 
   @override
+  State<_ControlBtn> createState() => _ControlBtnState();
+}
+
+class _ControlBtnState extends State<_ControlBtn>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 80),
+        reverseDuration: const Duration(milliseconds: 160));
+    _scale = Tween<double>(begin: 1.0, end: 0.85)
+        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: isActive
-                  ? Colors.white
-                  : Colors.black.withOpacity(0.3),
-              shape: BoxShape.circle,
+      onTapDown: (_) => _ctrl.forward(),
+      onTapUp: (_) {
+        _ctrl.reverse();
+        widget.onTap();
+      },
+      onTapCancel: () => _ctrl.reverse(),
+      child: ScaleTransition(
+        scale: _scale,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                color: widget.isActive
+                    ? widget.activeColor.withOpacity(0.2)
+                    : Colors.white.withOpacity(0.1),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: widget.isActive
+                      ? widget.activeColor.withOpacity(0.5)
+                      : Colors.white.withOpacity(0.15),
+                  width: 1,
+                ),
+              ),
+              child: Icon(
+                widget.icon,
+                color: widget.isActive ? widget.activeColor : Colors.white,
+                size: 24,
+              ),
             ),
-            child: Icon(
-              icon,
-              color: isActive ? Colors.black : Colors.white,
-              size: 24,
+            const SizedBox(height: 6),
+            Text(
+              widget.label,
+              style: TextStyle(
+                color: widget.isActive
+                    ? widget.activeColor.withOpacity(0.9)
+                    : Colors.white.withOpacity(0.75),
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            style: TextStyle(
-                color: Colors.white.withOpacity(0.8), fontSize: 11),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+// End call button — special springy press effect
+// ─────────────────────────────────────────────────────────────
 
-class _EndCallButton extends StatefulWidget {
+class _EndCallBtn extends StatefulWidget {
   final VoidCallback onTap;
-  const _EndCallButton({required this.onTap});
+  const _EndCallBtn({required this.onTap});
 
   @override
-  State<_EndCallButton> createState() => _EndCallButtonState();
+  State<_EndCallBtn> createState() => _EndCallBtnState();
 }
 
-class _EndCallButtonState extends State<_EndCallButton> {
-  bool _pressing = false;
+class _EndCallBtnState extends State<_EndCallBtn>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
+  late final Animation<double> _glow;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 100),
+        reverseDuration: const Duration(milliseconds: 250));
+    _scale = Tween<double>(begin: 1.0, end: 0.84)
+        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
+    _glow = Tween<double>(begin: 0.45, end: 0.15).animate(_ctrl);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTapDown: (_) => setState(() => _pressing = true),
+      onTapDown: (_) => _ctrl.forward(),
       onTapUp: (_) {
-        setState(() => _pressing = false);
+        _ctrl.reverse();
         HapticFeedback.heavyImpact();
         widget.onTap();
       },
-      onTapCancel: () => setState(() => _pressing = false),
+      onTapCancel: () => _ctrl.reverse(),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 100),
-            width: _pressing ? 62 : 66,
-            height: _pressing ? 52 : 56,
-            decoration: BoxDecoration(
-              color: const Color(0xFFFF3B30),
-              borderRadius: BorderRadius.circular(30),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFFFF3B30)
-                      .withOpacity(_pressing ? 0.3 : 0.45),
-                  blurRadius: _pressing ? 8 : 16,
-                  offset: const Offset(0, 6),
+          AnimatedBuilder(
+            animation: _ctrl,
+            builder: (_, child) => Transform.scale(
+              scale: _scale.value,
+              child: Container(
+                width: 68,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE53935),
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFE53935).withOpacity(_glow.value),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
                 ),
-              ],
+                child: const Icon(Icons.call_end_rounded,
+                    color: Colors.white, size: 28),
+              ),
             ),
-            child: const Icon(Icons.call_end_rounded,
-                color: Colors.white, size: 28),
           ),
           const SizedBox(height: 6),
           const Text(
             'Kết thúc',
             style: TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.w500),
+                color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
           ),
         ],
       ),

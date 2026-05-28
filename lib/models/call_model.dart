@@ -1,39 +1,100 @@
-
 import 'package:cloud_firestore/cloud_firestore.dart';
+
+// ─────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────
 
 enum CallType { voice, video }
 
 enum CallStatus {
-  dialing, 
-  calling, 
-  ringing, 
-  accepted, 
-  connected, 
-  rejected, 
-  declined, 
-  ended, 
-  missed, 
-  failed, 
+  dialing,
+  calling,
+  ringing,
+  accepted,
+  connected,
+  rejected,
+  declined,
+  ended,
+  missed,
+  failed,
 }
 
+// ─────────────────────────────────────────────────────────────
+// Extension helpers
+// ─────────────────────────────────────────────────────────────
+
+extension CallStatusX on CallStatus {
+  bool get isActive => const {
+        CallStatus.dialing,
+        CallStatus.calling,
+        CallStatus.ringing,
+        CallStatus.accepted,
+        CallStatus.connected,
+      }.contains(this);
+
+  bool get isTerminal => const {
+        CallStatus.ended,
+        CallStatus.rejected,
+        CallStatus.declined,
+        CallStatus.missed,
+        CallStatus.failed,
+      }.contains(this);
+
+  String get label {
+    switch (this) {
+      case CallStatus.dialing:
+        return 'dialing';
+      case CallStatus.calling:
+        return 'calling';
+      case CallStatus.ringing:
+        return 'ringing';
+      case CallStatus.accepted:
+        return 'accepted';
+      case CallStatus.connected:
+        return 'connected';
+      case CallStatus.rejected:
+        return 'rejected';
+      case CallStatus.declined:
+        return 'declined';
+      case CallStatus.ended:
+        return 'ended';
+      case CallStatus.missed:
+        return 'missed';
+      case CallStatus.failed:
+        return 'failed';
+    }
+  }
+}
+
+extension CallTypeX on CallType {
+  bool get isVideo => this == CallType.video;
+  bool get isVoice => this == CallType.voice;
+  String get label => isVideo ? 'video' : 'voice';
+}
+
+// ─────────────────────────────────────────────────────────────
+// Model
+// ─────────────────────────────────────────────────────────────
+
 class CallModel {
-  final String callId; 
+  final String callId;
   final String callerId;
   final String callerName;
-  final String callerAvatar; 
-  final String calleeId; 
-  final String calleeName; 
-  final String calleeAvatar; 
-  final String channelName; 
-  final CallType callType; 
+  final String callerAvatar;
+  final String calleeId;
+  final String calleeName;
+  final String calleeAvatar;
+  final String channelName;
+  final CallType callType;
   final CallStatus status;
-  final String? token; 
-  final DateTime createdAt; 
+  final String? token;
+  final DateTime createdAt;
   final DateTime? connectedAt;
   final DateTime? endedAt;
+  final DateTime? expiresAt; // <-- ĐÃ THÊM
   final int? durationSeconds;
 
-  CallModel({
+  const CallModel({
     required this.callId,
     required this.callerId,
     required this.callerName,
@@ -42,63 +103,69 @@ class CallModel {
     required this.calleeName,
     required this.calleeAvatar,
     required this.channelName,
-    CallType? callType,
-    bool isVideo = true,
-    CallStatus? status,
-    String statusStr = 'dialing',
+    required this.callType,
+    required this.status,
+    required this.createdAt,
     this.token,
-    DateTime? createdAt,
-    int? timestamp,
     this.connectedAt,
     this.endedAt,
+    this.expiresAt, // <-- ĐÃ THÊM
     this.durationSeconds,
-  })  : callType = callType ?? (isVideo ? CallType.video : CallType.voice),
-        status = status ?? _parseStatus(statusStr),
-        createdAt = createdAt ??
-            (timestamp != null
-                ? DateTime.fromMillisecondsSinceEpoch(timestamp)
-                : DateTime.now());
+  });
 
-  
+  // ── Convenience getters ──────────────────────────────────
 
-  
-  factory CallModel.fromDocument(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-    return CallModel.fromJson(data);
+  bool get isVideoCall => callType.isVideo;
+  bool get isVoiceCall => callType.isVoice;
+  bool get isActive => status.isActive;
+  bool get isTerminal => status.isTerminal;
+
+  String get formattedDuration {
+    if (durationSeconds == null || durationSeconds! <= 0) return '';
+    final h = durationSeconds! ~/ 3600;
+    final m = (durationSeconds! % 3600) ~/ 60;
+    final s = durationSeconds! % 60;
+    if (h > 0) {
+      return '$h:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    }
+    return '$m:${s.toString().padLeft(2, '0')}';
   }
 
-  
-  factory CallModel.fromJson(Map<String, dynamic> data) {
+  // ── Factory constructors ─────────────────────────────────
+
+  factory CallModel.fromDocument(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+    return CallModel.fromJson({...data, 'callId': data['callId'] ?? doc.id});
+  }
+
+  factory CallModel.fromJson(Map<String, dynamic> d) {
     return CallModel(
-      callId: data['callId'] ?? data['id'] ?? '',
-      callerId: data['callerId'] ?? '',
-      callerName: data['callerName'] ?? '',
-      callerAvatar: data['callerAvatar'] ?? data['callerPic'] ?? '',
-      calleeId: data['calleeId'] ?? data['receiverId'] ?? '',
-      calleeName: data['calleeName'] ?? data['receiverName'] ?? '',
-      calleeAvatar: data['calleeAvatar'] ?? data['receiverPic'] ?? '',
-      channelName: data['channelName'] ?? data['channelId'] ?? '',
-      callType: data['callType'] == 'video'
-          ? CallType.video
-          : data['callType'] == 'voice'
-              ? CallType.voice
-              : null,
-      isVideo: data['isVideo'] ?? true,
-      statusStr: data['status'] ?? 'dialing',
-      token: data['token'],
-      createdAt: _parseDate(data['createdAt']),
-      timestamp: data['timestamp'] is int ? data['timestamp'] as int : null,
-      connectedAt: _parseDateNullable(data['connectedAt']),
-      endedAt: _parseDateNullable(data['endedAt']),
-      durationSeconds: data['durationSeconds'] as int?,
+      callId: d['callId'] ?? d['id'] ?? '',
+      callerId: d['callerId'] ?? '',
+      callerName: d['callerName'] ?? '',
+      callerAvatar: d['callerAvatar'] ?? d['callerPic'] ?? '',
+      calleeId: d['calleeId'] ?? d['receiverId'] ?? '',
+      calleeName: d['calleeName'] ?? d['receiverName'] ?? '',
+      calleeAvatar: d['calleeAvatar'] ?? d['receiverPic'] ?? '',
+      channelName: d['channelName'] ?? d['channelId'] ?? '',
+      callType: _parseCallType(d),
+      status: _parseStatus(d['status']),
+      token: d['token'] as String?,
+      createdAt: _parseDate(d['createdAt']) ??
+          _parseDateFromMillis(d['timestamp']) ??
+          DateTime.now(),
+      connectedAt: _parseDateNullable(d['connectedAt']),
+      endedAt: _parseDateNullable(d['endedAt']),
+      expiresAt: _parseDateNullable(d['expiresAt']), // <-- ĐÃ THÊM
+      durationSeconds: d['durationSeconds'] as int?,
     );
   }
 
-  
   factory CallModel.fromMap(Map<String, dynamic> map) =>
       CallModel.fromJson(map);
 
-  
+  // ── Serialization ────────────────────────────────────────
+
   Map<String, dynamic> toJson() => {
         'callId': callId,
         'callerId': callerId,
@@ -108,72 +175,85 @@ class CallModel {
         'calleeName': calleeName,
         'calleeAvatar': calleeAvatar,
         'channelName': channelName,
-        'callType': callType.name,
-        'isVideo': isVideoCall, 
-        'status': status.name,
+        'callType': callType.label,
+        'isVideo': isVideoCall,
+        'status': status.label,
         'token': token,
         'createdAt': createdAt.millisecondsSinceEpoch.toString(),
-        'timestamp': createdAt.millisecondsSinceEpoch, 
+        'timestamp': createdAt.millisecondsSinceEpoch,
         'connectedAt': connectedAt?.millisecondsSinceEpoch.toString(),
         'endedAt': endedAt?.millisecondsSinceEpoch.toString(),
+        'expiresAt':
+            expiresAt?.millisecondsSinceEpoch.toString(), // <-- ĐÃ THÊM
         'durationSeconds': durationSeconds,
       };
 
-  
   Map<String, dynamic> toMap() => toJson();
 
-  
+  // ── copyWith ─────────────────────────────────────────────
 
   CallModel copyWith({
     String? callId,
-    CallStatus? status,
+    String? callerId,
+    String? callerName,
+    String? callerAvatar,
+    String? calleeId,
+    String? calleeName,
+    String? calleeAvatar,
     String? channelName,
+    CallType? callType,
+    CallStatus? status,
     String? token,
+    DateTime? createdAt,
     DateTime? connectedAt,
     DateTime? endedAt,
+    DateTime? expiresAt, // <-- ĐÃ THÊM
     int? durationSeconds,
   }) {
     return CallModel(
       callId: callId ?? this.callId,
-      callerId: callerId,
-      callerName: callerName,
-      callerAvatar: callerAvatar,
-      calleeId: calleeId,
-      calleeName: calleeName,
-      calleeAvatar: calleeAvatar,
+      callerId: callerId ?? this.callerId,
+      callerName: callerName ?? this.callerName,
+      callerAvatar: callerAvatar ?? this.callerAvatar,
+      calleeId: calleeId ?? this.calleeId,
+      calleeName: calleeName ?? this.calleeName,
+      calleeAvatar: calleeAvatar ?? this.calleeAvatar,
       channelName: channelName ?? this.channelName,
-      callType: callType,
+      callType: callType ?? this.callType,
       status: status ?? this.status,
       token: token ?? this.token,
-      createdAt: createdAt,
+      createdAt: createdAt ?? this.createdAt,
       connectedAt: connectedAt ?? this.connectedAt,
       endedAt: endedAt ?? this.endedAt,
+      expiresAt: expiresAt ?? this.expiresAt, // <-- ĐÃ THÊM
       durationSeconds: durationSeconds ?? this.durationSeconds,
     );
   }
 
-  
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CallModel && other.callId == callId && other.status == status);
 
-  bool get isVideoCall => callType == CallType.video;
-  bool get isVoiceCall => callType == CallType.voice;
+  @override
+  int get hashCode => Object.hash(callId, status);
 
-  bool get isActive =>
-      status == CallStatus.dialing ||
-      status == CallStatus.calling ||
-      status == CallStatus.ringing ||
-      status == CallStatus.accepted ||
-      status == CallStatus.connected;
+  @override
+  String toString() =>
+      'CallModel(id: $callId, status: ${status.label}, type: ${callType.label})';
 
-  String get formattedDuration {
-    if (durationSeconds == null) return '';
-    final minutes = durationSeconds! ~/ 60;
-    final seconds = durationSeconds! % 60;
-    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  // ── Private helpers ──────────────────────────────────────
+
+  static CallType _parseCallType(Map<String, dynamic> d) {
+    final raw = d['callType'];
+    if (raw == 'video') return CallType.video;
+    if (raw == 'voice') return CallType.voice;
+    final isVideo = d['isVideo'];
+    if (isVideo is bool) return isVideo ? CallType.video : CallType.voice;
+    return CallType.video; // safe default
   }
 
-  
-
-  static CallStatus _parseStatus(String? s) {
+  static CallStatus _parseStatus(dynamic s) {
     switch (s) {
       case 'dialing':
         return CallStatus.dialing;
@@ -200,25 +280,22 @@ class CallModel {
     }
   }
 
-  static DateTime _parseDate(dynamic value) {
-    if (value == null) return DateTime.now();
-    if (value is String) {
-      final ms = int.tryParse(value);
-      if (ms != null) return DateTime.fromMillisecondsSinceEpoch(ms);
-    }
-    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
-    if (value is Timestamp) return value.toDate();
-    return DateTime.now();
-  }
-
-  static DateTime? _parseDateNullable(dynamic value) {
+  static DateTime? _parseDate(dynamic value) {
     if (value == null) return null;
+    if (value is Timestamp) return value.toDate();
+    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
     if (value is String) {
       final ms = int.tryParse(value);
       if (ms != null) return DateTime.fromMillisecondsSinceEpoch(ms);
+      return DateTime.tryParse(value);
     }
-    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
-    if (value is Timestamp) return value.toDate();
     return null;
   }
+
+  static DateTime? _parseDateFromMillis(dynamic value) {
+    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    return null;
+  }
+
+  static DateTime? _parseDateNullable(dynamic value) => _parseDate(value);
 }

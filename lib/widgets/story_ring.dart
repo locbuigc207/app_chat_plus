@@ -1,33 +1,35 @@
-
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_chat_demo/models/story_model.dart';
 
-
-
-
-
-
-
+// ─────────────────────────────────────────────────────────────────────────────
+// StoryRing – animated gradient ring with per-segment arcs
+// ─────────────────────────────────────────────────────────────────────────────
 
 class StoryRing extends StatefulWidget {
   final Widget child;
   final bool hasUnseenStories;
   final bool isCurrentUser;
-  
+  final int totalSegments;
+  final int seenSegments;
+  /// Stroke width of the ring.
   final double ringWidth;
-  
+  /// Gap between ring and child.
   final double gap;
+  /// Gap between arc segments when totalSegments > 1.
+  final double segmentGap;
 
   const StoryRing({
     super.key,
     required this.child,
     required this.hasUnseenStories,
     this.isCurrentUser = false,
+    this.totalSegments = 1,
+    this.seenSegments = 0,
     this.ringWidth = 2.5,
     this.gap = 2.5,
+    this.segmentGap = 2.0,
   });
 
   @override
@@ -55,21 +57,22 @@ class _StoryRingState extends State<StoryRing>
 
   @override
   Widget build(BuildContext context) {
-    
-    if (!widget.hasUnseenStories && !widget.isCurrentUser) {
-      return widget.child;
-    }
+    final showRing = widget.hasUnseenStories || widget.isCurrentUser;
+    if (!showRing && widget.seenSegments == 0) return widget.child;
 
     final totalPad = widget.ringWidth + widget.gap;
 
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (_, __) => CustomPaint(
-        painter: _RingPainter(
-          progress: widget.hasUnseenStories ? _ctrl.value : 0,
+        painter: _SegmentedRingPainter(
+          progress: _ctrl.value,
           ringWidth: widget.ringWidth,
-          isSeen: !widget.hasUnseenStories && !widget.isCurrentUser,
+          totalSegments: widget.totalSegments,
+          seenSegments: widget.seenSegments,
+          hasUnseen: widget.hasUnseenStories,
           isCurrentUser: widget.isCurrentUser,
+          segmentGapDeg: widget.segmentGap,
         ),
         child: Padding(
           padding: EdgeInsets.all(totalPad),
@@ -80,23 +83,46 @@ class _StoryRingState extends State<StoryRing>
   }
 }
 
-class _RingPainter extends CustomPainter {
+// ─────────────────────────────────────────────────────────────────────────────
+// Painter
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SegmentedRingPainter extends CustomPainter {
   final double progress;
   final double ringWidth;
-  final bool isSeen;
+  final int totalSegments;
+  final int seenSegments;
+  final bool hasUnseen;
   final bool isCurrentUser;
+  final double segmentGapDeg;
 
-  const _RingPainter({
+  static const _unseenColors = [
+    Color(0xFFFF6B35),
+    Color(0xFFFF2D55),
+    Color(0xFFBF5FFF),
+    Color(0xFF2196F3),
+    Color(0xFF00C6FF),
+    Color(0xFFFF6B35),
+  ];
+
+  static const _seenColor = Color(0xFF9E9E9E);
+  static const _currentUserColor = Color(0xFF2196F3);
+
+  const _SegmentedRingPainter({
     required this.progress,
     required this.ringWidth,
-    required this.isSeen,
+    required this.totalSegments,
+    required this.seenSegments,
+    required this.hasUnseen,
     required this.isCurrentUser,
+    required this.segmentGapDeg,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     final half = ringWidth / 2;
-    final rect = Rect.fromLTWH(half, half, size.width - ringWidth, size.height - ringWidth);
+    final rect =
+    Rect.fromLTWH(half, half, size.width - ringWidth, size.height - ringWidth);
 
     final paint = Paint()
       ..style = PaintingStyle.stroke
@@ -104,45 +130,72 @@ class _RingPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..isAntiAlias = true;
 
-    if (isSeen) {
-      paint.color = Colors.grey.withOpacity(0.45);
+    // ── Single solid arc ──────────────────────────────────────────────────
+    if (totalSegments <= 1) {
+      if (isCurrentUser) {
+        paint.color = _currentUserColor;
+        canvas.drawOval(rect, paint);
+        return;
+      }
+      if (!hasUnseen) {
+        paint.color = _seenColor.withOpacity(0.45);
+        canvas.drawOval(rect, paint);
+        return;
+      }
+
+      // Animated gradient ring
+      paint.shader = SweepGradient(
+        startAngle: -math.pi / 2 + progress * 2 * math.pi,
+        endAngle: 3 * math.pi / 2 + progress * 2 * math.pi,
+        colors: _unseenColors,
+      ).createShader(rect);
       canvas.drawOval(rect, paint);
       return;
     }
 
-    if (isCurrentUser) {
-      paint.color = const Color(0xFF2196F3);
-      canvas.drawOval(rect, paint);
-      return;
+    // ── Segmented arcs ────────────────────────────────────────────────────
+    final total = totalSegments;
+    final gapRad = segmentGapDeg * math.pi / 180;
+    final segSweep = (2 * math.pi - gapRad * total) / total;
+
+    for (int i = 0; i < total; i++) {
+      final startAngle =
+          -math.pi / 2 + i * (segSweep + gapRad) + gapRad / 2;
+      final isSeen = i < seenSegments;
+
+      if (isSeen) {
+        paint
+          ..shader = null
+          ..color = _seenColor.withOpacity(0.45);
+      } else if (isCurrentUser) {
+        paint
+          ..shader = null
+          ..color = _currentUserColor;
+      } else {
+        // Gradient sweep for unseen segments
+        paint.shader = SweepGradient(
+          startAngle: -math.pi / 2 + progress * 2 * math.pi,
+          endAngle: 3 * math.pi / 2 + progress * 2 * math.pi,
+          colors: _unseenColors,
+        ).createShader(rect);
+      }
+
+      canvas.drawArc(rect, startAngle, segSweep, false, paint);
     }
-
-    
-    paint.shader = SweepGradient(
-      startAngle: -math.pi / 2 + progress * 2 * math.pi,
-      endAngle:    3 * math.pi / 2 + progress * 2 * math.pi,
-      colors: const [
-        Color(0xFFFF6B35),
-        Color(0xFFFF2D55),
-        Color(0xFFBF5FFF),
-        Color(0xFF2196F3),
-        Color(0xFF00C6FF),
-        Color(0xFFFF6B35),
-      ],
-    ).createShader(rect);
-
-    canvas.drawOval(rect, paint);
   }
 
   @override
-  bool shouldRepaint(_RingPainter old) =>
+  bool shouldRepaint(_SegmentedRingPainter old) =>
       old.progress != progress ||
-          old.isSeen != isSeen ||
-          old.isCurrentUser != isCurrentUser;
+          old.hasUnseen != hasUnseen ||
+          old.isCurrentUser != isCurrentUser ||
+          old.seenSegments != seenSegments ||
+          old.totalSegments != totalSegments;
 }
 
-
-
-
+// ─────────────────────────────────────────────────────────────────────────────
+// StoriesBar – horizontal scrollable story thumbnails
+// ─────────────────────────────────────────────────────────────────────────────
 
 class StoriesBar extends StatelessWidget {
   final List<UserStories> storiesList;
@@ -160,7 +213,6 @@ class StoriesBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    
     UserStories? myStories;
     final others = <UserStories>[];
 
@@ -171,8 +223,6 @@ class StoriesBar extends StatelessWidget {
         others.add(s);
       }
     }
-
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       height: 110,
@@ -189,16 +239,12 @@ class StoriesBar extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         children: [
-          
           _MyStatusTile(
             myStories: myStories,
+            currentUserId: currentUserId,
             onAdd: onAddStory,
-            onView: myStories != null
-                ? () => onViewStories(myStories!)
-                : null,
+            onView: myStories != null ? () => onViewStories(myStories!) : null,
           ),
-
-          
           if (others.isNotEmpty)
             Container(
               width: 0.5,
@@ -206,8 +252,6 @@ class StoriesBar extends StatelessWidget {
               margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
               color: Theme.of(context).dividerColor,
             ),
-
-          
           for (final us in others)
             _FriendTile(
               userStories: us,
@@ -220,15 +264,19 @@ class StoriesBar extends StatelessWidget {
   }
 }
 
-
+// ─────────────────────────────────────────────────────────────────────────────
+// My status tile
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _MyStatusTile extends StatelessWidget {
   final UserStories? myStories;
+  final String currentUserId;
   final VoidCallback onAdd;
   final VoidCallback? onView;
 
   const _MyStatusTile({
     required this.myStories,
+    required this.currentUserId,
     required this.onAdd,
     required this.onView,
   });
@@ -236,7 +284,8 @@ class _MyStatusTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasStories = myStories != null && myStories!.activeStories.isNotEmpty;
-    final latest = myStories?.latestStory;
+    final active = myStories?.activeStories ?? [];
+    final seen = active.where((s) => s.isViewedBy(currentUserId)).length;
 
     return GestureDetector(
       onTap: hasStories ? onView : onAdd,
@@ -252,19 +301,20 @@ class _MyStatusTile extends StatelessWidget {
                 StoryRing(
                   hasUnseenStories: hasStories,
                   isCurrentUser: true,
+                  totalSegments: active.length.clamp(1, 10),
+                  seenSegments: seen,
                   child: SizedBox(
                     width: 54,
                     height: 54,
                     child: ClipOval(
-                      child: _AvatarContent(
-                        photoUrl: latest?.type == StoryType.image
-                            ? (latest?.mediaUrl ?? '')
-                            : '',
+                      child: _AvatarImage(
+                        photoUrl: myStories?.latestStory?.type == StoryType.image
+                            ? (myStories?.latestStory?.mediaUrl ?? '')
+                            : (myStories?.userPhotoUrl ?? ''),
                       ),
                     ),
                   ),
                 ),
-                
                 Positioned(
                   right: -2,
                   bottom: -2,
@@ -306,7 +356,9 @@ class _MyStatusTile extends StatelessWidget {
   }
 }
 
-
+// ─────────────────────────────────────────────────────────────────────────────
+// Friend tile
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _FriendTile extends StatelessWidget {
   final UserStories userStories;
@@ -321,7 +373,9 @@ class _FriendTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasUnseen = userStories.hasUnseenStoriesBy(viewerId);
+    final active = userStories.activeStories;
+    final seen = active.where((s) => s.isViewedBy(viewerId)).length;
+    final hasUnseen = seen < active.length;
 
     return GestureDetector(
       onTap: onTap,
@@ -333,13 +387,13 @@ class _FriendTile extends StatelessWidget {
           children: [
             StoryRing(
               hasUnseenStories: hasUnseen,
+              totalSegments: active.length.clamp(1, 10),
+              seenSegments: seen,
               child: SizedBox(
                 width: 54,
                 height: 54,
                 child: ClipOval(
-                  child: _AvatarContent(
-                    photoUrl: userStories.userPhotoUrl,
-                  ),
+                  child: _AvatarImage(photoUrl: userStories.userPhotoUrl),
                 ),
               ),
             ),
@@ -364,11 +418,13 @@ class _FriendTile extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Avatar image helper
+// ─────────────────────────────────────────────────────────────────────────────
 
-
-class _AvatarContent extends StatelessWidget {
+class _AvatarImage extends StatelessWidget {
   final String photoUrl;
-  const _AvatarContent({required this.photoUrl});
+  const _AvatarImage({required this.photoUrl});
 
   @override
   Widget build(BuildContext context) {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
@@ -20,14 +21,48 @@ import '../widgets/call_quality_indicator.dart';
 import '../widgets/call_timer_widget.dart';
 import '../widgets/live_caption_overlay.dart';
 
+// ─────────────────────────────────────────────────────────────
+// Floating reaction model
+// ─────────────────────────────────────────────────────────────
+
+class _FloatingReaction {
+  final String emoji;
+  final String senderName;
+  final double xFraction; // 0–1 horizontal position
+  final DateTime createdAt;
+  final AnimationController ctrl;
+  final Animation<double> opacity;
+  final Animation<double> translateY;
+
+  _FloatingReaction({
+    required this.emoji,
+    required this.senderName,
+    required this.xFraction,
+    required this.createdAt,
+    required this.ctrl,
+    required this.opacity,
+    required this.translateY,
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// GroupCallPage
+// ─────────────────────────────────────────────────────────────
+
 class GroupCallPage extends StatefulWidget {
   final GroupCallModel call;
   final bool isInitiator;
+  final String currentUserId;
+  final String currentUserName;
+  final String currentUserAvatar;
 
   const GroupCallPage({
     super.key,
     required this.call,
     required this.isInitiator,
+    required this.currentUserId,
+    required this.currentUserName,
+    this.currentUserAvatar = '',
   });
 
   @override
@@ -35,43 +70,81 @@ class GroupCallPage extends StatefulWidget {
 }
 
 class _GroupCallPageState extends State<GroupCallPage>
-    with WidgetsBindingObserver {
-  final _callService = GroupCallService();
+    with TickerProviderStateMixin, WidgetsBindingObserver {
+  // ── Services ────────────────────────────────────────────────
+  final _callService = GroupCallService.instance;
   final _pip = SimplePip();
   late RtcEngine _engine;
 
+  // ── Engine state ────────────────────────────────────────────
   bool _engineInitialized = false;
   bool _isMuted = false;
   bool _isCameraOff = false;
   bool _isSpeakerOn = true;
   bool _isFrontCamera = true;
+  bool _isScreenSharing = false;
+  bool _hasRaisedHand = false;
   bool _showControls = true;
   bool _callEnded = false;
   bool _isConnected = false;
   bool _showParticipantsList = false;
   bool _isLiveCaptionEnabled = false;
-  bool _aiProtectionStarted = false; // guard: chỉ kích hoạt AI 1 lần
+  bool _aiProtectionStarted = false;
+  bool _showReactionPicker = false;
 
+  // ── Remote users ─────────────────────────────────────────────
   final Set<int> _remoteUids = {};
+  final Map<int, bool> _remoteAudioMuted = {};
+  final Map<int, bool> _remoteVideoMuted = {};
 
+  // ── Model & timing ──────────────────────────────────────────
   late GroupCallModel _callModel;
   DateTime? _connectedAt;
 
+  // ── Subscriptions & timers ──────────────────────────────────
   StreamSubscription? _callSub;
   Timer? _controlsHideTimer;
-  Timer? _statsTimer;
 
+  // ── Stats ────────────────────────────────────────────────────
   RtcCallStats _stats = const RtcCallStats();
 
+  // ── Spotlight ────────────────────────────────────────────────
   int? _spotlightUid;
+
+  // ── Animations ───────────────────────────────────────────────
+  late AnimationController _controlsAnimCtrl;
+  late Animation<double> _controlsAnim;
+  late AnimationController _raisedHandCtrl;
+  late Animation<double> _raisedHandAnim;
+
+  // ── Reactions ────────────────────────────────────────────────
+  final List<_FloatingReaction> _floatingReactions = [];
+  final _random = math.Random();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
     _callModel = widget.call;
     _connectedAt = DateTime.now();
+
+    _controlsAnimCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+      value: 1.0,
+    );
+    _controlsAnim =
+        CurvedAnimation(parent: _controlsAnimCtrl, curve: Curves.easeOut);
+
+    _raisedHandCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    )..repeat(reverse: true);
+    _raisedHandAnim =
+        Tween<double>(begin: 0.9, end: 1.1).animate(_raisedHandCtrl);
+
     _initCall();
     _watchCall();
     _scheduleControlsHide();
@@ -81,14 +154,11 @@ class _GroupCallPageState extends State<GroupCallPage>
   // PiP
   // ─────────────────────────────────────────────
 
-  /// Thu nhỏ cuộc gọi video thành cửa sổ nổi (PiP).
-  /// Gọi khi người dùng bấm nút thu nhỏ hoặc bấm Back.
   Future<void> _enterPiPMode() async {
-    final isPipAvailable = await SimplePip.isPipAvailable;
-    if (isPipAvailable) {
+    final available = await SimplePip.isPipAvailable;
+    if (available) {
       await _pip.enterPipMode(aspectRatio: (3, 4));
     } else {
-      // Fallback nếu thiết bị không hỗ trợ PiP (Android < 8.0)
       if (mounted) Navigator.pop(context);
     }
   }
@@ -115,7 +185,9 @@ class _GroupCallPageState extends State<GroupCallPage>
     if (state == AppLifecycleState.paused) {
       _engine.muteLocalVideoStream(true);
     } else if (state == AppLifecycleState.resumed) {
-      if (!_isCameraOff) _engine.muteLocalVideoStream(false);
+      if (!_isCameraOff && !_isScreenSharing) {
+        _engine.muteLocalVideoStream(false);
+      }
     }
   }
 
@@ -123,6 +195,11 @@ class _GroupCallPageState extends State<GroupCallPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     RealtimeAIService().stopProtection();
+    _controlsAnimCtrl.dispose();
+    _raisedHandCtrl.dispose();
+    for (final r in _floatingReactions) {
+      r.ctrl.dispose();
+    }
     _cleanup();
     super.dispose();
   }
@@ -146,40 +223,48 @@ class _GroupCallPageState extends State<GroupCallPage>
 
   Future<void> _initEngine() async {
     _engine = createAgoraRtcEngine();
-
-    final String agoraAppId = dotenv.env['AGORA_APP_ID'] ?? '';
-    if (agoraAppId.isEmpty) {
-      debugPrint('❌ LỖI: AGORA_APP_ID chưa được cài đặt trong file .env');
-    }
+    final appId = dotenv.env['AGORA_APP_ID'] ?? '';
 
     await _engine.initialize(RtcEngineContext(
-      appId: agoraAppId,
+      appId: appId,
       channelProfile: ChannelProfileType.channelProfileCommunication,
     ));
 
     _engine.registerEventHandler(RtcEngineEventHandler(
       onJoinChannelSuccess: (conn, elapsed) {
-        debugPrint('✅ Joined group call channel');
         if (mounted) setState(() => _isConnected = true);
       },
       onUserJoined: (conn, uid, elapsed) {
-        debugPrint('👤 Remote user joined: $uid');
         if (mounted) {
           setState(() => _remoteUids.add(uid));
-          // Kích hoạt AI khi có người đầu tiên tham gia (chỉ 1 lần)
           _startAIProtection();
         }
       },
       onUserOffline: (conn, uid, reason) {
-        debugPrint('👤 Remote user left: $uid');
         if (mounted) {
           setState(() {
             _remoteUids.remove(uid);
+            _remoteAudioMuted.remove(uid);
+            _remoteVideoMuted.remove(uid);
             if (_spotlightUid == uid) _spotlightUid = null;
           });
         }
-        if (_remoteUids.isEmpty && !widget.isInitiator && mounted) {
-          _hangUp();
+        if (_remoteUids.isEmpty && !widget.isInitiator && mounted) _hangUp();
+      },
+      onRemoteAudioStateChanged: (conn, uid, state, reason, elapsed) {
+        if (mounted) {
+          setState(() {
+            _remoteAudioMuted[uid] =
+                state == RemoteAudioState.remoteAudioStateStopped;
+          });
+        }
+      },
+      onRemoteVideoStateChanged: (conn, uid, state, reason, elapsed) {
+        if (mounted) {
+          setState(() {
+            _remoteVideoMuted[uid] =
+                state == RemoteVideoState.remoteVideoStateStopped;
+          });
         }
       },
       onRtcStats: (conn, stats) {
@@ -194,15 +279,23 @@ class _GroupCallPageState extends State<GroupCallPage>
               ));
         }
       },
-      onError: (err, msg) => debugPrint('❌ Agora error [$err]: $msg'),
+      onError: (err, msg) => debugPrint('❌ Agora [$err]: $msg'),
     ));
 
     if (widget.call.isVideo) {
       await _engine.enableVideo();
       await _engine.startPreview();
+      await _engine
+          .setVideoEncoderConfiguration(const VideoEncoderConfiguration(
+        dimensions: VideoDimensions(width: 1280, height: 720),
+        frameRate: 30,
+        bitrate: 1500,
+      ));
     }
     await _engine.enableAudio();
     await _engine.setEnableSpeakerphone(true);
+    await _engine.enableAudioVolumeIndication(
+        interval: 200, smooth: 3, reportVad: true);
 
     setState(() => _engineInitialized = true);
   }
@@ -215,7 +308,7 @@ class _GroupCallPageState extends State<GroupCallPage>
       options: ChannelMediaOptions(
         channelProfile: ChannelProfileType.channelProfileCommunication,
         clientRoleType: ClientRoleType.clientRoleBroadcaster,
-        publishCameraTrack: widget.call.isVideo,
+        publishCameraTrack: widget.call.isVideo && !_isCameraOff,
         publishMicrophoneTrack: true,
         autoSubscribeAudio: true,
         autoSubscribeVideo: widget.call.isVideo,
@@ -227,8 +320,14 @@ class _GroupCallPageState extends State<GroupCallPage>
     _callSub = _callService.watchCall(widget.call.callId).listen((call) {
       if (call == null || _callEnded) return;
       if (mounted) setState(() => _callModel = call);
-      if (call.status == GroupCallStatus.ended) {
-        _handleCallEnded();
+      if (call.status == GroupCallStatus.ended) _handleCallEnded();
+
+      // Incoming reactions
+      for (final r in call.recentReactions) {
+        if (r.sentAt
+            .isAfter(DateTime.now().subtract(const Duration(seconds: 3)))) {
+          _showFloatingReaction(r.type.emoji, r.userName);
+        }
       }
     });
   }
@@ -238,16 +337,24 @@ class _GroupCallPageState extends State<GroupCallPage>
     _callEnded = true;
     _cleanup();
     if (mounted) {
-      _showEndedSnackbar();
-      Navigator.of(context).pop();
+      _showCallEndedSheet();
     }
   }
 
-  void _showEndedSnackbar() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-          content: Text('Cuộc gọi đã kết thúc'),
-          duration: Duration(seconds: 2)),
+  void _showCallEndedSheet() {
+    showModalBottomSheet(
+      context: context,
+      isDismissible: false,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _CallEndedSheet(
+        duration: _callModel.durationSeconds ?? 0,
+        participantCount: _callModel.participantCount,
+        onDismiss: () {
+          Navigator.of(context)
+            ..pop() // sheet
+            ..pop(); // call page
+        },
+      ),
     );
   }
 
@@ -255,7 +362,8 @@ class _GroupCallPageState extends State<GroupCallPage>
     _controlsHideTimer?.cancel();
     if (widget.call.isVideo) {
       _controlsHideTimer = Timer(const Duration(seconds: 4), () {
-        if (mounted && _isConnected) {
+        if (mounted && _isConnected && !_showReactionPicker) {
+          _controlsAnimCtrl.reverse();
           setState(() => _showControls = false);
         }
       });
@@ -264,7 +372,11 @@ class _GroupCallPageState extends State<GroupCallPage>
 
   void _onTapScreen() {
     if (!widget.call.isVideo) return;
-    setState(() => _showControls = true);
+    setState(() {
+      _showControls = true;
+      _showReactionPicker = false;
+    });
+    _controlsAnimCtrl.forward();
     _scheduleControlsHide();
   }
 
@@ -277,7 +389,10 @@ class _GroupCallPageState extends State<GroupCallPage>
     await _engine.muteLocalAudioStream(next);
     setState(() => _isMuted = next);
     await _callService.updateParticipantState(
-        callId: widget.call.callId, isMuted: next, isCameraOff: _isCameraOff);
+      callId: widget.call.callId,
+      isMuted: next,
+      isCameraOff: _isCameraOff,
+    );
   }
 
   Future<void> _toggleCamera() async {
@@ -286,7 +401,10 @@ class _GroupCallPageState extends State<GroupCallPage>
     await _engine.muteLocalVideoStream(next);
     setState(() => _isCameraOff = next);
     await _callService.updateParticipantState(
-        callId: widget.call.callId, isMuted: _isMuted, isCameraOff: next);
+      callId: widget.call.callId,
+      isMuted: _isMuted,
+      isCameraOff: next,
+    );
   }
 
   Future<void> _toggleSpeaker() async {
@@ -296,14 +414,89 @@ class _GroupCallPageState extends State<GroupCallPage>
   }
 
   Future<void> _switchCamera() async {
+    if (_isCameraOff) return;
     await _engine.switchCamera();
     setState(() => _isFrontCamera = !_isFrontCamera);
+    _showToast(_isFrontCamera ? 'Camera trước' : 'Camera sau');
+  }
+
+  Future<void> _toggleRaiseHand() async {
+    final next = !_hasRaisedHand;
+    setState(() => _hasRaisedHand = next);
+    await _callService.toggleRaiseHand(
+        callId: widget.call.callId, userId: widget.currentUserId, raised: next);
+    _showToast(next ? '✋ Đã giơ tay' : 'Đã hạ tay');
+  }
+
+  Future<void> _toggleScreenShare() async {
+    final next = !_isScreenSharing;
+    setState(() => _isScreenSharing = next);
+    if (next) {
+      await _engine.startScreenCapture(
+        const ScreenCaptureParameters2(captureAudio: true, captureVideo: true),
+      );
+    } else {
+      await _engine.stopScreenCapture();
+    }
+    await _callService.updateScreenShare(
+      callId: widget.call.callId,
+      userId: widget.currentUserId, // Luôn truyền ID (không truyền null nữa)
+      isSharing: next, // Bổ sung tham số isSharing
+    );
+    _showToast(next ? '📺 Đang chia sẻ màn hình' : 'Đã dừng chia sẻ');
   }
 
   void _toggleLiveCaption() {
     setState(() => _isLiveCaptionEnabled = !_isLiveCaptionEnabled);
-    Fluttertoast.showToast(
-        msg: _isLiveCaptionEnabled ? 'Đã bật phụ đề AI' : 'Đã tắt phụ đề AI');
+    _showToast(_isLiveCaptionEnabled ? 'Đã bật phụ đề AI' : 'Đã tắt phụ đề AI');
+  }
+
+  void _sendReaction(CallReactionType type) {
+    setState(() => _showReactionPicker = false);
+    _callService.sendReaction(
+      callId: widget.call.callId,
+      userId: widget.currentUserId,
+      userName: widget.currentUserName,
+      reaction: type,
+    );
+    _showFloatingReaction(type.emoji, 'Bạn');
+    _scheduleControlsHide();
+  }
+
+  void _showFloatingReaction(String emoji, String sender) {
+    if (!mounted) return;
+    final x = 0.1 + _random.nextDouble() * 0.8;
+    final ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2500),
+    );
+    final opacity = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 15),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.0), weight: 60),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 25),
+    ]).animate(ctrl);
+    final translateY = Tween<double>(begin: 0, end: -180).animate(
+      CurvedAnimation(parent: ctrl, curve: Curves.easeOut),
+    );
+
+    final reaction = _FloatingReaction(
+      emoji: emoji,
+      senderName: sender,
+      xFraction: x,
+      createdAt: DateTime.now(),
+      ctrl: ctrl,
+      opacity: opacity,
+      translateY: translateY,
+    );
+
+    setState(() => _floatingReactions.add(reaction));
+
+    ctrl.forward().then((_) {
+      if (mounted) {
+        setState(() => _floatingReactions.remove(reaction));
+        reaction.ctrl.dispose();
+      }
+    });
   }
 
   Future<void> _hangUp() async {
@@ -311,8 +504,8 @@ class _GroupCallPageState extends State<GroupCallPage>
     _callEnded = true;
 
     if (widget.isInitiator) {
-      await _callService.endCallForAll(
-          widget.call.callId, _connectedAt ?? DateTime.now());
+      await _callService.endCallForAll(widget.call.callId,
+          startTime: _connectedAt ?? DateTime.now());
     } else {
       await _callService.leaveCall(widget.call.callId);
     }
@@ -324,7 +517,6 @@ class _GroupCallPageState extends State<GroupCallPage>
   void _cleanup() {
     _callSub?.cancel();
     _controlsHideTimer?.cancel();
-    _statsTimer?.cancel();
     try {
       _engine.leaveChannel();
       _engine.release();
@@ -332,9 +524,16 @@ class _GroupCallPageState extends State<GroupCallPage>
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
 
-  void _setSpotlight(int? uid) {
-    setState(() => _spotlightUid = uid);
-  }
+  void _setSpotlight(int? uid) => setState(() => _spotlightUid = uid);
+
+  void _showToast(String msg) => Fluttertoast.showToast(
+        msg: msg,
+        backgroundColor: const Color(0xFF1e293b),
+        textColor: Colors.white,
+        fontSize: 13,
+        gravity: ToastGravity.TOP,
+        toastLength: Toast.LENGTH_SHORT,
+      );
 
   // ─────────────────────────────────────────────
   // Build
@@ -344,13 +543,10 @@ class _GroupCallPageState extends State<GroupCallPage>
   Widget build(BuildContext context) {
     if (widget.call.isVideo) {
       return PipWidget(
-        // Giao diện khi bị thu nhỏ: chỉ hiện luồng video remote đầu tiên
-        pipBuilder: (context) => _buildRemoteVideoOnly(),
-        // Giao diện bình thường: full màn hình với toàn bộ điều khiển
-        builder: (context) => PopScope(
+        pipBuilder: (_) => _buildPipContent(),
+        builder: (_) => PopScope(
           canPop: false,
           onPopInvokedWithResult: (didPop, _) async {
-            // Bấm Back → thu nhỏ PiP thay vì thoát hẳn
             if (!didPop) await _enterPiPMode();
           },
           child: Scaffold(
@@ -361,7 +557,6 @@ class _GroupCallPageState extends State<GroupCallPage>
       );
     }
 
-    // Voice call — không cần PiP
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
@@ -375,50 +570,48 @@ class _GroupCallPageState extends State<GroupCallPage>
   }
 
   // ─────────────────────────────────────────────
-  // PiP builder: remote video tối giản
+  // PiP Content
   // ─────────────────────────────────────────────
 
-  /// Giao diện tối giản trong cửa sổ PiP — hiện video remote đầu tiên (hoặc
-  /// spotlight nếu đang có), fallback avatar nếu chưa có video.
-  Widget _buildRemoteVideoOnly() {
+  Widget _buildPipContent() {
     if (!_engineInitialized) {
       return const ColoredBox(
-        color: Color(0xFF1a1a2e),
-        child: Center(child: CircularProgressIndicator(color: Colors.white54)),
+        color: Color(0xFF0f172a),
+        child: Center(child: CircularProgressIndicator(color: Colors.white38)),
       );
     }
-
-    final targetUid =
+    final uid =
         _spotlightUid ?? (_remoteUids.isNotEmpty ? _remoteUids.first : null);
-
-    if (targetUid == null) {
-      // Chưa có remote — hiện tên nhóm
+    if (uid == null) {
       return ColoredBox(
-        color: const Color(0xFF1a1a2e),
+        color: const Color(0xFF0f172a),
         child: Center(
-          child: Text(
-            widget.call.groupName,
-            style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 14,
-                fontWeight: FontWeight.w500),
-            textAlign: TextAlign.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.group, color: Colors.white38, size: 28),
+              const SizedBox(height: 4),
+              Text(
+                widget.call.groupName,
+                style: const TextStyle(color: Colors.white54, fontSize: 11),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
         ),
       );
     }
-
     return AgoraVideoView(
       controller: VideoViewController.remote(
         rtcEngine: _engine,
-        canvas: VideoCanvas(uid: targetUid),
+        canvas: VideoCanvas(uid: uid),
         connection: RtcConnection(channelId: widget.call.channelName),
       ),
     );
   }
 
   // ─────────────────────────────────────────────
-  // Video UI (full screen)
+  // Video UI
   // ─────────────────────────────────────────────
 
   Widget _buildVideoUI() {
@@ -426,60 +619,179 @@ class _GroupCallPageState extends State<GroupCallPage>
       onTap: _onTapScreen,
       behavior: HitTestBehavior.opaque,
       child: Stack(
+        fit: StackFit.expand,
         children: [
+          // ── Main video area ────────────────────────
           _remoteUids.isEmpty ? _buildWaitingScreen() : _buildVideoGrid(),
+
+          // ── Gradient overlays ──────────────────────
           _buildGradients(),
-          if (_showControls) _buildVideoTopBar(),
+
+          // ── Floating reactions ─────────────────────
+          ..._floatingReactions.map(_buildFloatingReaction),
+
+          // ── Reaction picker ────────────────────────
+          if (_showReactionPicker) _buildReactionPicker(),
+
+          // ── Top bar ────────────────────────────────
+          FadeTransition(
+            opacity: _controlsAnim,
+            child: _buildVideoTopBar(),
+          ),
+
+          // ── AI Shield & Quality ────────────────────
           Positioned(
-            top: MediaQuery.of(context).padding.top + 60,
-            left: 16,
+            top: MediaQuery.of(context).padding.top + 64,
+            left: 12,
             child: const AICallShield(),
           ),
           Positioned(
-            top: MediaQuery.of(context).padding.top + 60,
-            right: 16,
+            top: MediaQuery.of(context).padding.top + 64,
+            right: 12,
             child: CallQualityIndicator(stats: _stats),
           ),
+
+          // ── Raised hand indicator ──────────────────
+          if (_hasRaisedHand)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 120,
+              left: 0,
+              right: 0,
+              child: Center(child: _buildRaisedHandBadge()),
+            ),
+
+          // ── Participants panel ─────────────────────
           if (_showParticipantsList) _buildParticipantsPanel(),
+
+          // ── Live captions ──────────────────────────
           if (_isLiveCaptionEnabled)
             Positioned(
-              bottom: 140,
+              bottom: 150,
               left: 16,
               right: 16,
               child: const LiveCaptionOverlay(),
             ),
-          _buildBottomControls(),
+
+          // ── Bottom controls ────────────────────────
+          FadeTransition(
+            opacity: _controlsAnim,
+            child: _buildBottomControls(),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildFloatingReaction(_FloatingReaction r) {
+    return Positioned(
+      bottom: 180,
+      left: 0,
+      right: 0,
+      child: LayoutBuilder(
+        builder: (ctx, constraints) {
+          final x = r.xFraction * constraints.maxWidth - 30;
+          return AnimatedBuilder(
+            animation: r.ctrl,
+            builder: (_, __) => Opacity(
+              opacity: r.opacity.value.clamp(0.0, 1.0),
+              child: Transform.translate(
+                offset: Offset(x, r.translateY.value),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(r.emoji, style: const TextStyle(fontSize: 34)),
+                    Container(
+                      margin: const EdgeInsets.only(top: 2),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        r.senderName,
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 10),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildRaisedHandBadge() {
+    return AnimatedBuilder(
+      animation: _raisedHandAnim,
+      builder: (_, child) =>
+          Transform.scale(scale: _raisedHandAnim.value, child: child),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF59E0B).withOpacity(0.9),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFF59E0B).withOpacity(0.4),
+              blurRadius: 12,
+            ),
+          ],
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('✋', style: TextStyle(fontSize: 16)),
+            SizedBox(width: 6),
+            Text('Bạn đang giơ tay',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildWaitingScreen() {
     return Container(
-      color: const Color(0xFF1a1a2e),
+      decoration: const BoxDecoration(
+        gradient: RadialGradient(
+          center: Alignment.center,
+          radius: 1.2,
+          colors: [Color(0xFF1e3a5f), Color(0xFF0a0a1a)],
+        ),
+      ),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const CircleAvatar(
-              radius: 56,
-              backgroundColor: Colors.blueGrey,
-              child: Icon(Icons.group, size: 56, color: Colors.white),
+            _buildGroupAvatar(80),
+            const SizedBox(height: 24),
+            Text(
+              widget.call.groupName,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.5,
+              ),
             ),
-            const SizedBox(height: 20),
-            Text(widget.call.groupName,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            const Text('Đang đợi mọi người tham gia...',
-                style: TextStyle(color: Colors.white70, fontSize: 15)),
             const SizedBox(height: 8),
+            const Text(
+              'Đang chờ mọi người tham gia…',
+              style: TextStyle(color: Colors.white54, fontSize: 15),
+            ),
+            const SizedBox(height: 16),
             if (_connectedAt != null)
               CallTimerWidget(
                 startTime: _connectedAt!,
-                style: const TextStyle(color: Colors.white54, fontSize: 14),
+                style: const TextStyle(
+                    color: Colors.white38, fontSize: 14, letterSpacing: 1),
               ),
           ],
         ),
@@ -487,23 +799,35 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
+  Widget _buildGroupAvatar(double radius) {
+    return widget.call.groupAvatarUrl.isNotEmpty
+        ? CircleAvatar(
+            radius: radius,
+            backgroundImage: NetworkImage(widget.call.groupAvatarUrl),
+          )
+        : CircleAvatar(
+            radius: radius,
+            backgroundColor: const Color(0xFF334155),
+            child: Icon(Icons.group, size: radius, color: Colors.white70),
+          );
+  }
+
+  // ─── Video Grid ───────────────────────────────
+
   Widget _buildVideoGrid() {
     if (!_engineInitialized) {
       return const Center(
           child: CircularProgressIndicator(color: Colors.white));
     }
-
-    final allUids = _remoteUids.toList();
-
-    if (_spotlightUid != null && allUids.contains(_spotlightUid)) {
-      return _buildSpotlightLayout(allUids);
+    final uids = _remoteUids.toList();
+    if (_spotlightUid != null && uids.contains(_spotlightUid)) {
+      return _buildSpotlightLayout(uids);
     }
-
-    return _buildGridLayout(allUids);
+    return _buildAdaptiveGrid(uids);
   }
 
-  Widget _buildSpotlightLayout(List<int> allUids) {
-    final others = allUids.where((u) => u != _spotlightUid).toList();
+  Widget _buildSpotlightLayout(List<int> all) {
+    final others = all.where((u) => u != _spotlightUid).toList();
     return Column(
       children: [
         Expanded(
@@ -514,13 +838,13 @@ class _GroupCallPageState extends State<GroupCallPage>
           ),
         ),
         SizedBox(
-          height: 110,
+          height: 100,
           child: ListView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
             children: [
-              _buildLocalThumbnail(),
-              ...others.map((uid) => _buildRemoteThumbTile(uid)),
+              _buildLocalThumb(),
+              ...others.map((uid) => _buildRemoteThumb(uid)),
             ],
           ),
         ),
@@ -528,187 +852,159 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
-  Widget _buildGridLayout(List<int> allUids) {
-    final count = allUids.length;
-
+  Widget _buildAdaptiveGrid(List<int> uids) {
+    final count = uids.length;
     if (count == 1) {
       return Stack(
         children: [
           GestureDetector(
-            onDoubleTap: () => _setSpotlight(allUids[0]),
-            child: _buildRemoteVideoTile(allUids[0], big: true),
+            onDoubleTap: () => _setSpotlight(uids[0]),
+            child: _buildRemoteVideoTile(uids[0], big: true),
           ),
           Positioned(
             top: MediaQuery.of(context).padding.top + 110,
-            right: 16,
+            right: 12,
             child: _buildLocalPip(),
           ),
         ],
       );
     }
 
-    return Column(
-      children: [
-        Expanded(
-          child: GridView.builder(
-            padding: const EdgeInsets.all(2),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: count <= 2 ? 1 : 2,
-              crossAxisSpacing: 2,
-              mainAxisSpacing: 2,
-            ),
-            itemCount: allUids.length + 1,
-            itemBuilder: (_, i) {
-              if (i == 0) return _buildLocalTile();
-              final uid = allUids[i - 1];
-              return GestureDetector(
-                onDoubleTap: () => _setSpotlight(uid),
-                child: _buildRemoteVideoTile(uid),
-              );
-            },
-          ),
-        ),
-      ],
+    final crossCount = count <= 2 ? 1 : (count <= 4 ? 2 : 3);
+    return GridView.builder(
+      padding: const EdgeInsets.all(2),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossCount,
+        crossAxisSpacing: 2,
+        mainAxisSpacing: 2,
+        childAspectRatio: crossCount == 1 ? 0.75 : 0.85,
+      ),
+      itemCount: uids.length + 1,
+      itemBuilder: (_, i) {
+        if (i == 0) return _buildLocalGridTile();
+        final uid = uids[i - 1];
+        return GestureDetector(
+          onDoubleTap: () => _setSpotlight(uid),
+          child: _buildRemoteVideoTile(uid),
+        );
+      },
     );
   }
+
+  // ─── Video Tiles ──────────────────────────────
 
   Widget _buildRemoteVideoTile(int uid, {bool big = false}) {
-    final participant = _callModel.participants
-        .cast<GroupCallParticipant?>()
-        .firstWhere((p) => p?.userId != null, orElse: () => null);
+    final participant =
+        _callModel.participants.cast<GroupCallParticipant?>().firstWhere(
+              (p) => p != null,
+              orElse: () => null,
+            );
+    final videoMuted = _remoteVideoMuted[uid] ?? false;
+    final audioMuted = _remoteAudioMuted[uid] ?? false;
 
     return Stack(
+      fit: StackFit.expand,
       children: [
         ClipRRect(
-          borderRadius: BorderRadius.circular(big ? 0 : 12),
-          child: AgoraVideoView(
-            controller: VideoViewController.remote(
-              rtcEngine: _engine,
-              canvas: VideoCanvas(uid: uid),
-              connection: RtcConnection(channelId: widget.call.channelName),
-            ),
-          ),
-        ),
-        if (participant?.isMuted == true)
-          Positioned(
-            bottom: 8,
-            left: 8,
-            child: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                  color: Colors.redAccent.withOpacity(0.8),
-                  borderRadius: BorderRadius.circular(16)),
-              child: const Icon(Icons.mic_off, color: Colors.white, size: 16),
-            ),
-          ),
-        if (participant?.isCameraOff == true)
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.black87,
-              borderRadius: BorderRadius.circular(big ? 0 : 12),
-            ),
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircleAvatar(
-                    radius: big ? 40 : 24,
-                    backgroundColor: Colors.blueGrey,
-                    child: Icon(Icons.person,
-                        color: Colors.white, size: big ? 40 : 24),
+          borderRadius: BorderRadius.circular(big ? 0 : 10),
+          child: videoMuted
+              ? _buildVideoOffPlaceholder(
+                  name: participant?.userName,
+                  avatarUrl: participant?.userAvatar,
+                  big: big,
+                )
+              : AgoraVideoView(
+                  controller: VideoViewController.remote(
+                    rtcEngine: _engine,
+                    canvas: VideoCanvas(uid: uid),
+                    connection:
+                        RtcConnection(channelId: widget.call.channelName),
                   ),
-                  if (participant?.userName != null) ...[
-                    const SizedBox(height: 6),
-                    Text(participant!.userName,
-                        style:
-                            const TextStyle(color: Colors.white, fontSize: 12)),
-                  ],
-                ],
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildLocalTile() {
-    return Stack(
-      children: [
-        _isCameraOff
-            ? Container(
-                decoration: BoxDecoration(
-                  color: Colors.black87,
-                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Center(
-                  child:
-                      Icon(Icons.videocam_off, color: Colors.white54, size: 40),
-                ),
-              )
-            : ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: _engineInitialized
-                    ? AgoraVideoView(
-                        controller: VideoViewController(
-                          rtcEngine: _engine,
-                          canvas: const VideoCanvas(uid: 0),
-                        ),
-                      )
-                    : Container(color: Colors.black54),
-              ),
-        if (_isMuted)
-          Positioned(
-            bottom: 8,
-            left: 8,
-            child: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                  color: Colors.redAccent.withOpacity(0.8),
-                  borderRadius: BorderRadius.circular(16)),
-              child: const Icon(Icons.mic_off, color: Colors.white, size: 16),
-            ),
-          ),
+        ),
+        // Status badges
         Positioned(
           bottom: 8,
-          right: 8,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-                color: Colors.black54, borderRadius: BorderRadius.circular(10)),
-            child: const Text('Bạn',
-                style: TextStyle(color: Colors.white, fontSize: 11)),
+          left: 8,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (audioMuted) _statusBadge(Icons.mic_off, Colors.red.shade600),
+              if (videoMuted) ...[
+                const SizedBox(width: 4),
+                _statusBadge(Icons.videocam_off, Colors.orange.shade700),
+              ],
+            ],
           ),
         ),
+        // Name label
+        if (participant?.userName != null)
+          Positioned(
+            bottom: 8,
+            right: 8,
+            child: _nameBadge(participant!.userName),
+          ),
+        // Raised hand
+        if (participant != null && _callModel.hasRaisedHand(participant.userId))
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF59E0B),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Text('✋', style: TextStyle(fontSize: 14)),
+            ),
+          ),
       ],
     );
   }
 
-  /// PiP nội tuyến — camera local hiển thị góc phải màn hình (khác PiP hệ thống)
-  Widget _buildLocalPip() {
-    return GestureDetector(
-      onTap: () {},
-      child: Container(
-        width: 110,
-        height: 160,
-        decoration: BoxDecoration(
-          color: Colors.black87,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.6),
-                blurRadius: 24,
-                offset: const Offset(0, 10))
+  Widget _buildVideoOffPlaceholder(
+      {String? name, String? avatarUrl, bool big = false}) {
+    return Container(
+      color: const Color(0xFF1e293b),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircleAvatar(
+              radius: big ? 44 : 26,
+              backgroundImage: (avatarUrl?.isNotEmpty ?? false)
+                  ? NetworkImage(avatarUrl!)
+                  : null,
+              backgroundColor: const Color(0xFF334155),
+              child: (avatarUrl?.isNotEmpty ?? false)
+                  ? null
+                  : Icon(Icons.person,
+                      size: big ? 44 : 26, color: Colors.white54),
+            ),
+            if (name != null) ...[
+              const SizedBox(height: 8),
+              Text(name,
+                  style: const TextStyle(color: Colors.white60, fontSize: 12)),
+            ],
           ],
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(14),
+      ),
+    );
+  }
+
+  Widget _buildLocalGridTile() {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
           child: _isCameraOff
               ? Container(
-                  color: Colors.blueGrey[900],
+                  color: const Color(0xFF1e293b),
                   child: const Center(
-                      child: Icon(Icons.videocam_off,
-                          color: Colors.white54, size: 28)),
+                    child: Icon(Icons.videocam_off,
+                        color: Colors.white38, size: 36),
+                  ),
                 )
               : (_engineInitialized
                   ? AgoraVideoView(
@@ -717,59 +1013,133 @@ class _GroupCallPageState extends State<GroupCallPage>
                         canvas: const VideoCanvas(uid: 0),
                       ),
                     )
-                  : Container(color: Colors.black54)),
+                  : Container(color: const Color(0xFF0f172a))),
         ),
-      ),
+        if (_isMuted)
+          Positioned(
+            bottom: 8,
+            left: 8,
+            child: _statusBadge(Icons.mic_off, Colors.red.shade600),
+          ),
+        Positioned(
+          bottom: 8,
+          right: 8,
+          child: _nameBadge('Bạn'),
+        ),
+      ],
     );
   }
 
-  Widget _buildLocalThumbnail() {
+  Widget _buildLocalPip() {
     return Container(
-      width: 70,
-      height: 90,
-      margin: const EdgeInsets.only(right: 6),
+      width: 100,
+      height: 148,
       decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.white38)),
+        color: const Color(0xFF0f172a),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.25), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.5),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(12.5),
         child: _isCameraOff
             ? Container(
-                color: Colors.blueGrey[900],
+                color: const Color(0xFF1e293b),
                 child: const Center(
-                    child: Icon(Icons.person, color: Colors.white54, size: 28)))
+                    child: Icon(Icons.videocam_off,
+                        color: Colors.white38, size: 26)),
+              )
             : (_engineInitialized
                 ? AgoraVideoView(
                     controller: VideoViewController(
-                        rtcEngine: _engine, canvas: const VideoCanvas(uid: 0)))
-                : Container(color: Colors.black54)),
+                      rtcEngine: _engine,
+                      canvas: const VideoCanvas(uid: 0),
+                    ),
+                  )
+                : Container(color: const Color(0xFF0f172a))),
       ),
     );
   }
 
-  Widget _buildRemoteThumbTile(int uid) {
+  Widget _buildLocalThumb() {
+    return _thumbContainer(
+      child: _isCameraOff
+          ? Container(
+              color: const Color(0xFF1e293b),
+              child: const Center(
+                  child: Icon(Icons.person, color: Colors.white38, size: 24)))
+          : (_engineInitialized
+              ? AgoraVideoView(
+                  controller: VideoViewController(
+                    rtcEngine: _engine,
+                    canvas: const VideoCanvas(uid: 0),
+                  ),
+                )
+              : Container(color: const Color(0xFF0f172a))),
+    );
+  }
+
+  Widget _buildRemoteThumb(int uid) {
     return GestureDetector(
       onTap: () => _setSpotlight(uid),
-      child: Container(
-        width: 70,
-        height: 90,
-        margin: const EdgeInsets.only(right: 6),
-        decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.white38)),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(9),
-          child: AgoraVideoView(
-            controller: VideoViewController.remote(
-              rtcEngine: _engine,
-              canvas: VideoCanvas(uid: uid),
-              connection: RtcConnection(channelId: widget.call.channelName),
-            ),
+      child: _thumbContainer(
+        child: AgoraVideoView(
+          controller: VideoViewController.remote(
+            rtcEngine: _engine,
+            canvas: VideoCanvas(uid: uid),
+            connection: RtcConnection(channelId: widget.call.channelName),
           ),
         ),
       ),
     );
   }
+
+  Widget _thumbContainer({required Widget child}) {
+    return Container(
+      width: 62,
+      height: 88,
+      margin: const EdgeInsets.only(right: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withOpacity(0.2)),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(9),
+        child: child,
+      ),
+    );
+  }
+
+  Widget _statusBadge(IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Icon(icon, color: Colors.white, size: 13),
+    );
+  }
+
+  Widget _nameBadge(String name) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.55),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child:
+          Text(name, style: const TextStyle(color: Colors.white, fontSize: 10)),
+    );
+  }
+
+  // ─── Gradients ────────────────────────────────
 
   Widget _buildGradients() {
     return Positioned.fill(
@@ -777,23 +1147,29 @@ class _GroupCallPageState extends State<GroupCallPage>
         child: Column(
           children: [
             Container(
-              height: 140,
+              height: 160,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Colors.black.withOpacity(0.7), Colors.transparent],
+                  colors: [
+                    Colors.black.withOpacity(0.75),
+                    Colors.transparent,
+                  ],
                 ),
               ),
             ),
             const Spacer(),
             Container(
-              height: 220,
+              height: 240,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.bottomCenter,
                   end: Alignment.topCenter,
-                  colors: [Colors.black.withOpacity(0.85), Colors.transparent],
+                  colors: [
+                    Colors.black.withOpacity(0.88),
+                    Colors.transparent,
+                  ],
                 ),
               ),
             ),
@@ -803,6 +1179,8 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
+  // ─── Top Bar ──────────────────────────────────
+
   Widget _buildVideoTopBar() {
     return Positioned(
       top: 0,
@@ -810,58 +1188,93 @@ class _GroupCallPageState extends State<GroupCallPage>
       right: 0,
       child: ClipRect(
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
           child: Container(
-            color: Colors.black.withOpacity(0.2),
+            color: Colors.black.withOpacity(0.15),
             child: SafeArea(
               bottom: false,
               child: Padding(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 child: Row(
                   children: [
-                    // Nút thu nhỏ PiP
-                    IconButton(
-                      icon: const Icon(Icons.picture_in_picture_alt,
-                          color: Colors.white),
-                      onPressed: _enterPiPMode,
+                    _iconBtn(
+                      Icons.picture_in_picture_alt_rounded,
+                      onTap: _enterPiPMode,
                       tooltip: 'Thu nhỏ',
                     ),
+                    const SizedBox(width: 4),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(widget.call.groupName,
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold)),
+                          Text(
+                            widget.call.groupName,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.3,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                           if (_connectedAt != null)
                             CallTimerWidget(
                               startTime: _connectedAt!,
                               style: const TextStyle(
-                                  color: Colors.white70, fontSize: 13),
+                                  color: Colors.white54, fontSize: 12),
                             ),
                         ],
                       ),
                     ),
+                    if (_isScreenSharing)
+                      Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent.withOpacity(0.85),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.screen_share,
+                                color: Colors.white, size: 13),
+                            SizedBox(width: 4),
+                            Text('Đang chia sẻ',
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ),
                     GestureDetector(
                       onTap: () => setState(
                           () => _showParticipantsList = !_showParticipantsList),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
+                            horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(16)),
+                          color: Colors.white.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                              color: Colors.white.withOpacity(0.2), width: 0.5),
+                        ),
                         child: Row(
                           children: [
-                            const Icon(Icons.people,
-                                color: Colors.white, size: 16),
-                            const SizedBox(width: 6),
-                            Text('${_callModel.participants.length}',
-                                style: const TextStyle(
-                                    color: Colors.white, fontSize: 14)),
+                            const Icon(Icons.people_rounded,
+                                color: Colors.white, size: 15),
+                            const SizedBox(width: 5),
+                            Text(
+                              '${_callModel.participants.length}',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600),
+                            ),
                           ],
                         ),
                       ),
@@ -876,35 +1289,56 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
+  Widget _iconBtn(IconData icon,
+      {required VoidCallback onTap, String? tooltip}) {
+    return Tooltip(
+      message: tooltip ?? '',
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: Colors.white, size: 20),
+        ),
+      ),
+    );
+  }
+
+  // ─── Participants Panel ───────────────────────
+
   Widget _buildParticipantsPanel() {
     return Positioned(
       top: 0,
       right: 0,
       bottom: 0,
-      width: 260,
+      width: 270,
       child: GestureDetector(
         onTap: () {},
         child: ClipRect(
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
             child: Container(
-              color: Colors.black.withOpacity(0.75),
+              color: Colors.black.withOpacity(0.78),
               child: SafeArea(
                 child: Column(
                   children: [
                     Padding(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
                       child: Row(
                         children: [
                           const Text('Thành viên',
                               style: TextStyle(
                                   color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16)),
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 15)),
                           const Spacer(),
                           IconButton(
                             icon: const Icon(Icons.close,
-                                color: Colors.white, size: 20),
+                                color: Colors.white60, size: 18),
                             onPressed: () =>
                                 setState(() => _showParticipantsList = false),
                             padding: EdgeInsets.zero,
@@ -913,53 +1347,14 @@ class _GroupCallPageState extends State<GroupCallPage>
                         ],
                       ),
                     ),
-                    const Divider(color: Colors.white24, height: 1),
+                    Divider(color: Colors.white.withOpacity(0.1), height: 1),
                     Expanded(
-                      child: ListView(
-                        children: _callModel.participants.map((p) {
-                          return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 4),
-                            leading: CircleAvatar(
-                              radius: 18,
-                              backgroundImage: p.userAvatar.isNotEmpty
-                                  ? NetworkImage(p.userAvatar)
-                                  : null,
-                              backgroundColor: Colors.blueGrey,
-                              child: p.userAvatar.isEmpty
-                                  ? const Icon(Icons.person,
-                                      color: Colors.white, size: 18)
-                                  : null,
-                            ),
-                            title: Text(
-                              p.userName,
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            subtitle: p.isAdmin
-                                ? const Text('Admin',
-                                    style: TextStyle(
-                                        color: Colors.amber, fontSize: 11))
-                                : null,
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (p.isMuted)
-                                  const Icon(Icons.mic_off,
-                                      color: Colors.redAccent, size: 16),
-                                if (p.isCameraOff && widget.call.isVideo)
-                                  const Padding(
-                                    padding: EdgeInsets.only(left: 6),
-                                    child: Icon(Icons.videocam_off,
-                                        color: Colors.redAccent, size: 16),
-                                  ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
+                      child: ListView.builder(
+                        itemCount: _callModel.participants.length,
+                        itemBuilder: (_, i) {
+                          final p = _callModel.participants[i];
+                          return _buildParticipantTile(p);
+                        },
                       ),
                     ),
                   ],
@@ -972,112 +1367,240 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
+  Widget _buildParticipantTile(GroupCallParticipant p) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+      leading: Stack(
+        children: [
+          CircleAvatar(
+            radius: 19,
+            backgroundImage:
+                p.userAvatar.isNotEmpty ? NetworkImage(p.userAvatar) : null,
+            backgroundColor: const Color(0xFF334155),
+            child: p.userAvatar.isEmpty
+                ? const Icon(Icons.person, color: Colors.white54, size: 18)
+                : null,
+          ),
+          if (p.isSpeaking)
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFF4ADE80), width: 2),
+                ),
+              ),
+            ),
+        ],
+      ),
+      title: Text(
+        p.userName,
+        style: const TextStyle(
+            color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: p.isAdmin
+          ? const Text('Admin',
+              style: TextStyle(color: Color(0xFFFBBF24), fontSize: 10))
+          : null,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_callModel.hasRaisedHand(p.userId))
+            const Text('✋', style: TextStyle(fontSize: 14)),
+          const SizedBox(width: 4),
+          if (p.isMuted)
+            const Icon(Icons.mic_off, color: Colors.redAccent, size: 14),
+          if (p.isCameraOff && widget.call.isVideo)
+            const Padding(
+              padding: EdgeInsets.only(left: 4),
+              child: Icon(Icons.videocam_off,
+                  color: Colors.orangeAccent, size: 14),
+            ),
+          if (p.isScreenSharing)
+            const Padding(
+              padding: EdgeInsets.only(left: 4),
+              child:
+                  Icon(Icons.screen_share, color: Colors.blueAccent, size: 14),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Reaction Picker ──────────────────────────
+
+  Widget _buildReactionPicker() {
+    return Positioned(
+      bottom: 170,
+      right: 16,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1e293b).withOpacity(0.95),
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(color: Colors.white.withOpacity(0.1)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.4),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: CallReactionType.values.map((type) {
+            return GestureDetector(
+              onTap: () => _sendReaction(type),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 5),
+                child: Text(type.emoji, style: const TextStyle(fontSize: 26)),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  // ─── Bottom Controls ──────────────────────────
+
   Widget _buildBottomControls() {
     return Positioned(
       bottom: 0,
       left: 0,
       right: 0,
-      child: AnimatedOpacity(
-        opacity: _showControls ? 1.0 : 0.0,
-        duration: const Duration(milliseconds: 300),
-        child: SafeArea(
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Secondary row
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Container(
-                    margin: const EdgeInsets.only(right: 20, bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.black45,
-                      borderRadius: BorderRadius.circular(30),
-                      border: Border.all(color: Colors.white24, width: 0.5),
-                    ),
-                    child: IconButton(
-                      icon: Icon(
-                        _isLiveCaptionEnabled
-                            ? Icons.subtitles
-                            : Icons.subtitles_off,
-                        color: _isLiveCaptionEnabled
-                            ? Colors.greenAccent
-                            : Colors.white70,
-                      ),
-                      onPressed: _toggleLiveCaption,
-                      tooltip: 'Live Caption AI',
-                    ),
+                  _secondaryBtn(
+                    icon: _isLiveCaptionEnabled
+                        ? Icons.subtitles_rounded
+                        : Icons.subtitles_off_rounded,
+                    active: _isLiveCaptionEnabled,
+                    label: 'CC',
+                    onTap: _toggleLiveCaption,
+                  ),
+                  const SizedBox(width: 8),
+                  _secondaryBtn(
+                    icon: Icons.emoji_emotions_outlined,
+                    active: _showReactionPicker,
+                    label: '😊',
+                    onTap: () => setState(
+                        () => _showReactionPicker = !_showReactionPicker),
+                  ),
+                  const SizedBox(width: 8),
+                  _secondaryBtn(
+                    icon: _hasRaisedHand
+                        ? Icons.back_hand
+                        : Icons.back_hand_outlined,
+                    active: _hasRaisedHand,
+                    label: '✋',
+                    onTap: _toggleRaiseHand,
                   ),
                 ],
               ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 20, left: 16, right: 16),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _controlBtn(
-                          icon: _isMuted ? Icons.mic_off : Icons.mic,
-                          label: _isMuted ? 'Mở Mic' : 'Tắt Mic',
-                          active: _isMuted,
-                          onTap: _toggleMute,
-                        ),
-                        _controlBtn(
-                          icon: _isSpeakerOn ? Icons.volume_up : Icons.hearing,
-                          label: _isSpeakerOn ? 'Loa ngoài' : 'Loa trong',
-                          active: _isSpeakerOn,
-                          onTap: _toggleSpeaker,
-                        ),
-                        if (widget.call.isVideo)
-                          _controlBtn(
-                            icon: _isCameraOff
-                                ? Icons.videocam_off
-                                : Icons.videocam,
-                            label: _isCameraOff ? 'Mở Cam' : 'Tắt Cam',
-                            active: _isCameraOff,
-                            onTap: _toggleCamera,
+              const SizedBox(height: 12),
+              // Main controls row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _controlBtn(
+                    icon: _isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                    label: _isMuted ? 'Mở Mic' : 'Mic',
+                    active: _isMuted,
+                    onTap: _toggleMute,
+                  ),
+                  _controlBtn(
+                    icon: _isSpeakerOn
+                        ? Icons.volume_up_rounded
+                        : Icons.hearing_rounded,
+                    label: _isSpeakerOn ? 'Loa' : 'Tai nghe',
+                    active: _isSpeakerOn,
+                    onTap: _toggleSpeaker,
+                  ),
+                  // End call button
+                  GestureDetector(
+                    onTap: _hangUp,
+                    child: Container(
+                      width: 62,
+                      height: 62,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEF4444),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFEF4444).withOpacity(0.45),
+                            blurRadius: 18,
+                            offset: const Offset(0, 6),
                           ),
-                        if (widget.call.isVideo)
-                          _controlBtn(
-                            icon: Icons.flip_camera_android,
-                            label: 'Xoay',
-                            active: false,
-                            onTap: _switchCamera,
-                          ),
-                        _controlBtn(
-                          icon: Icons.people,
-                          label: 'Thành viên',
-                          active: _showParticipantsList,
-                          onTap: () => setState(() =>
-                              _showParticipantsList = !_showParticipantsList),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    GestureDetector(
-                      onTap: _hangUp,
-                      child: Container(
-                        width: 68,
-                        height: 68,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE53935),
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                                color: const Color(0xFFE53935).withOpacity(0.4),
-                                blurRadius: 16,
-                                offset: const Offset(0, 6))
-                          ],
-                        ),
-                        child: const Icon(Icons.call_end,
-                            color: Colors.white, size: 30),
+                        ],
                       ),
+                      child: const Icon(Icons.call_end_rounded,
+                          color: Colors.white, size: 28),
                     ),
-                  ],
-                ),
+                  ),
+                  _controlBtn(
+                    icon: _isCameraOff
+                        ? Icons.videocam_off_rounded
+                        : Icons.videocam_rounded,
+                    label: _isCameraOff ? 'Bật Cam' : 'Cam',
+                    active: _isCameraOff,
+                    onTap: _toggleCamera,
+                  ),
+                  _controlBtn(
+                    icon: Icons.flip_camera_android_rounded,
+                    label: 'Xoay',
+                    active: false,
+                    onTap: _switchCamera,
+                  ),
+                ],
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _secondaryBtn({
+    required IconData icon,
+    required bool active,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: active
+              ? Colors.white.withOpacity(0.25)
+              : Colors.white.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withOpacity(0.2), width: 0.5),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: active ? Colors.white : Colors.white70, size: 16),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: active ? Colors.white : Colors.white60,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1093,16 +1616,16 @@ class _GroupCallPageState extends State<GroupCallPage>
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)],
+          colors: [Color(0xFF0b1437), Color(0xFF1a2f4e), Color(0xFF0b1437)],
         ),
       ),
       child: SafeArea(
         child: Column(
           children: [
+            // Top bar
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const AICallShield(),
                   const Spacer(),
@@ -1110,159 +1633,268 @@ class _GroupCallPageState extends State<GroupCallPage>
                 ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                children: [
-                  Text(widget.call.groupName,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  if (_connectedAt != null)
-                    CallTimerWidget(
-                      startTime: _connectedAt!,
-                      style: const TextStyle(
-                          color: Colors.greenAccent,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600),
-                    ),
-                ],
+
+            const SizedBox(height: 12),
+            Text(
+              widget.call.groupName,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
               ),
             ),
+            const SizedBox(height: 6),
+            if (_connectedAt != null)
+              CallTimerWidget(
+                startTime: _connectedAt!,
+                style: const TextStyle(
+                  color: Color(0xFF4ADE80),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1,
+                ),
+              ),
+
             const Spacer(),
             _buildVoiceParticipantsGrid(),
             const Spacer(),
+
+            // Reactions row
+            if (_floatingReactions.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: _floatingReactions
+                      .map((r) =>
+                          Text(r.emoji, style: const TextStyle(fontSize: 28)))
+                      .toList(),
+                ),
+              ),
+
+            // Caption
             if (_isLiveCaptionEnabled)
               const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 child: LiveCaptionOverlay(),
               ),
-            Container(
-              margin: const EdgeInsets.only(bottom: 24),
-              decoration: BoxDecoration(
-                color: Colors.white10,
-                borderRadius: BorderRadius.circular(30),
-              ),
-              child: IconButton(
-                icon: Icon(
-                  _isLiveCaptionEnabled ? Icons.subtitles : Icons.subtitles_off,
-                  color: _isLiveCaptionEnabled
-                      ? Colors.greenAccent
-                      : Colors.white70,
-                ),
-                onPressed: _toggleLiveCaption,
+
+            // Secondary actions
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _secondaryBtn(
+                    icon: _isLiveCaptionEnabled
+                        ? Icons.subtitles_rounded
+                        : Icons.subtitles_off_rounded,
+                    active: _isLiveCaptionEnabled,
+                    label: 'Phụ đề',
+                    onTap: _toggleLiveCaption,
+                  ),
+                  const SizedBox(width: 10),
+                  _secondaryBtn(
+                    icon: Icons.emoji_emotions_outlined,
+                    active: _showReactionPicker,
+                    label: 'React',
+                    onTap: () => setState(
+                        () => _showReactionPicker = !_showReactionPicker),
+                  ),
+                  const SizedBox(width: 10),
+                  _secondaryBtn(
+                    icon: _hasRaisedHand
+                        ? Icons.back_hand
+                        : Icons.back_hand_outlined,
+                    active: _hasRaisedHand,
+                    label: 'Giơ tay',
+                    onTap: _toggleRaiseHand,
+                  ),
+                ],
               ),
             ),
+
+            if (_showReactionPicker)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _buildVoiceReactionRow(),
+              ),
+
             _buildVoiceControls(),
-            const SizedBox(height: 32),
+            const SizedBox(height: 28),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildVoiceParticipantsGrid() {
-    final participants = _callModel.participants;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Wrap(
-        spacing: 24,
-        runSpacing: 24,
-        alignment: WrapAlignment.center,
-        children: participants.map((p) {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Stack(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(3),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: p.isMuted
-                            ? Colors.red.withOpacity(0.5)
-                            : Colors.greenAccent.withOpacity(0.8),
-                        width: 2,
-                      ),
-                    ),
-                    child: CircleAvatar(
-                      radius: 40,
-                      backgroundImage: p.userAvatar.isNotEmpty
-                          ? NetworkImage(p.userAvatar)
-                          : null,
-                      backgroundColor: Colors.blueGrey,
-                      child: p.userAvatar.isEmpty
-                          ? const Icon(Icons.person,
-                              size: 40, color: Colors.white)
-                          : null,
-                    ),
-                  ),
-                  if (p.isMuted)
-                    Positioned(
-                      right: 0,
-                      bottom: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                            color: Colors.redAccent, shape: BoxShape.circle),
-                        child: const Icon(Icons.mic_off,
-                            size: 14, color: Colors.white),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                p.userId == widget.call.initiatorId ? 'Bạn' : p.userName,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500),
-              ),
-            ],
+  Widget _buildVoiceReactionRow() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1e293b).withOpacity(0.9),
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: CallReactionType.values.map((type) {
+          return GestureDetector(
+            onTap: () => _sendReaction(type),
+            child: Text(type.emoji, style: const TextStyle(fontSize: 28)),
           );
         }).toList(),
       ),
     );
   }
 
+  Widget _buildVoiceParticipantsGrid() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Wrap(
+        spacing: 20,
+        runSpacing: 20,
+        alignment: WrapAlignment.center,
+        children:
+            _callModel.participants.map(_buildVoiceParticipantAvatar).toList(),
+      ),
+    );
+  }
+
+  Widget _buildVoiceParticipantAvatar(GroupCallParticipant p) {
+    final isSelf = p.userId == widget.currentUserId;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Stack(
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: p.isSpeaking
+                      ? const Color(0xFF4ADE80)
+                      : (p.isMuted
+                          ? Colors.red.withOpacity(0.5)
+                          : Colors.white.withOpacity(0.2)),
+                  width: p.isSpeaking ? 3 : 2,
+                ),
+                boxShadow: p.isSpeaking
+                    ? [
+                        BoxShadow(
+                          color: const Color(0xFF4ADE80).withOpacity(0.4),
+                          blurRadius: 12,
+                          spreadRadius: 2,
+                        ),
+                      ]
+                    : null,
+              ),
+              child: CircleAvatar(
+                radius: 36,
+                backgroundImage:
+                    p.userAvatar.isNotEmpty ? NetworkImage(p.userAvatar) : null,
+                backgroundColor: const Color(0xFF334155),
+                child: p.userAvatar.isEmpty
+                    ? const Icon(Icons.person, size: 36, color: Colors.white54)
+                    : null,
+              ),
+            ),
+            if (p.isMuted)
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                      color: Color(0xFFEF4444), shape: BoxShape.circle),
+                  child:
+                      const Icon(Icons.mic_off, size: 12, color: Colors.white),
+                ),
+              ),
+            if (_callModel.hasRaisedHand(p.userId))
+              Positioned(
+                left: 0,
+                bottom: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: const BoxDecoration(
+                      color: Color(0xFFF59E0B), shape: BoxShape.circle),
+                  child: const Text('✋', style: TextStyle(fontSize: 10)),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          isSelf ? 'Bạn' : p.userName,
+          style: TextStyle(
+            color: isSelf ? const Color(0xFF93C5FD) : Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+          textAlign: TextAlign.center,
+          overflow: TextOverflow.ellipsis,
+        ),
+        if (p.isAdmin)
+          Container(
+            margin: const EdgeInsets.only(top: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF59E0B).withOpacity(0.2),
+              borderRadius: BorderRadius.circular(6),
+              border:
+                  Border.all(color: const Color(0xFFF59E0B).withOpacity(0.5)),
+            ),
+            child: const Text('admin',
+                style: TextStyle(color: Color(0xFFFBBF24), fontSize: 9)),
+          ),
+      ],
+    );
+  }
+
   Widget _buildVoiceControls() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
+      padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           _controlBtn(
-              icon: _isMuted ? Icons.mic_off : Icons.mic,
-              label: _isMuted ? 'Mở Mic' : 'Tắt Mic',
-              active: _isMuted,
-              onTap: _toggleMute),
+            icon: _isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+            label: _isMuted ? 'Mở Mic' : 'Mic',
+            active: _isMuted,
+            onTap: _toggleMute,
+          ),
+          // End call
           GestureDetector(
             onTap: _hangUp,
             child: Container(
-              width: 72,
-              height: 72,
+              width: 68,
+              height: 68,
               decoration: BoxDecoration(
-                color: const Color(0xFFE53935),
+                color: const Color(0xFFEF4444),
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                      color: const Color(0xFFE53935).withOpacity(0.4),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6))
+                    color: const Color(0xFFEF4444).withOpacity(0.45),
+                    blurRadius: 18,
+                    offset: const Offset(0, 6),
+                  ),
                 ],
               ),
-              child: const Icon(Icons.call_end, color: Colors.white, size: 32),
+              child: const Icon(Icons.call_end_rounded,
+                  color: Colors.white, size: 30),
             ),
           ),
           _controlBtn(
-              icon: _isSpeakerOn ? Icons.volume_up : Icons.hearing,
-              label: _isSpeakerOn ? 'Loa ngoài' : 'Loa trong',
-              active: _isSpeakerOn,
-              onTap: _toggleSpeaker),
+            icon:
+                _isSpeakerOn ? Icons.volume_up_rounded : Icons.hearing_rounded,
+            label: _isSpeakerOn ? 'Loa' : 'Tai nghe',
+            active: _isSpeakerOn,
+            onTap: _toggleSpeaker,
+          ),
         ],
       ),
     );
@@ -1285,23 +1917,153 @@ class _GroupCallPageState extends State<GroupCallPage>
         children: [
           AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            width: 54,
-            height: 54,
+            width: 52,
+            height: 52,
             decoration: BoxDecoration(
               color: active
-                  ? Colors.white.withOpacity(0.3)
-                  : Colors.white.withOpacity(0.12),
+                  ? Colors.white.withOpacity(0.28)
+                  : Colors.white.withOpacity(0.1),
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white.withOpacity(0.3)),
+              border: Border.all(
+                color: active
+                    ? Colors.white.withOpacity(0.5)
+                    : Colors.white.withOpacity(0.2),
+              ),
             ),
-            child: Icon(icon, color: Colors.white, size: 24),
+            child: Icon(icon, color: Colors.white, size: 22),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 5),
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.85),
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Call Ended Bottom Sheet
+// ─────────────────────────────────────────────────────────────
+
+class _CallEndedSheet extends StatelessWidget {
+  final int duration;
+  final int participantCount;
+  final VoidCallback onDismiss;
+
+  const _CallEndedSheet({
+    required this.duration,
+    required this.participantCount,
+    required this.onDismiss,
+  });
+
+  String get _formattedDuration {
+    final d = Duration(seconds: duration);
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return d.inHours > 0 ? '${d.inHours}:$m:$s' : '$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 36),
+      decoration: const BoxDecoration(
+        color: Color(0xFF0f172a),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: const Color(0xFF1e293b),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white.withOpacity(0.1)),
+            ),
+            child: const Icon(Icons.call_end_rounded,
+                color: Color(0xFFEF4444), size: 30),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Cuộc gọi đã kết thúc',
+            style: TextStyle(
+                color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _statCard(
+                icon: Icons.access_time_rounded,
+                label: 'Thời gian',
+                value: _formattedDuration,
+              ),
+              const SizedBox(width: 16),
+              _statCard(
+                icon: Icons.people_rounded,
+                label: 'Thành viên',
+                value: '$participantCount',
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: onDismiss,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF3B82F6),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              child: const Text('Đóng',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statCard(
+      {required IconData icon, required String label, required String value}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1e293b),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: const Color(0xFF93C5FD), size: 20),
+          const SizedBox(height: 4),
+          Text(value,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700)),
           Text(label,
-              style: TextStyle(
-                  color: Colors.white.withOpacity(0.9),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500)),
+              style: const TextStyle(color: Colors.white38, fontSize: 11)),
         ],
       ),
     );

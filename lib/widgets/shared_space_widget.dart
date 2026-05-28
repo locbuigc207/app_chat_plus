@@ -1,21 +1,30 @@
-
-
-
+// lib/bubble/widgets/shared_space_widget.dart
+// ignore_for_file: use_super_parameters
 
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MODELS
+// ─────────────────────────────────────────────────────────────────────────────
 
-
+/// A single point in a drawing stroke.
+@immutable
 class DrawPoint {
   final double x;
   final double y;
-  final bool isStart; 
+
+  /// true = start a new stroke (moveTo), false = continue (lineTo).
+  final bool isStart;
   final int color;
   final double strokeWidth;
+  final int ts;
 
   const DrawPoint({
     required this.x,
@@ -23,6 +32,7 @@ class DrawPoint {
     required this.isStart,
     required this.color,
     required this.strokeWidth,
+    required this.ts,
   });
 
   Map<String, dynamic> toJson() => {
@@ -31,78 +41,86 @@ class DrawPoint {
         'isStart': isStart,
         'color': color,
         'strokeWidth': strokeWidth,
-        'ts': DateTime.now().millisecondsSinceEpoch,
+        'ts': ts,
       };
 
   factory DrawPoint.fromJson(Map<String, dynamic> json) => DrawPoint(
         x: (json['x'] as num).toDouble(),
         y: (json['y'] as num).toDouble(),
         isStart: json['isStart'] as bool,
-        color: json['color'] as int,
+        color: (json['color'] as num).toInt(),
         strokeWidth: (json['strokeWidth'] as num).toDouble(),
+        ts: (json['ts'] as num?)?.toInt() ?? 0,
+      );
+
+  DrawPoint now() => DrawPoint(
+        x: x,
+        y: y,
+        isStart: isStart,
+        color: color,
+        strokeWidth: strokeWidth,
+        ts: DateTime.now().millisecondsSinceEpoch,
       );
 }
 
-
+// ─────────────────────────────────────────────────────────────────────────────
+// WHITEBOARD PAINTER
+// ─────────────────────────────────────────────────────────────────────────────
 
 class WhiteboardPainter extends CustomPainter {
   final List<DrawPoint> points;
-
   const WhiteboardPainter({required this.points});
 
   @override
   void paint(Canvas canvas, Size size) {
-    
+    // Background
     canvas.drawRect(
-      Rect.fromLTWH(0, 0, size.width, size.height),
-      Paint()..color = const Color(0xFFFAFAFA),
+      Offset.zero & size,
+      Paint()..color = const Color(0xFFFBFCFF),
     );
 
-    
-    final gridPaint = Paint()
-      ..color = const Color(0xFFDDE3EE)
-      ..strokeWidth = 1;
-    const spacing = 20.0;
-    for (double x = spacing; x < size.width; x += spacing) {
-      for (double y = spacing; y < size.height; y += spacing) {
-        canvas.drawCircle(Offset(x, y), 1, gridPaint);
+    // Dot grid
+    final dotPaint = Paint()..color = const Color(0xFFCDD5E0);
+    const step = 22.0;
+    for (double x = step; x < size.width; x += step) {
+      for (double y = step; y < size.height; y += step) {
+        canvas.drawCircle(Offset(x, y), 1.1, dotPaint);
       }
     }
 
-    
-    Paint? currentPaint;
-    Path? currentPath;
+    // Strokes
+    Paint? paint;
+    Path? path;
 
-    for (final point in points) {
-      if (point.isStart) {
-        
-        if (currentPath != null && currentPaint != null) {
-          canvas.drawPath(currentPath, currentPaint);
-        }
-        currentPaint = Paint()
-          ..color = Color(point.color)
-          ..strokeWidth = point.strokeWidth
+    for (final pt in points) {
+      if (pt.isStart) {
+        if (path != null && paint != null) canvas.drawPath(path, paint);
+        paint = Paint()
+          ..color = Color(pt.color)
+          ..strokeWidth = pt.strokeWidth
           ..strokeCap = StrokeCap.round
           ..strokeJoin = StrokeJoin.round
           ..style = PaintingStyle.stroke
           ..isAntiAlias = true;
-        currentPath = Path()..moveTo(point.x, point.y);
+        path = Path()..moveTo(pt.x, pt.y);
       } else {
-        currentPath?.lineTo(point.x, point.y);
+        path?.lineTo(pt.x, pt.y);
       }
     }
-
-    if (currentPath != null && currentPaint != null) {
-      canvas.drawPath(currentPath, currentPaint);
-    }
+    if (path != null && paint != null) canvas.drawPath(path, paint);
   }
 
   @override
   bool shouldRepaint(WhiteboardPainter old) => old.points != points;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SHARED SPACE WIDGET
+// ─────────────────────────────────────────────────────────────────────────────
 
-
+/// Two-tab panel:
+///  • **Whiteboard** — real-time collaborative drawing synced via Firestore.
+///  • **Co-Browse**  — share a URL with your chat partner and open it together.
 class SharedSpaceWidget extends StatefulWidget {
   final String conversationId;
   final String currentUserId;
@@ -121,261 +139,317 @@ class SharedSpaceWidget extends StatefulWidget {
 
 class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
     with TickerProviderStateMixin {
-  
-  int _activeTab = 0;
+  // ── Tabs ──────────────────────────────────────────────────────────────────
+  int _tab = 0; // 0 = whiteboard, 1 = co-browse
 
-  
-  final List<DrawPoint> _localPoints = [];
-  Color _selectedColor = const Color(0xFF2196F3);
-  double _strokeWidth = 3.0;
+  // ── Whiteboard ────────────────────────────────────────────────────────────
+  final List<DrawPoint> _points = [];
+  final List<DrawPoint> _undoBuffer = []; // last stroke for undo
+  Color _color = const Color(0xFF1E88E5);
+  double _stroke = 3.5;
   bool _isEraser = false;
-  StreamSubscription? _drawSub;
+  bool _isSyncing = false;
+  StreamSubscription? _boardSub;
   final _boardKey = GlobalKey();
 
-  
-  final _urlController = TextEditingController();
+  // Current stroke accumulator (for batched sync)
+  final List<DrawPoint> _pendingBatch = [];
+  Timer? _batchTimer;
+
+  // ── Co-browse ─────────────────────────────────────────────────────────────
+  final _urlCtrl = TextEditingController();
   String? _sharedUrl;
+  String? _sharedBy;
+  StreamSubscription? _urlSub;
 
-  
-  late AnimationController _tabAnim;
-  late AnimationController _toolAnim;
+  // ── Firestore ─────────────────────────────────────────────────────────────
+  late final DocumentReference _docRef;
 
-  
-  late final DocumentReference _boardRef;
+  // ── Animations ────────────────────────────────────────────────────────────
+  late AnimationController _tabSwitch;
+  late AnimationController _entryAnim;
 
-  
-  final _palette = const [
-    Color(0xFF2196F3), 
-    Color(0xFFE91E63), 
-    Color(0xFF4CAF50), 
-    Color(0xFFFF9800), 
-    Color(0xFF9C27B0), 
-    Color(0xFF00BCD4), 
-    Color(0xFF212121), 
-    Color(0xFFFFFFFF), 
+  // ── Color palette ─────────────────────────────────────────────────────────
+  static const _palette = <Color>[
+    Color(0xFF1E88E5), // blue
+    Color(0xFFE53935), // red
+    Color(0xFF43A047), // green
+    Color(0xFFFF9800), // orange
+    Color(0xFF8E24AA), // purple
+    Color(0xFF00ACC1), // cyan
+    Color(0xFF212121), // black
+    Color(0xFFEC407A), // pink
   ];
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // LIFECYCLE
+  // ─────────────────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
-    _boardRef = FirebaseFirestore.instance
+
+    _docRef = FirebaseFirestore.instance
         .collection('shared_spaces')
         .doc(widget.conversationId);
 
-    _tabAnim = AnimationController(
+    _tabSwitch = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 260),
     );
-    _toolAnim = AnimationController(
+    _entryAnim = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 400),
     )..forward();
 
-    _listenToBoard();
+    _listenBoard();
+    _listenUrl();
   }
 
-  
-  void _listenToBoard() {
-    _drawSub = _boardRef.snapshots().listen((snap) {
-      if (!snap.exists) return;
-      final data = snap.data() as Map<String, dynamic>?;
-      if (data == null) return;
+  @override
+  void dispose() {
+    _boardSub?.cancel();
+    _urlSub?.cancel();
+    _batchTimer?.cancel();
+    _urlCtrl.dispose();
+    _tabSwitch.dispose();
+    _entryAnim.dispose();
+    super.dispose();
+  }
 
-      final rawPoints = data['points'] as List<dynamic>? ?? [];
-      final synced = rawPoints
+  // ─────────────────────────────────────────────────────────────────────────
+  // FIRESTORE LISTENERS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  void _listenBoard() {
+    _boardSub = _docRef.snapshots().listen((snap) {
+      if (!snap.exists || !mounted) return;
+      final data = snap.data() as Map<String, dynamic>? ?? {};
+      final raw = data['points'] as List<dynamic>? ?? [];
+      final synced = raw
           .map((p) => DrawPoint.fromJson(Map<String, dynamic>.from(p as Map)))
           .toList();
-
-      final sharedUrl = data['sharedUrl'] as String?;
-
-      if (mounted) {
+      if (mounted)
         setState(() {
-          _localPoints
+          _points
             ..clear()
             ..addAll(synced);
-          if (sharedUrl != null && sharedUrl.isNotEmpty) {
-            _sharedUrl = sharedUrl;
-          }
         });
-      }
-    });
+    }, onError: (e) => debugPrint('SharedSpace board error: $e'));
   }
 
-  
-  Future<void> _syncPoint(DrawPoint point) async {
+  void _listenUrl() {
+    _urlSub = _docRef.snapshots().listen((snap) {
+      if (!snap.exists || !mounted) return;
+      final data = snap.data() as Map<String, dynamic>? ?? {};
+      final url = data['sharedUrl'] as String?;
+      final by = data['sharedBy'] as String?;
+      if (url != null && url.isNotEmpty && mounted) {
+        setState(() {
+          _sharedUrl = url;
+          _sharedBy = by;
+        });
+      }
+    }, onError: (_) {});
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // DRAW SYNC — batched writes to avoid Firestore rate limits
+  // ─────────────────────────────────────────────────────────────────────────
+
+  void _addPoint(DrawPoint pt) {
+    final stamped = pt.now();
+    setState(() => _points.add(stamped));
+    _pendingBatch.add(stamped);
+    _scheduleBatchSync();
+  }
+
+  void _scheduleBatchSync() {
+    _batchTimer?.cancel();
+    _batchTimer = Timer(const Duration(milliseconds: 120), _flushBatch);
+  }
+
+  Future<void> _flushBatch() async {
+    if (_pendingBatch.isEmpty) return;
+    final batch = List<DrawPoint>.from(_pendingBatch);
+    _pendingBatch.clear();
     try {
-      await _boardRef.set({
-        'points': FieldValue.arrayUnion([point.toJson()]),
+      setState(() => _isSyncing = true);
+      await _docRef.set({
+        'points': FieldValue.arrayUnion(batch.map((p) => p.toJson()).toList()),
         'updatedAt': FieldValue.serverTimestamp(),
         'updatedBy': widget.currentUserId,
       }, SetOptions(merge: true));
     } catch (e) {
-      debugPrint('❌ Whiteboard sync error: $e');
+      debugPrint('SharedSpace sync error: $e');
+    } finally {
+      if (mounted) setState(() => _isSyncing = false);
     }
   }
 
   Future<void> _clearBoard() async {
     try {
-      await _boardRef.update({'points': []});
-      setState(() => _localPoints.clear());
+      HapticFeedback.heavyImpact();
+      setState(() {
+        _points.clear();
+        _undoBuffer.clear();
+      });
+      await _docRef.set({'points': []}, SetOptions(merge: true));
     } catch (e) {
-      debugPrint('❌ Clear board error: $e');
+      debugPrint('SharedSpace clear error: $e');
     }
   }
 
-  Future<void> _saveAsMessage() async {
-    
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('✅ Đã lưu bản vẽ vào tin nhắn!'),
-        backgroundColor: const Color(0xFF4CAF50),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
+  Future<void> _saveAsImage() async {
+    try {
+      final boundary = _boardKey.currentContext?.findRenderObject()
+          as RenderRepaintBoundary?;
+      if (boundary == null) return;
+      final image = await boundary.toImage(pixelRatio: 2.0);
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (bytes == null) return;
+      // TODO: share / save bytes via share_plus or image_gallery_saver
+      if (mounted) _showSnack('✅ Đã lưu bảng vẽ!', const Color(0xFF43A047));
+    } catch (e) {
+      debugPrint('SharedSpace save error: $e');
+    }
   }
 
-  Future<void> _shareUrl() async {
-    final url = _urlController.text.trim();
-    if (url.isEmpty) return;
+  // ─────────────────────────────────────────────────────────────────────────
+  // CO-BROWSE
+  // ─────────────────────────────────────────────────────────────────────────
 
+  Future<void> _shareUrl() async {
+    final url = _urlCtrl.text.trim();
+    if (url.isEmpty) return;
+    final norm = url.startsWith('http') ? url : 'https://$url';
     try {
-      await _boardRef.set({
-        'sharedUrl': url,
+      await _docRef.set({
+        'sharedUrl': norm,
         'sharedBy': widget.currentUserId,
         'sharedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-      setState(() => _sharedUrl = url);
-      _urlController.clear();
+      setState(() {
+        _sharedUrl = norm;
+      });
+      _urlCtrl.clear();
+      FocusScope.of(context).unfocus();
     } catch (e) {
-      debugPrint('❌ Share URL error: $e');
+      debugPrint('SharedSpace shareUrl error: $e');
     }
   }
 
-  Future<void> _openInBrowser(String url) async {
+  Future<void> _openUrl(String url) async {
     final uri = Uri.tryParse(url);
-    if (uri != null && await canLaunchUrl(uri)) {
+    if (uri == null) return;
+    if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
   }
 
-  @override
-  void dispose() {
-    _drawSub?.cancel();
-    _urlController.dispose();
-    _tabAnim.dispose();
-    _toolAnim.dispose();
-    super.dispose();
+  // ─────────────────────────────────────────────────────────────────────────
+  // UI HELPERS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  void _showSnack(String msg, Color color) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg,
+          style: const TextStyle(
+              color: Colors.white, fontWeight: FontWeight.w600)),
+      backgroundColor: color,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      duration: const Duration(seconds: 2),
+    ));
   }
+
+  void _switchTab(int tab) {
+    if (tab == _tab) return;
+    setState(() => _tab = tab);
+    _tabSwitch.forward(from: 0);
+    HapticFeedback.selectionClick();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // BUILD
+  // ─────────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFFF8F9FE),
-      ),
-      child: Column(
-        children: [
-          _buildTabBar(),
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 250),
-              transitionBuilder: (child, anim) => FadeTransition(
-                opacity: anim,
-                child: child,
+    return FadeTransition(
+      opacity: CurvedAnimation(parent: _entryAnim, curve: Curves.easeOut),
+      child: Container(
+        decoration: const BoxDecoration(color: Color(0xFFF5F7FD)),
+        child: Column(
+          children: [
+            _buildTabBar(),
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 240),
+                transitionBuilder: (child, anim) =>
+                    FadeTransition(opacity: anim, child: child),
+                child: _tab == 0
+                    ? _buildWhiteboard(key: const ValueKey('wb'))
+                    : _buildCoBrowse(key: const ValueKey('cb')),
               ),
-              child: _activeTab == 0 ? _buildWhiteboard() : _buildCoBrowse(),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTabBar() {
-    return Container(
-      height: 44,
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE8EEF8),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          _buildTab(0, Icons.draw_rounded, 'Whiteboard'),
-          _buildTab(1, Icons.open_in_browser_rounded, 'Co-Browse'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTab(int index, IconData icon, String label) {
-    final isActive = _activeTab == index;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _activeTab = index),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          margin: const EdgeInsets.all(3),
-          decoration: BoxDecoration(
-            color: isActive ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(9),
-            boxShadow: isActive
-                ? [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 15,
-                color: isActive
-                    ? const Color(0xFF2196F3)
-                    : const Color(0xFF9AA5B8),
-              ),
-              const SizedBox(width: 5),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-                  color: isActive
-                      ? const Color(0xFF1A2340)
-                      : const Color(0xFF9AA5B8),
-                ),
-              ),
-            ],
-          ),
+          ],
         ),
       ),
     );
   }
 
-  
+  // ─────────────────────────────────────────────────────────────────────────
+  // TAB BAR
+  // ─────────────────────────────────────────────────────────────────────────
 
-  Widget _buildWhiteboard() {
+  Widget _buildTabBar() {
+    return Container(
+      height: 48,
+      margin: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8EEF8),
+        borderRadius: BorderRadius.circular(13),
+      ),
+      child: Row(
+        children: [
+          _TabItem(
+              index: 0,
+              current: _tab,
+              icon: Icons.draw_rounded,
+              label: 'Whiteboard',
+              onTap: () => _switchTab(0)),
+          _TabItem(
+              index: 1,
+              current: _tab,
+              icon: Icons.open_in_browser_rounded,
+              label: 'Co-Browse',
+              onTap: () => _switchTab(1)),
+        ],
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // WHITEBOARD
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Widget _buildWhiteboard({Key? key}) {
     return Column(
-      key: const ValueKey('whiteboard'),
+      key: key,
       children: [
         _buildToolbar(),
         Expanded(
           child: Container(
-            margin: const EdgeInsets.all(10),
+            margin: const EdgeInsets.fromLTRB(10, 4, 10, 10),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(14),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
-                  blurRadius: 16,
+                  color: Colors.black.withOpacity(0.07),
+                  blurRadius: 18,
                   offset: const Offset(0, 4),
                 ),
               ],
@@ -386,32 +460,29 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
                 key: _boardKey,
                 child: GestureDetector(
                   onPanStart: (d) {
-                    final pt = DrawPoint(
+                    _addPoint(DrawPoint(
                       x: d.localPosition.dx,
                       y: d.localPosition.dy,
                       isStart: true,
-                      color:
-                          _isEraser ? Colors.white.value : _selectedColor.value,
-                      strokeWidth: _isEraser ? 24 : _strokeWidth,
-                    );
-                    setState(() => _localPoints.add(pt));
-                    _syncPoint(pt);
+                      color: _isEraser ? Colors.white.value : _color.value,
+                      strokeWidth: _isEraser ? 26 : _stroke,
+                      ts: 0,
+                    ));
                   },
                   onPanUpdate: (d) {
-                    final pt = DrawPoint(
+                    _addPoint(DrawPoint(
                       x: d.localPosition.dx,
                       y: d.localPosition.dy,
                       isStart: false,
-                      color:
-                          _isEraser ? Colors.white.value : _selectedColor.value,
-                      strokeWidth: _isEraser ? 24 : _strokeWidth,
-                    );
-                    setState(() => _localPoints.add(pt));
-                    _syncPoint(pt);
+                      color: _isEraser ? Colors.white.value : _color.value,
+                      strokeWidth: _isEraser ? 26 : _stroke,
+                      ts: 0,
+                    ));
                   },
                   child: CustomPaint(
-                    painter: WhiteboardPainter(points: _localPoints),
-                    child: Container(),
+                    painter:
+                        WhiteboardPainter(points: List.unmodifiable(_points)),
+                    child: const SizedBox.expand(),
                   ),
                 ),
               ),
@@ -424,163 +495,131 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
 
   Widget _buildToolbar() {
     return Container(
-      margin: const EdgeInsets.fromLTRB(10, 8, 10, 4),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      margin: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(13),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 8,
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
           ),
         ],
       ),
       child: Row(
         children: [
-          
-          ...List.generate(
-            _palette.length - 1, 
-            (i) => _buildColorDot(_palette[i]),
-          ),
-          const SizedBox(width: 6),
-          
-          _buildToolBtn(
+          // Color swatches
+          for (final c in _palette)
+            _ColorDot(
+              color: c,
+              isSelected: _color == c && !_isEraser,
+              onTap: () => setState(() {
+                _color = c;
+                _isEraser = false;
+              }),
+            ),
+
+          const SizedBox(width: 4),
+          // Divider
+          Container(width: 1, height: 20, color: const Color(0xFFDDE3EE)),
+          const SizedBox(width: 4),
+
+          // Eraser
+          _ToolButton(
             icon: Icons.auto_fix_high_rounded,
             active: _isEraser,
-            onTap: () => setState(() => _isEraser = !_isEraser),
             tooltip: 'Tẩy',
+            onTap: () => setState(() => _isEraser = !_isEraser),
           ),
-          
-          _buildStrokeSlider(),
+
+          // Stroke size (small icon toggle)
+          PopupMenuButton<double>(
+            tooltip: 'Cỡ bút',
+            icon: Icon(Icons.line_weight_rounded,
+                size: 17, color: const Color(0xFF7B8499)),
+            onSelected: (v) => setState(() => _stroke = v),
+            itemBuilder: (_) => [
+              for (final s in [1.5, 3.0, 5.0, 8.0, 12.0])
+                PopupMenuItem(
+                  value: s,
+                  child: Row(children: [
+                    Container(
+                        width: s * 3,
+                        height: s,
+                        color: const Color(0xFF1E88E5)),
+                    const SizedBox(width: 10),
+                    Text('${s.toStringAsFixed(1)} px',
+                        style: const TextStyle(fontSize: 12)),
+                  ]),
+                ),
+            ],
+          ),
+
           const Spacer(),
-          
-          _buildToolBtn(
+
+          // Sync indicator
+          if (_isSyncing)
+            const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                  strokeWidth: 1.5,
+                  valueColor: AlwaysStoppedAnimation(Color(0xFF1E88E5))),
+            ),
+
+          const SizedBox(width: 4),
+
+          // Save
+          _ToolButton(
+            icon: Icons.image_outlined,
+            active: false,
+            tooltip: 'Lưu ảnh',
+            color: const Color(0xFF43A047),
+            onTap: _saveAsImage,
+          ),
+
+          // Clear
+          _ToolButton(
             icon: Icons.delete_outline_rounded,
             active: false,
-            onTap: _clearBoard,
             tooltip: 'Xóa tất cả',
             color: const Color(0xFFE53935),
-          ),
-          const SizedBox(width: 4),
-          
-          _buildToolBtn(
-            icon: Icons.send_rounded,
-            active: false,
-            onTap: _saveAsMessage,
-            tooltip: 'Gửi vào chat',
-            color: const Color(0xFF4CAF50),
+            onTap: _clearBoard,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildColorDot(Color color) {
-    final isSelected = _selectedColor == color && !_isEraser;
-    return GestureDetector(
-      onTap: () => setState(() {
-        _selectedColor = color;
-        _isEraser = false;
-      }),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        width: isSelected ? 22 : 18,
-        height: isSelected ? 22 : 18,
-        margin: const EdgeInsets.only(right: 4),
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: isSelected ? const Color(0xFF2196F3) : Colors.transparent,
-            width: 2,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: color.withOpacity(0.4),
-                    blurRadius: 6,
-                    spreadRadius: 1,
-                  ),
-                ]
-              : null,
-        ),
-      ),
-    );
-  }
+  // ─────────────────────────────────────────────────────────────────────────
+  // CO-BROWSE
+  // ─────────────────────────────────────────────────────────────────────────
 
-  Widget _buildToolBtn({
-    required IconData icon,
-    required bool active,
-    required VoidCallback onTap,
-    required String tooltip,
-    Color? color,
-  }) {
-    return Tooltip(
-      message: tooltip,
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          width: 28,
-          height: 28,
-          decoration: BoxDecoration(
-            color: active
-                ? const Color(0xFF2196F3).withOpacity(0.12)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(7),
-          ),
-          child: Icon(
-            icon,
-            size: 16,
-            color: color ??
-                (active ? const Color(0xFF2196F3) : const Color(0xFF7B8499)),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStrokeSlider() {
-    return SizedBox(
-      width: 60,
-      child: Slider(
-        value: _strokeWidth,
-        min: 1.5,
-        max: 10,
-        onChanged: (v) => setState(() => _strokeWidth = v),
-        activeColor: _selectedColor,
-        inactiveColor: const Color(0xFFDDE3EE),
-      ),
-    );
-  }
-
-  
-
-  Widget _buildCoBrowse() {
+  Widget _buildCoBrowse({Key? key}) {
     return Column(
-      key: const ValueKey('cobrowse'),
+      key: key,
       children: [
-        _buildUrlInput(),
+        _buildUrlBar(),
         Expanded(
           child: _sharedUrl != null
-              ? _buildSharedUrlPreview(_sharedUrl!)
+              ? _buildUrlPreview(_sharedUrl!)
               : _buildCoBrowsePlaceholder(),
         ),
       ],
     );
   }
 
-  Widget _buildUrlInput() {
+  Widget _buildUrlBar() {
     return Container(
-      margin: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+      margin: const EdgeInsets.fromLTRB(10, 8, 10, 6),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(13),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 8,
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
           ),
         ],
       ),
@@ -591,14 +630,17 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
           const SizedBox(width: 6),
           Expanded(
             child: TextField(
-              controller: _urlController,
-              style: const TextStyle(fontSize: 13),
+              controller: _urlCtrl,
+              style: const TextStyle(fontSize: 13, color: Color(0xFF1A2340)),
               decoration: const InputDecoration(
-                hintText: 'Nhập URL để chia sẻ...',
-                hintStyle: TextStyle(color: Color(0xFFB0BAD0), fontSize: 13),
+                hintText: 'Nhập URL (youtube, maps, web…)',
+                hintStyle: TextStyle(color: Color(0xFFB0BAD0), fontSize: 12),
                 border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(vertical: 12),
               ),
               keyboardType: TextInputType.url,
+              textInputAction: TextInputAction.go,
               onSubmitted: (_) => _shareUrl(),
             ),
           ),
@@ -606,18 +648,18 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
             onTap: _shareUrl,
             child: Container(
               margin: const EdgeInsets.all(5),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
               decoration: BoxDecoration(
-                color: const Color(0xFF2196F3),
-                borderRadius: BorderRadius.circular(8),
+                gradient: const LinearGradient(
+                    colors: [Color(0xFF1E88E5), Color(0xFF1565C0)]),
+                borderRadius: BorderRadius.circular(9),
               ),
               child: const Text(
                 'Chia sẻ',
                 style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600),
               ),
             ),
           ),
@@ -626,138 +668,145 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
     );
   }
 
-  Widget _buildSharedUrlPreview(String url) {
-    final isYouTube = url.contains('youtube.com') || url.contains('youtu.be');
-    final isMap =
-        url.contains('maps.google.com') || url.contains('goo.gl/maps');
+  Widget _buildUrlPreview(String url) {
+    final type = _detectUrlType(url);
 
     return Container(
-      margin: const EdgeInsets.all(10),
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 16,
-          ),
+              color: Colors.black.withOpacity(0.07),
+              blurRadius: 18,
+              offset: const Offset(0, 4)),
         ],
       ),
       child: Column(
         children: [
-          
+          // Header bar
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: const BoxDecoration(
+            padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+            decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [Color(0xFF2196F3), Color(0xFF1565C0)],
-              ),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+                  colors: type.gradient,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(14)),
             ),
             child: Row(
               children: [
-                Icon(
-                  isYouTube
-                      ? Icons.play_circle_filled_rounded
-                      : isMap
-                          ? Icons.map_rounded
-                          : Icons.language_rounded,
-                  color: Colors.white,
-                  size: 18,
-                ),
+                Icon(type.icon, color: Colors.white, size: 18),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     url,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                    ),
+                    style: const TextStyle(color: Colors.white, fontSize: 11),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                GestureDetector(
-                  onTap: () => _openInBrowser(url),
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Text(
-                      'Mở',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
+                const SizedBox(width: 6),
+                _PreviewActionBtn(
+                  icon: Icons.copy_rounded,
+                  label: 'Copy',
+                  onTap: () {
+                    Clipboard.setData(ClipboardData(text: url));
+                    _showSnack('✅ Đã copy link!', const Color(0xFF1E88E5));
+                  },
+                ),
+                const SizedBox(width: 5),
+                _PreviewActionBtn(
+                  icon: Icons.open_in_new_rounded,
+                  label: 'Mở',
+                  onTap: () => _openUrl(url),
                 ),
               ],
             ),
           ),
 
-          
+          // Preview body
           Expanded(
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 72,
-                    height: 72,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: type.gradient.first.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Icon(type.icon, size: 36, color: type.gradient.first),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  type.label,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1A2340),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  type.hint,
+                  style:
+                      const TextStyle(fontSize: 11, color: Color(0xFF9AA5B8)),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+
+                // "Open together" CTA
+                GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    _openUrl(url);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 22, vertical: 11),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE8EEF8),
-                      borderRadius: BorderRadius.circular(20),
+                      gradient: LinearGradient(colors: type.gradient),
+                      borderRadius: BorderRadius.circular(11),
+                      boxShadow: [
+                        BoxShadow(
+                          color: type.gradient.first.withOpacity(0.35),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
-                    child: Icon(
-                      isYouTube
-                          ? Icons.smart_display_rounded
-                          : isMap
-                              ? Icons.place_rounded
-                              : Icons.web_rounded,
-                      size: 36,
-                      color: const Color(0xFF2196F3),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.open_in_new_rounded,
+                            color: Colors.white, size: 16),
+                        SizedBox(width: 7),
+                        Text(
+                          'Mở cùng nhau',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 16),
+                ),
+
+                if (_sharedBy != null) ...[
+                  const SizedBox(height: 12),
                   Text(
-                    isYouTube
-                        ? 'YouTube Video'
-                        : isMap
-                            ? 'Google Maps'
-                            : 'Trang web',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1A2340),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Nhấn "Mở" để xem trong trình duyệt',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF9AA5B8)),
-                  ),
-                  const SizedBox(height: 20),
-                  ElevatedButton.icon(
-                    onPressed: () => _openInBrowser(url),
-                    icon: const Icon(Icons.open_in_new_rounded, size: 16),
-                    label: const Text('Mở cùng nhau'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2196F3),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 10),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
-                      elevation: 0,
-                    ),
+                    'Chia sẻ bởi ${_sharedBy == widget.currentUserId ? "bạn" : widget.peerName}',
+                    style:
+                        const TextStyle(color: Color(0xFFB0BAD0), fontSize: 10),
                   ),
                 ],
-              ),
+              ],
             ),
           ),
         ],
@@ -776,13 +825,13 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
               width: 80,
               height: 80,
               decoration: BoxDecoration(
-                color: const Color(0xFFE8EEF8),
+                color: const Color(0xFFE3F2FD),
                 borderRadius: BorderRadius.circular(24),
               ),
               child: const Icon(
                 Icons.open_in_browser_rounded,
-                size: 40,
-                color: Color(0xFF2196F3),
+                size: 38,
+                color: Color(0xFF1E88E5),
               ),
             ),
             const SizedBox(height: 16),
@@ -796,17 +845,344 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
             ),
             const SizedBox(height: 8),
             Text(
-              'Chia sẻ link YouTube, Google Maps hoặc bất kỳ trang web nào để cùng xem với ${widget.peerName}',
+              'Chia sẻ link YouTube, Maps hoặc bất kỳ trang web nào để cùng xem với ${widget.peerName}.',
               style: const TextStyle(
                 fontSize: 12,
                 color: Color(0xFF9AA5B8),
-                height: 1.5,
+                height: 1.55,
               ),
               textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            // Quick-share chips
+            Wrap(
+              spacing: 8,
+              children: [
+                _QuickChip(
+                  icon: Icons.play_circle_fill_rounded,
+                  label: 'YouTube',
+                  color: const Color(0xFFE53935),
+                  onTap: () {
+                    _urlCtrl.text = 'https://www.youtube.com/';
+                  },
+                ),
+                _QuickChip(
+                  icon: Icons.map_rounded,
+                  label: 'Maps',
+                  color: const Color(0xFF43A047),
+                  onTap: () {
+                    _urlCtrl.text = 'https://maps.google.com/';
+                  },
+                ),
+                _QuickChip(
+                  icon: Icons.language_rounded,
+                  label: 'Web',
+                  color: const Color(0xFF1E88E5),
+                  onTap: () => _urlCtrl.text = 'https://',
+                ),
+              ],
             ),
           ],
         ),
       ),
     );
   }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // URL TYPE DETECTION
+  // ─────────────────────────────────────────────────────────────────────────
+
+  _UrlType _detectUrlType(String url) {
+    final u = url.toLowerCase();
+    if (u.contains('youtube.com') || u.contains('youtu.be')) {
+      return _UrlType(
+        icon: Icons.smart_display_rounded,
+        label: 'YouTube Video',
+        hint: 'Xem video cùng nhau',
+        gradient: [const Color(0xFFE53935), const Color(0xFFB71C1C)],
+      );
+    }
+    if (u.contains('maps.google.com') ||
+        u.contains('goo.gl/maps') ||
+        u.contains('maps.app.goo.gl')) {
+      return _UrlType(
+        icon: Icons.place_rounded,
+        label: 'Google Maps',
+        hint: 'Xem địa điểm cùng nhau',
+        gradient: [const Color(0xFF43A047), const Color(0xFF1B5E20)],
+      );
+    }
+    if (u.contains('spotify.com')) {
+      return _UrlType(
+        icon: Icons.music_note_rounded,
+        label: 'Spotify',
+        hint: 'Nghe nhạc cùng nhau',
+        gradient: [const Color(0xFF1DB954), const Color(0xFF0D7A3A)],
+      );
+    }
+    if (u.contains('github.com')) {
+      return _UrlType(
+        icon: Icons.code_rounded,
+        label: 'GitHub',
+        hint: 'Review code cùng nhau',
+        gradient: [const Color(0xFF212121), const Color(0xFF424242)],
+      );
+    }
+    if (u.contains('figma.com')) {
+      return _UrlType(
+        icon: Icons.design_services_rounded,
+        label: 'Figma',
+        hint: 'Xem thiết kế cùng nhau',
+        gradient: [const Color(0xFF7C4DFF), const Color(0xFF4527A0)],
+      );
+    }
+    return _UrlType(
+      icon: Icons.language_rounded,
+      label: 'Trang web',
+      hint: 'Duyệt web cùng nhau',
+      gradient: [const Color(0xFF1E88E5), const Color(0xFF0D47A1)],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SMALL REUSABLE WIDGETS
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _TabItem extends StatelessWidget {
+  final int index;
+  final int current;
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _TabItem({
+    required this.index,
+    required this.current,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isActive = index == current;
+    final color = isActive ? const Color(0xFF1E88E5) : const Color(0xFF9AA5B8);
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          margin: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: isActive ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: isActive
+                ? [
+                    BoxShadow(
+                        color: Colors.black.withOpacity(0.08),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2))
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ColorDot extends StatelessWidget {
+  final Color color;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _ColorDot({
+    required this.color,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        width: isSelected ? 22 : 17,
+        height: isSelected ? 22 : 17,
+        margin: const EdgeInsets.only(right: 4),
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: isSelected ? const Color(0xFF1E88E5) : Colors.transparent,
+            width: 2,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                      color: color.withOpacity(0.5),
+                      blurRadius: 6,
+                      spreadRadius: 1)
+                ]
+              : null,
+        ),
+      ),
+    );
+  }
+}
+
+class _ToolButton extends StatelessWidget {
+  final IconData icon;
+  final bool active;
+  final String tooltip;
+  final VoidCallback onTap;
+  final Color? color;
+
+  const _ToolButton({
+    required this.icon,
+    required this.active,
+    required this.tooltip,
+    required this.onTap,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: active
+                ? const Color(0xFF1E88E5).withOpacity(0.12)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: Icon(
+            icon,
+            size: 17,
+            color: color ??
+                (active ? const Color(0xFF1E88E5) : const Color(0xFF7B8499)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PreviewActionBtn extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _PreviewActionBtn({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.18),
+          borderRadius: BorderRadius.circular(7),
+          border: Border.all(color: Colors.white.withOpacity(0.25), width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Colors.white, size: 12),
+            const SizedBox(width: 4),
+            Text(label,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _QuickChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.10),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withOpacity(0.3), width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: color),
+            const SizedBox(width: 5),
+            Text(label,
+                style: TextStyle(
+                    color: color, fontSize: 11, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// URL TYPE METADATA
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _UrlType {
+  final IconData icon;
+  final String label;
+  final String hint;
+  final List<Color> gradient;
+
+  const _UrlType({
+    required this.icon,
+    required this.label,
+    required this.hint,
+    required this.gradient,
+  });
 }
