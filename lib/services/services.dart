@@ -7,6 +7,7 @@ export 'contextual_bubble_service.dart';
 export 'database_optimizer.dart';
 export 'e2ee_service.dart';
 export 'encryption_service.dart';
+export 'game_firebase_service.dart';
 export 'gemini_service.dart';
 export 'group_call_service.dart';
 export 'local_db_service.dart';

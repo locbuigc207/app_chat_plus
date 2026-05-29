@@ -379,14 +379,28 @@ class _SuggestionsTabState extends State<_SuggestionsTab> {
   Map<String, List<String>> _mutualFriendsMap = {};
   bool _isLoading = true;
 
+  /// FIX: Tránh gọi setState() sau khi widget đã bị dispose (async gap).
+  bool _isDisposed = false;
+
   @override
   void initState() {
     super.initState();
     _loadSuggestions();
   }
 
+  @override
+  void dispose() {
+    _isDisposed = true; // PHẢI đặt TRƯỚC super.dispose()
+    super.dispose();
+  }
+
+  /// Helper an toàn: chỉ gọi setState khi widget còn sống.
+  void _safeSetState(VoidCallback fn) {
+    if (!_isDisposed && mounted) setState(fn);
+  }
+
   Future<void> _loadSuggestions() async {
-    setState(() => _isLoading = true);
+    _safeSetState(() => _isLoading = true);
     try {
       final fs1 = await widget.firebaseFirestore
           .collection(FirestoreConstants.pathFriendshipCollection)
@@ -431,13 +445,13 @@ class _SuggestionsTabState extends State<_SuggestionsTab> {
         }
       }
 
-      setState(() {
+      _safeSetState(() {
         _mutualFriendsMap = mutualMap;
         _isLoading = false;
       });
     } catch (e) {
       debugPrint('Error loading suggestions: $e');
-      setState(() => _isLoading = false);
+      _safeSetState(() => _isLoading = false);
     }
   }
 

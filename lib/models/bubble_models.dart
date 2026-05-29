@@ -1,3 +1,5 @@
+// ignore_for_file: constant_identifier_names
+
 import 'package:flutter/material.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -13,53 +15,6 @@ enum MiniChatMessageType { text, image, file, voice, location }
 enum BubbleImplementation { bubbleApi, windowManager, none, unknown }
 
 enum MessageDeliveryStatus { sending, sent, delivered, read, failed }
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// BUBBLE CONTEXT (for adaptive UI)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-@immutable
-class BubbleContext {
-  final BubbleMode mode;
-  final String? detectedTopic;
-  final Map<String, dynamic>? extraData;
-  final DateTime updatedAt;
-
-  const BubbleContext({
-    this.mode = BubbleMode.normal,
-    this.detectedTopic,
-    this.extraData,
-    required this.updatedAt,
-  });
-
-  BubbleContext copyWith({
-    BubbleMode? mode,
-    String? detectedTopic,
-    Map<String, dynamic>? extraData,
-    DateTime? updatedAt,
-  }) =>
-      BubbleContext(
-        mode: mode ?? this.mode,
-        detectedTopic: detectedTopic ?? this.detectedTopic,
-        extraData: extraData ?? this.extraData,
-        updatedAt: updatedAt ?? DateTime.now(),
-      );
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is BubbleContext &&
-          other.mode == mode &&
-          other.detectedTopic == detectedTopic &&
-          other.updatedAt == updatedAt;
-
-  @override
-  int get hashCode => Object.hash(mode, detectedTopic, updatedAt);
-
-  @override
-  String toString() =>
-      'BubbleContext(mode: ${mode.name}, topic: $detectedTopic, updatedAt: $updatedAt)';
-}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // BUBBLE DATA
@@ -200,6 +155,73 @@ class MiniChatMessage {
     this.type = MiniChatMessageType.text,
     this.mediaUrl,
   });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// BUBBLE CONTEXT (for adaptive UI)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class BubbleContext {
+  final BubbleMode mode;
+  final String? detectedTopic;
+  final Map<String, dynamic>? extraData;
+  final DateTime? updatedAt; // Added field
+
+  const BubbleContext({
+    this.mode = BubbleMode.normal,
+    this.detectedTopic,
+    this.extraData,
+    this.updatedAt, // Added to constructor
+  });
+
+  BubbleContext copyWith({
+    BubbleMode? mode,
+    String? detectedTopic,
+    Map<String, dynamic>? extraData,
+    DateTime? updatedAt, // Added to copyWith
+  }) =>
+      BubbleContext(
+        mode: mode ?? this.mode,
+        detectedTopic: detectedTopic ?? this.detectedTopic,
+        extraData: extraData ?? this.extraData,
+        updatedAt: updatedAt ?? this.updatedAt, // Pass through
+      );
+
+  static BubbleContext detectFromMessage(String message) {
+    final lower = message.toLowerCase();
+    if (lower.contains('deadline') ||
+        lower.contains('task') ||
+        lower.contains('meeting') ||
+        lower.contains('report')) {
+      return BubbleContext(
+        mode: BubbleMode.work,
+        detectedTopic: 'task',
+        updatedAt: DateTime.now(),
+      );
+    }
+    if (lower.contains('maps.google') ||
+        lower.contains('location') ||
+        lower.contains('📍')) {
+      return BubbleContext(
+        mode: BubbleMode.location,
+        updatedAt: DateTime.now(),
+      );
+    }
+    if (lower.contains('🔒') || lower.contains('secret')) {
+      return BubbleContext(
+        mode: BubbleMode.secure,
+        updatedAt: DateTime.now(),
+      );
+    }
+    return BubbleContext(
+      mode: BubbleMode.normal,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  @override
+  String toString() =>
+      'BubbleContext(mode: $mode, topic: $detectedTopic, updated: $updatedAt)';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

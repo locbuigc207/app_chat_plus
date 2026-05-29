@@ -6,4 +6,5 @@ export 'error_logger.dart';
 export 'mention_text_editing_controller.dart';
 export 'network_utils.dart';
 export 'resource_manager.dart';
+export 'safe_state_mixin.dart';
 export 'utilities.dart';

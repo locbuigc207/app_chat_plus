@@ -2,6 +2,7 @@ export 'bubble_models.dart';
 export 'call_model.dart';
 export 'conversation.dart';
 export 'friendship.dart';
+export 'game_match.dart';
 export 'group.dart';
 export 'group_call_model.dart';
 export 'menu_setting.dart';

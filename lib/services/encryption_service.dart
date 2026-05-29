@@ -12,10 +12,8 @@ import 'e2ee_service.dart';
 // MODELS
 // =========================================================
 
-/// Loại payload để phân biệt E2EE-GCM vs Legacy-CBC vs Plain.
 enum PayloadType { e2eeGcm, legacyCbc, plain }
 
-/// Kết quả phân tích payload đầu vào.
 class _PayloadInfo {
   final PayloadType type;
   final String raw;
@@ -26,17 +24,14 @@ class _PayloadInfo {
 // ENCRYPTION SERVICE
 // =========================================================
 
-/// Lớp trung gian quản lý toàn bộ mã hóa/giải mã tin nhắn.
+/// Lớp trung gian quản lý mã hóa/giải mã tin nhắn.
+///
+/// **FIX #3** – Xử lý đúng các trường hợp E2EE key bị hỏng/rỗng
+/// thay vì để RangeError bắn ra ngoài không được bắt.
 ///
 /// **Kiến trúc 2 lớp:**
-/// - **E2EE (Production)**: AES-256-GCM với session key động từ [E2EEService].
-/// - **Legacy (Fallback)**: AES-256-CBC với key tĩnh sinh từ conversationId,
-///   dùng để tương thích ngược với lịch sử tin nhắn cũ trước khi triển khai E2EE.
-///
-/// **Logic phát hiện loại payload:**
-/// - JSON `{"iv":...,"data":...}` → E2EE-GCM
-/// - `"<base64>:<base64>"` → Legacy-CBC
-/// - Còn lại (URL, plaintext) → Plain (không mã hóa)
+/// - E2EE (Production): AES-256-GCM với session key động
+/// - Legacy (Fallback): AES-256-CBC với key tĩnh từ conversationId
 class EncryptionService {
   // ── Singleton ──────────────────────────────────────────
   EncryptionService._internal();
@@ -46,27 +41,21 @@ class EncryptionService {
   // ── Dependencies ───────────────────────────────────────
   final E2EEService _e2ee = E2EEService();
 
-  // ── Legacy salt (obfuscated — đừng hardcode production key ở đây) ─────────
-  // Trong production, nên đọc từ environment variable hoặc remote config.
   static const String _legacySalt = 'APP_CHAT_PLUS_SECURE_SALT_2026';
 
-  // ── Regex nhận diện legacy payload: "<base64>:<base64>" ──────────────────
   static final _legacyPayloadRegex =
       RegExp(r'^[A-Za-z0-9+/=]+=*:[A-Za-z0-9+/=]+=*$');
 
   // =========================================================
-  // 1. LEGACY LAYER — AES-256-CBC (Tương thích ngược)
+  // 1. LEGACY LAYER — AES-256-CBC
   // =========================================================
 
-  /// Sinh key AES-256 cố định từ `conversationId + salt` (SHA-256).
   enc.Key _generateLegacyKey(String conversationId) {
     final bytes = utf8.encode(conversationId + _legacySalt);
     final digest = sha256.convert(bytes);
     return enc.Key(Uint8List.fromList(digest.bytes));
   }
 
-  /// Mã hóa bằng AES-256-CBC (Legacy).
-  /// Trả về `"<iv_base64>:<ciphertext_base64>"` hoặc nguyên bản nếu lỗi.
   String encryptMessageLegacy(String plainText, String conversationId) {
     if (plainText.isEmpty || _isSkippable(plainText)) return plainText;
     try {
@@ -81,8 +70,6 @@ class EncryptionService {
     }
   }
 
-  /// Giải mã AES-256-CBC (Legacy).
-  /// Nhận `"<iv_base64>:<ciphertext_base64>"`.
   String decryptMessageLegacy(String encryptedText, String conversationId) {
     if (encryptedText.isEmpty) return encryptedText;
     try {
@@ -99,14 +86,9 @@ class EncryptionService {
   }
 
   // =========================================================
-  // 2. E2EE LAYER — AES-256-GCM (Production)
+  // 2. E2EE LAYER — AES-256-GCM
   // =========================================================
 
-  /// Mã hóa qua E2EE-GCM với session key động.
-  ///
-  /// - URL/file → trả về nguyên bản (không mã hóa link media).
-  /// - Nếu E2EE chưa sẵn sàng → tự động fallback về Legacy-CBC.
-  /// - Nếu cả hai thất bại → trả về plaintext (an toàn hơn mất tin nhắn).
   Future<String> encryptPayload(
     String plainText,
     String conversationId,
@@ -115,7 +97,6 @@ class EncryptionService {
   ) async {
     if (plainText.isEmpty || _isSkippable(plainText)) return plainText;
 
-    // Đảm bảo khóa cục bộ đã được tải
     if (!_e2ee.isInitialized) await _e2ee.loadLocalKeys();
 
     if (_e2ee.isInitialized) {
@@ -128,22 +109,22 @@ class EncryptionService {
         );
       } on E2EEException catch (e) {
         debugPrint(
-            '[EncryptionService] ⚠️ E2EE encrypt failed (${e.type.name}), falling back to legacy: $e');
+          '[EncryptionService] ⚠️ E2EE encrypt failed (${e.type.name}), '
+          'falling back to legacy: $e',
+        );
       } catch (e) {
         debugPrint(
-            '[EncryptionService] ⚠️ E2EE encrypt unexpected error, falling back: $e');
+          '[EncryptionService] ⚠️ E2EE encrypt unexpected error, falling back: $e',
+        );
       }
     }
 
-    // Fallback Legacy
     debugPrint('[EncryptionService] 🔄 Using Legacy-CBC fallback');
     return encryptMessageLegacy(plainText, conversationId);
   }
 
-  /// Giải mã thông minh — tự phát hiện loại payload:
-  /// - JSON `{...}` → E2EE-GCM
-  /// - `<base64>:<base64>` → Legacy-CBC
-  /// - Còn lại → trả về nguyên bản
+  /// **FIX #3** – Bắt đúng E2EEException với type = decryptionFailed
+  /// (thay vì để RangeError bắn ra ngoài) và phân biệt thông báo lỗi.
   Future<String> decryptPayload(
     String encryptedText,
     String conversationId,
@@ -180,7 +161,9 @@ class EncryptionService {
     if (!_e2ee.isInitialized) await _e2ee.loadLocalKeys();
 
     if (!_e2ee.isInitialized) {
-      debugPrint('[EncryptionService] ⚠️ Không có khóa cục bộ để giải mã E2EE');
+      debugPrint(
+        '[EncryptionService] ⚠️ Không có khóa cục bộ để giải mã E2EE',
+      );
       return '🔒 [Thiết bị chưa có khóa — không thể giải mã]';
     }
 
@@ -192,14 +175,50 @@ class EncryptionService {
         currentUserId,
       );
     } on E2EEException catch (e) {
+      // **FIX #3** – Log đầy đủ type để debug, trả về message rõ ràng cho UI
       debugPrint(
-          '[EncryptionService] ❌ E2EE decrypt error (${e.type.name}): $e');
-      // Phân biệt loại lỗi để hiển thị thông báo phù hợp
+        '[EncryptionService] ❌ E2EE decrypt error (${e.type.name}): $e',
+      );
+
       switch (e.type) {
         case E2EEErrorType.keyNotInitialized:
           return '🔒 [Thiết bị chưa có khóa — không thể giải mã]';
+
         case E2EEErrorType.invalidPayload:
-          return '⚠️ [Dữ liệu tin nhắn bị hỏng]';
+          // Payload hỏng hoặc session key byte = 0 → thử Legacy-CBC
+          debugPrint(
+            '[EncryptionService] 🔄 Invalid payload, thử Legacy-CBC fallback...',
+          );
+          final legacyResult =
+              decryptMessageLegacy(encryptedText, conversationId);
+          // Nếu Legacy cũng trả về chuỗi placeholder → payload thực sự hỏng
+          if (legacyResult.startsWith('🔒')) {
+            return '⚠️ [Dữ liệu tin nhắn bị hỏng]';
+          }
+          return legacyResult;
+
+        case E2EEErrorType.decryptionFailed:
+          // **FIX #3** – Đây là lỗi chính: RangeError từ session key rỗng
+          // Thử tạo lại session key và giải mã lần nữa
+          debugPrint(
+            '[EncryptionService] 🔄 decryptionFailed — evict cache và thử lại...',
+          );
+          _e2ee.evictSessionKey(conversationId);
+
+          try {
+            return await _e2ee.decryptPayload(
+              encryptedText,
+              conversationId,
+              participantIds,
+              currentUserId,
+            );
+          } catch (retryErr) {
+            debugPrint(
+              '[EncryptionService] ❌ Retry thất bại: $retryErr',
+            );
+            return '🔒 [Tin nhắn được mã hóa — không thể giải mã]';
+          }
+
         default:
           return '🔒 [Tin nhắn được mã hóa — không thể giải mã]';
       }
@@ -213,8 +232,6 @@ class EncryptionService {
   // 3. BATCH OPERATIONS
   // =========================================================
 
-  /// Giải mã nhiều tin nhắn song song (dùng cho tải lịch sử chat).
-  /// Giới hạn concurrency để tránh quá tải Firebase.
   Future<List<String>> decryptBatch(
     List<String> encryptedMessages,
     String conversationId,
@@ -247,51 +264,47 @@ class EncryptionService {
     return results;
   }
 
-  /// Kiểm tra nhanh một chuỗi có phải đã được mã hóa không.
   bool isEncrypted(String text) {
     if (text.isEmpty) return false;
-    final type = _detectPayloadType(text).type;
-    return type != PayloadType.plain;
+    return _detectPayloadType(text).type != PayloadType.plain;
   }
 
-  /// Trả về loại mã hóa của một payload.
   PayloadType detectPayloadType(String text) => _detectPayloadType(text).type;
 
   // =========================================================
   // HELPERS
   // =========================================================
 
-  /// Phân tích loại payload để chọn đúng decoder.
   _PayloadInfo _detectPayloadType(String text) {
     final trimmed = text.trim();
 
-    // URL media → không mã hóa
     if (_isSkippable(trimmed)) {
       return _PayloadInfo(PayloadType.plain, trimmed);
     }
 
-    // E2EE-GCM payload: JSON object với trường iv + data
     if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
       try {
         final decoded = jsonDecode(trimmed);
         if (decoded is Map &&
             decoded.containsKey('iv') &&
             decoded.containsKey('data')) {
-          return _PayloadInfo(PayloadType.e2eeGcm, trimmed);
+          // **FIX #3** – Kiểm tra thêm iv và data không rỗng
+          final iv = decoded['iv']?.toString() ?? '';
+          final data = decoded['data']?.toString() ?? '';
+          if (iv.isNotEmpty && data.isNotEmpty) {
+            return _PayloadInfo(PayloadType.e2eeGcm, trimmed);
+          }
         }
       } catch (_) {}
     }
 
-    // Legacy-CBC payload: "<base64>:<base64>"
     if (_legacyPayloadRegex.hasMatch(trimmed)) {
       return _PayloadInfo(PayloadType.legacyCbc, trimmed);
     }
 
-    // Plaintext thông thường
     return _PayloadInfo(PayloadType.plain, trimmed);
   }
 
-  /// URL ảnh/file không cần mã hóa.
   bool _isSkippable(String text) =>
       text.startsWith('http://') || text.startsWith('https://');
 }

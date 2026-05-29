@@ -96,10 +96,10 @@ dependencies:
 
   # Giai đoạn 4: Story AR & Nhạc
   deepar_flutter_plus: ^0.2.1
-  just_audio: ^0.10.5 # Nâng cấp để tương thích với audio_session
+  just_audio: ^0.10.5
   ffmpeg_kit_flutter_new: ^4.1.0
-  file_picker: ^11.0.2 # Chọn file nhạc từ máy
-  path_provider: ^2.1.2 # Lấy đường dẫn lưu video tạm
+  file_picker: ^11.0.2
+  path_provider: ^2.1.2
   cloud_functions: ^6.3.1
   encrypt: ^5.0.3
   speech_to_text: ^7.3.0
@@ -118,6 +118,12 @@ dependencies:
   sensors_plus: ^7.0.0
   flutter_card_swiper: ^7.2.0
 
+  # ─── Game Center ──────────────────────────────────────────────────────────
+  # chess: logic cờ vua (validate nước đi, FEN, PGN) - không cần Flutter UI
+  chess: ^0.8.1
+  # uuid: tạo unique matchId cho mỗi trận đấu
+  uuid: ^4.5.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -131,6 +137,7 @@ flutter:
     - images/
     - .env
     - assets/effects/ # Khai báo thư mục chứa filter
+
 # Ép buộc đồng bộ permission_handler
 dependency_overrides:
   permission_handler: ^12.0.0

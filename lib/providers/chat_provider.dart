@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
+import 'package:flutter_chat_demo/models/message_chat.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -40,10 +41,14 @@ abstract class SyncJobType {
 //
 // Poll:
 //   sendPollMessage()  → đóng gói JSON → sendMessage (type = TypeMessage.poll)
-//   votePoll()         → Firestore Transaction (robust, backwards-compatible)
+//   votePoll()         → chờ doc tồn tại (retry) → Firestore Transaction
 //
-// Media (ảnh/video): nén qua MediaCompressionService → upload Firebase Storage
-//   → chỉ URL đưa vào queue.
+// Game Center:
+//   sendGameInviteMessage()   → gửi TypeMessage.gameInvite vào nhóm
+//   sendGameResultMessage()   → gửi TypeMessage.gameResult vào nhóm
+//   updateGameMessageStatus() → cập nhật matchStatus trực tiếp trên Firestore
+//                               (waiting → live → finished)
+//
 // =============================================================================
 
 class ChatProvider {
@@ -56,10 +61,7 @@ class ChatProvider {
   final FirebaseStorage firebaseStorage;
 
   final GeminiService _geminiService = GeminiService();
-
-  /// MediaCompressionService dùng API mới (compressImageFile / compressVideoFile)
   final MediaCompressionService _compressionService = MediaCompressionService();
-
   final LocalDbService _localDb = LocalDbService();
   final SyncManager _syncManager = SyncManager();
   final _uuid = const Uuid();
@@ -71,26 +73,46 @@ class ChatProvider {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // UPLOAD FILE (public – dùng khi cần UploadTask để show progress)
+  // PRIVATE HELPERS
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /// **FIX #2** – Firestore trả về `_Map<dynamic, dynamic>` thay vì
+  /// `Map<String, dynamic>`, gây ClassCastException khi dùng `as Map<String,dynamic>`.
+  /// Helper này convert an toàn mà không ném exception.
+  static Map<String, dynamic> _toStringMap(dynamic raw) {
+    if (raw == null) return {};
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) {
+      return raw.map((k, v) => MapEntry(k.toString(), v));
+    }
+    return {};
+  }
+
+  /// Cast an toàn một List<dynamic> của options,
+  /// mỗi phần tử có thể là `_Map<dynamic,dynamic>`.
+  static List<Map<String, dynamic>> _toOptionList(dynamic raw) {
+    if (raw is! List) return [];
+    return raw.map((e) => _toStringMap(e)).toList();
+  }
+
+  void _log(String message) {
+    // ignore: avoid_print
+    print('[ChatProvider] $message');
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // UPLOAD FILE
   // ──────────────────────────────────────────────────────────────────────────
 
   UploadTask uploadFile(File image, String fileName) {
     return firebaseStorage.ref().child(fileName).putFile(image);
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // INTERNAL: upload & get download URL
-  // ──────────────────────────────────────────────────────────────────────────
-
   Future<String> _uploadFileAndGetUrl(File file, String fileName) async {
     final ref = firebaseStorage.ref().child(fileName);
     final snapshot = await ref.putFile(file).whenComplete(() {});
     return snapshot.ref.getDownloadURL();
   }
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // PUBLIC: upload document (PDF/DOC/XLS/PPT…) & get URL
-  // ──────────────────────────────────────────────────────────────────────────
 
   Future<String?> uploadFileAndGetUrl(File file, String groupId) async {
     try {
@@ -172,7 +194,6 @@ class ChatProvider {
   ) async {
     final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
 
-    // Bước 1: Lưu vào Local DB (Hive) – status: pending
     final localMessage = <String, dynamic>{
       'messageId': timestamp,
       'idFrom': currentUserId,
@@ -191,7 +212,6 @@ class ChatProvider {
       lastMessageType: type,
     );
 
-    // Bước 2: Đẩy job vào Sync Queue
     await _localDb.addToSyncQueue({
       'type': SyncJobType.sendMessage,
       'payload': {
@@ -205,7 +225,6 @@ class ChatProvider {
       },
     });
 
-    // Bước 2b: Nếu chat với AI → thêm job phản hồi AI
     if (peerId == AppConstants.aiAssistantId && type == TypeMessage.text) {
       await _localDb.addToSyncQueue({
         'type': SyncJobType.aiResponse,
@@ -217,7 +236,6 @@ class ChatProvider {
       });
     }
 
-    // Bước 3: Kích hoạt SyncManager
     _syncManager.startListening();
   }
 
@@ -225,13 +243,6 @@ class ChatProvider {
   // HÀM 2: GỬI POLL – OFFLINE-FIRST
   // ──────────────────────────────────────────────────────────────────────────
 
-  /// Đóng gói dữ liệu poll thành JSON và gửi như một tin nhắn type=poll.
-  ///
-  /// [question]         Câu hỏi bình chọn
-  /// [optionTexts]      Danh sách văn bản các lựa chọn (min 2, max 10)
-  /// [isMultipleChoice] Cho phép chọn nhiều đáp án
-  /// [isAnonymous]      Ẩn danh – không hiển thị userId đã bình chọn
-  /// [expiresAt]        Thời hạn tự động đóng poll (null = không giới hạn)
   Future<void> sendPollMessage({
     required String question,
     required List<String> optionTexts,
@@ -274,14 +285,16 @@ class ChatProvider {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // HÀM 3: VOTE POLL – Firestore Transaction (Robust)
+  // HÀM 3: VOTE POLL – Firestore Transaction với retry
+  // ──────────────────────────────────────────────────────────────────────────
+  //
+  // **FIX #1** – Race condition: người dùng bấm vote ngay sau khi gửi poll,
+  // nhưng SyncManager chưa kịp đẩy document lên Firestore.
+  // Giải pháp: retry tối đa 5 lần với exponential backoff trước khi transaction.
+  //
+  // Backoff schedule: 500 → 1000 → 1500 → 2000 → 2500 ms (tổng ~7.5s)
   // ──────────────────────────────────────────────────────────────────────────
 
-  /// Toggle vote của [userId] trên [optionId] trong poll [messageId].
-  ///
-  /// - Single-choice: xoá userId khỏi tất cả options cũ trước khi thêm vào mới.
-  /// - Multiple-choice: chỉ toggle trên option đã chọn.
-  /// - Tương thích ngược: đọc options từ JSON content hoặc root field.
   Future<void> votePoll({
     required String groupChatId,
     required String messageId,
@@ -294,6 +307,39 @@ class ChatProvider {
         .collection(groupChatId)
         .doc(messageId);
 
+    // ── Bước 1: Đợi document xuất hiện (retry backoff) ──────────────────
+    const maxAttempts = 5;
+    const baseDelayMs = 500;
+    bool docExists = false;
+
+    for (int attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        final snap = await messageRef.get();
+        if (snap.exists) {
+          docExists = true;
+          break;
+        }
+      } catch (e) {
+        _log('⚠️ votePoll check attempt $attempt error: $e');
+      }
+
+      final delayMs =
+          baseDelayMs * (attempt + 1); // 500, 1000, 1500, 2000, 2500
+      _log(
+        '⏳ votePoll: message $messageId chưa tồn tại trên Firestore, '
+        'thử lại sau ${delayMs}ms (${attempt + 1}/$maxAttempts)',
+      );
+      await Future.delayed(Duration(milliseconds: delayMs));
+    }
+
+    if (!docExists) {
+      throw Exception(
+        'Poll message $messageId không tồn tại sau $maxAttempts lần thử. '
+        'Tin nhắn chưa đồng bộ lên server – hãy thử lại sau.',
+      );
+    }
+
+    // ── Bước 2: Chạy Firestore Transaction ──────────────────────────────
     try {
       await firebaseFirestore.runTransaction((transaction) async {
         final snapshot = await transaction.get(messageRef);
@@ -302,18 +348,19 @@ class ChatProvider {
           throw Exception('Poll message $messageId không tồn tại.');
         }
 
-        final data = snapshot.data() as Map<String, dynamic>;
+        // **FIX #2** – dùng _toStringMap để tránh ClassCastException
+        final data = _toStringMap(snapshot.data());
 
-        // 1. Đọc & parse JSON content
+        // 1. Parse JSON content
         final contentStr = data[FirestoreConstants.content] as String? ?? '{}';
         Map<String, dynamic> pollData;
         try {
-          pollData = jsonDecode(contentStr) as Map<String, dynamic>;
+          pollData = _toStringMap(jsonDecode(contentStr));
         } catch (_) {
           pollData = {};
         }
 
-        // 2. Kiểm tra poll đã hết hạn chưa
+        // 2. Kiểm tra hết hạn
         final expiresAtStr = pollData['expiresAt'] as String?;
         if (expiresAtStr != null) {
           final expiresAt = DateTime.tryParse(expiresAtStr);
@@ -322,19 +369,16 @@ class ChatProvider {
           }
         }
 
-        // 3. Lấy options (hỗ trợ tương thích ngược)
-        List<dynamic> rawOptions;
+        // 3. Lấy options – tương thích ngược (có thể ở pollData hoặc root)
+        final List<Map<String, dynamic>> options;
         if (pollData['options'] is List &&
             (pollData['options'] as List).isNotEmpty) {
-          rawOptions = List.from(pollData['options'] as List);
+          options = _toOptionList(pollData['options']);
         } else if (data['options'] is List) {
-          rawOptions = List.from(data['options'] as List);
+          options = _toOptionList(data['options']);
         } else {
           throw Exception('Dữ liệu options không hợp lệ.');
         }
-
-        final options =
-            rawOptions.map((o) => Map<String, dynamic>.from(o as Map)).toList();
 
         // 4. Tìm option đích
         final targetIndex =
@@ -344,7 +388,7 @@ class ChatProvider {
           throw Exception('Option $optionId không tồn tại. Hiện có: $ids');
         }
 
-        // 5. Lấy config poll
+        // 5. Lấy config
         final isMultipleChoice = (pollData['isMultipleChoice'] ??
             data['isMultipleChoice'] ??
             false) as bool;
@@ -368,7 +412,7 @@ class ChatProvider {
         }
         options[targetIndex]['votes'] = targetVotes;
 
-        // 8. Ghi lại: cập nhật JSON content + root options (backwards compat)
+        // 8. Ghi lại Firestore
         pollData['options'] = options;
 
         transaction.update(messageRef, {
@@ -389,6 +433,13 @@ class ChatProvider {
   // ──────────────────────────────────────────────────────────────────────────
   // HÀM 4: LẮNG NGHE FIREBASE & CẬP NHẬT LOCAL DB
   // ──────────────────────────────────────────────────────────────────────────
+  //
+  // **FIX #2** – Dùng _toStringMap() thay vì
+  //   `doc.data() as Map<String, dynamic>?`   ← gây ClassCastException
+  //
+  // Firestore snapshot trả về `_InternalLinkedHashMap<dynamic, dynamic>`
+  // (internal class của Dart), không thể cast trực tiếp về Map<String,dynamic>.
+  // ──────────────────────────────────────────────────────────────────────────
 
   void listenToFirebaseChanges(
     String groupChatId,
@@ -402,81 +453,115 @@ class ChatProvider {
         .orderBy(FirestoreConstants.timestamp, descending: true)
         .limit(50)
         .snapshots()
-        .listen((snapshot) async {
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        final messageId = doc.id;
-        final isFromMe = data['idFrom'] == currentUserId;
-        final type = data['type'] as int? ?? TypeMessage.text;
-
-        // Tin nhắn của mình → chỉ cập nhật status pending → sent
-        if (isFromMe) {
-          final key = '${groupChatId}_$messageId';
-          if (_localDb.messagesBox.containsKey(key)) {
-            final existing =
-                _localDb.messagesBox.get(key) as Map<String, dynamic>?;
-            if (existing != null &&
-                existing['status'] == MessageStatus.pending) {
-              await _localDb.saveMessage(
-                groupChatId,
-                messageId,
-                {...existing, 'status': MessageStatus.sent},
-              );
-            }
-          }
-          continue;
-        }
-
-        // Tin nhắn của người khác → decrypt (chỉ text) → lưu local
-        String content = data[FirestoreConstants.content] as String? ?? '';
-
-        if (type == TypeMessage.text) {
+        .listen(
+      (snapshot) async {
+        for (final doc in snapshot.docs) {
           try {
-            content = await EncryptionService().decryptPayload(
-              content,
-              groupChatId,
-              [currentUserId, peerId],
-              currentUserId,
+            await _processIncomingDoc(
+              doc: doc,
+              groupChatId: groupChatId,
+              currentUserId: currentUserId,
+              peerId: peerId,
             );
           } catch (e) {
-            _log('⚠️ Decrypt failed for $messageId: $e');
+            // Bắt lỗi từng doc, không để crash toàn bộ listener
+            _log('❌ _processIncomingDoc error [${doc.id}]: $e');
           }
         }
+      },
+      onError: (Object e, StackTrace st) {
+        _log('❌ listenToFirebaseChanges stream error: $e');
+      },
+    );
+  }
 
-        final updatedMessage = <String, dynamic>{
-          'messageId': messageId,
-          'idFrom': data['idFrom'],
-          'idTo': data['idTo'],
-          'timestamp': data['timestamp'],
-          'content': content,
-          'type': type,
-          'status': MessageStatus.sent,
-          if (data.containsKey('options')) 'options': data['options'],
-          if (data.containsKey('isViewOnce')) 'isViewOnce': data['isViewOnce'],
-          if (data.containsKey('isPinned')) 'isPinned': data['isPinned'],
-          if (data.containsKey('isDeleted')) 'isDeleted': data['isDeleted'],
-          if (data.containsKey('scamWarning'))
-            'scamWarning': data['scamWarning'],
-          if (data.containsKey('scamReason')) 'scamReason': data['scamReason'],
-          if (data.containsKey('hasReminder'))
-            'hasReminder': data['hasReminder'],
-          if (data.containsKey('lastVotedAt'))
-            'lastVotedAt': data['lastVotedAt']?.toString(),
-        };
+  /// Xử lý một document từ Firestore snapshot.
+  /// Tách riêng để dễ test và bắt lỗi từng document.
+  Future<void> _processIncomingDoc({
+    required QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    required String groupChatId,
+    required String currentUserId,
+    required String peerId,
+  }) async {
+    // **FIX #2** – Không dùng `doc.data() as Map<String, dynamic>?`
+    // Dùng _toStringMap để xử lý _Map<dynamic,dynamic> từ Firestore
+    final data = _toStringMap(doc.data());
+    final messageId = doc.id;
+    final isFromMe = data['idFrom'] == currentUserId;
+    final type = data['type'] as int? ?? TypeMessage.text;
 
-        await _localDb.saveMessage(groupChatId, messageId, updatedMessage);
+    // ── Tin nhắn của mình → chỉ cập nhật status pending → sent ──────────
+    if (isFromMe) {
+      final key = '${groupChatId}_$messageId';
+      if (_localDb.messagesBox.containsKey(key)) {
+        // **FIX** – Hive cũng có thể trả về _Map<dynamic,dynamic>
+        final existingRaw = _localDb.messagesBox.get(key);
+        final existing = _toStringMap(existingRaw);
+        if (existing.isNotEmpty &&
+            existing['status'] == MessageStatus.pending) {
+          await _localDb.saveMessage(
+            groupChatId,
+            messageId,
+            {...existing, 'status': MessageStatus.sent},
+          );
+        }
       }
-    });
+      return;
+    }
+
+    // ── Tin nhắn của người khác → decrypt nếu là text thường ─────────────
+    // Game messages (gameInvite / gameResult) không cần decrypt
+    String content = data[FirestoreConstants.content] as String? ?? '';
+
+    if (type == TypeMessage.text && content.isNotEmpty) {
+      try {
+        content = await EncryptionService().decryptPayload(
+          content,
+          groupChatId,
+          [currentUserId, peerId],
+          currentUserId,
+        );
+      } catch (e) {
+        _log('⚠️ Decrypt failed for $messageId: $e');
+        // Giữ nguyên content gốc thay vì crash
+      }
+    }
+
+    final updatedMessage = <String, dynamic>{
+      'messageId': messageId,
+      'idFrom': data['idFrom'],
+      'idTo': data['idTo'],
+      'timestamp': data['timestamp'],
+      'content': content,
+      'type': type,
+      'status': MessageStatus.sent,
+      // **FIX** – Normalize options để tránh _Map<dynamic,dynamic> lưu vào Hive
+      if (data.containsKey('options'))
+        'options': _toOptionList(data['options']),
+      if (data.containsKey('isViewOnce')) 'isViewOnce': data['isViewOnce'],
+      if (data.containsKey('isPinned')) 'isPinned': data['isPinned'],
+      if (data.containsKey('isDeleted')) 'isDeleted': data['isDeleted'],
+      if (data.containsKey('scamWarning')) 'scamWarning': data['scamWarning'],
+      if (data.containsKey('scamReason')) 'scamReason': data['scamReason'],
+      if (data.containsKey('hasReminder')) 'hasReminder': data['hasReminder'],
+      if (data.containsKey('lastVotedAt'))
+        'lastVotedAt': data['lastVotedAt']?.toString(),
+      // Game fields
+      if (data.containsKey(FirestoreConstants.matchId))
+        FirestoreConstants.matchId: data[FirestoreConstants.matchId],
+      if (data.containsKey(FirestoreConstants.gameType))
+        FirestoreConstants.gameType: data[FirestoreConstants.gameType],
+      if (data.containsKey(FirestoreConstants.matchStatus))
+        FirestoreConstants.matchStatus: data[FirestoreConstants.matchStatus],
+    };
+
+    await _localDb.saveMessage(groupChatId, messageId, updatedMessage);
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // HÀM 5: GỬI MEDIA (ảnh / video) – dùng API mới của MediaCompressionService
+  // HÀM 5: GỬI MEDIA (ảnh / video)
   // ──────────────────────────────────────────────────────────────────────────
 
-  /// Nén, upload ảnh hoặc video và gửi tin nhắn media.
-  ///
-  /// [onProgress] nhận tiến trình nén video (0.0 → 1.0).
-  /// Trả về `true` nếu thành công.
   Future<bool> sendMediaMessage({
     required File originalFile,
     required bool isVideo,
@@ -492,7 +577,6 @@ class ChatProvider {
     try {
       final ts = DateTime.now().millisecondsSinceEpoch.toString();
 
-      // ── Nén file ──────────────────────────────────────────────────────────
       final File compressedFile;
       if (isVideo) {
         compressedFile = await _compressionService.compressVideoFile(
@@ -507,14 +591,12 @@ class ChatProvider {
         );
       }
 
-      // ── Upload file chính ─────────────────────────────────────────────────
       final ext = isVideo ? 'mp4' : 'jpg';
       final storagePath =
           '${FirestoreConstants.pathMediaStorage}/$groupChatId/$ts.$ext';
 
       final fileUrl = await _uploadFileAndGetUrl(compressedFile, storagePath);
 
-      // ── Tạo payload (video có thêm thumbnail) ────────────────────────────
       String contentPayload = fileUrl;
 
       if (isVideo) {
@@ -528,7 +610,6 @@ class ChatProvider {
         }
       }
 
-      // ── Gửi tin nhắn ──────────────────────────────────────────────────────
       await sendMessage(
         contentPayload,
         isVideo ? TypeMessage.video : TypeMessage.image,
@@ -546,7 +627,6 @@ class ChatProvider {
       return false;
     } finally {
       onLoadingStatusChanged(false);
-      // Dọn cache sau khi gửi xong
       _compressionService
           .clearCache()
           .catchError((e) => _log('⚠️ clearCache error: $e'));
@@ -557,9 +637,6 @@ class ChatProvider {
   // HÀM 6: GỬI MEDIA BATCH (nhiều ảnh cùng lúc)
   // ──────────────────────────────────────────────────────────────────────────
 
-  /// Nén và gửi nhiều ảnh cùng lúc.
-  ///
-  /// [onProgress] nhận (sent, total) – số ảnh đã gửi / tổng số ảnh.
   Future<int> sendImageBatch({
     required List<File> files,
     required String groupChatId,
@@ -574,7 +651,6 @@ class ChatProvider {
 
     int successCount = 0;
     try {
-      // Nén hàng loạt trước
       final compressed = await _compressionService.compressImageBatch(
         files,
         config: compressionConfig,
@@ -622,12 +698,235 @@ class ChatProvider {
     await _compressionService.cancelCompression();
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // GAME CENTER — Các hàm gửi tin nhắn game vào nhóm chat
+  // ══════════════════════════════════════════════════════════════════════════
+
   // ──────────────────────────────────────────────────────────────────────────
-  // UTILITY
+  // HÀM 8: GỬI LỜI MỜI CHƠI GAME (GAME INVITE)
   // ──────────────────────────────────────────────────────────────────────────
 
-  void _log(String message) {
-    // ignore: avoid_print
-    print('[ChatProvider] $message');
+  /// Gửi tin nhắn thách đấu vào nhóm chat.
+  ///
+  /// Luồng:
+  ///   1. Serialize [GameInvitePayload] → JSON → content
+  ///   2. Ghi trực tiếp lên Firestore (không qua SyncQueue vì cần messageId ngay)
+  ///   3. Lưu vào LocalDb với status = sent
+  ///   4. Trả về messageId để game_firebase_service.linkInviteMessage()
+  ///
+  /// [groupChatId]  : ID nhóm chat hoặc conversation
+  /// [currentUserId]: ID người tạo thách đấu
+  /// [payload]      : Dữ liệu thách đấu
+  ///
+  /// Trả về messageId (timestamp) của tin nhắn vừa tạo.
+  Future<String> sendGameInviteMessage({
+    required String groupChatId,
+    required String currentUserId,
+    required GameInvitePayload payload,
+  }) async {
+    final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+    final content = jsonEncode(payload.toJson());
+
+    final messageData = <String, dynamic>{
+      FirestoreConstants.idFrom: currentUserId,
+      FirestoreConstants.idTo: groupChatId,
+      FirestoreConstants.timestamp: timestamp,
+      FirestoreConstants.content: content,
+      FirestoreConstants.type: TypeMessage.gameInvite,
+      FirestoreConstants.matchId: payload.matchId,
+      FirestoreConstants.gameType: payload.gameType.name,
+      FirestoreConstants.matchStatus: payload.matchStatus.name,
+      'isRead': false,
+      'isDeleted': false,
+      'isPinned': false,
+    };
+
+    try {
+      // Ghi trực tiếp lên Firestore để có messageId ngay lập tức
+      await firebaseFirestore
+          .collection(FirestoreConstants.pathMessageCollection)
+          .doc(groupChatId)
+          .collection(groupChatId)
+          .doc(timestamp)
+          .set(messageData);
+
+      // Lưu vào local DB
+      await _localDb.saveMessage(
+        groupChatId,
+        timestamp,
+        {...messageData, 'messageId': timestamp, 'status': MessageStatus.sent},
+      );
+
+      // Cập nhật conversation preview
+      await _localDb.updateConversationPreview(
+        conversationId: groupChatId,
+        lastMessage:
+            '${payload.gameType.emoji} ${payload.challengerName} thách đấu ${payload.gameType.displayName}',
+        lastMessageTime: timestamp,
+        lastMessageType: TypeMessage.gameInvite,
+      );
+
+      _log('🎮 Game invite sent: ${payload.matchId} → $groupChatId');
+      return timestamp;
+    } catch (e) {
+      _log('❌ sendGameInviteMessage error: $e');
+      rethrow;
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // HÀM 9: GỬI KẾT QUẢ TRẬN ĐẤU (GAME RESULT)
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /// Đẩy tin nhắn kết quả trận đấu vào nhóm chat sau khi game kết thúc.
+  ///
+  /// Luồng:
+  ///   1. Serialize [GameResultPayload] → JSON → content
+  ///   2. Ghi trực tiếp lên Firestore
+  ///   3. Lưu vào LocalDb
+  ///
+  /// [groupChatId]  : ID nhóm chat
+  /// [currentUserId]: ID người gửi (thường là server-side trigger,
+  ///                  nhưng trong app sẽ do player cuối cùng trigger)
+  /// [payload]      : Dữ liệu kết quả
+  Future<String> sendGameResultMessage({
+    required String groupChatId,
+    required String currentUserId,
+    required GameResultPayload payload,
+  }) async {
+    final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+    final content = jsonEncode(payload.toJson());
+
+    // Tạo text summary để hiển thị trong conversation preview
+    final winner = payload.winnerId == currentUserId
+        ? payload.player1Name
+        : (payload.result == 'draw' ? null : payload.player2Name);
+    final previewText = payload.result == 'draw'
+        ? '🤝 ${payload.player1Name} và ${payload.player2Name} hòa nhau!'
+        : '🏆 $winner đã thắng trận ${payload.gameType.displayName}!';
+
+    final messageData = <String, dynamic>{
+      FirestoreConstants.idFrom: currentUserId,
+      FirestoreConstants.idTo: groupChatId,
+      FirestoreConstants.timestamp: timestamp,
+      FirestoreConstants.content: content,
+      FirestoreConstants.type: TypeMessage.gameResult,
+      FirestoreConstants.matchId: payload.matchId,
+      FirestoreConstants.gameType: payload.gameType.name,
+      FirestoreConstants.matchStatus: MatchStatus.finished.name,
+      'isRead': false,
+      'isDeleted': false,
+      'isPinned': false,
+    };
+
+    try {
+      await firebaseFirestore
+          .collection(FirestoreConstants.pathMessageCollection)
+          .doc(groupChatId)
+          .collection(groupChatId)
+          .doc(timestamp)
+          .set(messageData);
+
+      await _localDb.saveMessage(
+        groupChatId,
+        timestamp,
+        {...messageData, 'messageId': timestamp, 'status': MessageStatus.sent},
+      );
+
+      await _localDb.updateConversationPreview(
+        conversationId: groupChatId,
+        lastMessage: previewText,
+        lastMessageTime: timestamp,
+        lastMessageType: TypeMessage.gameResult,
+      );
+
+      _log('🏁 Game result sent: ${payload.matchId} → $groupChatId');
+      return timestamp;
+    } catch (e) {
+      _log('❌ sendGameResultMessage error: $e');
+      rethrow;
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // HÀM 10: CẬP NHẬT TRẠNG THÁI TIN NHẮN GAME
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /// Cập nhật trạng thái của tin nhắn game invite trực tiếp trên Firestore.
+  ///
+  /// Dùng cho các trường hợp:
+  ///   - waiting → live    : Khi player2 chấp nhận vào phòng
+  ///   - live → finished   : Khi trận kết thúc (card invite chuyển thành "Đã kết thúc")
+  ///   - waiting → aborted : Khi hết thời gian chờ
+  ///
+  /// Cũng cập nhật số khán giả [spectatorCount] nếu được cung cấp.
+  ///
+  /// [groupChatId]    : ID nhóm chat
+  /// [messageId]      : Timestamp (ID) của tin nhắn cần update
+  /// [newStatus]      : Trạng thái mới
+  /// [spectatorCount] : Số khán giả hiện tại (optional)
+  Future<void> updateGameMessageStatus({
+    required String groupChatId,
+    required String messageId,
+    required MatchStatus newStatus,
+    int? spectatorCount,
+  }) async {
+    try {
+      final docRef = firebaseFirestore
+          .collection(FirestoreConstants.pathMessageCollection)
+          .doc(groupChatId)
+          .collection(groupChatId)
+          .doc(messageId);
+
+      final doc = await docRef.get();
+      if (!doc.exists) {
+        _log('⚠️ updateGameMessageStatus: message $messageId not found');
+        return;
+      }
+
+      // **FIX #2** – Dùng _toStringMap để tránh ClassCastException
+      final data = _toStringMap(doc.data());
+      final currentContent = data[FirestoreConstants.content] as String? ?? '';
+
+      // Parse và update payload
+      String updatedContent = currentContent;
+      try {
+        final payloadMap = _toStringMap(jsonDecode(currentContent));
+        payloadMap['matchStatus'] = newStatus.name;
+        if (spectatorCount != null) {
+          payloadMap['spectatorCount'] = spectatorCount;
+        }
+        updatedContent = jsonEncode(payloadMap);
+      } catch (e) {
+        _log('⚠️ updateGameMessageStatus: failed to parse content: $e');
+        // Tiếp tục update field matchStatus kể cả khi không parse được content
+      }
+
+      await docRef.update({
+        FirestoreConstants.matchStatus: newStatus.name,
+        FirestoreConstants.content: updatedContent,
+      });
+
+      // Sync lại local DB
+      final localKey = '${groupChatId}_$messageId';
+      final existingRaw = _localDb.messagesBox.get(localKey);
+      final existing = _toStringMap(existingRaw);
+      if (existing.isNotEmpty) {
+        await _localDb.saveMessage(
+          groupChatId,
+          messageId,
+          {
+            ...existing,
+            FirestoreConstants.matchStatus: newStatus.name,
+            FirestoreConstants.content: updatedContent,
+          },
+        );
+      }
+
+      _log('🔄 Game message status updated: $messageId → ${newStatus.name}');
+    } catch (e) {
+      _log('❌ updateGameMessageStatus error: $e');
+      // Không rethrow — status update thất bại không nên crash app
+    }
   }
 }

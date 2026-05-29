@@ -15,11 +15,10 @@ import 'package:pointycastle/export.dart' as pc;
 // MODELS
 // =========================================================
 
-/// Kết quả mã hóa đầy đủ, bao gồm IV + ciphertext.
 class EncryptedPayload {
   final String iv;
   final String data;
-  final String? hmac; // HMAC-SHA256 integrity check (optional)
+  final String? hmac;
 
   const EncryptedPayload({
     required this.iv,
@@ -43,7 +42,6 @@ class EncryptedPayload {
   String toJsonString() => jsonEncode(toJson());
 }
 
-/// Lỗi E2EE có phân loại rõ ràng.
 enum E2EEErrorType {
   keyNotInitialized,
   encryptionFailed,
@@ -67,7 +65,6 @@ class E2EEException implements Exception {
 
 // =========================================================
 // TOP-LEVEL ISOLATE FUNCTION — RSA KEY GENERATION
-// Phải là top-level để `compute()` serialize được.
 // =========================================================
 
 Map<String, String> _generateRSAKeyPairInIsolate(int keySize) {
@@ -122,31 +119,37 @@ class E2EEService {
   String? _localPrivateKey;
   String? _localPublicKey;
 
-  /// LRU-style cache với giới hạn tối đa để tránh memory leak
   final Map<String, _CachedKey> _sessionKeyCache = {};
   static const int _maxCacheSize = 50;
 
   // ── Storage keys ───────────────────────────────────────
   static const _kPrivateKey = 'e2ee_private_key_v2';
   static const _kPublicKey = 'e2ee_public_key_v2';
-
-  // ── RSA key size ───────────────────────────────────────
-  /// 4096-bit cho bảo mật tối đa; dùng 2048 nếu performance là ưu tiên
   static const int _rsaKeySize = 2048;
+
+  // ── Mutex để tránh tạo session key song song ───────────
+  // Ngăn nhiều call getOrCreateSessionKey() cùng chạy và tạo key trùng
+  final Map<String, Completer<String>> _pendingKeyCreations = {};
 
   // =========================================================
   // 1. KHỞI TẠO & QUẢN LÝ KEYPAIR
   // =========================================================
 
-  /// Kiểm tra xem user hiện tại đã có keypair chưa.
   bool get isInitialized => _localPrivateKey != null && _localPublicKey != null;
 
-  /// Tải khóa từ Secure Storage vào bộ nhớ (không tạo mới).
-  /// Gọi khi app khởi động hoặc sau khi đăng nhập.
   Future<bool> loadLocalKeys() async {
     try {
       _localPrivateKey = await _secureStorage.read(key: _kPrivateKey);
       _localPublicKey = await _secureStorage.read(key: _kPublicKey);
+
+      // **FIX #3** – Validate key sau khi load: tránh lưu chuỗi rỗng
+      if (_localPrivateKey != null && _localPrivateKey!.trim().isEmpty) {
+        _localPrivateKey = null;
+      }
+      if (_localPublicKey != null && _localPublicKey!.trim().isEmpty) {
+        _localPublicKey = null;
+      }
+
       return isInitialized;
     } catch (e) {
       throw E2EEException(
@@ -157,10 +160,6 @@ class E2EEService {
     }
   }
 
-  /// Sinh cặp khóa RSA mới hoặc tái sử dụng nếu đã tồn tại.
-  /// - Chạy trên Isolate riêng (tránh lag UI).
-  /// - Lưu vào Keychain/Keystore (bảo mật phần cứng).
-  /// - Đẩy Public Key lên Firestore.
   Future<void> generateAndStoreUserKeys(
     String userId, {
     bool forceRegenerate = false,
@@ -174,8 +173,19 @@ class E2EEService {
 
     final keys = await compute(_generateRSAKeyPairInIsolate, _rsaKeySize);
 
-    _localPublicKey = keys['publicKey']!;
-    _localPrivateKey = keys['privateKey']!;
+    final pub = keys['publicKey'] ?? '';
+    final priv = keys['privateKey'] ?? '';
+
+    // **FIX #3** – Validate key sinh ra không rỗng trước khi lưu
+    if (pub.isEmpty || priv.isEmpty) {
+      throw const E2EEException(
+        E2EEErrorType.encryptionFailed,
+        'RSA key generation trả về key rỗng',
+      );
+    }
+
+    _localPublicKey = pub;
+    _localPrivateKey = priv;
 
     try {
       await Future.wait([
@@ -194,7 +204,6 @@ class E2EEService {
     debugPrint('[E2EE] ✅ Tạo và lưu khóa thành công.');
   }
 
-  /// Đẩy Public Key lên Firestore cho user này.
   Future<void> _uploadPublicKey(String userId, String publicKeyPem) async {
     try {
       await _firestore.collection('users').doc(userId).set(
@@ -218,7 +227,6 @@ class E2EEService {
   // 2. KHÓA PHIÊN (SESSION KEY)
   // =========================================================
 
-  /// Sinh khóa phiên AES-256 ngẫu nhiên (32 byte, base64).
   String generateRandomSessionKey() {
     final bytes = Uint8List.fromList(
       List.generate(32, (_) => Random.secure().nextInt(256)),
@@ -226,12 +234,8 @@ class E2EEService {
     return base64.encode(bytes);
   }
 
-  /// Thiết lập hoặc lấy khóa phiên cho một cuộc hội thoại.
-  ///
-  /// Logic:
-  ///   1. Cache in-memory → trả về ngay.
-  ///   2. Firestore → giải mã và trả về.
-  ///   3. Tạo mới → phân phối cho tất cả members → lưu cache.
+  /// **FIX #3** – Thêm mutex (_pendingKeyCreations) để ngăn race condition
+  /// nhiều isolate/call cùng tạo session key cho một conversation.
   Future<String> getOrCreateSessionKey({
     required String conversationId,
     required List<String> participantIds,
@@ -243,7 +247,38 @@ class E2EEService {
       return cached.key;
     }
 
-    // 2. Kiểm tra Firestore
+    // 2. Nếu đang có call khác tạo key cho cùng conversation → chờ
+    if (_pendingKeyCreations.containsKey(conversationId)) {
+      debugPrint('[E2EE] ⏳ Đang chờ session key cho $conversationId...');
+      return _pendingKeyCreations[conversationId]!.future;
+    }
+
+    // 3. Bắt đầu tạo key, đặt mutex
+    final completer = Completer<String>();
+    _pendingKeyCreations[conversationId] = completer;
+
+    try {
+      final key = await _resolveSessionKey(
+        conversationId: conversationId,
+        participantIds: participantIds,
+        currentUserId: currentUserId,
+      );
+      completer.complete(key);
+      return key;
+    } catch (e) {
+      completer.completeError(e);
+      rethrow;
+    } finally {
+      _pendingKeyCreations.remove(conversationId);
+    }
+  }
+
+  /// Nội bộ: lấy key từ Firestore hoặc tạo mới.
+  Future<String> _resolveSessionKey({
+    required String conversationId,
+    required List<String> participantIds,
+    required String currentUserId,
+  }) async {
     final myKeyRef = _firestore
         .collection('conversations')
         .doc(conversationId)
@@ -254,15 +289,41 @@ class E2EEService {
 
     if (snapshot.exists) {
       final encryptedKey = snapshot.data()?['encryptedKey'] as String?;
-      if (encryptedKey == null) {
-        throw const E2EEException(
-          E2EEErrorType.invalidPayload,
-          'encryptedKey không tồn tại trong Firestore',
+
+      // **FIX #3** – Validate encryptedKey không rỗng trước khi decrypt
+      if (encryptedKey == null || encryptedKey.trim().isEmpty) {
+        debugPrint(
+          '[E2EE] ⚠️ encryptedKey rỗng cho $conversationId, tạo mới...',
+        );
+        // Key bị hỏng → tạo lại và phân phối
+        return _createAndDistributeSessionKey(
+          conversationId: conversationId,
+          participantIds: participantIds,
+          currentUserId: currentUserId,
         );
       }
-      final sessionKey = decryptSessionKeyWithMyPrivateKey(encryptedKey);
-      _cacheSessionKey(conversationId, sessionKey);
-      return sessionKey;
+
+      try {
+        final sessionKey = decryptSessionKeyWithMyPrivateKey(encryptedKey);
+
+        // **FIX #3** – Validate session key sau khi decrypt:
+        // Đảm bảo decode ra đúng 32 byte (256-bit AES key)
+        _validateSessionKeyBytes(sessionKey);
+
+        _cacheSessionKey(conversationId, sessionKey);
+        return sessionKey;
+      } on E2EEException catch (e) {
+        debugPrint(
+          '[E2EE] ⚠️ Decrypt session key thất bại ($e), tạo lại key...',
+        );
+        // Key bị corrupt hoặc private key không khớp → tạo lại
+        evictSessionKey(conversationId);
+        return _createAndDistributeSessionKey(
+          conversationId: conversationId,
+          participantIds: participantIds,
+          currentUserId: currentUserId,
+        );
+      }
     }
 
     // 3. Tạo mới và phân phối
@@ -279,10 +340,13 @@ class E2EEService {
     required String currentUserId,
   }) async {
     final newSessionKey = generateRandomSessionKey();
+
+    // Validate ngay key vừa tạo
+    _validateSessionKeyBytes(newSessionKey);
+
     final batch = _firestore.batch();
     int distributed = 0;
 
-    // Fetch tất cả public keys song song để tăng tốc
     final publicKeyFutures = participantIds.map(
       (uid) => _firestore.collection('users').doc(uid).get(),
     );
@@ -292,8 +356,9 @@ class E2EEService {
       final uid = participantIds[i];
       final publicKey = userDocs[i].data()?['publicKey'] as String?;
 
-      if (publicKey == null) {
-        debugPrint('[E2EE] ⚠️ Bỏ qua user $uid — không có publicKey');
+      // **FIX #3** – Bỏ qua user có publicKey rỗng/null
+      if (publicKey == null || publicKey.trim().isEmpty) {
+        debugPrint('[E2EE] ⚠️ Bỏ qua user $uid — publicKey rỗng hoặc null');
         continue;
       }
 
@@ -302,6 +367,12 @@ class E2EEService {
           newSessionKey,
           publicKey,
         );
+
+        // Validate kết quả encrypt không rỗng
+        if (encryptedKey.isEmpty) {
+          debugPrint('[E2EE] ⚠️ encryptedKey rỗng cho user $uid, bỏ qua');
+          continue;
+        }
 
         final keyRef = _firestore
             .collection('conversations')
@@ -340,15 +411,17 @@ class E2EEService {
 
     _cacheSessionKey(conversationId, newSessionKey);
     debugPrint(
-        '[E2EE] ✅ Phân phối khóa phiên cho $distributed/${participantIds.length} thành viên');
+      '[E2EE] ✅ Phân phối khóa phiên cho $distributed/${participantIds.length} thành viên',
+    );
     return newSessionKey;
   }
 
   void _cacheSessionKey(String conversationId, String key) {
-    // Giới hạn cache size — xoá entry cũ nhất
     if (_sessionKeyCache.length >= _maxCacheSize) {
       final oldest = _sessionKeyCache.entries
-          .reduce((a, b) => a.value.cachedAt.isBefore(b.value.cachedAt) ? a : b)
+          .reduce(
+            (a, b) => a.value.cachedAt.isBefore(b.value.cachedAt) ? a : b,
+          )
           .key;
       _sessionKeyCache.remove(oldest);
     }
@@ -359,11 +432,24 @@ class E2EEService {
   // 3. RSA ENCRYPT / DECRYPT SESSION KEY
   // =========================================================
 
-  /// Mã hóa sessionKey bằng Public Key của đối phương (RSA-OAEP).
   String encryptSessionKeyWithPublicKey(
     String sessionKey,
     String publicKeyPem,
   ) {
+    // **FIX #3** – Guard: không encrypt key rỗng
+    if (sessionKey.isEmpty) {
+      throw const E2EEException(
+        E2EEErrorType.encryptionFailed,
+        'sessionKey rỗng, không thể mã hóa',
+      );
+    }
+    if (publicKeyPem.trim().isEmpty) {
+      throw const E2EEException(
+        E2EEErrorType.encryptionFailed,
+        'publicKeyPem rỗng, không thể mã hóa',
+      );
+    }
+
     try {
       final rsaPublicKey = CryptoUtils.rsaPublicKeyFromPem(publicKeyPem);
       final encrypter = enc.Encrypter(enc.RSA(publicKey: rsaPublicKey));
@@ -377,7 +463,6 @@ class E2EEService {
     }
   }
 
-  /// Giải mã sessionKey bằng Private Key của bản thân (RSA-OAEP).
   String decryptSessionKeyWithMyPrivateKey(String encryptedBase64) {
     if (_localPrivateKey == null) {
       throw const E2EEException(
@@ -385,10 +470,32 @@ class E2EEService {
         'Private key chưa được tải. Gọi loadLocalKeys() hoặc generateAndStoreUserKeys() trước.',
       );
     }
+
+    // **FIX #3** – Guard: encryptedBase64 không được rỗng
+    if (encryptedBase64.trim().isEmpty) {
+      throw const E2EEException(
+        E2EEErrorType.decryptionFailed,
+        'encryptedBase64 rỗng, không thể giải mã RSA',
+      );
+    }
+
     try {
       final rsaPrivateKey = CryptoUtils.rsaPrivateKeyFromPem(_localPrivateKey!);
       final encrypter = enc.Encrypter(enc.RSA(privateKey: rsaPrivateKey));
-      return encrypter.decrypt(enc.Encrypted.fromBase64(encryptedBase64));
+      final decrypted =
+          encrypter.decrypt(enc.Encrypted.fromBase64(encryptedBase64));
+
+      // **FIX #3** – Validate kết quả decrypt không rỗng
+      if (decrypted.isEmpty) {
+        throw const E2EEException(
+          E2EEErrorType.decryptionFailed,
+          'RSA decrypt trả về chuỗi rỗng',
+        );
+      }
+
+      return decrypted;
+    } on E2EEException {
+      rethrow;
     } catch (e) {
       throw E2EEException(
         E2EEErrorType.decryptionFailed,
@@ -402,9 +509,6 @@ class E2EEService {
   // 4. AES-GCM ENCRYPT MESSAGE
   // =========================================================
 
-  /// Mã hóa tin nhắn bằng AES-256-GCM.
-  /// IV ngẫu nhiên 12 byte được sinh mới cho mỗi tin nhắn.
-  /// Trả về JSON string chứa iv + data (+ hmac nếu withHmac = true).
   String encryptMessage(
     String plainText,
     String sessionKey, {
@@ -441,15 +545,30 @@ class E2EEService {
   // 5. AES-GCM DECRYPT MESSAGE
   // =========================================================
 
-  /// Giải mã tin nhắn bằng AES-256-GCM.
-  /// Trả về plaintext hoặc ném [E2EEException] nếu thất bại.
   String decryptMessage(String encryptedPayload, String sessionKey) {
+    // **FIX #3** – Guard đầu vào
+    if (encryptedPayload.trim().isEmpty) {
+      throw const E2EEException(
+        E2EEErrorType.invalidPayload,
+        'encryptedPayload rỗng',
+      );
+    }
+
     try {
       final payload = EncryptedPayload.fromJson(
-          jsonDecode(encryptedPayload) as Map<String, dynamic>);
+        jsonDecode(encryptedPayload) as Map<String, dynamic>,
+      );
+
+      // **FIX #3** – Validate iv và data trước khi decode
+      if (payload.iv.isEmpty || payload.data.isEmpty) {
+        throw const E2EEException(
+          E2EEErrorType.invalidPayload,
+          'payload.iv hoặc payload.data rỗng',
+        );
+      }
+
       final keyBytes = _decodeSessionKey(sessionKey);
 
-      // Kiểm tra HMAC nếu có
       if (payload.hmac != null) {
         final expectedHmac = _computeHmac(keyBytes, payload.iv + payload.data);
         if (!_constantTimeEqual(expectedHmac, payload.hmac!)) {
@@ -478,10 +597,9 @@ class E2EEService {
   }
 
   // =========================================================
-  // 6. CONVENIENCE: FULL ENCRYPT / DECRYPT PIPELINE
+  // 6. FULL ENCRYPT / DECRYPT PIPELINE
   // =========================================================
 
-  /// Pipeline đầy đủ: lấy session key → mã hóa tin nhắn.
   Future<String> encryptPayload(
     String plainText,
     String conversationId,
@@ -496,7 +614,8 @@ class E2EEService {
     return encryptMessage(plainText, sessionKey);
   }
 
-  /// Pipeline đầy đủ: lấy session key → giải mã tin nhắn.
+  /// **FIX #3** – Không trả về '[🔒 Không thể giải mã]' ở đây để
+  /// EncryptionService quyết định fallback message phù hợp ngữ cảnh.
   Future<String> decryptPayload(
     String encryptedPayload,
     String conversationId,
@@ -510,9 +629,14 @@ class E2EEService {
         currentUserId: currentUserId,
       );
       return decryptMessage(encryptedPayload, sessionKey);
-    } on E2EEException catch (e) {
-      debugPrint('[E2EE] decryptPayload error: $e');
-      return '[🔒 Không thể giải mã]';
+    } on E2EEException {
+      rethrow; // Để EncryptionService xử lý và log chính xác
+    } catch (e) {
+      throw E2EEException(
+        E2EEErrorType.decryptionFailed,
+        'Lỗi không xác định trong decryptPayload',
+        cause: e,
+      );
     }
   }
 
@@ -520,17 +644,13 @@ class E2EEService {
   // 7. KEY ROTATION
   // =========================================================
 
-  /// Xoay vòng khóa phiên cho một cuộc hội thoại.
-  /// Hữu ích khi thêm/bớt thành viên hoặc theo lịch định kỳ.
   Future<String> rotateSessionKey({
     required String conversationId,
     required List<String> participantIds,
     required String currentUserId,
   }) async {
-    // Xoá cache + Firestore keys cũ
     _sessionKeyCache.remove(conversationId);
 
-    // Xoá e2ee_keys subcollection (batch delete)
     final keysRef = _firestore
         .collection('conversations')
         .doc(conversationId)
@@ -543,7 +663,6 @@ class E2EEService {
     }
     await deleteBatch.commit();
 
-    // Phân phối key mới
     return _createAndDistributeSessionKey(
       conversationId: conversationId,
       participantIds: participantIds,
@@ -552,29 +671,26 @@ class E2EEService {
   }
 
   // =========================================================
-  // 8. THÊM THÀNH VIÊN VÀO CONVERSATION ĐÃ TỒN TẠI
+  // 8. THÊM THÀNH VIÊN
   // =========================================================
 
-  /// Phân phối khóa phiên hiện tại cho một thành viên mới được thêm vào.
   Future<void> addParticipantToConversation({
     required String conversationId,
     required String newParticipantId,
     required String currentUserId,
     required List<String> allParticipantIds,
   }) async {
-    // Lấy session key hiện tại
     final sessionKey = await getOrCreateSessionKey(
       conversationId: conversationId,
       participantIds: allParticipantIds,
       currentUserId: currentUserId,
     );
 
-    // Lấy public key của thành viên mới
     final userDoc =
         await _firestore.collection('users').doc(newParticipantId).get();
     final publicKey = userDoc.data()?['publicKey'] as String?;
 
-    if (publicKey == null) {
+    if (publicKey == null || publicKey.trim().isEmpty) {
       throw E2EEException(
         E2EEErrorType.keyDistributionFailed,
         'Không tìm thấy publicKey của user $newParticipantId',
@@ -617,9 +733,9 @@ class E2EEService {
     _localPublicKey = null;
   }
 
-  /// Gọi khi đăng xuất: xoá tất cả khóa trong bộ nhớ và Secure Storage.
   Future<void> clearKeysOnLogout() async {
     clearSessionCache();
+    _pendingKeyCreations.clear();
     await clearLocalKeys();
     debugPrint('[E2EE] 🧹 Đã dọn sạch tất cả khóa.');
   }
@@ -629,36 +745,61 @@ class E2EEService {
   // =========================================================
 
   String? get localPublicKey => _localPublicKey;
-
   int get cachedKeyCount => _sessionKeyCache.length;
 
   // =========================================================
   // PRIVATE HELPERS
   // =========================================================
 
-  /// Decode và validate session key (phải là 32 byte = 256 bit).
+  /// **FIX #3** – Decode và validate session key nghiêm ngặt.
+  ///
+  /// Lỗi gốc: `RangeError (length): Invalid value: Valid value range is empty: 0`
+  /// xảy ra khi `base64.decode(sessionKey)` trả về List rỗng (sessionKey = "")
+  /// rồi `Uint8List.fromList([])` tạo ra Uint8List 0-byte,
+  /// và `enc.Key(Uint8List(0))` ném RangeError vì AES-256 cần đúng 32 byte.
   Uint8List _decodeSessionKey(String sessionKey) {
+    // Guard 1: không được rỗng
+    if (sessionKey.trim().isEmpty) {
+      throw const E2EEException(
+        E2EEErrorType.invalidPayload,
+        'Session key rỗng — không thể decode',
+      );
+    }
+
+    final Uint8List bytes;
     try {
-      final bytes = Uint8List.fromList(base64.decode(sessionKey));
-      if (bytes.length != 32) {
-        throw E2EEException(
-          E2EEErrorType.invalidPayload,
-          'Session key phải là 32 byte, nhận được ${bytes.length}',
-        );
-      }
-      return bytes;
-    } on E2EEException {
-      rethrow;
+      bytes = Uint8List.fromList(base64.decode(sessionKey));
     } catch (e) {
       throw E2EEException(
         E2EEErrorType.invalidPayload,
-        'Session key không hợp lệ',
+        'Session key không phải base64 hợp lệ',
         cause: e,
       );
     }
+
+    // Guard 2: đúng 32 byte
+    if (bytes.isEmpty) {
+      throw const E2EEException(
+        E2EEErrorType.invalidPayload,
+        'Session key decode ra 0 byte — key bị hỏng',
+      );
+    }
+    if (bytes.length != 32) {
+      throw E2EEException(
+        E2EEErrorType.invalidPayload,
+        'Session key phải là 32 byte (AES-256), nhận được ${bytes.length} byte',
+      );
+    }
+
+    return bytes;
   }
 
-  /// Tính HMAC-SHA256 cho integrity check.
+  /// Validate session key theo chuỗi: base64 → 32 byte.
+  /// Dùng ngay sau khi tạo/decrypt key để fail-fast.
+  void _validateSessionKeyBytes(String sessionKey) {
+    _decodeSessionKey(sessionKey); // ném E2EEException nếu không hợp lệ
+  }
+
   String _computeHmac(Uint8List keyBytes, String data) {
     final hmacSha256 = pc.HMac(pc.SHA256Digest(), 64);
     hmacSha256.init(pc.KeyParameter(keyBytes));
@@ -669,7 +810,6 @@ class E2EEService {
     return base64.encode(out);
   }
 
-  /// So sánh constant-time để tránh timing attacks.
   bool _constantTimeEqual(String a, String b) {
     if (a.length != b.length) return false;
     int result = 0;
@@ -687,8 +827,6 @@ class E2EEService {
 class _CachedKey {
   final String key;
   final DateTime cachedAt;
-
-  // Cache có hiệu lực 24h
   static const _ttl = Duration(hours: 24);
 
   _CachedKey(this.key) : cachedAt = DateTime.now();
