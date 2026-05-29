@@ -4,8 +4,6 @@ import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:provider/provider.dart';
 
-/// Scrollable horizontal bar showing currently online friends.
-/// Optimised with const constructors, RepaintBoundary, and image caching.
 class OnlineFriendsBar extends StatefulWidget {
   final String currentUserId;
 
@@ -34,7 +32,7 @@ class _OnlineFriendsBarState extends State<OnlineFriendsBar>
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -43,7 +41,6 @@ class _OnlineFriendsBarState extends State<OnlineFriendsBar>
       child: StreamBuilder<List<Map<String, dynamic>>>(
         stream: presenceProvider.getOnlineFriendsStream(widget.currentUserId),
         builder: (context, snapshot) {
-          // Loading
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
               child: SizedBox(
@@ -57,7 +54,6 @@ class _OnlineFriendsBarState extends State<OnlineFriendsBar>
             );
           }
 
-          // Error
           if (snapshot.hasError) {
             return Center(
               child: Row(
@@ -66,14 +62,14 @@ class _OnlineFriendsBarState extends State<OnlineFriendsBar>
                   Icon(
                     Icons.cloud_off_rounded,
                     size: 18,
-                    color: ColorConstants.greyColor.withOpacity(0.6),
+                    color: ColorConstants.greyColor.withValues(alpha: 0.6),
                   ),
                   const SizedBox(width: 6),
                   Text(
                     'Không thể tải danh sách',
                     style: TextStyle(
                       fontSize: 12,
-                      color: ColorConstants.greyColor.withOpacity(0.7),
+                      color: ColorConstants.greyColor.withValues(alpha: 0.7),
                     ),
                   ),
                 ],
@@ -85,7 +81,6 @@ class _OnlineFriendsBarState extends State<OnlineFriendsBar>
               .where((u) => u['id'] != widget.currentUserId)
               .toList();
 
-          // Empty
           if (onlineFriends.isEmpty) {
             return Center(
               child: Row(
@@ -104,7 +99,7 @@ class _OnlineFriendsBarState extends State<OnlineFriendsBar>
                     'Không có bạn bè trực tuyến',
                     style: TextStyle(
                       fontSize: 13,
-                      color: ColorConstants.greyColor.withOpacity(0.7),
+                      color: ColorConstants.greyColor.withValues(alpha: 0.7),
                     ),
                   ),
                 ],
@@ -113,13 +108,13 @@ class _OnlineFriendsBarState extends State<OnlineFriendsBar>
           }
 
           return ListView.builder(
+            cacheExtent: 400.0, // <--- FIXED
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             itemCount: onlineFriends.length,
             itemExtent: 76,
             addAutomaticKeepAlives: true,
             addRepaintBoundaries: true,
-            cacheExtent: 400,
             itemBuilder: (context, index) {
               final friend = onlineFriends[index];
               return _OnlineFriendItem(
@@ -134,8 +129,6 @@ class _OnlineFriendsBarState extends State<OnlineFriendsBar>
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _OnlineFriendItem extends StatefulWidget {
   final Map<String, dynamic> friend;
@@ -188,13 +181,11 @@ class _OnlineFriendItemState extends State<_OnlineFriendItem>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // ── Avatar with online indicator ─────────────────────────
               SizedBox(
                 width: 60,
                 height: 60,
                 child: Stack(
                   children: [
-                    // Ring
                     Positioned.fill(
                       child: DecoratedBox(
                         decoration: BoxDecoration(
@@ -204,13 +195,13 @@ class _OnlineFriendItemState extends State<_OnlineFriendItem>
                             end: Alignment.bottomRight,
                             colors: [
                               ColorConstants.primaryColor,
-                              ColorConstants.primaryColor.withOpacity(0.6),
+                              ColorConstants.primaryColor
+                                  .withValues(alpha: 0.6),
                             ],
                           ),
                         ),
                       ),
                     ),
-                    // Avatar
                     Center(
                       child: Hero(
                         tag: 'avatar_${widget.friend['id']}',
@@ -225,7 +216,6 @@ class _OnlineFriendItemState extends State<_OnlineFriendItem>
                         ),
                       ),
                     ),
-                    // Online dot with pulse
                     Positioned(
                       right: 1,
                       bottom: 1,
@@ -240,7 +230,7 @@ class _OnlineFriendItemState extends State<_OnlineFriendItem>
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 color: Colors.green
-                                    .withOpacity(0.3 * _pulseAnim.value),
+                                    .withValues(alpha: 0.3 * _pulseAnim.value),
                               ),
                             ),
                             Container(
@@ -262,10 +252,7 @@ class _OnlineFriendItemState extends State<_OnlineFriendItem>
                   ],
                 ),
               ),
-
               const SizedBox(height: 5),
-
-              // ── Name ─────────────────────────────────────────────────
               Text(
                 nickname,
                 style: const TextStyle(
@@ -321,7 +308,7 @@ class _OnlineFriendItemState extends State<_OnlineFriendItem>
         child: Icon(
           Icons.account_circle_rounded,
           size: 54,
-          color: ColorConstants.greyColor.withOpacity(0.5),
+          color: ColorConstants.greyColor.withValues(alpha: 0.5),
         ),
       );
 

@@ -1,9 +1,10 @@
-// link_preview_widget.dart
+
 import 'dart:async';
 
-import 'package:any_link_preview/any_link_preview.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'package:any_link_preview/any_link_preview.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class LinkPreviewWidget extends StatefulWidget {
@@ -20,8 +21,7 @@ class LinkPreviewWidget extends StatefulWidget {
   State<LinkPreviewWidget> createState() => _LinkPreviewWidgetState();
 }
 
-class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
-    with SingleTickerProviderStateMixin {
+class _LinkPreviewWidgetState extends State<LinkPreviewWidget> with SingleTickerProviderStateMixin {
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
   late Animation<Offset> _slideAnim;
@@ -33,8 +33,7 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
   @override
   void initState() {
     super.initState();
-    _animController = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 400));
+    _animController = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
     _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeOut);
     _slideAnim = Tween<Offset>(
       begin: const Offset(0, 0.12),
@@ -74,17 +73,17 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
     super.dispose();
   }
 
-  /// ✅ FIX: Dùng launchUrl với fallback, không kiểm tra canLaunchUrl trước
+  
   Future<void> _launch() async {
     HapticFeedback.lightImpact();
     try {
       final uri = Uri.parse(widget.url);
-      // Thử mở bằng browser ngoài trước
+      
       final launched = await launchUrl(
         uri,
         mode: LaunchMode.externalApplication,
       );
-      // Fallback: nếu không mở được, thử in-app webview
+      
       if (!launched) {
         await launchUrl(
           uri,
@@ -144,19 +143,15 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
       child: SlideTransition(
         position: _slideAnim,
         child: GestureDetector(
-          onTap: _launch, // ✅ Tap mở link
-          onLongPress: _copyLink, // ✅ Long press sao chép
+          onTap: _launch, 
+          onLongPress: _copyLink, 
           child: Container(
             margin: const EdgeInsets.only(top: 8),
             decoration: BoxDecoration(
-              color: widget.isMe
-                  ? Colors.white.withOpacity(0.15)
-                  : const Color(0xFFF0F4FF),
+              color: widget.isMe ? Colors.white.withValues(alpha: 0.15) : const Color(0xFFF0F4FF),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: widget.isMe
-                    ? Colors.white.withOpacity(0.25)
-                    : const Color(0xFFDDE3F5),
+                color: widget.isMe ? Colors.white.withValues(alpha: 0.25) : const Color(0xFFDDE3F5),
                 width: 1,
               ),
             ),
@@ -177,9 +172,7 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: widget.isMe
-                              ? Colors.white
-                              : const Color(0xFF111827),
+                          color: widget.isMe ? Colors.white : const Color(0xFF111827),
                           fontSize: 13.5,
                           fontWeight: FontWeight.w700,
                           height: 1.3,
@@ -192,33 +185,27 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: widget.isMe
-                                ? Colors.white70
-                                : const Color(0xFF6B7280),
+                            color: widget.isMe ? Colors.white70 : const Color(0xFF6B7280),
                             fontSize: 12,
                             height: 1.4,
                           ),
                         ),
                       ],
                       const SizedBox(height: 8),
-                      // ✅ "Mở liên kết" row cũng tappable
+                      
                       Row(
                         children: [
                           Icon(
                             Icons.open_in_new_rounded,
                             size: 12,
-                            color: widget.isMe
-                                ? Colors.white60
-                                : const Color(0xFF6366F1),
+                            color: widget.isMe ? Colors.white60 : const Color(0xFF6366F1),
                           ),
                           const SizedBox(width: 4),
                           Text(
                             'Mở liên kết',
                             style: TextStyle(
                               fontSize: 11,
-                              color: widget.isMe
-                                  ? Colors.white60
-                                  : const Color(0xFF6366F1),
+                              color: widget.isMe ? Colors.white60 : const Color(0xFF6366F1),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -254,8 +241,7 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
               if (progress == null) return child;
               return Container(
                 color: const Color(0xFFE5E7EB),
-                child: const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2)),
+                child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
               );
             },
           ),
@@ -270,7 +256,7 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
                   begin: Alignment.bottomCenter,
                   end: Alignment.topCenter,
                   colors: [
-                    Colors.black.withOpacity(0.35),
+                    Colors.black.withValues(alpha: 0.35),
                     Colors.transparent,
                   ],
                 ),
@@ -303,22 +289,19 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
                       height: 10,
                       width: 80,
                       decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(5))),
+                          color: Colors.white, borderRadius: BorderRadius.circular(5))),
                   const SizedBox(height: 8),
                   Container(
                       height: 14,
                       width: double.infinity,
                       decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(5))),
+                          color: Colors.white, borderRadius: BorderRadius.circular(5))),
                   const SizedBox(height: 4),
                   Container(
                       height: 12,
                       width: 160,
                       decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(5))),
+                          color: Colors.white, borderRadius: BorderRadius.circular(5))),
                 ],
               ),
             ),
@@ -328,7 +311,7 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
     );
   }
 
-  /// ✅ Fallback cũng tap được
+  
   Widget _buildFallback() {
     return GestureDetector(
       onTap: _launch,
@@ -337,37 +320,29 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
         margin: const EdgeInsets.only(top: 6),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: widget.isMe
-              ? Colors.white.withOpacity(0.12)
-              : const Color(0xFFF3F4F6),
+          color: widget.isMe ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFF3F4F6),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: widget.isMe
-                ? Colors.white.withOpacity(0.2)
-                : const Color(0xFFE5E7EB),
+            color: widget.isMe ? Colors.white.withValues(alpha: 0.2) : const Color(0xFFE5E7EB),
           ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.link_rounded,
-                size: 16,
-                color: widget.isMe ? Colors.white70 : const Color(0xFF6366F1)),
+                size: 16, color: widget.isMe ? Colors.white70 : const Color(0xFF6366F1)),
             const SizedBox(width: 6),
             Flexible(
               child: Text(
-                // ✅ Hiển thị URL đầy đủ thay vì chỉ domain
-                widget.url.length > 40
-                    ? '${widget.url.substring(0, 40)}…'
-                    : widget.url,
+                
+                widget.url.length > 40 ? '${widget.url.substring(0, 40)}…' : widget.url,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 12,
                   color: widget.isMe ? Colors.white70 : const Color(0xFF6366F1),
                   decoration: TextDecoration.underline,
-                  decorationColor:
-                      widget.isMe ? Colors.white70 : const Color(0xFF6366F1),
+                  decorationColor: widget.isMe ? Colors.white70 : const Color(0xFF6366F1),
                 ),
               ),
             ),
@@ -384,9 +359,9 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Domain pill
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _DomainPill extends StatelessWidget {
   final String domain;
@@ -403,8 +378,8 @@ class _DomainPill extends StatelessWidget {
           height: 14,
           decoration: BoxDecoration(
             color: isMe
-                ? Colors.white.withOpacity(0.2)
-                : const Color(0xFF6366F1).withOpacity(0.1),
+                ? Colors.white.withValues(alpha: 0.2)
+                : const Color(0xFF6366F1).withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
           child: Icon(
@@ -432,9 +407,9 @@ class _DomainPill extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Shimmer loader
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _Shimmer extends StatefulWidget {
   final Widget child;
@@ -444,16 +419,14 @@ class _Shimmer extends StatefulWidget {
   State<_Shimmer> createState() => _ShimmerState();
 }
 
-class _ShimmerState extends State<_Shimmer>
-    with SingleTickerProviderStateMixin {
+class _ShimmerState extends State<_Shimmer> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _anim;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1200))
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))
       ..repeat();
     _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
   }

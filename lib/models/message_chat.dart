@@ -1,9 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
-// =========================================================
-// TYPE MESSAGE CONSTANTS
-// =========================================================
+
+
+
 
 class TypeMessage {
   const TypeMessage._();
@@ -13,38 +13,38 @@ class TypeMessage {
   static const int sticker = 2;
   static const int voice = 3;
   static const int video = 4;
-  static const int document = 5; // File tài liệu
-  static const int poll = 6; // Bình chọn
-  static const int game = 7; // Game (Tic-tac-toe legacy)
+  static const int document = 5; 
+  static const int poll = 6; 
+  static const int game = 7; 
   static const int blow = 8;
   static const int shake = 9;
   static const int geoLocked = 10;
 
-  // ─── Game Center ────────────────────────────────────────────────────────
-  /// Tin nhắn mời chơi / thách đấu.
-  /// content = JSON của GameInvitePayload
-  /// Hiển thị: card với nút [Vào bàn] hoặc [Xem trực tiếp]
+  
+  
+  
+  
   static const int gameInvite = 11;
 
-  /// Tin nhắn kết quả trận đấu.
-  /// content = JSON của GameResultPayload
-  /// Hiển thị: card kết quả với nút [Xem lại]
+  
+  
+  
   static const int gameResult = 12;
 
-  /// Tin nhắn trạng thái live — được UPDATE tại chỗ (không tạo mới).
-  /// content = JSON của GameLivePayload
-  /// Hiển thị: card "Đang thi đấu (Live)" với nút [Xem trực tiếp]
+  
+  
+  
   static const int gameLive = 13;
 }
 
-// =========================================================
-// GAME MESSAGE ENUMS
-// =========================================================
 
-/// Loại game được hỗ trợ.
+
+
+
+
 enum GameType {
-  caro, // Caro / Gomoku
-  chess; // Cờ Vua
+  caro, 
+  chess; 
 
   String get displayName {
     switch (this) {
@@ -75,18 +75,18 @@ enum GameType {
   }
 }
 
-/// Trạng thái trận đấu được nhúng vào tin nhắn trong nhóm.
+
 enum MatchStatus {
-  /// Đang chờ đối thủ chấp nhận (Open Challenge hoặc đã tag người chơi).
+  
   waiting,
 
-  /// Trận đấu đang diễn ra.
+  
   live,
 
-  /// Trận đấu đã kết thúc.
+  
   finished,
 
-  /// Trận bị huỷ (hết thời gian chờ, không ai chấp nhận, v.v.).
+  
   aborted;
 
   static MatchStatus fromString(String value) {
@@ -117,12 +117,12 @@ enum MatchStatus {
   }
 }
 
-// =========================================================
-// GAME MESSAGE PAYLOAD MODELS
-// =========================================================
 
-/// Payload cho TypeMessage.gameInvite / TypeMessage.gameLive.
-/// Được serialize thành JSON và lưu vào field [content].
+
+
+
+
+
 class GameInvitePayload {
   final String matchId;
   final GameType gameType;
@@ -130,17 +130,17 @@ class GameInvitePayload {
   final String challengerName;
   final String challengerAvatar;
 
-  /// null = Open Challenge (ai chấp nhận cũng được)
+  
   final String? targetUserId;
   final String? targetUserName;
 
-  /// Cài đặt cờ vua: giây (0 = không giới hạn)
+  
   final int timeControlSeconds;
 
-  /// Cài đặt Caro: kích thước bàn (3 = 3x3, 0 = vô hạn)
+  
   final int boardSize;
 
-  /// Số khán giả hiện tại (chỉ dùng khi matchStatus == live)
+  
   final int spectatorCount;
 
   const GameInvitePayload({
@@ -169,8 +169,7 @@ class GameInvitePayload {
         'spectatorCount': spectatorCount,
       };
 
-  factory GameInvitePayload.fromJson(Map<String, dynamic> json) =>
-      GameInvitePayload(
+  factory GameInvitePayload.fromJson(Map<String, dynamic> json) => GameInvitePayload(
         matchId: json['matchId'] as String? ?? '',
         gameType: GameType.fromString(json['gameType'] as String? ?? 'caro'),
         matchStatus: MatchStatus.fromString(
@@ -204,12 +203,12 @@ class GameInvitePayload {
       );
 }
 
-/// Payload cho TypeMessage.gameResult.
+
 class GameResultPayload {
   final String matchId;
   final GameType gameType;
 
-  /// 'player1_win' | 'player2_win' | 'draw'
+  
   final String result;
 
   final String player1Id;
@@ -219,14 +218,14 @@ class GameResultPayload {
   final String player2Name;
   final String player2Avatar;
 
-  /// Lý do kết thúc (để hiển thị trên card kết quả)
-  /// 'checkmate' | 'timeout' | 'resign' | 'draw_agreed' | 'disconnect' | 'five_in_row'
+  
+  
   final String endReason;
 
-  /// Thời gian trận đấu (giây)
+  
   final int durationSeconds;
 
-  /// Tổng số nước đi
+  
   final int totalMoves;
 
   const GameResultPayload({
@@ -259,8 +258,7 @@ class GameResultPayload {
         'totalMoves': totalMoves,
       };
 
-  factory GameResultPayload.fromJson(Map<String, dynamic> json) =>
-      GameResultPayload(
+  factory GameResultPayload.fromJson(Map<String, dynamic> json) => GameResultPayload(
         matchId: json['matchId'] as String? ?? '',
         gameType: GameType.fromString(json['gameType'] as String? ?? 'caro'),
         result: json['result'] as String? ?? 'draw',
@@ -275,14 +273,14 @@ class GameResultPayload {
         totalMoves: json['totalMoves'] as int? ?? 0,
       );
 
-  /// Trả về ID của người thắng, null nếu hòa.
+  
   String? get winnerId {
     if (result == 'player1_win') return player1Id;
     if (result == 'player2_win') return player2Id;
     return null;
   }
 
-  /// Tên hiển thị của kết quả.
+  
   String resultLabel(String currentUserId) {
     if (result == 'draw') return '🤝 Hòa nhau!';
     if (winnerId == currentUserId) return '🏆 Bạn đã thắng!';
@@ -290,9 +288,9 @@ class GameResultPayload {
   }
 }
 
-// =========================================================
-// MESSAGE CHAT MODEL
-// =========================================================
+
+
+
 
 class MessageChat {
   final String idFrom;
@@ -301,32 +299,32 @@ class MessageChat {
   final String content;
   final int type;
 
-  /// Tin nhắn đã bị xóa mềm hay chưa.
+  
   final bool isDeleted;
 
-  /// Thời điểm chỉnh sửa lần cuối (null nếu chưa chỉnh sửa).
+  
   final String? editedAt;
 
-  /// Tin nhắn có được ghim hay không.
+  
   final bool isPinned;
 
-  /// Người nhận đã đọc tin nhắn hay chưa.
+  
   final bool isRead;
 
-  /// Thời điểm đọc tin nhắn (null nếu chưa đọc).
+  
   final String? readAt;
 
-  /// Cờ cảnh báo scam do AI Backend phân tích.
+  
   final bool? scamWarning;
 
-  // ─── Game Center Fields ────────────────────────────────────────────────
-  /// ID trận đấu — chỉ có giá trị khi type là gameInvite / gameResult / gameLive.
+  
+  
   final String? matchId;
 
-  /// Loại game: 'caro' | 'chess'
+  
   final String? gameType;
 
-  /// Trạng thái trận đấu: 'waiting' | 'live' | 'finished' | 'aborted'
+  
   final String? matchStatus;
 
   const MessageChat({
@@ -341,15 +339,15 @@ class MessageChat {
     this.isRead = false,
     this.readAt,
     this.scamWarning,
-    // Game fields
+    
     this.matchId,
     this.gameType,
     this.matchStatus,
   });
 
-  // =========================================================
-  // SERIALIZATION
-  // =========================================================
+  
+  
+  
 
   Map<String, dynamic> toJson() {
     return {
@@ -364,16 +362,16 @@ class MessageChat {
       'isRead': isRead,
       'readAt': readAt,
       'scamWarning': scamWarning,
-      // Game fields — chỉ serialize khi có giá trị
+      
       if (matchId != null) FirestoreConstants.matchId: matchId,
       if (gameType != null) FirestoreConstants.gameType: gameType,
       if (matchStatus != null) FirestoreConstants.matchStatus: matchStatus,
     };
   }
 
-  // =========================================================
-  // DESERIALIZATION
-  // =========================================================
+  
+  
+  
 
   factory MessageChat.fromDocument(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>?;
@@ -394,16 +392,16 @@ class MessageChat {
       isRead: data['isRead'] as bool? ?? false,
       readAt: _parseOptionalTimestamp(data['readAt']),
       scamWarning: data['scamWarning'] as bool?,
-      // Game fields
+      
       matchId: data[FirestoreConstants.matchId] as String?,
       gameType: data[FirestoreConstants.gameType] as String?,
       matchStatus: data[FirestoreConstants.matchStatus] as String?,
     );
   }
 
-  // =========================================================
-  // COPY WITH
-  // =========================================================
+  
+  
+  
 
   MessageChat copyWith({
     String? content,
@@ -435,43 +433,42 @@ class MessageChat {
     );
   }
 
-  // =========================================================
-  // HELPERS
-  // =========================================================
+  
+  
+  
 
-  /// Trả về `true` nếu đây là tin nhắn video.
+  
   bool get isVideo => type == TypeMessage.video;
 
-  /// Trả về `true` nếu đây là tin nhắn tài liệu.
+  
   bool get isDocument => type == TypeMessage.document;
 
-  /// Trả về `true` nếu đây là tin nhắn bình chọn.
+  
   bool get isPoll => type == TypeMessage.poll;
 
-  // ─── Game Center Helpers ─────────────────────────────────────────────────
-  /// Trả về `true` nếu đây là tin nhắn liên quan đến Game Center.
+  
+  
   bool get isGameMessage =>
       type == TypeMessage.gameInvite ||
       type == TypeMessage.gameResult ||
       type == TypeMessage.gameLive;
 
-  /// Trả về `true` nếu đây là lời mời chơi game (đang chờ hoặc live).
+  
   bool get isGameInvite => type == TypeMessage.gameInvite;
 
-  /// Trả về `true` nếu đây là tin nhắn kết quả.
+  
   bool get isGameResult => type == TypeMessage.gameResult;
 
-  /// Trả về `true` nếu đây là tin nhắn trạng thái live.
+  
   bool get isGameLive => type == TypeMessage.gameLive;
 
-  /// Parse MatchStatus từ field [matchStatus].
-  MatchStatus get parsedMatchStatus =>
-      MatchStatus.fromString(matchStatus ?? 'waiting');
+  
+  MatchStatus get parsedMatchStatus => MatchStatus.fromString(matchStatus ?? 'waiting');
 
-  /// Parse GameType từ field [gameType].
+  
   GameType get parsedGameType => GameType.fromString(gameType ?? 'caro');
 
-  /// Với video, content có dạng `"videoUrl|thumbnailUrl"`.
+  
   String get videoUrl {
     if (!isVideo) return content;
     final parts = content.split('|');
@@ -484,9 +481,9 @@ class MessageChat {
     return parts.length > 1 ? parts[1] : '';
   }
 
-  // =========================================================
-  // PRIVATE HELPERS
-  // =========================================================
+  
+  
+  
 
   static String _parseTimestamp(dynamic value) {
     if (value is String) return value;

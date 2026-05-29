@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:flutter_chat_demo/constants/constants.dart';
 
 class EditMessageDialog extends StatefulWidget {
@@ -16,8 +17,7 @@ class EditMessageDialog extends StatefulWidget {
   State<EditMessageDialog> createState() => _EditMessageDialogState();
 }
 
-class _EditMessageDialogState extends State<EditMessageDialog>
-    with SingleTickerProviderStateMixin {
+class _EditMessageDialogState extends State<EditMessageDialog> with SingleTickerProviderStateMixin {
   late TextEditingController _controller;
   late FocusNode _focusNode;
   late AnimationController _animController;
@@ -91,8 +91,7 @@ class _EditMessageDialogState extends State<EditMessageDialog>
   @override
   Widget build(BuildContext context) {
     final bool isOverLimit = _charCount > _maxChars;
-    final bool canSave =
-        _hasChanged && _controller.text.trim().isNotEmpty && !isOverLimit;
+    final bool canSave = _hasChanged && _controller.text.trim().isNotEmpty && !isOverLimit;
 
     return FadeTransition(
       opacity: _fadeAnim,
@@ -100,15 +99,14 @@ class _EditMessageDialogState extends State<EditMessageDialog>
         scale: _scaleAnim,
         child: Dialog(
           backgroundColor: Colors.transparent,
-          insetPadding:
-              const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
           child: Container(
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(28),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.15),
+                  color: Colors.black.withValues(alpha: 0.15),
                   blurRadius: 40,
                   spreadRadius: 0,
                   offset: const Offset(0, 12),
@@ -118,7 +116,7 @@ class _EditMessageDialogState extends State<EditMessageDialog>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // ── Header ──────────────────────────────────────────────
+                
                 Container(
                   padding: const EdgeInsets.fromLTRB(24, 20, 16, 16),
                   decoration: BoxDecoration(
@@ -127,7 +125,7 @@ class _EditMessageDialogState extends State<EditMessageDialog>
                       end: Alignment.bottomRight,
                       colors: [
                         ColorConstants.primaryColor,
-                        ColorConstants.primaryColor.withOpacity(0.85),
+                        ColorConstants.primaryColor.withValues(alpha: 0.85),
                       ],
                     ),
                     borderRadius: const BorderRadius.vertical(
@@ -140,7 +138,7 @@ class _EditMessageDialogState extends State<EditMessageDialog>
                         width: 40,
                         height: 40,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.white.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(
@@ -176,10 +174,9 @@ class _EditMessageDialogState extends State<EditMessageDialog>
                       ),
                       IconButton(
                         onPressed: _handleCancel,
-                        icon: const Icon(Icons.close_rounded,
-                            color: Colors.white70),
+                        icon: const Icon(Icons.close_rounded, color: Colors.white70),
                         style: IconButton.styleFrom(
-                          backgroundColor: Colors.white.withOpacity(0.15),
+                          backgroundColor: Colors.white.withValues(alpha: 0.15),
                           padding: const EdgeInsets.all(8),
                         ),
                       ),
@@ -187,7 +184,7 @@ class _EditMessageDialogState extends State<EditMessageDialog>
                   ),
                 ),
 
-                // ── Original message preview ────────────────────────────
+                
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                   child: Container(
@@ -238,7 +235,7 @@ class _EditMessageDialogState extends State<EditMessageDialog>
                   ),
                 ),
 
-                // ── Text field ──────────────────────────────────────────
+                
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
                   child: Column(
@@ -251,16 +248,13 @@ class _EditMessageDialogState extends State<EditMessageDialog>
                           border: Border.all(
                             color: _focusNode.hasFocus
                                 ? ColorConstants.primaryColor
-                                : (isOverLimit
-                                    ? Colors.red
-                                    : const Color(0xFFE8EBF0)),
+                                : (isOverLimit ? Colors.red : const Color(0xFFE8EBF0)),
                             width: _focusNode.hasFocus ? 2 : 1.5,
                           ),
                           boxShadow: _focusNode.hasFocus
                               ? [
                                   BoxShadow(
-                                    color: ColorConstants.primaryColor
-                                        .withOpacity(0.12),
+                                    color: ColorConstants.primaryColor.withValues(alpha: 0.12),
                                     blurRadius: 12,
                                     spreadRadius: 0,
                                   ),
@@ -282,7 +276,7 @@ class _EditMessageDialogState extends State<EditMessageDialog>
                           decoration: InputDecoration(
                             hintText: 'Nhập nội dung tin nhắn…',
                             hintStyle: TextStyle(
-                              color: ColorConstants.greyColor.withOpacity(0.6),
+                              color: ColorConstants.greyColor.withValues(alpha: 0.6),
                               fontSize: 15,
                             ),
                             contentPadding: const EdgeInsets.all(14),
@@ -294,7 +288,7 @@ class _EditMessageDialogState extends State<EditMessageDialog>
                         ),
                       ),
                       const SizedBox(height: 6),
-                      // char counter
+                      
                       AnimatedDefaultTextStyle(
                         duration: const Duration(milliseconds: 200),
                         style: TextStyle(
@@ -312,7 +306,7 @@ class _EditMessageDialogState extends State<EditMessageDialog>
                   ),
                 ),
 
-                // ── Action buttons ──────────────────────────────────────
+                
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
                   child: Row(
@@ -351,8 +345,7 @@ class _EditMessageDialogState extends State<EditMessageDialog>
                                 ? LinearGradient(
                                     colors: [
                                       ColorConstants.primaryColor,
-                                      ColorConstants.primaryColor
-                                          .withOpacity(0.85),
+                                      ColorConstants.primaryColor.withValues(alpha: 0.85),
                                     ],
                                   )
                                 : null,
@@ -360,8 +353,7 @@ class _EditMessageDialogState extends State<EditMessageDialog>
                             boxShadow: canSave
                                 ? [
                                     BoxShadow(
-                                      color: ColorConstants.primaryColor
-                                          .withOpacity(0.35),
+                                      color: ColorConstants.primaryColor.withValues(alpha: 0.35),
                                       blurRadius: 14,
                                       offset: const Offset(0, 5),
                                     ),
@@ -374,17 +366,14 @@ class _EditMessageDialogState extends State<EditMessageDialog>
                               onTap: canSave ? _handleSave : null,
                               borderRadius: BorderRadius.circular(14),
                               child: Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 14),
+                                padding: const EdgeInsets.symmetric(vertical: 14),
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Icon(
                                       Icons.check_rounded,
                                       size: 18,
-                                      color: canSave
-                                          ? Colors.white
-                                          : const Color(0xFFBEC3CC),
+                                      color: canSave ? Colors.white : const Color(0xFFBEC3CC),
                                     ),
                                     const SizedBox(width: 6),
                                     Text(
@@ -392,9 +381,7 @@ class _EditMessageDialogState extends State<EditMessageDialog>
                                       style: TextStyle(
                                         fontSize: 15,
                                         fontWeight: FontWeight.w700,
-                                        color: canSave
-                                            ? Colors.white
-                                            : const Color(0xFFBEC3CC),
+                                        color: canSave ? Colors.white : const Color(0xFFBEC3CC),
                                       ),
                                     ),
                                   ],

@@ -3,26 +3,27 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ENUMS
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 enum ViewOnceState {
-  locked, // Not yet revealed
-  revealing, // Currently showing content
-  expiring, // Last 3 seconds — visual warning
-  viewed, // Already seen, placeholder shown
+  locked, 
+  revealing, 
+  expiring, 
+  viewed, 
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// COUNTDOWN RING PAINTER
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class CountdownRingPainter extends CustomPainter {
-  final double progress; // 1.0 → full, 0.0 → empty
+  final double progress; 
   final Color foreColor;
   final Color trackColor;
   final double strokeWidth;
@@ -43,10 +44,10 @@ class CountdownRingPainter extends CustomPainter {
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round;
 
-    // Track ring
+    
     canvas.drawCircle(center, radius, paint..color = trackColor);
 
-    // Progress arc (starts at top = -π/2)
+    
     if (progress > 0) {
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
@@ -60,14 +61,12 @@ class CountdownRingPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(CountdownRingPainter old) =>
-      old.progress != progress ||
-      old.foreColor != foreColor ||
-      old.trackColor != trackColor;
+      old.progress != progress || old.foreColor != foreColor || old.trackColor != trackColor;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// VIEW-ONCE MESSAGE WIDGET
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class ViewOnceMessageWidget extends StatefulWidget {
   final String groupChatId;
@@ -78,7 +77,7 @@ class ViewOnceMessageWidget extends StatefulWidget {
   final bool isViewed;
   final ViewOnceProvider provider;
 
-  /// Seconds the content stays visible after being revealed.
+  
   final int viewDurationSeconds;
 
   const ViewOnceMessageWidget({
@@ -101,12 +100,12 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
     with TickerProviderStateMixin {
   ViewOnceState _state = ViewOnceState.locked;
 
-  // ── Countdown ─────────────────────────────────────────────────────────────
+  
   Timer? _countdownTimer;
   int _remainingSeconds = 0;
   double _countdownProgress = 1.0;
 
-  // ── Animations ────────────────────────────────────────────────────────────
+  
   late AnimationController _lockPulseCtrl;
   late AnimationController _revealCtrl;
   late AnimationController _expiringCtrl;
@@ -127,7 +126,7 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
     if (widget.isViewed) _state = ViewOnceState.viewed;
     _remainingSeconds = widget.viewDurationSeconds;
 
-    // Lock pulse — subtle breathing effect on the locked bubble
+    
     _lockPulseCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2000),
@@ -136,7 +135,7 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
       CurvedAnimation(parent: _lockPulseCtrl, curve: Curves.easeInOut),
     );
 
-    // Reveal — fade + scale when content appears
+    
     _revealCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 480),
@@ -148,7 +147,7 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
       CurvedAnimation(parent: _revealCtrl, curve: Curves.easeOut),
     );
 
-    // Expiring — pulsing border + tint when < 3 s remain
+    
     _expiringCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
@@ -157,7 +156,7 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
       CurvedAnimation(parent: _expiringCtrl, curve: Curves.easeInOut),
     );
 
-    // Shake on expiry warning
+    
     _shakeCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
@@ -166,13 +165,12 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
         .chain(CurveTween(curve: _ShakeCurve()))
         .animate(_shakeCtrl);
 
-    // Viewed — fade in placeholder
+    
     _viewedCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 350),
     );
-    _viewedOpacity =
-        CurvedAnimation(parent: _viewedCtrl, curve: Curves.easeOut);
+    _viewedOpacity = CurvedAnimation(parent: _viewedCtrl, curve: Curves.easeOut);
 
     if (_state == ViewOnceState.viewed) _viewedCtrl.value = 1.0;
   }
@@ -188,9 +186,9 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
     super.dispose();
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // ACTIONS
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<void> _reveal() async {
     if (_state != ViewOnceState.locked) return;
@@ -205,7 +203,7 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
     _revealCtrl.forward();
     _startCountdown();
 
-    // Persist view state in backend
+    
     await widget.provider.openViewOnceMessage(
       groupChatId: widget.groupChatId,
       messageId: widget.messageId,
@@ -223,11 +221,10 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
 
       setState(() {
         _remainingSeconds--;
-        _countdownProgress =
-            (_remainingSeconds / widget.viewDurationSeconds).clamp(0.0, 1.0);
+        _countdownProgress = (_remainingSeconds / widget.viewDurationSeconds).clamp(0.0, 1.0);
       });
 
-      // Enter expiring phase at 3 s
+      
       if (_remainingSeconds == 3 && _state == ViewOnceState.revealing) {
         setState(() => _state = ViewOnceState.expiring);
         HapticFeedback.mediumImpact();
@@ -251,9 +248,9 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // BUILD
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   @override
   Widget build(BuildContext context) {
@@ -265,13 +262,12 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
     };
   }
 
-  // ── Locked ────────────────────────────────────────────────────────────────
+  
 
   Widget _buildLocked() {
     return AnimatedBuilder(
       animation: _lockPulse,
-      builder: (_, child) =>
-          Transform.scale(scale: _lockPulse.value, child: child),
+      builder: (_, child) => Transform.scale(scale: _lockPulse.value, child: child),
       child: GestureDetector(
         onTap: _reveal,
         child: Container(
@@ -286,7 +282,7 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
             borderRadius: BorderRadius.circular(22),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFFE94057).withOpacity(0.38),
+                color: const Color(0xFFE94057).withValues(alpha: 0.38),
                 blurRadius: 18,
                 spreadRadius: 0,
                 offset: const Offset(0, 6),
@@ -296,15 +292,15 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Icon container
+              
               Container(
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.18),
+                  color: Colors.white.withValues(alpha: 0.18),
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.3),
+                    color: Colors.white.withValues(alpha: 0.3),
                     width: 1,
                   ),
                 ),
@@ -315,7 +311,7 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
                 ),
               ),
               const SizedBox(width: 12),
-              // Labels
+              
               Flexible(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -334,7 +330,7 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
                     Text(
                       'Nhấn để mở · chỉ xem 1 lần',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.78),
+                        color: Colors.white.withValues(alpha: 0.78),
                         fontSize: 11.5,
                       ),
                     ),
@@ -342,11 +338,11 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
                 ),
               ),
               const SizedBox(width: 8),
-              // Arrow
+              
               Container(
                 padding: const EdgeInsets.all(5),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.15),
+                  color: Colors.white.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(
@@ -362,42 +358,38 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
     );
   }
 
-  // ── Revealing / Expiring ──────────────────────────────────────────────────
+  
 
   Widget _buildRevealing({required bool isExpiring}) {
-    const activeColor = Color(0xFF34C759); // Green — normal
-    const expiringColor = Color(0xFFFF6B35); // Orange — expiring
+    const activeColor = Color(0xFF34C759); 
+    const expiringColor = Color(0xFFFF6B35); 
     final borderColor = isExpiring ? expiringColor : activeColor;
 
     return AnimatedBuilder(
-      animation:
-          Listenable.merge([_revealCtrl, _expiringBorderPulse, _shakeAnim]),
+      animation: Listenable.merge([_revealCtrl, _expiringBorderPulse, _shakeAnim]),
       builder: (_, __) {
         return FadeTransition(
           opacity: _revealOpacity,
           child: ScaleTransition(
             scale: _revealScale,
             child: Transform.translate(
-              offset:
-                  isExpiring ? Offset(_shakeAnim.value * 3, 0) : Offset.zero,
+              offset: isExpiring ? Offset(_shakeAnim.value * 3, 0) : Offset.zero,
               child: Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: isExpiring
-                        ? Color.lerp(expiringColor, const Color(0xFFE94057),
-                                _expiringBorderPulse.value)!
-                            .withOpacity(0.85)
-                        : activeColor.withOpacity(0.45),
+                        ? Color.lerp(
+                                expiringColor, const Color(0xFFE94057), _expiringBorderPulse.value)!
+                            .withValues(alpha: 0.85)
+                        : activeColor.withValues(alpha: 0.45),
                     width: isExpiring ? 2 : 1.5,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: borderColor.withOpacity(
-                        isExpiring
-                            ? 0.18 + _expiringBorderPulse.value * 0.12
-                            : 0.10,
+                      color: borderColor.withValues(
+                        alpha: isExpiring ? 0.18 + _expiringBorderPulse.value * 0.12 : 0.10,
                       ),
                       blurRadius: 18,
                       offset: const Offset(0, 4),
@@ -407,15 +399,14 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // ── Header bar ──────────────────────────────────────
+                    
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 300),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 9),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                       decoration: BoxDecoration(
                         color: isExpiring
-                            ? expiringColor.withOpacity(
-                                0.07 + _expiringBorderPulse.value * 0.05)
+                            ? expiringColor.withValues(
+                                alpha: 0.07 + _expiringBorderPulse.value * 0.05)
                             : const Color(0xFFF8F8FA),
                         borderRadius: const BorderRadius.only(
                           topLeft: Radius.circular(19),
@@ -424,7 +415,7 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
                       ),
                       child: Row(
                         children: [
-                          // Countdown ring
+                          
                           SizedBox(
                             width: 30,
                             height: 30,
@@ -438,7 +429,7 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
                                         _expiringBorderPulse.value,
                                       )!
                                     : activeColor,
-                                trackColor: borderColor.withOpacity(0.15),
+                                trackColor: borderColor.withValues(alpha: 0.15),
                               ),
                               child: Center(
                                 child: Text(
@@ -463,33 +454,27 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
                             child: AnimatedSwitcher(
                               duration: const Duration(milliseconds: 250),
                               child: Text(
-                                isExpiring
-                                    ? '⚠ Sắp biến mất!'
-                                    : 'Đang hiển thị · tự xoá sau',
+                                isExpiring ? '⚠ Sắp biến mất!' : 'Đang hiển thị · tự xoá sau',
                                 key: ValueKey(isExpiring),
                                 style: TextStyle(
-                                  color: isExpiring
-                                      ? expiringColor
-                                      : const Color(0xFF8E8E93),
+                                  color: isExpiring ? expiringColor : const Color(0xFF8E8E93),
                                   fontSize: 11.5,
-                                  fontWeight: isExpiring
-                                      ? FontWeight.w700
-                                      : FontWeight.w400,
+                                  fontWeight: isExpiring ? FontWeight.w700 : FontWeight.w400,
                                 ),
                               ),
                             ),
                           ),
-                          // Eye icon
+                          
                           Icon(
                             Icons.visibility_rounded,
                             size: 14,
-                            color: borderColor.withOpacity(0.65),
+                            color: borderColor.withValues(alpha: 0.65),
                           ),
                         ],
                       ),
                     ),
 
-                    // ── Content ─────────────────────────────────────────
+                    
                     Padding(
                       padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
                       child: _buildContent(),
@@ -534,8 +519,7 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
               child: Center(
                 child: CircularProgressIndicator(
                   value: progress.expectedTotalBytes != null
-                      ? progress.cumulativeBytesLoaded /
-                          progress.expectedTotalBytes!
+                      ? progress.cumulativeBytesLoaded / progress.expectedTotalBytes!
                       : null,
                   strokeWidth: 2.5,
                   color: const Color(0xFFE94057),
@@ -548,8 +532,7 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
             height: 220,
             color: const Color(0xFFF2F2F7),
             child: const Center(
-              child: Icon(Icons.broken_image_rounded,
-                  color: Color(0xFFAAAAAA), size: 36),
+              child: Icon(Icons.broken_image_rounded, color: Color(0xFFAAAAAA), size: 36),
             ),
           ),
         ),
@@ -559,7 +542,7 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
     return const SizedBox.shrink();
   }
 
-  // ── Viewed ────────────────────────────────────────────────────────────────
+  
 
   Widget _buildViewed() {
     return FadeTransition(
@@ -618,18 +601,18 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SHAKE CURVE (for expiring jolt animation)
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _ShakeCurve extends Curve {
   @override
   double transformInternal(double t) => math.sin(t * math.pi * 4) * (1 - t);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SEND VIEW-ONCE DIALOG
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class SendViewOnceDialog extends StatefulWidget {
   final Function(String content, int type, int durationSeconds) onSend;
@@ -756,14 +739,13 @@ class _SendViewOnceDialogState extends State<SendViewOnceDialog>
             borderRadius: BorderRadius.circular(13),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFFE94057).withOpacity(0.3),
+                color: const Color(0xFFE94057).withValues(alpha: 0.3),
                 blurRadius: 10,
                 offset: const Offset(0, 3),
               ),
             ],
           ),
-          child: const Icon(Icons.lock_clock_rounded,
-              color: Colors.white, size: 22),
+          child: const Icon(Icons.lock_clock_rounded, color: Colors.white, size: 22),
         ),
         const SizedBox(width: 13),
         Column(
@@ -872,9 +854,8 @@ class _SendViewOnceDialogState extends State<SendViewOnceDialog>
         hintStyle: const TextStyle(color: Color(0xFFC7C7CC), fontSize: 14),
         filled: true,
         fillColor: const Color(0xFFF9F9FB),
-        prefixIcon: prefixIcon != null
-            ? Icon(prefixIcon, color: const Color(0xFFAAAAAA), size: 20)
-            : null,
+        prefixIcon:
+            prefixIcon != null ? Icon(prefixIcon, color: const Color(0xFFAAAAAA), size: 20) : null,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(borderRadius),
           borderSide: const BorderSide(color: borderColor),
@@ -898,8 +879,7 @@ class _SendViewOnceDialogState extends State<SendViewOnceDialog>
       children: [
         Row(
           children: [
-            const Icon(Icons.timer_outlined,
-                size: 14, color: Color(0xFF8E8E93)),
+            const Icon(Icons.timer_outlined, size: 14, color: Color(0xFF8E8E93)),
             const SizedBox(width: 5),
             const Text(
               'Thời gian xem',
@@ -938,7 +918,7 @@ class _SendViewOnceDialogState extends State<SendViewOnceDialog>
                     boxShadow: selected
                         ? [
                             BoxShadow(
-                              color: const Color(0xFFE94057).withOpacity(0.3),
+                              color: const Color(0xFFE94057).withValues(alpha: 0.3),
                               blurRadius: 8,
                               offset: const Offset(0, 3),
                             ),
@@ -951,8 +931,7 @@ class _SendViewOnceDialogState extends State<SendViewOnceDialog>
                       Text(
                         _durationLabel(d),
                         style: TextStyle(
-                          color:
-                              selected ? Colors.white : const Color(0xFF3C3C43),
+                          color: selected ? Colors.white : const Color(0xFF3C3C43),
                           fontWeight: FontWeight.w800,
                           fontSize: 13.5,
                         ),
@@ -1002,8 +981,7 @@ class _SendViewOnceDialogState extends State<SendViewOnceDialog>
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 backgroundColor: const Color(0xFFE94057),
-                disabledBackgroundColor:
-                    const Color(0xFFE94057).withOpacity(0.4),
+                disabledBackgroundColor: const Color(0xFFE94057).withValues(alpha: 0.4),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
@@ -1032,7 +1010,7 @@ class _SendViewOnceDialogState extends State<SendViewOnceDialog>
   }
 }
 
-// ── Tab button ─────────────────────────────────────────────────────────────
+
 
 class _TabBtn extends StatelessWidget {
   final String label;
@@ -1061,7 +1039,7 @@ class _TabBtn extends StatelessWidget {
             boxShadow: isSelected
                 ? [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.07),
+                      color: Colors.black.withValues(alpha: 0.07),
                       blurRadius: 8,
                       offset: const Offset(0, 1),
                     ),
@@ -1074,17 +1052,13 @@ class _TabBtn extends StatelessWidget {
               Icon(
                 icon,
                 size: 15,
-                color: isSelected
-                    ? const Color(0xFFE94057)
-                    : const Color(0xFF8E8E93),
+                color: isSelected ? const Color(0xFFE94057) : const Color(0xFF8E8E93),
               ),
               const SizedBox(width: 5),
               Text(
                 label,
                 style: TextStyle(
-                  color: isSelected
-                      ? const Color(0xFF111418)
-                      : const Color(0xFF8E8E93),
+                  color: isSelected ? const Color(0xFF111418) : const Color(0xFF8E8E93),
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                   fontSize: 13,
                 ),

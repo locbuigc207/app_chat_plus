@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
@@ -64,9 +66,8 @@ class AutoDeleteSettings {
     this.updatedAt,
   });
 
-  int? get effectiveMilliseconds => duration == AutoDeleteDuration.custom
-      ? customMilliseconds
-      : duration.milliseconds;
+  int? get effectiveMilliseconds =>
+      duration == AutoDeleteDuration.custom ? customMilliseconds : duration.milliseconds;
 
   factory AutoDeleteSettings.disabled() => const AutoDeleteSettings(
         enabled: false,
@@ -105,12 +106,11 @@ class AutoDeleteProvider {
     _startCleanupTimer();
   }
 
-  // ─── Timer Management ────────────────────────────────────────────────────
+  
 
   void _startCleanupTimer() {
     _cleanupTimer?.cancel();
-    _cleanupTimer =
-        Timer.periodic(_cleanupInterval, (_) => _runGlobalCleanup());
+    _cleanupTimer = Timer.periodic(_cleanupInterval, (_) => _runGlobalCleanup());
   }
 
   Future<void> _runGlobalCleanup() async {
@@ -128,13 +128,13 @@ class AutoDeleteProvider {
 
       await Future.wait(futures, eagerError: false);
     } catch (e) {
-      print('❌ Error in global cleanup: $e');
+      debugPrint('❌ Error in global cleanup: $e');
     } finally {
       _isRunning = false;
     }
   }
 
-  // ─── Settings ─────────────────────────────────────────────────────────────
+  
 
   Future<bool> setAutoDelete({
     required String conversationId,
@@ -163,13 +163,12 @@ class AutoDeleteProvider {
 
       return true;
     } catch (e) {
-      print('❌ Error setting auto-delete: $e');
+      debugPrint('❌ Error setting auto-delete: $e');
       return false;
     }
   }
 
-  Future<AutoDeleteSettings?> getAutoDeleteSettings(
-      String conversationId) async {
+  Future<AutoDeleteSettings?> getAutoDeleteSettings(String conversationId) async {
     try {
       final doc = await firebaseFirestore
           .collection(FirestoreConstants.pathConversationCollection)
@@ -181,12 +180,12 @@ class AutoDeleteProvider {
       if (data == null || !data.containsKey('autoDeleteEnabled')) return null;
       return AutoDeleteSettings.fromMap(data);
     } catch (e) {
-      print('❌ Error getting auto-delete settings: $e');
+      debugPrint('❌ Error getting auto-delete settings: $e');
       return null;
     }
   }
 
-  // ─── Message Scheduling ───────────────────────────────────────────────────
+  
 
   Future<void> scheduleMessageDeletion({
     required String groupChatId,
@@ -195,9 +194,9 @@ class AutoDeleteProvider {
   }) async {
     try {
       final settings = await getAutoDeleteSettings(conversationId);
-      if (settings == null ||
-          !settings.enabled ||
-          settings.effectiveMilliseconds == null) return;
+      if (settings == null || !settings.enabled || settings.effectiveMilliseconds == null) {
+        return;
+      }
 
       await markMessageForDeletion(
         groupChatId: groupChatId,
@@ -205,13 +204,13 @@ class AutoDeleteProvider {
         deleteAfterMillis: settings.effectiveMilliseconds!,
       );
 
-      // Schedule a one-time cleanup slightly after expiry
+      
       Timer(
         Duration(milliseconds: settings.effectiveMilliseconds! + 5000),
         () => deleteExpiredMessages(groupChatId),
       );
     } catch (e) {
-      print('❌ Error scheduling message deletion: $e');
+      debugPrint('❌ Error scheduling message deletion: $e');
     }
   }
 
@@ -221,8 +220,7 @@ class AutoDeleteProvider {
     required int deleteAfterMillis,
   }) async {
     try {
-      final deleteAt =
-          DateTime.now().millisecondsSinceEpoch + deleteAfterMillis;
+      final deleteAt = DateTime.now().millisecondsSinceEpoch + deleteAfterMillis;
 
       await firebaseFirestore
           .collection(FirestoreConstants.pathMessageCollection)
@@ -231,19 +229,19 @@ class AutoDeleteProvider {
           .doc(messageId)
           .update({'autoDeleteAt': deleteAt.toString()});
     } catch (e) {
-      print('❌ Error marking message for deletion: $e');
+      debugPrint('❌ Error marking message for deletion: $e');
     }
   }
 
-  // ─── Deletion ─────────────────────────────────────────────────────────────
+  
 
   Future<int> deleteExpiredMessages(String groupChatId) async {
     try {
       final now = DateTime.now().millisecondsSinceEpoch;
 
-      // Firestore requires consistent type for inequality comparisons.
-      // autoDeleteAt is stored as String; we compare as String lexicographically
-      // which works correctly for same-length epoch ms strings.
+      
+      
+      
       final expiredMessages = await firebaseFirestore
           .collection(FirestoreConstants.pathMessageCollection)
           .doc(groupChatId)
@@ -277,7 +275,7 @@ class AutoDeleteProvider {
       if (batchCount > 0) await batch.commit();
       return deleted;
     } catch (e) {
-      print('❌ Error deleting expired messages: $e');
+      debugPrint('❌ Error deleting expired messages: $e');
       return 0;
     }
   }
@@ -293,7 +291,7 @@ class AutoDeleteProvider {
         'autoDeleteUpdatedAt': DateTime.now().millisecondsSinceEpoch.toString(),
       });
 
-      // Remove pending autoDeleteAt from all messages in conversation
+      
       final messages = await firebaseFirestore
           .collection(FirestoreConstants.pathMessageCollection)
           .doc(conversationId)
@@ -316,11 +314,11 @@ class AutoDeleteProvider {
         if (count > 0) await batch.commit();
       }
     } catch (e) {
-      print('❌ Error cancelling auto-delete: $e');
+      debugPrint('❌ Error cancelling auto-delete: $e');
     }
   }
 
-  // ─── Dispose ──────────────────────────────────────────────────────────────
+  
 
   void dispose() {
     _cleanupTimer?.cancel();

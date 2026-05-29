@@ -1,9 +1,10 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
-// ─── Cache Models ─────────────────────────────────────────────────────────────
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+
 
 class CachedData<T> {
   final T data;
@@ -16,8 +17,7 @@ class CachedData<T> {
     required this.key,
   });
 
-  bool isExpired(Duration maxAge) =>
-      DateTime.now().difference(timestamp) >= maxAge;
+  bool isExpired(Duration maxAge) => DateTime.now().difference(timestamp) >= maxAge;
 }
 
 class QueryFilter {
@@ -86,8 +86,7 @@ class CacheStats {
     required this.missCount,
   });
 
-  double get hitRate =>
-      (hitCount + missCount) == 0 ? 0 : hitCount / (hitCount + missCount);
+  double get hitRate => (hitCount + missCount) == 0 ? 0 : hitCount / (hitCount + missCount);
 
   Map<String, dynamic> toMap() => {
         'total': total,
@@ -99,44 +98,43 @@ class CacheStats {
       };
 }
 
-// ─── DatabaseOptimizer ────────────────────────────────────────────────────────
+
 
 class DatabaseOptimizer {
   static final DatabaseOptimizer _instance = DatabaseOptimizer._internal();
   factory DatabaseOptimizer() => _instance;
   DatabaseOptimizer._internal();
 
-  // Cache store
+  
   final Map<String, CachedData<DocumentSnapshot>> _cache = {};
 
-  // Per-collection TTL overrides; falls back to _defaultCacheDuration
+  
   final Map<String, Duration> _collectionTTL = {};
   static const Duration _defaultCacheDuration = Duration(minutes: 5);
   static const Duration _shortCacheDuration = Duration(minutes: 1);
   static const Duration _longCacheDuration = Duration(minutes: 15);
 
-  // Stats
+  
   int _hitCount = 0;
   int _missCount = 0;
 
-  // Debounce registry
+  
   final Map<String, Timer> _debounceTimers = {};
 
-  // Write-behind queue: key → data
+  
   final Map<String, Map<String, dynamic>> _writeBehindQueue = {};
   Timer? _writeBehindFlushTimer;
   static const Duration _writeBehindDelay = Duration(seconds: 2);
 
-  // ─── TTL Configuration ──────────────────────────────────────────────────
+  
 
   void setCollectionTTL(String collection, Duration ttl) {
     _collectionTTL[collection] = ttl;
   }
 
-  Duration _getTTL(String collection) =>
-      _collectionTTL[collection] ?? _defaultCacheDuration;
+  Duration _getTTL(String collection) => _collectionTTL[collection] ?? _defaultCacheDuration;
 
-  // ─── Single Document ─────────────────────────────────────────────────────
+  
 
   Future<DocumentSnapshot?> getCached({
     required String collection,
@@ -158,10 +156,7 @@ class DatabaseOptimizer {
     debugPrint('🔄 Cache miss: $cacheKey');
 
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection(collection)
-          .doc(docId)
-          .get();
+      final doc = await FirebaseFirestore.instance.collection(collection).doc(docId).get();
 
       if (doc.exists) {
         _cache[cacheKey] = CachedData(
@@ -174,15 +169,15 @@ class DatabaseOptimizer {
       return doc;
     } catch (e) {
       debugPrint('❌ Error fetching document $cacheKey: $e');
-      // Return stale cache if available rather than null
+      
       return _cache[cacheKey]?.data;
     }
   }
 
-  // ─── Batch Get ───────────────────────────────────────────────────────────
+  
 
-  /// Fetches up to 500 documents efficiently, using cache where possible.
-  /// Firestore `whereIn` limit is 30 per query.
+  
+  
   Future<List<DocumentSnapshot>> batchGet({
     required String collection,
     required List<String> docIds,
@@ -207,15 +202,12 @@ class DatabaseOptimizer {
 
     if (toFetch.isEmpty) {
       debugPrint('📦 All ${docIds.length} docs from cache');
-      return docIds
-          .map((id) => results[id]!)
-          .whereType<DocumentSnapshot>()
-          .toList();
+      return docIds.map((id) => results[id]!).whereType<DocumentSnapshot>().toList();
     }
 
     debugPrint('🔄 Fetching ${toFetch.length}/${docIds.length} docs');
 
-    // Chunk into batches of 30 (Firestore whereIn limit)
+    
     const chunkSize = 30;
     final fetchFutures = <Future<QuerySnapshot>>[];
 
@@ -246,14 +238,11 @@ class DatabaseOptimizer {
       }
     }
 
-    // Return in original order, skipping not-found docs
-    return docIds
-        .map((id) => results[id])
-        .whereType<DocumentSnapshot>()
-        .toList();
+    
+    return docIds.map((id) => results[id]).whereType<DocumentSnapshot>().toList();
   }
 
-  // ─── Paginated Query ─────────────────────────────────────────────────────
+  
 
   Future<PaginatedResult> queryPaginated({
     required String collection,
@@ -263,8 +252,7 @@ class DatabaseOptimizer {
     List<QueryOrder>? orderBy,
   }) async {
     try {
-      Query<Map<String, dynamic>> query =
-          FirebaseFirestore.instance.collection(collection);
+      Query<Map<String, dynamic>> query = FirebaseFirestore.instance.collection(collection);
 
       if (filters != null) {
         for (final f in filters) {
@@ -278,15 +266,13 @@ class DatabaseOptimizer {
             query = query.where(f.field, isGreaterThan: f.isGreaterThan);
           }
           if (f.isGreaterThanOrEqualTo != null) {
-            query = query.where(f.field,
-                isGreaterThanOrEqualTo: f.isGreaterThanOrEqualTo);
+            query = query.where(f.field, isGreaterThanOrEqualTo: f.isGreaterThanOrEqualTo);
           }
           if (f.isLessThan != null) {
             query = query.where(f.field, isLessThan: f.isLessThan);
           }
           if (f.isLessThanOrEqualTo != null) {
-            query = query.where(f.field,
-                isLessThanOrEqualTo: f.isLessThanOrEqualTo);
+            query = query.where(f.field, isLessThanOrEqualTo: f.isLessThanOrEqualTo);
           }
           if (f.arrayContains != null) {
             query = query.where(f.field, arrayContains: f.arrayContains);
@@ -317,7 +303,7 @@ class DatabaseOptimizer {
 
       final snapshot = await query.get();
 
-      // Cache individual documents
+      
       for (final doc in snapshot.docs) {
         final cacheKey = '$collection/${doc.id}';
         _cache[cacheKey] = CachedData(
@@ -343,9 +329,9 @@ class DatabaseOptimizer {
     }
   }
 
-  // ─── Optimistic Write ────────────────────────────────────────────────────
+  
 
-  /// Updates cache immediately, queues Firestore write with debounce.
+  
   Future<void> updateOptimistic({
     required String collection,
     required String docId,
@@ -354,7 +340,7 @@ class DatabaseOptimizer {
     final cacheKey = '$collection/$docId';
     _clearCacheKey(cacheKey);
 
-    // Queue write-behind
+    
     _writeBehindQueue['$collection/$docId'] = {
       'collection': collection,
       'docId': docId,
@@ -383,7 +369,7 @@ class DatabaseOptimizer {
             .update(item['data'] as Map<String, dynamic>);
       } catch (e) {
         debugPrint('❌ Write-behind flush error: $e');
-        // Re-queue on failure
+        
         _writeBehindQueue['${item['collection']}/${item['docId']}'] = item;
       }
     });
@@ -391,7 +377,7 @@ class DatabaseOptimizer {
     await Future.wait(futures, eagerError: false);
   }
 
-  // ─── Debounced Write ─────────────────────────────────────────────────────
+  
 
   void debouncedWrite({
     required String key,
@@ -409,7 +395,7 @@ class DatabaseOptimizer {
     });
   }
 
-  // ─── Cache Management ────────────────────────────────────────────────────
+  
 
   void clearCache() {
     _cache.clear();
@@ -426,11 +412,11 @@ class DatabaseOptimizer {
   }
 
   void clearCollectionCache(String collection) {
-    final keys =
-        _cache.keys.where((k) => k.startsWith('$collection/')).toList();
-    for (final k in keys) _cache.remove(k);
-    debugPrint(
-        '🗑️ Collection cache cleared: $collection (${keys.length} entries)');
+    final keys = _cache.keys.where((k) => k.startsWith('$collection/')).toList();
+    for (final k in keys) {
+      _cache.remove(k);
+    }
+    debugPrint('🗑️ Collection cache cleared: $collection (${keys.length} entries)');
   }
 
   void evictExpired() {
@@ -440,11 +426,13 @@ class DatabaseOptimizer {
             )))
         .map((e) => e.key)
         .toList();
-    for (final k in keys) _cache.remove(k);
+    for (final k in keys) {
+      _cache.remove(k);
+    }
     debugPrint('🗑️ Evicted ${keys.length} expired entries');
   }
 
-  // ─── Stats ───────────────────────────────────────────────────────────────
+  
 
   CacheStats getCacheStatsObject() {
     final now = DateTime.now();
@@ -475,13 +463,15 @@ class DatabaseOptimizer {
     _missCount = 0;
   }
 
-  // ─── Dispose ─────────────────────────────────────────────────────────────
+  
 
   void dispose() {
-    for (final t in _debounceTimers.values) t.cancel();
+    for (final t in _debounceTimers.values) {
+      t.cancel();
+    }
     _debounceTimers.clear();
     _writeBehindFlushTimer?.cancel();
-    _flushWriteBehind(); // Flush remaining writes
+    _flushWriteBehind(); 
     clearCache();
     debugPrint('✅ DatabaseOptimizer disposed');
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/providers/auto_delete_provider.dart';
 
@@ -14,8 +15,7 @@ class AutoDeleteSettingsDialog extends StatefulWidget {
   });
 
   @override
-  State<AutoDeleteSettingsDialog> createState() =>
-      _AutoDeleteSettingsDialogState();
+  State<AutoDeleteSettingsDialog> createState() => _AutoDeleteSettingsDialogState();
 }
 
 class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
@@ -31,12 +31,7 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
       'Không bao giờ',
       'Tin nhắn được giữ mãi mãi'
     ),
-    (
-      AutoDeleteDuration.oneDay,
-      Icons.today_rounded,
-      'Sau 24 giờ',
-      'Tin nhắn tự xóa sau 1 ngày'
-    ),
+    (AutoDeleteDuration.oneDay, Icons.today_rounded, 'Sau 24 giờ', 'Tin nhắn tự xóa sau 1 ngày'),
     (
       AutoDeleteDuration.sevenDays,
       Icons.date_range_rounded,
@@ -49,12 +44,7 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
       'Sau 30 ngày',
       'Tin nhắn tự xóa sau 1 tháng'
     ),
-    (
-      AutoDeleteDuration.custom,
-      Icons.tune_rounded,
-      'Tuỳ chỉnh',
-      'Chọn số giờ theo ý muốn'
-    ),
+    (AutoDeleteDuration.custom, Icons.tune_rounded, 'Tuỳ chỉnh', 'Chọn số giờ theo ý muốn'),
   ];
 
   @override
@@ -70,8 +60,7 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
   }
 
   Future<void> _loadSettings() async {
-    final settings =
-        await widget.provider.getAutoDeleteSettings(widget.conversationId);
+    final settings = await widget.provider.getAutoDeleteSettings(widget.conversationId);
     if (!mounted) return;
 
     if (settings != null && settings.enabled == true) {
@@ -106,9 +95,8 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
     }
 
     setState(() => _isSaving = true);
-    final customHours = _selectedDuration == AutoDeleteDuration.custom
-        ? int.tryParse(_customCtrl.text)
-        : null;
+    final customHours =
+        _selectedDuration == AutoDeleteDuration.custom ? int.tryParse(_customCtrl.text) : null;
 
     final success = await widget.provider.setAutoDelete(
       conversationId: widget.conversationId,
@@ -126,8 +114,7 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
           content: const Text('Đã cập nhật cài đặt tự xóa'),
           backgroundColor: Colors.green.shade700,
           behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
     } else {
@@ -152,7 +139,7 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Header
+            
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 20, 16, 12),
               child: Row(
@@ -161,11 +148,10 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.12),
+                      color: Colors.red.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.auto_delete_rounded,
-                        color: Colors.red, size: 22),
+                    child: const Icon(Icons.auto_delete_rounded, color: Colors.red, size: 22),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -182,10 +168,7 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
                         Text(
                           'Chọn thời gian tự động xóa',
                           style: TextStyle(
-                              fontSize: 12,
-                              color: isDark
-                                  ? Colors.white38
-                                  : Colors.grey.shade500),
+                              fontSize: 12, color: isDark ? Colors.white38 : Colors.grey.shade500),
                         ),
                       ],
                     ),
@@ -201,11 +184,9 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
 
             Divider(
                 height: 1,
-                color: isDark
-                    ? Colors.white.withOpacity(0.08)
-                    : Colors.grey.shade100),
+                color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.grey.shade100),
 
-            // Options
+            
             if (_isLoading)
               const Padding(
                 padding: EdgeInsets.all(32),
@@ -214,69 +195,55 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
             else
               Flexible(
                 child: SingleChildScrollView(
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
                   child: Column(
                     children: [
                       ..._options.map((opt) {
                         final (duration, icon, label, subtitle) = opt;
-                        return _buildOption(
-                            isDark, duration, icon, label, subtitle);
+                        return _buildOption(isDark, duration, icon, label, subtitle);
                       }),
-                      // Custom hours input
+                      
                       AnimatedSize(
                         duration: const Duration(milliseconds: 250),
                         curve: Curves.easeOut,
                         child: _selectedDuration == AutoDeleteDuration.custom
                             ? Padding(
-                                padding:
-                                    const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                                 child: Container(
                                   decoration: BoxDecoration(
                                     color: isDark
-                                        ? Colors.white.withOpacity(0.07)
+                                        ? Colors.white.withValues(alpha: 0.07)
                                         : Colors.grey.shade100,
                                     borderRadius: BorderRadius.circular(14),
                                     border: Border.all(
-                                        color: ColorConstants.primaryColor
-                                            .withOpacity(0.4)),
+                                        color: ColorConstants.primaryColor.withValues(alpha: 0.4)),
                                   ),
                                   child: Row(
                                     children: [
                                       const SizedBox(width: 14),
                                       const Icon(Icons.schedule_rounded,
-                                          size: 18,
-                                          color: ColorConstants.primaryColor),
+                                          size: 18, color: ColorConstants.primaryColor),
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: TextField(
                                           controller: _customCtrl,
                                           keyboardType: TextInputType.number,
-                                          inputFormatters: [
-                                            FilteringTextInputFormatter
-                                                .digitsOnly
-                                          ],
+                                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                                           style: TextStyle(
-                                              color: isDark
-                                                  ? Colors.white
-                                                  : Colors.black87),
+                                              color: isDark ? Colors.white : Colors.black87),
                                           decoration: InputDecoration(
                                             hintText: 'Số giờ (vd: 48)',
-                                            hintStyle: TextStyle(
-                                                color: Colors.grey.shade400),
+                                            hintStyle: TextStyle(color: Colors.grey.shade400),
                                             border: InputBorder.none,
                                             contentPadding:
-                                                const EdgeInsets.symmetric(
-                                                    vertical: 14),
+                                                const EdgeInsets.symmetric(vertical: 14),
                                           ),
                                         ),
                                       ),
                                       Padding(
-                                        padding:
-                                            const EdgeInsets.only(right: 14),
+                                        padding: const EdgeInsets.only(right: 14),
                                         child: Text('giờ',
-                                            style: TextStyle(
-                                                color: Colors.grey.shade500)),
+                                            style: TextStyle(color: Colors.grey.shade500)),
                                       ),
                                     ],
                                   ),
@@ -291,11 +258,9 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
 
             Divider(
                 height: 1,
-                color: isDark
-                    ? Colors.white.withOpacity(0.08)
-                    : Colors.grey.shade100),
+                color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.grey.shade100),
 
-            // Actions
+            
             Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
@@ -305,17 +270,12 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
                       onPressed: () => Navigator.pop(context),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 13),
-                        side: BorderSide(
-                            color:
-                                isDark ? Colors.white24 : Colors.grey.shade300),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
+                        side: BorderSide(color: isDark ? Colors.white24 : Colors.grey.shade300),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       ),
                       child: Text('Huỷ',
                           style: TextStyle(
-                              color: isDark
-                                  ? Colors.white70
-                                  : Colors.grey.shade700,
+                              color: isDark ? Colors.white70 : Colors.grey.shade700,
                               fontWeight: FontWeight.w500)),
                     ),
                   ),
@@ -328,18 +288,15 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
                         foregroundColor: Colors.white,
                         elevation: 0,
                         padding: const EdgeInsets.symmetric(vertical: 13),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       ),
                       child: _isSaving
                           ? const SizedBox(
                               width: 20,
                               height: 20,
-                              child: CircularProgressIndicator(
-                                  color: Colors.white, strokeWidth: 2),
+                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                             )
-                          : const Text('Lưu',
-                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          : const Text('Lưu', style: TextStyle(fontWeight: FontWeight.w600)),
                     ),
                   ),
                 ],
@@ -351,8 +308,8 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
     );
   }
 
-  Widget _buildOption(bool isDark, AutoDeleteDuration duration, IconData icon,
-      String label, String subtitle) {
+  Widget _buildOption(
+      bool isDark, AutoDeleteDuration duration, IconData icon, String label, String subtitle) {
     final isSelected = _selectedDuration == duration;
 
     return InkWell(
@@ -363,13 +320,12 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
         margin: const EdgeInsets.symmetric(vertical: 3),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected
-              ? ColorConstants.primaryColor.withOpacity(0.1)
-              : Colors.transparent,
+          color:
+              isSelected ? ColorConstants.primaryColor.withValues(alpha: 0.1) : Colors.transparent,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: isSelected
-                ? ColorConstants.primaryColor.withOpacity(0.35)
+                ? ColorConstants.primaryColor.withValues(alpha: 0.35)
                 : Colors.transparent,
           ),
         ),
@@ -380,17 +336,12 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
               height: 38,
               decoration: BoxDecoration(
                 color: isSelected
-                    ? ColorConstants.primaryColor.withOpacity(0.15)
-                    : (isDark
-                        ? Colors.white.withOpacity(0.06)
-                        : Colors.grey.shade100),
+                    ? ColorConstants.primaryColor.withValues(alpha: 0.15)
+                    : (isDark ? Colors.white.withValues(alpha: 0.06) : Colors.grey.shade100),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(icon,
-                  size: 19,
-                  color: isSelected
-                      ? ColorConstants.primaryColor
-                      : Colors.grey.shade500),
+                  size: 19, color: isSelected ? ColorConstants.primaryColor : Colors.grey.shade500),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -407,9 +358,7 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
                   const SizedBox(height: 2),
                   Text(subtitle,
                       style: TextStyle(
-                          fontSize: 12,
-                          color:
-                              isDark ? Colors.white38 : Colors.grey.shade500)),
+                          fontSize: 12, color: isDark ? Colors.white38 : Colors.grey.shade500)),
                 ],
               ),
             ),
@@ -421,10 +370,8 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
                       width: 22,
                       height: 22,
                       decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: ColorConstants.primaryColor),
-                      child: const Icon(Icons.check_rounded,
-                          color: Colors.white, size: 13),
+                          shape: BoxShape.circle, color: ColorConstants.primaryColor),
+                      child: const Icon(Icons.check_rounded, color: Colors.white, size: 13),
                     )
                   : Container(
                       key: const ValueKey('empty'),
@@ -432,9 +379,7 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
                       height: 22,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        border: Border.all(
-                            color:
-                                isDark ? Colors.white24 : Colors.grey.shade300),
+                        border: Border.all(color: isDark ? Colors.white24 : Colors.grey.shade300),
                       ),
                     ),
             ),

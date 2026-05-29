@@ -2,15 +2,16 @@
 
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:crypto/crypto.dart';
 import 'package:encrypt/encrypt.dart' as enc;
-import 'package:flutter/foundation.dart';
 
 import 'e2ee_service.dart';
 
-// =========================================================
-// MODELS
-// =========================================================
+
+
+
 
 enum PayloadType { e2eeGcm, legacyCbc, plain }
 
@@ -20,35 +21,34 @@ class _PayloadInfo {
   const _PayloadInfo(this.type, this.raw);
 }
 
-// =========================================================
-// ENCRYPTION SERVICE
-// =========================================================
 
-/// Lớp trung gian quản lý mã hóa/giải mã tin nhắn.
-///
-/// **FIX #3** – Xử lý đúng các trường hợp E2EE key bị hỏng/rỗng
-/// thay vì để RangeError bắn ra ngoài không được bắt.
-///
-/// **Kiến trúc 2 lớp:**
-/// - E2EE (Production): AES-256-GCM với session key động
-/// - Legacy (Fallback): AES-256-CBC với key tĩnh từ conversationId
+
+
+
+
+
+
+
+
+
+
+
 class EncryptionService {
-  // ── Singleton ──────────────────────────────────────────
+  
   EncryptionService._internal();
   static final EncryptionService _instance = EncryptionService._internal();
   factory EncryptionService() => _instance;
 
-  // ── Dependencies ───────────────────────────────────────
+  
   final E2EEService _e2ee = E2EEService();
 
   static const String _legacySalt = 'APP_CHAT_PLUS_SECURE_SALT_2026';
 
-  static final _legacyPayloadRegex =
-      RegExp(r'^[A-Za-z0-9+/=]+=*:[A-Za-z0-9+/=]+=*$');
+  static final _legacyPayloadRegex = RegExp(r'^[A-Za-z0-9+/=]+=*:[A-Za-z0-9+/=]+=*$');
 
-  // =========================================================
-  // 1. LEGACY LAYER — AES-256-CBC
-  // =========================================================
+  
+  
+  
 
   enc.Key _generateLegacyKey(String conversationId) {
     final bytes = utf8.encode(conversationId + _legacySalt);
@@ -85,9 +85,9 @@ class EncryptionService {
     }
   }
 
-  // =========================================================
-  // 2. E2EE LAYER — AES-256-GCM
-  // =========================================================
+  
+  
+  
 
   Future<String> encryptPayload(
     String plainText,
@@ -123,8 +123,8 @@ class EncryptionService {
     return encryptMessageLegacy(plainText, conversationId);
   }
 
-  /// **FIX #3** – Bắt đúng E2EEException với type = decryptionFailed
-  /// (thay vì để RangeError bắn ra ngoài) và phân biệt thông báo lỗi.
+  
+  
   Future<String> decryptPayload(
     String encryptedText,
     String conversationId,
@@ -175,7 +175,7 @@ class EncryptionService {
         currentUserId,
       );
     } on E2EEException catch (e) {
-      // **FIX #3** – Log đầy đủ type để debug, trả về message rõ ràng cho UI
+      
       debugPrint(
         '[EncryptionService] ❌ E2EE decrypt error (${e.type.name}): $e',
       );
@@ -185,21 +185,20 @@ class EncryptionService {
           return '🔒 [Thiết bị chưa có khóa — không thể giải mã]';
 
         case E2EEErrorType.invalidPayload:
-          // Payload hỏng hoặc session key byte = 0 → thử Legacy-CBC
+          
           debugPrint(
             '[EncryptionService] 🔄 Invalid payload, thử Legacy-CBC fallback...',
           );
-          final legacyResult =
-              decryptMessageLegacy(encryptedText, conversationId);
-          // Nếu Legacy cũng trả về chuỗi placeholder → payload thực sự hỏng
+          final legacyResult = decryptMessageLegacy(encryptedText, conversationId);
+          
           if (legacyResult.startsWith('🔒')) {
             return '⚠️ [Dữ liệu tin nhắn bị hỏng]';
           }
           return legacyResult;
 
         case E2EEErrorType.decryptionFailed:
-          // **FIX #3** – Đây là lỗi chính: RangeError từ session key rỗng
-          // Thử tạo lại session key và giải mã lần nữa
+          
+          
           debugPrint(
             '[EncryptionService] 🔄 decryptionFailed — evict cache và thử lại...',
           );
@@ -228,9 +227,9 @@ class EncryptionService {
     }
   }
 
-  // =========================================================
-  // 3. BATCH OPERATIONS
-  // =========================================================
+  
+  
+  
 
   Future<List<String>> decryptBatch(
     List<String> encryptedMessages,
@@ -271,9 +270,9 @@ class EncryptionService {
 
   PayloadType detectPayloadType(String text) => _detectPayloadType(text).type;
 
-  // =========================================================
-  // HELPERS
-  // =========================================================
+  
+  
+  
 
   _PayloadInfo _detectPayloadType(String text) {
     final trimmed = text.trim();
@@ -285,10 +284,8 @@ class EncryptionService {
     if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
       try {
         final decoded = jsonDecode(trimmed);
-        if (decoded is Map &&
-            decoded.containsKey('iv') &&
-            decoded.containsKey('data')) {
-          // **FIX #3** – Kiểm tra thêm iv và data không rỗng
+        if (decoded is Map && decoded.containsKey('iv') && decoded.containsKey('data')) {
+          
           final iv = decoded['iv']?.toString() ?? '';
           final data = decoded['data']?.toString() ?? '';
           if (iv.isNotEmpty && data.isNotEmpty) {
@@ -305,6 +302,5 @@ class EncryptionService {
     return _PayloadInfo(PayloadType.plain, trimmed);
   }
 
-  bool _isSkippable(String text) =>
-      text.startsWith('http://') || text.startsWith('https://');
+  bool _isSkippable(String text) => text.startsWith('http://') || text.startsWith('https://');
 }

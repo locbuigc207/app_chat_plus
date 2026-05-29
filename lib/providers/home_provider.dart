@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/constants/firestore_constants.dart';
@@ -9,20 +11,17 @@ class HomeProvider {
 
   HomeProvider({required this.firebaseFirestore});
 
-  // ─── Generic Firestore ────────────────────────────────────────────────────
+  
 
   Future<void> updateDataFirestore(
     String collectionPath,
     String path,
     Map<String, dynamic> dataNeedUpdate,
   ) {
-    return firebaseFirestore
-        .collection(collectionPath)
-        .doc(path)
-        .update(dataNeedUpdate);
+    return firebaseFirestore.collection(collectionPath).doc(path).update(dataNeedUpdate);
   }
 
-  // ─── User Search ──────────────────────────────────────────────────────────
+  
 
   Stream<QuerySnapshot> getStreamFireStore(
     String pathCollection,
@@ -36,10 +35,7 @@ class HomeProvider {
           .limit(limit)
           .snapshots();
     }
-    return firebaseFirestore
-        .collection(pathCollection)
-        .limit(limit)
-        .snapshots();
+    return firebaseFirestore.collection(pathCollection).limit(limit).snapshots();
   }
 
   Stream<QuerySnapshot> searchByPhoneNumber(String phoneNumber, int limit) {
@@ -96,7 +92,7 @@ class HomeProvider {
         .snapshots();
   }
 
-  /// Prefix search for nickname (e.g. "joh" matches "John").
+  
   Stream<QuerySnapshot> searchUsersByPrefix(
     String prefix,
     int limit,
@@ -109,7 +105,7 @@ class HomeProvider {
           .snapshots();
     }
 
-    // Phone number detection
+    
     if (RegExp(r'^[+\d][\d\s-]*$').hasMatch(trimmed)) {
       return firebaseFirestore
           .collection(FirestoreConstants.pathUserCollection)
@@ -121,13 +117,12 @@ class HomeProvider {
     return firebaseFirestore
         .collection(FirestoreConstants.pathUserCollection)
         .where(FirestoreConstants.nickname, isGreaterThanOrEqualTo: trimmed)
-        .where(FirestoreConstants.nickname,
-            isLessThanOrEqualTo: '$trimmed\uf8ff')
+        .where(FirestoreConstants.nickname, isLessThanOrEqualTo: '$trimmed\uf8ff')
         .limit(limit)
         .snapshots();
   }
 
-  // ─── User Profile ─────────────────────────────────────────────────────────
+  
 
   Future<DocumentSnapshot?> getUserProfile(String userId) async {
     try {
@@ -137,7 +132,7 @@ class HomeProvider {
           .get();
       return doc.exists ? doc : null;
     } catch (e) {
-      print('❌ Error getting user profile: $e');
+      debugPrint('❌ Error getting user profile: $e');
       return null;
     }
   }
@@ -154,15 +149,12 @@ class HomeProvider {
     Map<String, dynamic> data,
   ) async {
     try {
-      await firebaseFirestore
-          .collection(FirestoreConstants.pathUserCollection)
-          .doc(userId)
-          .update({
+      await firebaseFirestore.collection(FirestoreConstants.pathUserCollection).doc(userId).update({
         ...data,
         'updatedAt': DateTime.now().millisecondsSinceEpoch.toString(),
       });
     } catch (e) {
-      print('❌ Error updating user profile: $e');
+      debugPrint('❌ Error updating user profile: $e');
       rethrow;
     }
   }
@@ -173,11 +165,10 @@ class HomeProvider {
     if (userIds.isEmpty) return {};
 
     try {
-      // Firestore limits `whereIn` to 30 items
+      
       final chunks = <List<String>>[];
       for (int i = 0; i < userIds.length; i += 30) {
-        chunks.add(userIds.sublist(
-            i, i + 30 > userIds.length ? userIds.length : i + 30));
+        chunks.add(userIds.sublist(i, i + 30 > userIds.length ? userIds.length : i + 30));
       }
 
       final results = <DocumentSnapshot>[];
@@ -191,24 +182,21 @@ class HomeProvider {
 
       return {for (final doc in results) doc.id: doc};
     } catch (e) {
-      print('❌ Error batch loading profiles: $e');
+      debugPrint('❌ Error batch loading profiles: $e');
       return {};
     }
   }
 
-  // ─── Online Presence ──────────────────────────────────────────────────────
+  
 
   Future<void> setOnlineStatus(String userId, bool isOnline) async {
     try {
-      await firebaseFirestore
-          .collection(FirestoreConstants.pathUserCollection)
-          .doc(userId)
-          .update({
+      await firebaseFirestore.collection(FirestoreConstants.pathUserCollection).doc(userId).update({
         'isOnline': isOnline,
         'lastSeen': DateTime.now().millisecondsSinceEpoch.toString(),
       });
     } catch (e) {
-      print('❌ Error setting online status: $e');
+      debugPrint('❌ Error setting online status: $e');
     }
   }
 
@@ -220,7 +208,7 @@ class HomeProvider {
         .map((snap) => snap.data()?['isOnline'] as bool? ?? false);
   }
 
-  // ─── Conversations (paginated) ────────────────────────────────────────────
+  
 
   Stream<List<QueryDocumentSnapshot>> getConversationsOptimized(
     String userId, {

@@ -3,13 +3,14 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:photo_view/photo_view.dart';
 
 import '../constants/constants.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FullPhotoPage — single-image immersive viewer
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class FullPhotoPage extends StatefulWidget {
   final String url;
@@ -27,8 +28,7 @@ class FullPhotoPage extends StatefulWidget {
   State<FullPhotoPage> createState() => _FullPhotoPageState();
 }
 
-class _FullPhotoPageState extends State<FullPhotoPage>
-    with SingleTickerProviderStateMixin {
+class _FullPhotoPageState extends State<FullPhotoPage> with SingleTickerProviderStateMixin {
   bool _showControls = true;
   late final AnimationController _ctrlsAnim;
   late final Animation<double> _ctrlsFade;
@@ -95,7 +95,7 @@ class _FullPhotoPageState extends State<FullPhotoPage>
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // ── Photo view ─────────────────────────────────────────────────
+            
             Hero(
               tag: widget.heroTag ?? widget.url,
               child: PhotoView(
@@ -108,8 +108,7 @@ class _FullPhotoPageState extends State<FullPhotoPage>
                 loadingBuilder: (context, event) {
                   final progress = event == null
                       ? null
-                      : event.cumulativeBytesLoaded /
-                          (event.expectedTotalBytes ?? 1);
+                      : event.cumulativeBytesLoaded / (event.expectedTotalBytes ?? 1);
                   return Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -127,8 +126,7 @@ class _FullPhotoPageState extends State<FullPhotoPage>
                           const SizedBox(height: 12),
                           Text(
                             '${(progress * 100).toInt()}%',
-                            style: const TextStyle(
-                                color: Colors.white54, fontSize: 13),
+                            style: const TextStyle(color: Colors.white54, fontSize: 13),
                           ),
                         ],
                       ],
@@ -139,19 +137,17 @@ class _FullPhotoPageState extends State<FullPhotoPage>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.broken_image_rounded,
-                          color: Colors.white30, size: 64),
+                      const Icon(Icons.broken_image_rounded, color: Colors.white30, size: 64),
                       const SizedBox(height: 16),
                       const Text('Không thể tải ảnh',
-                          style:
-                              TextStyle(color: Colors.white54, fontSize: 14)),
+                          style: TextStyle(color: Colors.white54, fontSize: 14)),
                     ],
                   ),
                 ),
               ),
             ),
 
-            // ── Top bar ─────────────────────────────────────────────────────
+            
             FadeTransition(
               opacity: _ctrlsFade,
               child: Positioned(
@@ -162,38 +158,35 @@ class _FullPhotoPageState extends State<FullPhotoPage>
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                     child: Container(
-                      padding: EdgeInsets.only(
-                          top: MediaQuery.of(context).padding.top),
+                      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
-                            Colors.black.withOpacity(0.72),
+                            Colors.black.withValues(alpha: 0.72),
                             Colors.transparent,
                           ],
                         ),
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                         child: Row(
                           children: [
-                            // Back
+                            
                             _BarBtn(
                               icon: Icons.arrow_back_ios_new_rounded,
                               onTap: () => Navigator.pop(context),
                             ),
                             const SizedBox(width: 8),
-                            // Title
+                            
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Text(
-                                    widget.senderName ??
-                                        AppConstants.fullPhotoTitle,
+                                    widget.senderName ?? AppConstants.fullPhotoTitle,
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 16,
@@ -203,18 +196,17 @@ class _FullPhotoPageState extends State<FullPhotoPage>
                                   ),
                                   const Text(
                                     'Chạm 2 lần để đặt lại',
-                                    style: TextStyle(
-                                        color: Colors.white54, fontSize: 11),
+                                    style: TextStyle(color: Colors.white54, fontSize: 11),
                                   ),
                                 ],
                               ),
                             ),
-                            // Share
+                            
                             _BarBtn(
                               icon: Icons.share_rounded,
                               onTap: _onShare,
                             ),
-                            // Download
+                            
                             _BarBtn(
                               icon: Icons.download_rounded,
                               onTap: _onDownload,
@@ -228,7 +220,7 @@ class _FullPhotoPageState extends State<FullPhotoPage>
               ),
             ),
 
-            // ── Bottom hint ─────────────────────────────────────────────────
+            
             FadeTransition(
               opacity: _ctrlsFade,
               child: Positioned(
@@ -245,7 +237,7 @@ class _FullPhotoPageState extends State<FullPhotoPage>
                       begin: Alignment.bottomCenter,
                       end: Alignment.topCenter,
                       colors: [
-                        Colors.black.withOpacity(0.6),
+                        Colors.black.withValues(alpha: 0.6),
                         Colors.transparent,
                       ],
                     ),
@@ -253,8 +245,7 @@ class _FullPhotoPageState extends State<FullPhotoPage>
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.pinch_rounded,
-                          color: Colors.white38, size: 14),
+                      Icon(Icons.pinch_rounded, color: Colors.white38, size: 14),
                       const SizedBox(width: 6),
                       const Text(
                         'Kéo để thu phóng',
@@ -273,7 +264,7 @@ class _FullPhotoPageState extends State<FullPhotoPage>
 
   void _onShare() {
     HapticFeedback.lightImpact();
-    // Share.shareUri(Uri.parse(widget.url));
+    
   }
 
   void _onDownload() {
@@ -289,9 +280,9 @@ class _FullPhotoPageState extends State<FullPhotoPage>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sub-widgets
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _BarBtn extends StatelessWidget {
   final IconData icon;
@@ -308,7 +299,7 @@ class _BarBtn extends StatelessWidget {
         height: 44,
         margin: const EdgeInsets.symmetric(horizontal: 2),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.12),
+          color: Colors.white.withValues(alpha: 0.12),
           shape: BoxShape.circle,
         ),
         child: Icon(icon, color: Colors.white, size: 20),

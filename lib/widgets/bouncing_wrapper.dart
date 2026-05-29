@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// Widget bọc ngoài cho hiệu ứng bounce khi nhấn — chuẩn iOS/Material3.
-///
-/// Tính năng:
-///  • Scale bounce với spring physics (easeOutBack)
-///  • Haptic feedback phân tầng: selectionClick → tap / mediumImpact → longPress
-///  • Hỗ trợ onTap, onLongPress, onDoubleTap
-///  • scaleFactor tuỳ chỉnh (mặc định 0.92 — chuẩn Apple)
-///  • Tự động cancel nếu drag ra ngoài (không fire tap nhầm)
+
+
+
+
+
+
+
+
 class BouncingWrapper extends StatefulWidget {
   const BouncingWrapper({
     super.key,
@@ -29,16 +29,16 @@ class BouncingWrapper extends StatefulWidget {
   final VoidCallback? onLongPress;
   final VoidCallback? onDoubleTap;
 
-  /// Tỉ lệ thu nhỏ khi nhấn xuống (0.0 → 1.0). Mặc định 0.92.
+  
   final double scaleFactor;
 
-  /// Thời gian thu nhỏ khi nhấn xuống.
+  
   final Duration duration;
 
-  /// Thời gian phục hồi (bounce back) sau khi thả.
+  
   final Duration reverseDuration;
 
-  /// Tắt tương tác (hiển thị opacity mờ).
+  
   final bool enabled;
 
   final bool hapticOnTap;
@@ -48,8 +48,7 @@ class BouncingWrapper extends StatefulWidget {
   State<BouncingWrapper> createState() => _BouncingWrapperState();
 }
 
-class _BouncingWrapperState extends State<BouncingWrapper>
-    with SingleTickerProviderStateMixin {
+class _BouncingWrapperState extends State<BouncingWrapper> with SingleTickerProviderStateMixin {
   late final AnimationController _ac = AnimationController(
     vsync: this,
     duration: widget.duration,
@@ -71,7 +70,7 @@ class _BouncingWrapperState extends State<BouncingWrapper>
     super.dispose();
   }
 
-  // ─── Handlers ──────────────────────────────────────────────────────────────
+  
 
   void _onTapDown(TapDownDetails _) {
     if (!widget.enabled) return;
@@ -105,7 +104,7 @@ class _BouncingWrapperState extends State<BouncingWrapper>
     widget.onDoubleTap?.call();
   }
 
-  // ─── Build ─────────────────────────────────────────────────────────────────
+  
 
   @override
   Widget build(BuildContext context) {

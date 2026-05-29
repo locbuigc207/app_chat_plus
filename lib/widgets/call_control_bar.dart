@@ -3,9 +3,9 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// ─────────────────────────────────────────────────────────────
-// CallControlBar
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class CallControlBar extends StatelessWidget {
   final bool isVideoCall;
@@ -44,13 +44,12 @@ class CallControlBar extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(48),
-              border:
-                  Border.all(color: Colors.white.withOpacity(0.18), width: 1),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.18), width: 1),
               boxShadow: [
                 BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withValues(alpha: 0.3),
                     blurRadius: 32,
                     offset: const Offset(0, 8)),
               ],
@@ -59,10 +58,9 @@ class CallControlBar extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Mute
+                
                 _ControlBtn(
-                  icon:
-                      isMuted ? Icons.mic_off_rounded : Icons.mic_none_rounded,
+                  icon: isMuted ? Icons.mic_off_rounded : Icons.mic_none_rounded,
                   label: isMuted ? 'Bật mic' : 'Tắt mic',
                   isActive: isMuted,
                   activeColor: Colors.redAccent,
@@ -73,11 +71,9 @@ class CallControlBar extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
 
-                // Speaker
+                
                 _ControlBtn(
-                  icon: isSpeakerOn
-                      ? Icons.volume_up_rounded
-                      : Icons.hearing_rounded,
+                  icon: isSpeakerOn ? Icons.volume_up_rounded : Icons.hearing_rounded,
                   label: isSpeakerOn ? 'Loa ngoài' : 'Tai nghe',
                   isActive: isSpeakerOn,
                   activeColor: const Color(0xFF42A5F5),
@@ -87,13 +83,11 @@ class CallControlBar extends StatelessWidget {
                   },
                 ),
 
-                // Video-only controls
+                
                 if (isVideoCall) ...[
                   const SizedBox(width: 12),
                   _ControlBtn(
-                    icon: isCameraOff
-                        ? Icons.videocam_off_rounded
-                        : Icons.videocam_rounded,
+                    icon: isCameraOff ? Icons.videocam_off_rounded : Icons.videocam_rounded,
                     label: isCameraOff ? 'Bật cam' : 'Tắt cam',
                     isActive: isCameraOff,
                     activeColor: Colors.orangeAccent,
@@ -117,7 +111,7 @@ class CallControlBar extends StatelessWidget {
 
                 const SizedBox(width: 16),
 
-                // End call
+                
                 _EndCallBtn(onTap: onEndCall),
               ],
             ),
@@ -128,9 +122,9 @@ class CallControlBar extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Control button
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _ControlBtn extends StatefulWidget {
   final IconData icon;
@@ -151,8 +145,7 @@ class _ControlBtn extends StatefulWidget {
   State<_ControlBtn> createState() => _ControlBtnState();
 }
 
-class _ControlBtnState extends State<_ControlBtn>
-    with SingleTickerProviderStateMixin {
+class _ControlBtnState extends State<_ControlBtn> with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<double> _scale;
 
@@ -193,13 +186,13 @@ class _ControlBtnState extends State<_ControlBtn>
               height: 54,
               decoration: BoxDecoration(
                 color: widget.isActive
-                    ? widget.activeColor.withOpacity(0.2)
-                    : Colors.white.withOpacity(0.1),
+                    ? widget.activeColor.withValues(alpha: 0.2)
+                    : Colors.white.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: widget.isActive
-                      ? widget.activeColor.withOpacity(0.5)
-                      : Colors.white.withOpacity(0.15),
+                      ? widget.activeColor.withValues(alpha: 0.5)
+                      : Colors.white.withValues(alpha: 0.15),
                   width: 1,
                 ),
               ),
@@ -214,8 +207,8 @@ class _ControlBtnState extends State<_ControlBtn>
               widget.label,
               style: TextStyle(
                 color: widget.isActive
-                    ? widget.activeColor.withOpacity(0.9)
-                    : Colors.white.withOpacity(0.75),
+                    ? widget.activeColor.withValues(alpha: 0.9)
+                    : Colors.white.withValues(alpha: 0.75),
                 fontSize: 10,
                 fontWeight: FontWeight.w500,
               ),
@@ -227,9 +220,9 @@ class _ControlBtnState extends State<_ControlBtn>
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// End call button — special springy press effect
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _EndCallBtn extends StatefulWidget {
   final VoidCallback onTap;
@@ -239,8 +232,7 @@ class _EndCallBtn extends StatefulWidget {
   State<_EndCallBtn> createState() => _EndCallBtnState();
 }
 
-class _EndCallBtnState extends State<_EndCallBtn>
-    with SingleTickerProviderStateMixin {
+class _EndCallBtnState extends State<_EndCallBtn> with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<double> _scale;
   late final Animation<double> _glow;
@@ -288,23 +280,21 @@ class _EndCallBtnState extends State<_EndCallBtn>
                   borderRadius: BorderRadius.circular(28),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFFE53935).withOpacity(_glow.value),
+                      color: const Color(0xFFE53935).withValues(alpha: _glow.value),
                       blurRadius: 20,
                       spreadRadius: 2,
                       offset: const Offset(0, 5),
                     ),
                   ],
                 ),
-                child: const Icon(Icons.call_end_rounded,
-                    color: Colors.white, size: 28),
+                child: const Icon(Icons.call_end_rounded, color: Colors.white, size: 28),
               ),
             ),
           ),
           const SizedBox(height: 6),
           const Text(
             'Kết thúc',
-            style: TextStyle(
-                color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
+            style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
           ),
         ],
       ),

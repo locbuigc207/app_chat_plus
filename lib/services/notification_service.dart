@@ -1,14 +1,15 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-// ─── Notification Models ──────────────────────────────────────────────────────
+
 
 class NotificationPayload {
   final String senderId;
@@ -28,31 +29,30 @@ class NotificationPayload {
   });
 }
 
-// ─── NotificationService ─────────────────────────────────────────────────────
+
 
 class NotificationService {
-  // Singletons / dependencies
+  
   final ChatBubbleService _bubbleService = ChatBubbleService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
-  final FlutterLocalNotificationsPlugin _localNotifications =
-      FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
 
   StreamSubscription<QuerySnapshot>? _messageSubscription;
   bool _isListening = false;
 
-  // Deduplication — capped at _maxProcessedIds
+  
   final Set<String> _processedIds = {};
   static const int _maxProcessedIds = 200;
 
-  // Muted conversations — notifications are suppressed
+  
   final Set<String> _mutedConversations = {};
 
-  // Callbacks
+  
   void Function(NotificationPayload)? onNotificationTapped;
   void Function(NotificationPayload)? onInAppNotification;
 
-  // ─── Initialization ─────────────────────────────────────────────────────
+  
 
   Future<void> initialize() async {
     await _initLocalNotifications();
@@ -61,8 +61,7 @@ class NotificationService {
   }
 
   Future<void> _initLocalNotifications() async {
-    const androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -80,7 +79,7 @@ class NotificationService {
       },
     );
 
-    // Create notification channel for Android
+    
     const channel = AndroidNotificationChannel(
       'chat_messages',
       'Chat Messages',
@@ -90,9 +89,8 @@ class NotificationService {
       enableVibration: true,
     );
 
-    final androidPlugin =
-        _localNotifications.resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+    final androidPlugin = _localNotifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
 
     await androidPlugin?.createNotificationChannel(channel);
   }
@@ -108,12 +106,12 @@ class NotificationService {
   }
 
   void _setupFCMHandlers() {
-    // Foreground FCM messages
+    
     FirebaseMessaging.onMessage.listen((message) {
       _handleFCMMessage(message, isBackground: false);
     });
 
-    // Background tap
+    
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
       _handleFCMTap(message);
     });
@@ -131,7 +129,7 @@ class NotificationService {
     if (_mutedConversations.contains(data['conversationId'])) return;
 
     if (!isBackground) {
-      // Show in-app banner / local notification
+      
       await _showLocalNotification(
         title: data['senderName'] ?? 'New Message',
         body: data['content'] ?? '',
@@ -158,10 +156,10 @@ class NotificationService {
   void _onLocalNotificationTapped(String? payload) {
     if (payload == null || payload.isEmpty) return;
     debugPrint('🔔 Notification tapped, conversationId: $payload');
-    // Caller handles navigation via onNotificationTapped
+    
   }
 
-  // ─── Realtime Listener ───────────────────────────────────────────────────
+  
 
   void listenForNewMessages(String currentUserId) {
     if (_isListening) return;
@@ -181,7 +179,7 @@ class NotificationService {
             .map((c) => c.doc)
             .toList();
 
-        // Process sequentially to avoid race conditions
+        
         for (final doc in newDocs) {
           await _handleNewMessage(doc, currentUserId);
         }
@@ -189,7 +187,7 @@ class NotificationService {
       onError: (Object error) {
         debugPrint('❌ Message listener error: $error');
         _isListening = false;
-        // Exponential back-off retry
+        
         _retryListen(currentUserId);
       },
       cancelOnError: true,
@@ -204,8 +202,7 @@ class NotificationService {
   void _retryListen(String userId) {
     _retryCount++;
     final delay = Duration(seconds: (2 << _retryCount.clamp(0, 5)));
-    debugPrint(
-        '🔄 Retrying listener in ${delay.inSeconds}s (attempt $_retryCount)');
+    debugPrint('🔄 Retrying listener in ${delay.inSeconds}s (attempt $_retryCount)');
     _retryTimer?.cancel();
     _retryTimer = Timer(delay, () {
       if (!_isListening) listenForNewMessages(userId);
@@ -226,29 +223,28 @@ class NotificationService {
       final senderId = data[FirestoreConstants.idFrom] as String?;
       if (senderId == null || senderId == currentUserId) return;
 
-      // Resolve sender info
+      
       final payload = await _buildPayload(data, senderId, doc);
       if (payload == null) return;
 
-      // Suppress muted conversations
+      
       if (_mutedConversations.contains(payload.conversationId)) return;
 
-      final isResumed =
-          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+      final isResumed = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
 
       if (isResumed) {
-        // In-app notification
+        
         onInAppNotification?.call(payload);
         await _showLocalNotification(
           title: payload.senderName,
           body: _formatPreview(payload.content),
           payload: payload.conversationId,
           senderId: senderId,
-          silent: true, // Foreground — silent banner
+          silent: true, 
         );
         _updateExistingBubble(senderId, payload.content);
       } else {
-        // Background — create / update bubble
+        
         await _maybeCreateBubble(payload);
       }
     } catch (e) {
@@ -256,7 +252,7 @@ class NotificationService {
     }
   }
 
-  // ─── Bubble Management ───────────────────────────────────────────────────
+  
 
   Future<void> _maybeCreateBubble(NotificationPayload payload) async {
     if (_bubbleService.isBubbleActive(payload.senderId)) {
@@ -328,7 +324,7 @@ class NotificationService {
     }
   }
 
-  // ─── Local Notifications ─────────────────────────────────────────────────
+  
 
   Future<void> _showLocalNotification({
     required String title,
@@ -385,7 +381,7 @@ class NotificationService {
     await _localNotifications.cancelAll();
   }
 
-  // ─── FCM Token ───────────────────────────────────────────────────────────
+  
 
   Future<String?> getFCMToken() async {
     try {
@@ -401,10 +397,7 @@ class NotificationService {
       final token = await getFCMToken();
       if (token == null) return;
 
-      await _firestore
-          .collection(FirestoreConstants.pathUserCollection)
-          .doc(userId)
-          .update({
+      await _firestore.collection(FirestoreConstants.pathUserCollection).doc(userId).update({
         'fcmToken': token,
         'fcmTokenUpdatedAt': DateTime.now().millisecondsSinceEpoch.toString(),
       });
@@ -416,7 +409,7 @@ class NotificationService {
 
   Stream<String> get onTokenRefresh => _messaging.onTokenRefresh;
 
-  // ─── Mute Management ─────────────────────────────────────────────────────
+  
 
   void muteConversation(String conversationId) {
     _mutedConversations.add(conversationId);
@@ -426,31 +419,27 @@ class NotificationService {
     _mutedConversations.remove(conversationId);
   }
 
-  bool isConversationMuted(String conversationId) =>
-      _mutedConversations.contains(conversationId);
+  bool isConversationMuted(String conversationId) => _mutedConversations.contains(conversationId);
 
-  // ─── Helpers ─────────────────────────────────────────────────────────────
+  
 
   Future<NotificationPayload?> _buildPayload(
     Map<String, dynamic> data,
     String senderId,
     DocumentSnapshot doc,
   ) async {
-    final senderDoc = await _firestore
-        .collection(FirestoreConstants.pathUserCollection)
-        .doc(senderId)
-        .get();
+    final senderDoc =
+        await _firestore.collection(FirestoreConstants.pathUserCollection).doc(senderId).get();
 
     if (!senderDoc.exists) return null;
 
     final senderData = senderDoc.data() as Map<String, dynamic>;
     final content = data[FirestoreConstants.content] as String? ?? '';
 
-    // Derive conversationId from subcollection path
-    // Path: pathMessageCollection/{convId}/{convId}/{docId}
+    
+    
     final pathSegments = doc.reference.path.split('/');
-    final conversationId =
-        pathSegments.length >= 2 ? pathSegments[1] : senderId;
+    final conversationId = pathSegments.length >= 2 ? pathSegments[1] : senderId;
 
     return NotificationPayload(
       senderId: senderId,
@@ -458,9 +447,7 @@ class NotificationService {
       avatarUrl: senderData[FirestoreConstants.photoUrl] as String? ?? '',
       content: content,
       conversationId: conversationId,
-      timestamp:
-          int.tryParse(data[FirestoreConstants.timestamp]?.toString() ?? '0') ??
-              0,
+      timestamp: int.tryParse(data[FirestoreConstants.timestamp]?.toString() ?? '0') ?? 0,
     );
   }
 
@@ -468,7 +455,7 @@ class NotificationService {
 
   void _trackProcessed(String id) {
     if (_processedIds.length >= _maxProcessedIds) {
-      // Remove oldest 20% to make room
+      
       final toRemove = (_maxProcessedIds * 0.2).ceil();
       final old = _processedIds.take(toRemove).toList();
       _processedIds.removeAll(old);
@@ -481,7 +468,7 @@ class NotificationService {
     return '${content.substring(0, 77)}…';
   }
 
-  // ─── Lifecycle ───────────────────────────────────────────────────────────
+  
 
   void stopListening() {
     _messageSubscription?.cancel();

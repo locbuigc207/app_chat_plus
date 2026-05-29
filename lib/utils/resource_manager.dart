@@ -5,29 +5,29 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ResourceManager
-// Quản lý toàn diện vòng đời tài nguyên: StreamSubscription, Timer,
-// AnimationController, TextEditingController, ScrollController, FocusNode,
-// ChangeNotifier, custom disposers.
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
 
 class ResourceManager {
-  // ── Internal lists ─────────────────────────────────────────────────────────
+  
   final List<_SubEntry> _subscriptions = [];
   final List<_TimerEntry> _timers = [];
   final List<_DisposerEntry> _disposers = [];
 
   bool _isDisposed = false;
-  String? _debugName;
+  final String? _debugName;
 
-  // ── Constructor ─────────────────────────────────────────────────────────────
+  
 
   ResourceManager({String? debugName}) : _debugName = debugName;
 
-  // ── Subscription management ─────────────────────────────────────────────────
+  
 
-  /// Đăng ký một StreamSubscription để tự động hủy khi dispose.
+  
   StreamSubscription<T> addSubscription<T>(
     StreamSubscription<T> sub, {
     String? tag,
@@ -40,7 +40,7 @@ class ResourceManager {
     return sub;
   }
 
-  /// Lắng nghe một Stream và tự quản lý subscription.
+  
   StreamSubscription<T> listen<T>(
     Stream<T> stream,
     void Function(T data) onData, {
@@ -58,7 +58,7 @@ class ResourceManager {
     return addSubscription(sub, tag: tag);
   }
 
-  /// Hủy subscription theo tag.
+  
   Future<void> cancelSubscription(String tag) async {
     final entries = _subscriptions.where((e) => e.tag == tag).toList();
     for (final e in entries) {
@@ -69,9 +69,9 @@ class ResourceManager {
     }
   }
 
-  // ── Timer management ────────────────────────────────────────────────────────
+  
 
-  /// Đăng ký một Timer để tự động hủy khi dispose.
+  
   Timer addTimer(Timer timer, {String? tag}) {
     if (_isDisposed) {
       timer.cancel();
@@ -81,7 +81,7 @@ class ResourceManager {
     return timer;
   }
 
-  /// Tạo Timer.periodic và tự quản lý.
+  
   Timer addPeriodicTimer(
     Duration period,
     void Function(Timer) callback, {
@@ -89,7 +89,7 @@ class ResourceManager {
   }) =>
       addTimer(Timer.periodic(period, callback), tag: tag);
 
-  /// Tạo Timer một lần và tự quản lý.
+  
   Timer addDelayedTimer(
     Duration delay,
     VoidCallback callback, {
@@ -97,7 +97,7 @@ class ResourceManager {
   }) =>
       addTimer(Timer(delay, callback), tag: tag);
 
-  /// Hủy timer theo tag.
+  
   void cancelTimer(String tag) {
     final entries = _timers.where((e) => e.tag == tag).toList();
     for (final e in entries) {
@@ -108,9 +108,9 @@ class ResourceManager {
     }
   }
 
-  // ── Disposer management ─────────────────────────────────────────────────────
+  
 
-  /// Thêm custom disposer callback.
+  
   void addDisposer(VoidCallback disposer, {String? tag}) {
     if (_isDisposed) {
       try {
@@ -121,42 +121,41 @@ class ResourceManager {
     _disposers.add(_DisposerEntry(disposer, tag: tag));
   }
 
-  // ── Convenience helpers ──────────────────────────────────────────────────────
+  
 
-  /// Quản lý ChangeNotifier (gọi dispose khi rm.dispose).
+  
   void addNotifier(ChangeNotifier notifier, {String? tag}) =>
       addDisposer(notifier.dispose, tag: tag);
 
-  /// Quản lý TextEditingController.
+  
   void addController(TextEditingController controller, {String? tag}) =>
       addDisposer(controller.dispose, tag: tag);
 
-  /// Quản lý AnimationController.
+  
   void addAnimationController(AnimationController controller, {String? tag}) =>
       addDisposer(controller.dispose, tag: tag);
 
-  /// Quản lý ScrollController.
+  
   void addScrollController(ScrollController controller, {String? tag}) =>
       addDisposer(controller.dispose, tag: tag);
 
-  /// Quản lý FocusNode.
-  void addFocusNode(FocusNode node, {String? tag}) =>
-      addDisposer(node.dispose, tag: tag);
+  
+  void addFocusNode(FocusNode node, {String? tag}) => addDisposer(node.dispose, tag: tag);
 
-  /// Quản lý Disposable.
+  
   void addDisposable(Disposable disposable, {String? tag}) =>
       addDisposer(disposable.dispose, tag: tag);
 
-  // ── Lifecycle ───────────────────────────────────────────────────────────────
+  
 
-  /// Hủy tất cả tài nguyên theo thứ tự: subscriptions → timers → disposers.
+  
   Future<void> dispose() async {
     if (_isDisposed) return;
     _isDisposed = true;
 
     _debugLog('Disposing...');
 
-    // Cancel all subscriptions
+    
     final subs = List.of(_subscriptions);
     _subscriptions.clear();
     for (final e in subs) {
@@ -167,7 +166,7 @@ class ResourceManager {
       }
     }
 
-    // Cancel all timers
+    
     final timers = List.of(_timers);
     _timers.clear();
     for (final e in timers) {
@@ -178,7 +177,7 @@ class ResourceManager {
       }
     }
 
-    // Run all disposers in reverse order
+    
     final disposers = List.of(_disposers).reversed.toList();
     _disposers.clear();
     for (final e in disposers) {
@@ -192,19 +191,19 @@ class ResourceManager {
     _debugLog('Disposed.');
   }
 
-  // ── State getters ────────────────────────────────────────────────────────────
+  
 
   bool get isDisposed => _isDisposed;
   int get subscriptionCount => _subscriptions.length;
   int get timerCount => _timers.length;
   int get disposerCount => _disposers.length;
 
-  // ── Debug ────────────────────────────────────────────────────────────────────
+  
 
   void _debugLog(String msg) {
     if (kDebugMode) {
       final name = _debugName != null ? '[$_debugName] ' : '';
-      debugPrint('🔧 ResourceManager ${name}$msg');
+      debugPrint('🔧 ResourceManager $name$msg');
     }
   }
 
@@ -218,9 +217,9 @@ class ResourceManager {
       ')';
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Entry helpers (private)
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _SubEntry {
   final StreamSubscription sub;
@@ -240,16 +239,15 @@ class _DisposerEntry {
   const _DisposerEntry(this.disposer, {this.tag});
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Mixin: ResourceManagerMixin
-// Dành cho State<T extends StatefulWidget>
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
+
 
 mixin ResourceManagerMixin<T extends StatefulWidget> on State<T> {
-  late final ResourceManager _resourceManager =
-      ResourceManager(debugName: T.toString());
+  late final ResourceManager _resourceManager = ResourceManager(debugName: T.toString());
 
-  /// Truy cập ResourceManager.
+  
   ResourceManager get resourceManager => _resourceManager;
 
   @override
@@ -258,7 +256,7 @@ mixin ResourceManagerMixin<T extends StatefulWidget> on State<T> {
     super.dispose();
   }
 
-  // ── Shortcuts ────────────────────────────────────────────────────────────────
+  
 
   StreamSubscription<E> listenStream<E>(
     Stream<E> stream,
@@ -275,8 +273,7 @@ mixin ResourceManagerMixin<T extends StatefulWidget> on State<T> {
         tag: tag,
       );
 
-  Timer addTimer(Timer timer, {String? tag}) =>
-      _resourceManager.addTimer(timer, tag: tag);
+  Timer addTimer(Timer timer, {String? tag}) => _resourceManager.addTimer(timer, tag: tag);
 
   Timer periodicTimer(
     Duration period,
@@ -293,14 +290,13 @@ mixin ResourceManagerMixin<T extends StatefulWidget> on State<T> {
       _resourceManager.addDelayedTimer(delay, callback, tag: tag);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Mixin: ResourceManagerNotifierMixin
-// Dành cho ChangeNotifier (Provider, ViewModel...)
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
+
 
 mixin ResourceManagerNotifierMixin on ChangeNotifier {
-  late final ResourceManager _resourceManager =
-      ResourceManager(debugName: runtimeType.toString());
+  late final ResourceManager _resourceManager = ResourceManager(debugName: runtimeType.toString());
 
   ResourceManager get resourceManager => _resourceManager;
 
@@ -323,8 +319,7 @@ mixin ResourceManagerNotifierMixin on ChangeNotifier {
         tag: tag,
       );
 
-  Timer addTimer(Timer timer, {String? tag}) =>
-      _resourceManager.addTimer(timer, tag: tag);
+  Timer addTimer(Timer timer, {String? tag}) => _resourceManager.addTimer(timer, tag: tag);
 
   Timer periodicTimer(
     Duration period,
@@ -341,9 +336,9 @@ mixin ResourceManagerNotifierMixin on ChangeNotifier {
       _resourceManager.addDelayedTimer(delay, callback, tag: tag);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Disposable interface
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 abstract interface class Disposable {
   void dispose();
@@ -353,22 +348,21 @@ extension DisposableExtension on ResourceManager {
   void addDisposableObject(Disposable d) => addDisposer(d.dispose);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ManagedValueNotifier<T>
-// ValueNotifier tự động dispose thông qua ResourceManager
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
+
 
 class ManagedValueNotifier<T> extends ValueNotifier<T> {
   ManagedValueNotifier(super.value);
 
-  /// Đăng ký vào ResourceManager để tự dispose.
-  void attachTo(ResourceManager rm, {String? tag}) =>
-      rm.addDisposer(dispose, tag: tag);
+  
+  void attachTo(ResourceManager rm, {String? tag}) => rm.addDisposer(dispose, tag: tag);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// AutoDisposeStream – wrapper tiện lợi cho stream với tự dispose
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class AutoDisposeStream<T> implements Disposable {
   StreamSubscription<T>? _subscription;

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:flutter_chat_demo/constants/constants.dart';
 
 class PINInputDialog extends StatefulWidget {
@@ -26,8 +27,7 @@ class PINInputDialog extends StatefulWidget {
   State<PINInputDialog> createState() => _PINInputDialogState();
 }
 
-class _PINInputDialogState extends State<PINInputDialog>
-    with TickerProviderStateMixin {
+class _PINInputDialogState extends State<PINInputDialog> with TickerProviderStateMixin {
   String _pin = '';
   static const int _pinLength = 4;
   bool _isLoading = false;
@@ -124,7 +124,7 @@ class _PINInputDialogState extends State<PINInputDialog>
                   borderRadius: BorderRadius.circular(32),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
+                      color: Colors.black.withValues(alpha: 0.3),
                       blurRadius: 60,
                       spreadRadius: 0,
                     ),
@@ -145,7 +145,7 @@ class _PINInputDialogState extends State<PINInputDialog>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ── Lock icon ──────────────────────────────────────────────────
+          
           TweenAnimationBuilder<double>(
             tween: Tween(begin: 0, end: 1),
             duration: const Duration(milliseconds: 400),
@@ -162,15 +162,14 @@ class _PINInputDialogState extends State<PINInputDialog>
                       ? [Colors.red.shade400, Colors.red.shade700]
                       : [
                           ColorConstants.primaryColor,
-                          ColorConstants.primaryColor.withOpacity(0.75),
+                          ColorConstants.primaryColor.withValues(alpha: 0.75),
                         ],
                 ),
                 borderRadius: BorderRadius.circular(22),
                 boxShadow: [
                   BoxShadow(
-                    color:
-                        (_hasError ? Colors.red : ColorConstants.primaryColor)
-                            .withOpacity(0.35),
+                    color: (_hasError ? Colors.red : ColorConstants.primaryColor)
+                        .withValues(alpha: 0.35),
                     blurRadius: 20,
                     offset: const Offset(0, 8),
                   ),
@@ -186,7 +185,7 @@ class _PINInputDialogState extends State<PINInputDialog>
 
           const SizedBox(height: 20),
 
-          // ── Title ──────────────────────────────────────────────────────
+          
           Text(
             widget.title,
             style: const TextStyle(
@@ -210,30 +209,26 @@ class _PINInputDialogState extends State<PINInputDialog>
             ),
           ],
 
-          // ── Error message ──────────────────────────────────────────────
+          
           if (widget.errorMessage != null) ...[
             const SizedBox(height: 14),
             AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.08),
+                color: Colors.red.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(12),
-                border:
-                    Border.all(color: Colors.red.withOpacity(0.2), width: 1),
+                border: Border.all(color: Colors.red.withValues(alpha: 0.2), width: 1),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.error_outline_rounded,
-                      color: Colors.red, size: 18),
+                  const Icon(Icons.error_outline_rounded, color: Colors.red, size: 18),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       widget.errorMessage!,
                       style: const TextStyle(
-                          color: Colors.red,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500),
+                          color: Colors.red, fontSize: 13, fontWeight: FontWeight.w500),
                     ),
                   ),
                 ],
@@ -241,7 +236,7 @@ class _PINInputDialogState extends State<PINInputDialog>
             ),
           ],
 
-          // ── Remaining attempts ─────────────────────────────────────────
+          
           if (widget.remainingAttempts != null) ...[
             const SizedBox(height: 8),
             AnimatedDefaultTextStyle(
@@ -249,9 +244,7 @@ class _PINInputDialogState extends State<PINInputDialog>
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: widget.remainingAttempts! <= 2
-                    ? Colors.red
-                    : ColorConstants.greyColor,
+                color: widget.remainingAttempts! <= 2 ? Colors.red : ColorConstants.greyColor,
               ),
               child: Text(
                 'Còn ${widget.remainingAttempts} lần thử',
@@ -261,11 +254,11 @@ class _PINInputDialogState extends State<PINInputDialog>
 
           const SizedBox(height: 30),
 
-          // ── PIN dots ───────────────────────────────────────────────────
+          
           AnimatedBuilder(
             animation: _shakeAnim,
-            builder: (_, child) => Transform.translate(
-                offset: Offset(_shakeAnim.value, 0), child: child),
+            builder: (_, child) =>
+                Transform.translate(offset: Offset(_shakeAnim.value, 0), child: child),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: List.generate(_pinLength, (i) {
@@ -285,25 +278,19 @@ class _PINInputDialogState extends State<PINInputDialog>
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: filled
-                          ? (_hasError
-                              ? Colors.red
-                              : ColorConstants.primaryColor)
+                          ? (_hasError ? Colors.red : ColorConstants.primaryColor)
                           : Colors.transparent,
                       border: Border.all(
                         color: filled
-                            ? (_hasError
-                                ? Colors.red
-                                : ColorConstants.primaryColor)
+                            ? (_hasError ? Colors.red : ColorConstants.primaryColor)
                             : const Color(0xFFD1D5DB),
                         width: 2,
                       ),
                       boxShadow: filled
                           ? [
                               BoxShadow(
-                                color: (_hasError
-                                        ? Colors.red
-                                        : ColorConstants.primaryColor)
-                                    .withOpacity(0.4),
+                                color: (_hasError ? Colors.red : ColorConstants.primaryColor)
+                                    .withValues(alpha: 0.4),
                                 blurRadius: 8,
                                 spreadRadius: 0,
                               ),
@@ -318,7 +305,7 @@ class _PINInputDialogState extends State<PINInputDialog>
 
           const SizedBox(height: 30),
 
-          // ── Numpad ─────────────────────────────────────────────────────
+          
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -331,9 +318,7 @@ class _PINInputDialogState extends State<PINInputDialog>
             itemCount: 12,
             itemBuilder: (_, i) {
               if (i == 9) {
-                return widget.showBiometric
-                    ? _buildBiometricButton()
-                    : const SizedBox.shrink();
+                return widget.showBiometric ? _buildBiometricButton() : const SizedBox.shrink();
               } else if (i == 10) {
                 return _buildKeyButton('0');
               } else if (i == 11) {
@@ -346,7 +331,7 @@ class _PINInputDialogState extends State<PINInputDialog>
 
           const SizedBox(height: 24),
 
-          // ── Confirm button ─────────────────────────────────────────────
+          
           AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             width: double.infinity,
@@ -357,17 +342,15 @@ class _PINInputDialogState extends State<PINInputDialog>
                   ? LinearGradient(
                       colors: [
                         ColorConstants.primaryColor,
-                        ColorConstants.primaryColor.withOpacity(0.8),
+                        ColorConstants.primaryColor.withValues(alpha: 0.8),
                       ],
                     )
                   : null,
-              color: _pin.length == _pinLength && !_isLoading
-                  ? null
-                  : const Color(0xFFE8EBF0),
+              color: _pin.length == _pinLength && !_isLoading ? null : const Color(0xFFE8EBF0),
               boxShadow: _pin.length == _pinLength && !_isLoading
                   ? [
                       BoxShadow(
-                        color: ColorConstants.primaryColor.withOpacity(0.4),
+                        color: ColorConstants.primaryColor.withValues(alpha: 0.4),
                         blurRadius: 16,
                         offset: const Offset(0, 6),
                       ),
@@ -377,9 +360,7 @@ class _PINInputDialogState extends State<PINInputDialog>
             child: Material(
               color: Colors.transparent,
               child: InkWell(
-                onTap: _pin.length == _pinLength && !_isLoading
-                    ? _onConfirmPressed
-                    : null,
+                onTap: _pin.length == _pinLength && !_isLoading ? _onConfirmPressed : null,
                 borderRadius: BorderRadius.circular(16),
                 child: Center(
                   child: _isLoading
@@ -396,9 +377,8 @@ class _PINInputDialogState extends State<PINInputDialog>
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
-                            color: _pin.length == _pinLength
-                                ? Colors.white
-                                : const Color(0xFFBEC3CC),
+                            color:
+                                _pin.length == _pinLength ? Colors.white : const Color(0xFFBEC3CC),
                             letterSpacing: 0.2,
                           ),
                         ),
@@ -409,7 +389,7 @@ class _PINInputDialogState extends State<PINInputDialog>
 
           const SizedBox(height: 12),
 
-          // ── Cancel ─────────────────────────────────────────────────────
+          
           TextButton(
             onPressed: _isLoading ? null : () => Navigator.pop(context),
             style: TextButton.styleFrom(
@@ -447,9 +427,7 @@ class _PINInputDialogState extends State<PINInputDialog>
               style: TextStyle(
                 fontSize: 26,
                 fontWeight: FontWeight.w600,
-                color: _isLoading
-                    ? const Color(0xFFD1D5DB)
-                    : const Color(0xFF1A1A2E),
+                color: _isLoading ? const Color(0xFFD1D5DB) : const Color(0xFF1A1A2E),
               ),
             ),
           ),
@@ -474,9 +452,7 @@ class _PINInputDialogState extends State<PINInputDialog>
             child: Icon(
               Icons.backspace_rounded,
               size: 22,
-              color: _pin.isEmpty
-                  ? const Color(0xFFD1D5DB)
-                  : const Color(0xFF374151),
+              color: _pin.isEmpty ? const Color(0xFFD1D5DB) : const Color(0xFF374151),
             ),
           ),
         ),
@@ -493,9 +469,9 @@ class _PINInputDialogState extends State<PINInputDialog>
         child: Container(
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: ColorConstants.primaryColor.withOpacity(0.08),
+            color: ColorConstants.primaryColor.withValues(alpha: 0.08),
             border: Border.all(
-              color: ColorConstants.primaryColor.withOpacity(0.2),
+              color: ColorConstants.primaryColor.withValues(alpha: 0.2),
               width: 1.5,
             ),
           ),

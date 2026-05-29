@@ -1,26 +1,27 @@
-// lib/bubble/widgets/shared_space_widget.dart
+
 // ignore_for_file: use_super_parameters
 
 import 'dart:async';
 import 'dart:ui' as ui;
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MODELS
-// ─────────────────────────────────────────────────────────────────────────────
 
-/// A single point in a drawing stroke.
+
+
+
+
 @immutable
 class DrawPoint {
   final double x;
   final double y;
 
-  /// true = start a new stroke (moveTo), false = continue (lineTo).
+  
   final bool isStart;
   final int color;
   final double strokeWidth;
@@ -63,9 +64,9 @@ class DrawPoint {
       );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// WHITEBOARD PAINTER
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class WhiteboardPainter extends CustomPainter {
   final List<DrawPoint> points;
@@ -73,13 +74,13 @@ class WhiteboardPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Background
+    
     canvas.drawRect(
       Offset.zero & size,
       Paint()..color = const Color(0xFFFBFCFF),
     );
 
-    // Dot grid
+    
     final dotPaint = Paint()..color = const Color(0xFFCDD5E0);
     const step = 22.0;
     for (double x = step; x < size.width; x += step) {
@@ -88,7 +89,7 @@ class WhiteboardPainter extends CustomPainter {
       }
     }
 
-    // Strokes
+    
     Paint? paint;
     Path? path;
 
@@ -114,13 +115,13 @@ class WhiteboardPainter extends CustomPainter {
   bool shouldRepaint(WhiteboardPainter old) => old.points != points;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SHARED SPACE WIDGET
-// ─────────────────────────────────────────────────────────────────────────────
 
-/// Two-tab panel:
-///  • **Whiteboard** — real-time collaborative drawing synced via Firestore.
-///  • **Co-Browse**  — share a URL with your chat partner and open it together.
+
+
+
+
+
+
 class SharedSpaceWidget extends StatefulWidget {
   final String conversationId;
   final String currentUserId;
@@ -137,14 +138,13 @@ class SharedSpaceWidget extends StatefulWidget {
   State<SharedSpaceWidget> createState() => _SharedSpaceWidgetState();
 }
 
-class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
-    with TickerProviderStateMixin {
-  // ── Tabs ──────────────────────────────────────────────────────────────────
-  int _tab = 0; // 0 = whiteboard, 1 = co-browse
+class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProviderStateMixin {
+  
+  int _tab = 0; 
 
-  // ── Whiteboard ────────────────────────────────────────────────────────────
+  
   final List<DrawPoint> _points = [];
-  final List<DrawPoint> _undoBuffer = []; // last stroke for undo
+  final List<DrawPoint> _undoBuffer = []; 
   Color _color = const Color(0xFF1E88E5);
   double _stroke = 3.5;
   bool _isEraser = false;
@@ -152,46 +152,44 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
   StreamSubscription? _boardSub;
   final _boardKey = GlobalKey();
 
-  // Current stroke accumulator (for batched sync)
+  
   final List<DrawPoint> _pendingBatch = [];
   Timer? _batchTimer;
 
-  // ── Co-browse ─────────────────────────────────────────────────────────────
+  
   final _urlCtrl = TextEditingController();
   String? _sharedUrl;
   String? _sharedBy;
   StreamSubscription? _urlSub;
 
-  // ── Firestore ─────────────────────────────────────────────────────────────
+  
   late final DocumentReference _docRef;
 
-  // ── Animations ────────────────────────────────────────────────────────────
+  
   late AnimationController _tabSwitch;
   late AnimationController _entryAnim;
 
-  // ── Color palette ─────────────────────────────────────────────────────────
+  
   static const _palette = <Color>[
-    Color(0xFF1E88E5), // blue
-    Color(0xFFE53935), // red
-    Color(0xFF43A047), // green
-    Color(0xFFFF9800), // orange
-    Color(0xFF8E24AA), // purple
-    Color(0xFF00ACC1), // cyan
-    Color(0xFF212121), // black
-    Color(0xFFEC407A), // pink
+    Color(0xFF1E88E5), 
+    Color(0xFFE53935), 
+    Color(0xFF43A047), 
+    Color(0xFFFF9800), 
+    Color(0xFF8E24AA), 
+    Color(0xFF00ACC1), 
+    Color(0xFF212121), 
+    Color(0xFFEC407A), 
   ];
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // LIFECYCLE
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   @override
   void initState() {
     super.initState();
 
-    _docRef = FirebaseFirestore.instance
-        .collection('shared_spaces')
-        .doc(widget.conversationId);
+    _docRef = FirebaseFirestore.instance.collection('shared_spaces').doc(widget.conversationId);
 
     _tabSwitch = AnimationController(
       vsync: this,
@@ -217,24 +215,24 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
     super.dispose();
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // FIRESTORE LISTENERS
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _listenBoard() {
     _boardSub = _docRef.snapshots().listen((snap) {
       if (!snap.exists || !mounted) return;
       final data = snap.data() as Map<String, dynamic>? ?? {};
       final raw = data['points'] as List<dynamic>? ?? [];
-      final synced = raw
-          .map((p) => DrawPoint.fromJson(Map<String, dynamic>.from(p as Map)))
-          .toList();
-      if (mounted)
+      final synced =
+          raw.map((p) => DrawPoint.fromJson(Map<String, dynamic>.from(p as Map))).toList();
+      if (mounted) {
         setState(() {
           _points
             ..clear()
             ..addAll(synced);
         });
+      }
     }, onError: (e) => debugPrint('SharedSpace board error: $e'));
   }
 
@@ -253,9 +251,9 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
     }, onError: (_) {});
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // DRAW SYNC — batched writes to avoid Firestore rate limits
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _addPoint(DrawPoint pt) {
     final stamped = pt.now();
@@ -302,8 +300,7 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
 
   Future<void> _saveAsImage() async {
     try {
-      final boundary = _boardKey.currentContext?.findRenderObject()
-          as RenderRepaintBoundary?;
+      final boundary = _boardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (boundary == null) return;
       final image = await boundary.toImage(pixelRatio: 2.0);
       final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
@@ -315,9 +312,9 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // CO-BROWSE
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<void> _shareUrl() async {
     final url = _urlCtrl.text.trim();
@@ -347,16 +344,14 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // UI HELPERS
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _showSnack(String msg, Color color) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg,
-          style: const TextStyle(
-              color: Colors.white, fontWeight: FontWeight.w600)),
+      content: Text(msg, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
       backgroundColor: color,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -371,9 +366,9 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
     HapticFeedback.selectionClick();
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // BUILD
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   @override
   Widget build(BuildContext context) {
@@ -387,8 +382,7 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
             Expanded(
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 240),
-                transitionBuilder: (child, anim) =>
-                    FadeTransition(opacity: anim, child: child),
+                transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
                 child: _tab == 0
                     ? _buildWhiteboard(key: const ValueKey('wb'))
                     : _buildCoBrowse(key: const ValueKey('cb')),
@@ -400,9 +394,9 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // TAB BAR
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildTabBar() {
     return Container(
@@ -431,9 +425,9 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // WHITEBOARD
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildWhiteboard({Key? key}) {
     return Column(
@@ -448,7 +442,7 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
               borderRadius: BorderRadius.circular(14),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.07),
+                  color: Colors.black.withValues(alpha: 0.07),
                   blurRadius: 18,
                   offset: const Offset(0, 4),
                 ),
@@ -464,7 +458,7 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
                       x: d.localPosition.dx,
                       y: d.localPosition.dy,
                       isStart: true,
-                      color: _isEraser ? Colors.white.value : _color.value,
+                      color: _isEraser ? Colors.white.toARGB32() : _color.toARGB32(),
                       strokeWidth: _isEraser ? 26 : _stroke,
                       ts: 0,
                     ));
@@ -474,14 +468,13 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
                       x: d.localPosition.dx,
                       y: d.localPosition.dy,
                       isStart: false,
-                      color: _isEraser ? Colors.white.value : _color.value,
+                      color: _isEraser ? Colors.white.toARGB32() : _color.toARGB32(),
                       strokeWidth: _isEraser ? 26 : _stroke,
                       ts: 0,
                     ));
                   },
                   child: CustomPaint(
-                    painter:
-                        WhiteboardPainter(points: List.unmodifiable(_points)),
+                    painter: WhiteboardPainter(points: List.unmodifiable(_points)),
                     child: const SizedBox.expand(),
                   ),
                 ),
@@ -502,14 +495,14 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
         borderRadius: BorderRadius.circular(13),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
           ),
         ],
       ),
       child: Row(
         children: [
-          // Color swatches
+          
           for (final c in _palette)
             _ColorDot(
               color: c,
@@ -521,11 +514,11 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
             ),
 
           const SizedBox(width: 4),
-          // Divider
+          
           Container(width: 1, height: 20, color: const Color(0xFFDDE3EE)),
           const SizedBox(width: 4),
 
-          // Eraser
+          
           _ToolButton(
             icon: Icons.auto_fix_high_rounded,
             active: _isEraser,
@@ -533,24 +526,19 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
             onTap: () => setState(() => _isEraser = !_isEraser),
           ),
 
-          // Stroke size (small icon toggle)
+          
           PopupMenuButton<double>(
             tooltip: 'Cỡ bút',
-            icon: Icon(Icons.line_weight_rounded,
-                size: 17, color: const Color(0xFF7B8499)),
+            icon: Icon(Icons.line_weight_rounded, size: 17, color: const Color(0xFF7B8499)),
             onSelected: (v) => setState(() => _stroke = v),
             itemBuilder: (_) => [
               for (final s in [1.5, 3.0, 5.0, 8.0, 12.0])
                 PopupMenuItem(
                   value: s,
                   child: Row(children: [
-                    Container(
-                        width: s * 3,
-                        height: s,
-                        color: const Color(0xFF1E88E5)),
+                    Container(width: s * 3, height: s, color: const Color(0xFF1E88E5)),
                     const SizedBox(width: 10),
-                    Text('${s.toStringAsFixed(1)} px',
-                        style: const TextStyle(fontSize: 12)),
+                    Text('${s.toStringAsFixed(1)} px', style: const TextStyle(fontSize: 12)),
                   ]),
                 ),
             ],
@@ -558,19 +546,18 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
 
           const Spacer(),
 
-          // Sync indicator
+          
           if (_isSyncing)
             const SizedBox(
               width: 14,
               height: 14,
               child: CircularProgressIndicator(
-                  strokeWidth: 1.5,
-                  valueColor: AlwaysStoppedAnimation(Color(0xFF1E88E5))),
+                  strokeWidth: 1.5, valueColor: AlwaysStoppedAnimation(Color(0xFF1E88E5))),
             ),
 
           const SizedBox(width: 4),
 
-          // Save
+          
           _ToolButton(
             icon: Icons.image_outlined,
             active: false,
@@ -579,7 +566,7 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
             onTap: _saveAsImage,
           ),
 
-          // Clear
+          
           _ToolButton(
             icon: Icons.delete_outline_rounded,
             active: false,
@@ -592,9 +579,9 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // CO-BROWSE
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildCoBrowse({Key? key}) {
     return Column(
@@ -602,9 +589,7 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
       children: [
         _buildUrlBar(),
         Expanded(
-          child: _sharedUrl != null
-              ? _buildUrlPreview(_sharedUrl!)
-              : _buildCoBrowsePlaceholder(),
+          child: _sharedUrl != null ? _buildUrlPreview(_sharedUrl!) : _buildCoBrowsePlaceholder(),
         ),
       ],
     );
@@ -618,7 +603,7 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
         borderRadius: BorderRadius.circular(13),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
           ),
         ],
@@ -650,16 +635,12 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
               margin: const EdgeInsets.all(5),
               padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                    colors: [Color(0xFF1E88E5), Color(0xFF1565C0)]),
+                gradient: const LinearGradient(colors: [Color(0xFF1E88E5), Color(0xFF1565C0)]),
                 borderRadius: BorderRadius.circular(9),
               ),
               child: const Text(
                 'Chia sẻ',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600),
+                style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
               ),
             ),
           ),
@@ -678,23 +659,20 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.07),
+              color: Colors.black.withValues(alpha: 0.07),
               blurRadius: 18,
               offset: const Offset(0, 4)),
         ],
       ),
       child: Column(
         children: [
-          // Header bar
+          
           Container(
             padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                  colors: type.gradient,
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight),
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(14)),
+                  colors: type.gradient, begin: Alignment.topLeft, end: Alignment.bottomRight),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
             ),
             child: Row(
               children: [
@@ -727,7 +705,7 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
             ),
           ),
 
-          // Preview body
+          
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -736,7 +714,7 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
                   width: 72,
                   height: 72,
                   decoration: BoxDecoration(
-                    color: type.gradient.first.withOpacity(0.10),
+                    color: type.gradient.first.withValues(alpha: 0.10),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Icon(type.icon, size: 36, color: type.gradient.first),
@@ -753,27 +731,25 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
                 const SizedBox(height: 6),
                 Text(
                   type.hint,
-                  style:
-                      const TextStyle(fontSize: 11, color: Color(0xFF9AA5B8)),
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF9AA5B8)),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 20),
 
-                // "Open together" CTA
+                
                 GestureDetector(
                   onTap: () {
                     HapticFeedback.lightImpact();
                     _openUrl(url);
                   },
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 22, vertical: 11),
+                    padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 11),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(colors: type.gradient),
                       borderRadius: BorderRadius.circular(11),
                       boxShadow: [
                         BoxShadow(
-                          color: type.gradient.first.withOpacity(0.35),
+                          color: type.gradient.first.withValues(alpha: 0.35),
                           blurRadius: 16,
                           offset: const Offset(0, 4),
                         ),
@@ -782,8 +758,7 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.open_in_new_rounded,
-                            color: Colors.white, size: 16),
+                        Icon(Icons.open_in_new_rounded, color: Colors.white, size: 16),
                         SizedBox(width: 7),
                         Text(
                           'Mở cùng nhau',
@@ -802,8 +777,7 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
                   const SizedBox(height: 12),
                   Text(
                     'Chia sẻ bởi ${_sharedBy == widget.currentUserId ? "bạn" : widget.peerName}',
-                    style:
-                        const TextStyle(color: Color(0xFFB0BAD0), fontSize: 10),
+                    style: const TextStyle(color: Color(0xFFB0BAD0), fontSize: 10),
                   ),
                 ],
               ],
@@ -854,7 +828,7 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 20),
-            // Quick-share chips
+            
             Wrap(
               spacing: 8,
               children: [
@@ -888,9 +862,9 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // URL TYPE DETECTION
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   _UrlType _detectUrlType(String url) {
     final u = url.toLowerCase();
@@ -945,9 +919,9 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SMALL REUSABLE WIDGETS
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _TabItem extends StatelessWidget {
   final int index;
@@ -980,7 +954,7 @@ class _TabItem extends StatelessWidget {
             boxShadow: isActive
                 ? [
                     BoxShadow(
-                        color: Colors.black.withOpacity(0.08),
+                        color: Colors.black.withValues(alpha: 0.08),
                         blurRadius: 8,
                         offset: const Offset(0, 2))
                   ]
@@ -1035,12 +1009,7 @@ class _ColorDot extends StatelessWidget {
             width: 2,
           ),
           boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                      color: color.withOpacity(0.5),
-                      blurRadius: 6,
-                      spreadRadius: 1)
-                ]
+              ? [BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 6, spreadRadius: 1)]
               : null,
         ),
       ),
@@ -1074,16 +1043,13 @@ class _ToolButton extends StatelessWidget {
           width: 28,
           height: 28,
           decoration: BoxDecoration(
-            color: active
-                ? const Color(0xFF1E88E5).withOpacity(0.12)
-                : Colors.transparent,
+            color: active ? const Color(0xFF1E88E5).withValues(alpha: 0.12) : Colors.transparent,
             borderRadius: BorderRadius.circular(7),
           ),
           child: Icon(
             icon,
             size: 17,
-            color: color ??
-                (active ? const Color(0xFF1E88E5) : const Color(0xFF7B8499)),
+            color: color ?? (active ? const Color(0xFF1E88E5) : const Color(0xFF7B8499)),
           ),
         ),
       ),
@@ -1109,9 +1075,9 @@ class _PreviewActionBtn extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.18),
+          color: Colors.white.withValues(alpha: 0.18),
           borderRadius: BorderRadius.circular(7),
-          border: Border.all(color: Colors.white.withOpacity(0.25), width: 1),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1120,9 +1086,7 @@ class _PreviewActionBtn extends StatelessWidget {
             const SizedBox(width: 4),
             Text(label,
                 style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600)),
+                    color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
           ],
         ),
       ),
@@ -1150,18 +1114,16 @@ class _QuickChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.10),
+          color: color.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withOpacity(0.3), width: 1),
+          border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 13, color: color),
             const SizedBox(width: 5),
-            Text(label,
-                style: TextStyle(
-                    color: color, fontSize: 11, fontWeight: FontWeight.w600)),
+            Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
           ],
         ),
       ),
@@ -1169,9 +1131,9 @@ class _QuickChip extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// URL TYPE METADATA
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _UrlType {
   final IconData icon;

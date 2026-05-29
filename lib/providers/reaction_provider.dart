@@ -2,8 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
 class ReactionSummary {
-  final Map<String, int> counts;    // emoji → count
-  final Map<String, bool> mine;     // emoji → true if current user reacted
+  final Map<String, int> counts; 
+  final Map<String, bool> mine; 
   final int total;
 
   const ReactionSummary({
@@ -12,8 +12,7 @@ class ReactionSummary {
     required this.total,
   });
 
-  factory ReactionSummary.empty() =>
-      const ReactionSummary(counts: {}, mine: {}, total: 0);
+  factory ReactionSummary.empty() => const ReactionSummary(counts: {}, mine: {}, total: 0);
 
   List<MapEntry<String, int>> get sortedEntries =>
       counts.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
@@ -24,28 +23,26 @@ class ReactionProvider {
 
   ReactionProvider({required this.firebaseFirestore});
 
-  // ─── Reference ────────────────────────────────────────────────────────────
+  
 
-  CollectionReference _reactionsRef(
-      String groupChatId, String messageId) =>
-      firebaseFirestore
-          .collection(FirestoreConstants.pathMessageCollection)
-          .doc(groupChatId)
-          .collection(groupChatId)
-          .doc(messageId)
-          .collection('reactions');
+  CollectionReference _reactionsRef(String groupChatId, String messageId) => firebaseFirestore
+      .collection(FirestoreConstants.pathMessageCollection)
+      .doc(groupChatId)
+      .collection(groupChatId)
+      .doc(messageId)
+      .collection('reactions');
 
-  // ─── Toggle ───────────────────────────────────────────────────────────────
+  
 
   Future<void> toggleReaction(
-      String groupChatId,
-      String messageId,
-      String userId,
-      String emoji,
-      ) async {
+    String groupChatId,
+    String messageId,
+    String userId,
+    String emoji,
+  ) async {
     final ref = _reactionsRef(groupChatId, messageId);
 
-    // One user → one reaction at a time. Check if same emoji exists.
+    
     final existing = await ref
         .where('userId', isEqualTo: userId)
         .where('emoji', isEqualTo: emoji)
@@ -53,17 +50,16 @@ class ReactionProvider {
         .get();
 
     if (existing.docs.isNotEmpty) {
-      // Same emoji → remove (toggle off)
+      
       await existing.docs.first.reference.delete();
     } else {
-      // Remove previous reaction from this user first
-      final previous =
-      await ref.where('userId', isEqualTo: userId).get();
+      
+      final previous = await ref.where('userId', isEqualTo: userId).get();
       final batch = firebaseFirestore.batch();
       for (final doc in previous.docs) {
         batch.delete(doc.reference);
       }
-      // Add new reaction
+      
       batch.set(ref.doc(), {
         'userId': userId,
         'emoji': emoji,
@@ -73,24 +69,24 @@ class ReactionProvider {
     }
   }
 
-  // ─── Add without toggle ───────────────────────────────────────────────────
+  
 
   Future<void> addReaction(
-      String groupChatId,
-      String messageId,
-      String userId,
-      String emoji,
-      ) async {
+    String groupChatId,
+    String messageId,
+    String userId,
+    String emoji,
+  ) async {
     final ref = _reactionsRef(groupChatId, messageId);
 
-    // Check duplicate
+    
     final existing = await ref
         .where('userId', isEqualTo: userId)
         .where('emoji', isEqualTo: emoji)
         .limit(1)
         .get();
 
-    if (existing.docs.isNotEmpty) return; // Already reacted with this emoji
+    if (existing.docs.isNotEmpty) return; 
 
     await ref.add({
       'userId': userId,
@@ -100,11 +96,11 @@ class ReactionProvider {
   }
 
   Future<void> removeReaction(
-      String groupChatId,
-      String messageId,
-      String userId,
-      String emoji,
-      ) async {
+    String groupChatId,
+    String messageId,
+    String userId,
+    String emoji,
+  ) async {
     final existing = await _reactionsRef(groupChatId, messageId)
         .where('userId', isEqualTo: userId)
         .where('emoji', isEqualTo: emoji)
@@ -117,13 +113,12 @@ class ReactionProvider {
   }
 
   Future<void> removeAllReactionsFromUser(
-      String groupChatId,
-      String messageId,
-      String userId,
-      ) async {
-    final userReactions = await _reactionsRef(groupChatId, messageId)
-        .where('userId', isEqualTo: userId)
-        .get();
+    String groupChatId,
+    String messageId,
+    String userId,
+  ) async {
+    final userReactions =
+        await _reactionsRef(groupChatId, messageId).where('userId', isEqualTo: userId).get();
 
     final batch = firebaseFirestore.batch();
     for (final doc in userReactions.docs) {
@@ -132,23 +127,20 @@ class ReactionProvider {
     await batch.commit();
   }
 
-  // ─── Streams ──────────────────────────────────────────────────────────────
+  
 
-  Stream<QuerySnapshot> getReactions(
-      String groupChatId, String messageId) {
+  Stream<QuerySnapshot> getReactions(String groupChatId, String messageId) {
     return _reactionsRef(groupChatId, messageId)
         .orderBy('timestamp', descending: false)
         .snapshots();
   }
 
   Stream<ReactionSummary> watchReactionSummary(
-      String groupChatId,
-      String messageId,
-      String currentUserId,
-      ) {
-    return _reactionsRef(groupChatId, messageId)
-        .snapshots()
-        .map((snapshot) {
+    String groupChatId,
+    String messageId,
+    String currentUserId,
+  ) {
+    return _reactionsRef(groupChatId, messageId).snapshots().map((snapshot) {
       final counts = <String, int>{};
       final mine = <String, bool>{};
 
@@ -169,32 +161,29 @@ class ReactionProvider {
     });
   }
 
-  // ─── One-time Fetch ───────────────────────────────────────────────────────
+  
 
   Future<Map<String, int>> getAggregatedReactions(
-      String groupChatId,
-      String messageId,
-      ) async {
-    final snapshot =
-    await _reactionsRef(groupChatId, messageId).get();
+    String groupChatId,
+    String messageId,
+  ) async {
+    final snapshot = await _reactionsRef(groupChatId, messageId).get();
 
     final counts = <String, int>{};
     for (final doc in snapshot.docs) {
-      final emoji =
-          (doc.data() as Map<String, dynamic>)['emoji'] as String? ?? '';
+      final emoji = (doc.data() as Map<String, dynamic>)['emoji'] as String? ?? '';
       counts[emoji] = (counts[emoji] ?? 0) + 1;
     }
     return counts;
   }
 
   Future<Map<String, bool>> getUserReactions(
-      String groupChatId,
-      String messageId,
-      String userId,
-      ) async {
-    final snapshot = await _reactionsRef(groupChatId, messageId)
-        .where('userId', isEqualTo: userId)
-        .get();
+    String groupChatId,
+    String messageId,
+    String userId,
+  ) async {
+    final snapshot =
+        await _reactionsRef(groupChatId, messageId).where('userId', isEqualTo: userId).get();
 
     return {
       for (final doc in snapshot.docs)
@@ -203,12 +192,11 @@ class ReactionProvider {
   }
 
   Future<ReactionSummary> getReactionSummary(
-      String groupChatId,
-      String messageId,
-      String currentUserId,
-      ) async {
-    final snapshot =
-    await _reactionsRef(groupChatId, messageId).get();
+    String groupChatId,
+    String messageId,
+    String currentUserId,
+  ) async {
+    final snapshot = await _reactionsRef(groupChatId, messageId).get();
 
     final counts = <String, int>{};
     final mine = <String, bool>{};

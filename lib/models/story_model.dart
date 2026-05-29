@@ -2,17 +2,17 @@ import 'dart:ui' show Color;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Enums
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 enum StoryType { image, text, video }
 
 enum StoryPrivacy { everyone, friends }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// StoryView
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class StoryView {
   final String userId;
@@ -42,9 +42,9 @@ class StoryView {
       };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// StoryReaction
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class StoryReaction {
   final String userId;
@@ -78,9 +78,9 @@ class StoryReaction {
       };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Story
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class Story {
   final String id;
@@ -127,7 +127,7 @@ class Story {
     this.videoDuration,
   });
 
-  // ── Computed properties ──────────────────────────────────────────────────
+  
 
   bool get isExpired => DateTime.now().isAfter(expiresAt);
   bool get isActive => !isExpired && !isDeleted;
@@ -138,7 +138,7 @@ class Story {
     return r.isNegative ? Duration.zero : r;
   }
 
-  /// Duration each story segment is shown in the viewer.
+  
   Duration get displayDuration {
     if (type == StoryType.video && videoDuration != null) {
       return videoDuration!.clamp(
@@ -159,7 +159,7 @@ class Story {
     }
   }
 
-  // ── Serialization ────────────────────────────────────────────────────────
+  
 
   Map<String, dynamic> toJson() => {
         'userId': userId,
@@ -170,8 +170,8 @@ class Story {
         'thumbnailUrl': thumbnailUrl,
         'textContent': textContent,
         'caption': caption,
-        'backgroundColor': backgroundColor?.value,
-        'textColor': textColor?.value,
+        'backgroundColor': backgroundColor?.toARGB32(),
+        'textColor': textColor?.toARGB32(),
         'fontFamily': fontFamily,
         'fontSize': fontSize,
         'createdAt': createdAt.millisecondsSinceEpoch.toString(),
@@ -180,8 +180,7 @@ class Story {
         'reactions': reactions.map((r) => r.toJson()).toList(),
         'privacy': privacy.index,
         'isDeleted': isDeleted,
-        if (videoDuration != null)
-          'videoDurationMs': videoDuration!.inMilliseconds,
+        if (videoDuration != null) 'videoDurationMs': videoDuration!.inMilliseconds,
       };
 
   factory Story.fromDocument(DocumentSnapshot doc) {
@@ -231,8 +230,7 @@ class Story {
       userId: data['userId']?.toString() ?? '',
       userName: data['userName']?.toString() ?? '',
       userPhotoUrl: data['userPhotoUrl']?.toString() ?? '',
-      type:
-          StoryType.values[safeIdx(data['type'], StoryType.values.length - 1)],
+      type: StoryType.values[safeIdx(data['type'], StoryType.values.length - 1)],
       mediaUrl: data['mediaUrl']?.toString(),
       thumbnailUrl: data['thumbnailUrl']?.toString(),
       textContent: data['textContent']?.toString(),
@@ -245,8 +243,7 @@ class Story {
       expiresAt: _parseDate(data['expiresAt']),
       views: views,
       reactions: reactions,
-      privacy: StoryPrivacy
-          .values[safeIdx(data['privacy'], StoryPrivacy.values.length - 1)],
+      privacy: StoryPrivacy.values[safeIdx(data['privacy'], StoryPrivacy.values.length - 1)],
       isDeleted: data['isDeleted'] == true,
       videoDuration: data['videoDurationMs'] != null
           ? Duration(milliseconds: data['videoDurationMs'] as int)
@@ -284,9 +281,9 @@ class Story {
       );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// UserStories
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class UserStories {
   final String userId;
@@ -309,19 +306,16 @@ class UserStories {
     return active;
   }
 
-  Story? get latestStory =>
-      activeStories.isNotEmpty ? activeStories.last : null;
+  Story? get latestStory => activeStories.isNotEmpty ? activeStories.last : null;
 
-  bool hasUnseenStoriesBy(String viewerId) =>
-      activeStories.any((s) => !s.isViewedBy(viewerId));
+  bool hasUnseenStoriesBy(String viewerId) => activeStories.any((s) => !s.isViewedBy(viewerId));
 
-  int unseenCountBy(String viewerId) =>
-      activeStories.where((s) => !s.isViewedBy(viewerId)).length;
+  int unseenCountBy(String viewerId) => activeStories.where((s) => !s.isViewedBy(viewerId)).length;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 DateTime _parseDate(dynamic value) {
   if (value == null) return DateTime.now();

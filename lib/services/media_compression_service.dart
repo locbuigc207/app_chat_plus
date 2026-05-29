@@ -2,14 +2,15 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:video_compress/video_compress.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MediaCompressionConfig
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class MediaCompressionConfig {
   final int imageQuality;
@@ -53,9 +54,9 @@ class MediaCompressionConfig {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CompressionResult
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class CompressionResult {
   final File file;
@@ -74,8 +75,7 @@ class CompressionResult {
     required this.wasCompressed,
   });
 
-  String get summary =>
-      '${_fmtSize(originalSizeBytes)} → ${_fmtSize(compressedSizeBytes)} '
+  String get summary => '${_fmtSize(originalSizeBytes)} → ${_fmtSize(compressedSizeBytes)} '
       '(−${(compressionRatio * 100).round()}%) in ${elapsed.inMilliseconds}ms';
 
   static String _fmtSize(int bytes) {
@@ -85,9 +85,9 @@ class CompressionResult {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MediaCompressionException
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class MediaCompressionException implements Exception {
   final String message;
@@ -99,46 +99,45 @@ class MediaCompressionException implements Exception {
       '${cause != null ? ' (caused by: $cause)' : ''}';
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MediaCompressionService
-// ─────────────────────────────────────────────────────────────────────────────
-//
-// ObservableBuilder<T> của video_compress KHÔNG phải là Dart Stream.
-// API đúng:
-//   Subscription sub = VideoCompress.compressProgress$.subscribe((p) { ... });
-//   sub.unsubscribe();
-//
-// Để expose dưới dạng Stream<double> ra ngoài, ta dùng StreamController làm bridge.
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
+
 
 class MediaCompressionService {
   MediaCompressionService._internal();
-  static final MediaCompressionService _instance =
-      MediaCompressionService._internal();
+  static final MediaCompressionService _instance = MediaCompressionService._internal();
   factory MediaCompressionService() => _instance;
 
-  // Internal Subscription từ video_compress (kiểu Subscription, không phải StreamSubscription)
+  
   Subscription? _progressSub;
 
-  // StreamController bridge: chuyển ObservableBuilder → Stream<double> cho caller
+  
   StreamController<double>? _progressController;
 
-  // ── Public stream (0.0 → 1.0) ────────────────────────────────────────────
-  //
-  // Mỗi lần gọi getter này sẽ trả về stream hiện tại (hoặc empty nếu chưa nén).
-  // Caller nên lắng nghe trước khi gọi compressVideo().
-  //
+  
+  
+  
+  
+  
   Stream<double> get compressionProgressStream =>
       _progressController?.stream ?? const Stream.empty();
 
-  // ── Khởi tạo bridge khi bắt đầu nén video ────────────────────────────────
+  
   void _startProgressBridge(void Function(double)? externalCallback) {
-    _stopProgressBridge(); // đảm bảo không bị leak
+    _stopProgressBridge(); 
 
     _progressController = StreamController<double>.broadcast();
 
     _progressSub = VideoCompress.compressProgress$.subscribe((progress) {
-      // progress từ video_compress là num (thường int hoặc double, 0–100)
+      
       final normalized = ((progress as num) / 100.0).clamp(0.0, 1.0);
       if (!(_progressController?.isClosed ?? true)) {
         _progressController?.add(normalized);
@@ -147,7 +146,7 @@ class MediaCompressionService {
     });
   }
 
-  // ── Dọn bridge sau khi nén xong / huỷ ────────────────────────────────────
+  
   void _stopProgressBridge() {
     _progressSub?.unsubscribe();
     _progressSub = null;
@@ -155,9 +154,9 @@ class MediaCompressionService {
     _progressController = null;
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // 1. NÉN ẢNH
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   Future<CompressionResult> compressImage(
     File file, {
@@ -199,8 +198,7 @@ class MediaCompressionService {
       );
 
       if (result == null) {
-        throw MediaCompressionException(
-            'compressAndGetFile trả về null cho ${file.path}');
+        throw MediaCompressionException('compressAndGetFile trả về null cho ${file.path}');
       }
 
       final compressed = File(result.path);
@@ -247,7 +245,7 @@ class MediaCompressionService {
     }
   }
 
-  /// Shortcut trả về [File] (backward-compatible).
+  
   Future<File> compressImageFile(
     File file, {
     MediaCompressionConfig config = MediaCompressionConfig.chat,
@@ -256,9 +254,9 @@ class MediaCompressionService {
     return result.file;
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // 2. NÉN VIDEO
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   Future<CompressionResult> compressVideo(
     File file, {
@@ -280,7 +278,7 @@ class MediaCompressionService {
       );
     }
 
-    // Khởi tạo bridge ObservableBuilder → Stream + callback
+    
     _startProgressBridge(onProgress);
 
     try {
@@ -345,20 +343,19 @@ class MediaCompressionService {
     }
   }
 
-  /// Shortcut trả về [File] (backward-compatible).
+  
   Future<File> compressVideoFile(
     File file, {
     MediaCompressionConfig config = MediaCompressionConfig.chat,
     void Function(double)? onProgress,
   }) async {
-    final result =
-        await compressVideo(file, config: config, onProgress: onProgress);
+    final result = await compressVideo(file, config: config, onProgress: onProgress);
     return result.file;
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // 3. THUMBNAIL VIDEO
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   Future<File?> getVideoThumbnail(
     File file, {
@@ -388,9 +385,9 @@ class MediaCompressionService {
     }
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // 4. NÉN HÀNG LOẠT
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   Future<List<CompressionResult>> compressImageBatch(
     List<File> files, {
@@ -402,8 +399,7 @@ class MediaCompressionService {
     int done = 0;
 
     for (int i = 0; i < files.length; i += maxConcurrent) {
-      final batch =
-          files.sublist(i, (i + maxConcurrent).clamp(0, files.length));
+      final batch = files.sublist(i, (i + maxConcurrent).clamp(0, files.length));
       final batchResults = await Future.wait(
         batch.map((f) => compressImage(f, config: config)),
       );
@@ -414,9 +410,9 @@ class MediaCompressionService {
     return results;
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // 5. KIỂM TRA LOẠI FILE
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   static bool isImageFile(String path) {
     final ext = p.extension(path).toLowerCase().replaceAll('.', '');
@@ -428,9 +424,9 @@ class MediaCompressionService {
     return {'mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v', '3gp'}.contains(ext);
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // 6. HUỶ & DỌN CACHE
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   Future<void> cancelCompression() async {
     _stopProgressBridge();
@@ -452,9 +448,7 @@ class MediaCompressionService {
       for (final entity in entities) {
         if (entity is File) {
           final name = p.basename(entity.path);
-          if (name.startsWith('cimg_') ||
-              name.startsWith('temp_img_') ||
-              name.contains('_thumb')) {
+          if (name.startsWith('cimg_') || name.startsWith('temp_img_') || name.contains('_thumb')) {
             await entity.delete().catchError((_) {});
             deleted++;
           }
@@ -483,9 +477,9 @@ class MediaCompressionService {
     return total;
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // PRIVATE HELPERS
-  // ══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   String _resolveImageExt(String path) {
     final ext = p.extension(path).toLowerCase().replaceAll('.', '');

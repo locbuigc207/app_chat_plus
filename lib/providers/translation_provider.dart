@@ -1,11 +1,12 @@
 import 'dart:async';
-import 'dart:collection';
+
+import 'package:flutter/foundation.dart';
 
 import 'package:translator/translator.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Model
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class TranslationResult {
   final String originalText;
@@ -25,52 +26,51 @@ class TranslationResult {
   });
 
   @override
-  String toString() =>
-      'TranslationResult($sourceLanguage→$targetLanguage: "$translatedText")';
+  String toString() => 'TranslationResult($sourceLanguage→$targetLanguage: "$translatedText")';
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Provider
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class TranslationProvider {
   GoogleTranslator? _translator;
   bool _isInitialized = false;
 
-  /// In-memory LRU cache: key = '$sourceLang|$targetLang|$text'
-  final _cache = LinkedHashMap<String, TranslationResult>();
+  
+  final _cache = <String, TranslationResult>{};
   static const int _maxCacheSize = 200;
 
-  /// Ongoing translations to avoid duplicate concurrent requests.
+  
   final _pending = <String, Future<TranslationResult?>>{};
 
   TranslationProvider() {
     _initialize();
   }
 
-  // ───────────────────────────────────────────────
-  // Init
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   void _initialize() {
     try {
       _translator = GoogleTranslator();
       _isInitialized = true;
-      print('✅ TranslationProvider initialized');
+      debugPrint('✅ TranslationProvider initialized');
     } catch (e) {
-      print('❌ Failed to initialize translator: $e');
+      debugPrint('❌ Failed to initialize translator: $e');
       _isInitialized = false;
     }
   }
 
   bool get isAvailable => _isInitialized;
 
-  // ───────────────────────────────────────────────
-  // Core translate
-  // ───────────────────────────────────────────────
+  
+  
+  
 
-  /// Translate [text] to [targetLanguage].
-  /// Returns null on error. Falls back to original text only if explicitly requested.
+  
+  
   Future<TranslationResult?> translate({
     required String text,
     required String targetLanguage,
@@ -78,25 +78,25 @@ class TranslationProvider {
   }) async {
     if (text.trim().isEmpty) return null;
     if (!_isInitialized || _translator == null) {
-      print('⚠️ Translator not initialized');
+      debugPrint('⚠️ Translator not initialized');
       return null;
     }
     if (!languages.containsKey(targetLanguage)) {
-      print('⚠️ Invalid target language: $targetLanguage');
+      debugPrint('⚠️ Invalid target language: $targetLanguage');
       return null;
     }
 
     final cacheKey = '$sourceLanguage|$targetLanguage|${text.trim()}';
 
-    // Cache hit
+    
     if (_cache.containsKey(cacheKey)) {
       final cached = _cache[cacheKey]!;
       _cache.remove(cacheKey);
-      _cache[cacheKey] = cached; // move to end (LRU)
+      _cache[cacheKey] = cached; 
       return cached.copyWith(fromCache: true);
     }
 
-    // De-duplicate concurrent requests for same text
+    
     if (_pending.containsKey(cacheKey)) {
       return _pending[cacheKey];
     }
@@ -124,7 +124,7 @@ class TranslationProvider {
   }) async {
     try {
       final preview = text.length > 50 ? '${text.substring(0, 50)}…' : text;
-      print('🌐 Translating → $targetLanguage: "$preview"');
+      debugPrint('🌐 Translating → $targetLanguage: "$preview"');
 
       final translation = await _translator!
           .translate(text, from: sourceLanguage, to: targetLanguage)
@@ -144,29 +144,29 @@ class TranslationProvider {
       );
 
       _cacheResult(cacheKey, result);
-      print('✅ Translation done ($detectedSource→$targetLanguage)');
+      debugPrint('✅ Translation done ($detectedSource→$targetLanguage)');
       return result;
     } on TimeoutException {
-      print('❌ Translation timeout');
+      debugPrint('❌ Translation timeout');
       return null;
     } catch (e) {
-      print('❌ Translation error: $e');
+      debugPrint('❌ Translation error: $e');
       return null;
     }
   }
 
   void _cacheResult(String key, TranslationResult result) {
     if (_cache.length >= _maxCacheSize) {
-      _cache.remove(_cache.keys.first); // evict oldest
+      _cache.remove(_cache.keys.first); 
     }
     _cache[key] = result;
   }
 
-  // ───────────────────────────────────────────────
-  // Convenience wrappers
-  // ───────────────────────────────────────────────
+  
+  
+  
 
-  /// Translate and return only the translated string (or null on failure).
+  
   Future<String?> translateText({
     required String text,
     required String targetLanguage,
@@ -180,7 +180,7 @@ class TranslationProvider {
     return result?.translatedText;
   }
 
-  /// Retry up to [maxRetries] times with exponential back-off.
+  
   Future<TranslationResult?> translateWithRetry({
     required String text,
     required String targetLanguage,
@@ -196,15 +196,14 @@ class TranslationProvider {
       if (result != null) return result;
       if (attempt < maxRetries) {
         final delay = Duration(milliseconds: 400 * (1 << attempt));
-        print(
-            '⏳ Retry ${attempt + 1}/$maxRetries in ${delay.inMilliseconds}ms…');
+        debugPrint('⏳ Retry ${attempt + 1}/$maxRetries in ${delay.inMilliseconds}ms…');
         await Future.delayed(delay);
       }
     }
     return null;
   }
 
-  /// Translate a list of texts concurrently (honours [concurrency] limit).
+  
   Future<List<TranslationResult?>> translateBatch({
     required List<String> texts,
     required String targetLanguage,
@@ -230,11 +229,11 @@ class TranslationProvider {
     return results;
   }
 
-  // ───────────────────────────────────────────────
-  // Language detection
-  // ───────────────────────────────────────────────
+  
+  
+  
 
-  /// Detect the language of [text]. Returns the ISO language code or null.
+  
   Future<String?> detectLanguage(String text) async {
     if (!_isInitialized || _translator == null || text.trim().isEmpty) {
       return null;
@@ -244,35 +243,35 @@ class TranslationProvider {
           .translate(text, from: 'auto', to: 'en')
           .timeout(const Duration(seconds: 10));
       final code = detection.sourceLanguage.code;
-      print('✅ Detected language: $code');
+      debugPrint('✅ Detected language: $code');
       return code.isNotEmpty ? code : null;
     } catch (e) {
-      print('❌ Language detection error: $e');
+      debugPrint('❌ Language detection error: $e');
       return null;
     }
   }
 
-  /// Returns a human-readable language name for [code], or the code itself.
+  
   bool isSameLanguage(String textLanguage, String targetLanguage) {
     final tl = textLanguage.toLowerCase().split('-').first;
     final target = targetLanguage.toLowerCase().split('-').first;
     return tl == target || (tl == 'en' && target == 'en');
   }
 
-  // ───────────────────────────────────────────────
-  // Cache management
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   void clearCache() {
     _cache.clear();
-    print('✅ Translation cache cleared');
+    debugPrint('✅ Translation cache cleared');
   }
 
   int get cacheSize => _cache.length;
 
-  // ───────────────────────────────────────────────
-  // Language directory
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   static const Map<String, String> languages = {
     'en': 'English',
@@ -363,9 +362,9 @@ class TranslationProvider {
       ];
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Extension
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 extension TranslationResultCopy on TranslationResult {
   TranslationResult copyWith({

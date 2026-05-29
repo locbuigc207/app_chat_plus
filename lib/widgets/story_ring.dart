@@ -1,11 +1,12 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+
 import 'package:flutter_chat_demo/models/story_model.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// StoryRing – animated gradient ring with per-segment arcs
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class StoryRing extends StatefulWidget {
   final Widget child;
@@ -13,11 +14,14 @@ class StoryRing extends StatefulWidget {
   final bool isCurrentUser;
   final int totalSegments;
   final int seenSegments;
-  /// Stroke width of the ring.
+
+  
   final double ringWidth;
-  /// Gap between ring and child.
+
+  
   final double gap;
-  /// Gap between arc segments when totalSegments > 1.
+
+  
   final double segmentGap;
 
   const StoryRing({
@@ -36,8 +40,7 @@ class StoryRing extends StatefulWidget {
   State<StoryRing> createState() => _StoryRingState();
 }
 
-class _StoryRingState extends State<StoryRing>
-    with SingleTickerProviderStateMixin {
+class _StoryRingState extends State<StoryRing> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
 
   @override
@@ -83,9 +86,9 @@ class _StoryRingState extends State<StoryRing>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Painter
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _SegmentedRingPainter extends CustomPainter {
   final double progress;
@@ -121,8 +124,7 @@ class _SegmentedRingPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final half = ringWidth / 2;
-    final rect =
-    Rect.fromLTWH(half, half, size.width - ringWidth, size.height - ringWidth);
+    final rect = Rect.fromLTWH(half, half, size.width - ringWidth, size.height - ringWidth);
 
     final paint = Paint()
       ..style = PaintingStyle.stroke
@@ -130,7 +132,7 @@ class _SegmentedRingPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..isAntiAlias = true;
 
-    // ── Single solid arc ──────────────────────────────────────────────────
+    
     if (totalSegments <= 1) {
       if (isCurrentUser) {
         paint.color = _currentUserColor;
@@ -138,12 +140,12 @@ class _SegmentedRingPainter extends CustomPainter {
         return;
       }
       if (!hasUnseen) {
-        paint.color = _seenColor.withOpacity(0.45);
+        paint.color = _seenColor.withValues(alpha: 0.45);
         canvas.drawOval(rect, paint);
         return;
       }
 
-      // Animated gradient ring
+      
       paint.shader = SweepGradient(
         startAngle: -math.pi / 2 + progress * 2 * math.pi,
         endAngle: 3 * math.pi / 2 + progress * 2 * math.pi,
@@ -153,26 +155,25 @@ class _SegmentedRingPainter extends CustomPainter {
       return;
     }
 
-    // ── Segmented arcs ────────────────────────────────────────────────────
+    
     final total = totalSegments;
     final gapRad = segmentGapDeg * math.pi / 180;
     final segSweep = (2 * math.pi - gapRad * total) / total;
 
     for (int i = 0; i < total; i++) {
-      final startAngle =
-          -math.pi / 2 + i * (segSweep + gapRad) + gapRad / 2;
+      final startAngle = -math.pi / 2 + i * (segSweep + gapRad) + gapRad / 2;
       final isSeen = i < seenSegments;
 
       if (isSeen) {
         paint
           ..shader = null
-          ..color = _seenColor.withOpacity(0.45);
+          ..color = _seenColor.withValues(alpha: 0.45);
       } else if (isCurrentUser) {
         paint
           ..shader = null
           ..color = _currentUserColor;
       } else {
-        // Gradient sweep for unseen segments
+        
         paint.shader = SweepGradient(
           startAngle: -math.pi / 2 + progress * 2 * math.pi,
           endAngle: 3 * math.pi / 2 + progress * 2 * math.pi,
@@ -187,15 +188,15 @@ class _SegmentedRingPainter extends CustomPainter {
   @override
   bool shouldRepaint(_SegmentedRingPainter old) =>
       old.progress != progress ||
-          old.hasUnseen != hasUnseen ||
-          old.isCurrentUser != isCurrentUser ||
-          old.seenSegments != seenSegments ||
-          old.totalSegments != totalSegments;
+      old.hasUnseen != hasUnseen ||
+      old.isCurrentUser != isCurrentUser ||
+      old.seenSegments != seenSegments ||
+      old.totalSegments != totalSegments;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// StoriesBar – horizontal scrollable story thumbnails
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class StoriesBar extends StatelessWidget {
   final List<UserStories> storiesList;
@@ -264,9 +265,9 @@ class StoriesBar extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// My status tile
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _MyStatusTile extends StatelessWidget {
   final UserStories? myStories;
@@ -356,9 +357,9 @@ class _MyStatusTile extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Friend tile
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _FriendTile extends StatelessWidget {
   final UserStories userStories;
@@ -418,9 +419,9 @@ class _FriendTile extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Avatar image helper
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _AvatarImage extends StatelessWidget {
   final String photoUrl;

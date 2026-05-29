@@ -1,6 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 
 import '../constants/constants.dart';
@@ -9,9 +10,9 @@ import '../providers/providers.dart';
 import 'chat_page.dart';
 import 'group_chat_page.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ArchivedChatsPage
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class ArchivedChatsPage extends StatefulWidget {
   const ArchivedChatsPage({super.key});
@@ -20,8 +21,7 @@ class ArchivedChatsPage extends StatefulWidget {
   State<ArchivedChatsPage> createState() => _ArchivedChatsPageState();
 }
 
-class _ArchivedChatsPageState extends State<ArchivedChatsPage>
-    with SingleTickerProviderStateMixin {
+class _ArchivedChatsPageState extends State<ArchivedChatsPage> with SingleTickerProviderStateMixin {
   late final AnimationController _entryCtrl;
   late final Animation<double> _fadeAnim;
 
@@ -50,8 +50,7 @@ class _ArchivedChatsPageState extends State<ArchivedChatsPage>
     final currentUserId = authProvider.userFirebaseId ?? '';
 
     return Scaffold(
-      backgroundColor:
-          isDark ? ColorConstants.backgroundDark : const Color(0xFFF5F7FF),
+      backgroundColor: isDark ? ColorConstants.backgroundDark : const Color(0xFFF5F7FF),
       body: NestedScrollView(
         headerSliverBuilder: (ctx, innerScrolled) => [
           SliverAppBar(
@@ -60,8 +59,7 @@ class _ArchivedChatsPageState extends State<ArchivedChatsPage>
             pinned: true,
             elevation: 0,
             backgroundColor: Colors.transparent,
-            systemOverlayStyle:
-                isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+            systemOverlayStyle: isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
             leading: IconButton(
               icon: Icon(
                 Icons.arrow_back_ios_new_rounded,
@@ -81,11 +79,11 @@ class _ArchivedChatsPageState extends State<ArchivedChatsPage>
                     height: 36,
                     margin: const EdgeInsets.only(right: 12, bottom: 2),
                     decoration: BoxDecoration(
-                      color: ColorConstants.primaryColor.withOpacity(0.12),
+                      color: ColorConstants.primaryColor.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(Icons.archive_rounded,
-                        color: ColorConstants.primaryColor, size: 18),
+                    child:
+                        Icon(Icons.archive_rounded, color: ColorConstants.primaryColor, size: 18),
                   ),
                   Text(
                     'Đã lưu trữ',
@@ -104,8 +102,8 @@ class _ArchivedChatsPageState extends State<ArchivedChatsPage>
                   border: Border(
                     bottom: BorderSide(
                       color: isDark
-                          ? Colors.white.withOpacity(0.06)
-                          : Colors.black.withOpacity(0.06),
+                          ? Colors.white.withValues(alpha: 0.06)
+                          : Colors.black.withValues(alpha: 0.06),
                     ),
                   ),
                 ),
@@ -114,8 +112,7 @@ class _ArchivedChatsPageState extends State<ArchivedChatsPage>
           ),
         ],
         body: StreamBuilder<List<QueryDocumentSnapshot>>(
-          stream:
-              conversationProvider.getConversationsWithPinned(currentUserId),
+          stream: conversationProvider.getConversationsWithPinned(currentUserId),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const _LoadingShimmer();
@@ -141,8 +138,7 @@ class _ArchivedChatsPageState extends State<ArchivedChatsPage>
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                 itemCount: archived.length,
                 itemBuilder: (context, index) {
-                  final conversation =
-                      Conversation.fromDocument(archived[index]);
+                  final conversation = Conversation.fromDocument(archived[index]);
 
                   if (conversation.isGroup) {
                     return _GroupArchiveTile(
@@ -171,9 +167,9 @@ class _ArchivedChatsPageState extends State<ArchivedChatsPage>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Tile for direct (1:1) conversations
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _DirectArchiveTile extends StatelessWidget {
   final Conversation conversation;
@@ -192,8 +188,8 @@ class _DirectArchiveTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final otherUserId = conversation.participants
-        .firstWhere((id) => id != currentUserId, orElse: () => '');
+    final otherUserId =
+        conversation.participants.firstWhere((id) => id != currentUserId, orElse: () => '');
     if (otherUserId.isEmpty) return const SizedBox.shrink();
 
     return FutureBuilder<DocumentSnapshot>(
@@ -208,8 +204,7 @@ class _DirectArchiveTile extends StatelessWidget {
         return _ArchiveTileCard(
           name: user.nickname,
           photoUrl: user.photoUrl,
-          subtitle:
-              user.aboutMe.isNotEmpty ? user.aboutMe : 'Nhắn tin trực tiếp',
+          subtitle: user.aboutMe.isNotEmpty ? user.aboutMe : 'Nhắn tin trực tiếp',
           isDark: isDark,
           index: index,
           onTap: () => Navigator.push(
@@ -236,9 +231,9 @@ class _DirectArchiveTile extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Tile for group conversations
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _GroupArchiveTile extends StatelessWidget {
   final Conversation conversation;
@@ -291,9 +286,9 @@ class _GroupArchiveTile extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Shared card tile
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _ArchiveTileCard extends StatefulWidget {
   final String name;
@@ -320,8 +315,7 @@ class _ArchiveTileCard extends StatefulWidget {
   State<_ArchiveTileCard> createState() => _ArchiveTileCardState();
 }
 
-class _ArchiveTileCardState extends State<_ArchiveTileCard>
-    with SingleTickerProviderStateMixin {
+class _ArchiveTileCardState extends State<_ArchiveTileCard> with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<Offset> _slide;
   late final Animation<double> _fade;
@@ -336,8 +330,8 @@ class _ArchiveTileCardState extends State<_ArchiveTileCard>
     _slide = Tween<Offset>(begin: const Offset(0, 0.18), end: Offset.zero)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
     _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
-    Future.delayed(Duration(milliseconds: widget.index * 60),
-        () => mounted ? _ctrl.forward() : null);
+    Future.delayed(
+        Duration(milliseconds: widget.index * 60), () => mounted ? _ctrl.forward() : null);
   }
 
   @override
@@ -359,22 +353,20 @@ class _ArchiveTileCardState extends State<_ArchiveTileCard>
             child: InkWell(
               onTap: widget.onTap,
               borderRadius: BorderRadius.circular(16),
-              splashColor: ColorConstants.primaryColor.withOpacity(0.06),
+              splashColor: ColorConstants.primaryColor.withValues(alpha: 0.06),
               child: Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color:
-                      widget.isDark ? ColorConstants.surfaceDark : Colors.white,
+                  color: widget.isDark ? ColorConstants.surfaceDark : Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: widget.isDark
-                        ? Colors.white.withOpacity(0.07)
-                        : Colors.black.withOpacity(0.05),
+                        ? Colors.white.withValues(alpha: 0.07)
+                        : Colors.black.withValues(alpha: 0.05),
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color:
-                          Colors.black.withOpacity(widget.isDark ? 0.2 : 0.04),
+                      color: Colors.black.withValues(alpha: widget.isDark ? 0.2 : 0.04),
                       blurRadius: 12,
                       offset: const Offset(0, 3),
                     ),
@@ -382,7 +374,7 @@ class _ArchiveTileCardState extends State<_ArchiveTileCard>
                 ),
                 child: Row(
                   children: [
-                    // Avatar
+                    
                     _ArchiveAvatar(
                       url: widget.photoUrl,
                       name: widget.name,
@@ -390,7 +382,7 @@ class _ArchiveTileCardState extends State<_ArchiveTileCard>
                     ),
                     const SizedBox(width: 14),
 
-                    // Text
+                    
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -398,9 +390,7 @@ class _ArchiveTileCardState extends State<_ArchiveTileCard>
                           Text(
                             widget.name,
                             style: TextStyle(
-                              color: widget.isDark
-                                  ? Colors.white
-                                  : const Color(0xFF1A1D2E),
+                              color: widget.isDark ? Colors.white : const Color(0xFF1A1D2E),
                               fontWeight: FontWeight.w600,
                               fontSize: 15,
                               letterSpacing: -0.2,
@@ -412,10 +402,9 @@ class _ArchiveTileCardState extends State<_ArchiveTileCard>
                           Row(
                             children: [
                               Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 2),
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: Colors.orange.withOpacity(0.12),
+                                  color: Colors.orange.withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: const Text(
@@ -432,9 +421,7 @@ class _ArchiveTileCardState extends State<_ArchiveTileCard>
                                 child: Text(
                                   widget.subtitle,
                                   style: TextStyle(
-                                    color: widget.isDark
-                                        ? Colors.white38
-                                        : Colors.black45,
+                                    color: widget.isDark ? Colors.white38 : Colors.black45,
                                     fontSize: 12,
                                   ),
                                   maxLines: 1,
@@ -447,7 +434,7 @@ class _ArchiveTileCardState extends State<_ArchiveTileCard>
                       ),
                     ),
 
-                    // Unarchive button
+                    
                     _UnarchiveBtn(onTap: widget.onUnarchive),
                   ],
                 ),
@@ -460,23 +447,20 @@ class _ArchiveTileCardState extends State<_ArchiveTileCard>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sub-widgets
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _ArchiveAvatar extends StatelessWidget {
   final String url;
   final String name;
   final bool isGroup;
 
-  const _ArchiveAvatar(
-      {required this.url, required this.name, this.isGroup = false});
+  const _ArchiveAvatar({required this.url, required this.name, this.isGroup = false});
 
   @override
   Widget build(BuildContext context) {
-    final colorIndex = name.isEmpty
-        ? 0
-        : name.codeUnitAt(0) % ColorConstants.avatarColors.length;
+    final colorIndex = name.isEmpty ? 0 : name.codeUnitAt(0) % ColorConstants.avatarColors.length;
     final avatarColor = ColorConstants.avatarColors[colorIndex];
 
     return Container(
@@ -484,14 +468,13 @@ class _ArchiveAvatar extends StatelessWidget {
       height: 54,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: avatarColor.withOpacity(0.12),
-        border: Border.all(color: avatarColor.withOpacity(0.25), width: 1.5),
+        color: avatarColor.withValues(alpha: 0.12),
+        border: Border.all(color: avatarColor.withValues(alpha: 0.25), width: 1.5),
       ),
       child: ClipOval(
         child: url.isNotEmpty
             ? Image.network(url,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _placeholder(avatarColor))
+                fit: BoxFit.cover, errorBuilder: (_, __, ___) => _placeholder(avatarColor))
             : _placeholder(avatarColor),
       ),
     );
@@ -500,12 +483,12 @@ class _ArchiveAvatar extends StatelessWidget {
   Widget _placeholder(Color color) {
     if (isGroup) {
       return Container(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         child: Icon(Icons.group_rounded, color: color, size: 26),
       );
     }
     return Container(
-      color: color.withOpacity(0.1),
+      color: color.withValues(alpha: 0.1),
       child: Center(
         child: Text(
           name.isNotEmpty ? name[0].toUpperCase() : '?',
@@ -528,16 +511,14 @@ class _UnarchiveBtn extends StatefulWidget {
   State<_UnarchiveBtn> createState() => _UnarchiveBtnState();
 }
 
-class _UnarchiveBtnState extends State<_UnarchiveBtn>
-    with SingleTickerProviderStateMixin {
+class _UnarchiveBtnState extends State<_UnarchiveBtn> with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 80));
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 80));
     _scale = Tween<double>(begin: 1.0, end: 0.84)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
   }
@@ -565,12 +546,11 @@ class _UnarchiveBtnState extends State<_UnarchiveBtn>
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: Colors.orange.withOpacity(0.1),
+              color: Colors.orange.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.orange.withOpacity(0.25)),
+              border: Border.all(color: Colors.orange.withValues(alpha: 0.25)),
             ),
-            child: const Icon(Icons.unarchive_rounded,
-                color: Colors.orange, size: 20),
+            child: const Icon(Icons.unarchive_rounded, color: Colors.orange, size: 20),
           ),
         ),
       ),
@@ -578,9 +558,9 @@ class _UnarchiveBtnState extends State<_UnarchiveBtn>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// State widgets
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _EmptyArchiveState extends StatelessWidget {
   const _EmptyArchiveState();
@@ -595,11 +575,11 @@ class _EmptyArchiveState extends StatelessWidget {
             width: 88,
             height: 88,
             decoration: BoxDecoration(
-              color: ColorConstants.primaryColor.withOpacity(0.06),
+              color: ColorConstants.primaryColor.withValues(alpha: 0.06),
               shape: BoxShape.circle,
             ),
             child: Icon(Icons.archive_outlined,
-                size: 40, color: ColorConstants.primaryColor.withOpacity(0.4)),
+                size: 40, color: ColorConstants.primaryColor.withValues(alpha: 0.4)),
           ),
           const SizedBox(height: 20),
           const Text(
@@ -630,16 +610,14 @@ class _LoadingShimmer extends StatefulWidget {
   State<_LoadingShimmer> createState() => _LoadingShimmerState();
 }
 
-class _LoadingShimmerState extends State<_LoadingShimmer>
-    with SingleTickerProviderStateMixin {
+class _LoadingShimmerState extends State<_LoadingShimmer> with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<double> _anim;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1200))
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))
       ..repeat(reverse: true);
     _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
   }
@@ -657,10 +635,8 @@ class _LoadingShimmerState extends State<_LoadingShimmer>
       animation: _anim,
       builder: (_, __) {
         final c = isDark
-            ? Color.lerp(ColorConstants.surfaceDark2, const Color(0xFF2E3448),
-                _anim.value)!
-            : Color.lerp(
-                const Color(0xFFF0F2FF), const Color(0xFFE0E4F5), _anim.value)!;
+            ? Color.lerp(ColorConstants.surfaceDark2, const Color(0xFF2E3448), _anim.value)!
+            : Color.lerp(const Color(0xFFF0F2FF), const Color(0xFFE0E4F5), _anim.value)!;
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
           child: Column(
@@ -675,8 +651,7 @@ class _LoadingShimmerState extends State<_LoadingShimmer>
                 ),
                 child: Row(
                   children: [
-                    CircleAvatar(
-                        radius: 27, backgroundColor: c.withOpacity(0.5)),
+                    CircleAvatar(radius: 27, backgroundColor: c.withValues(alpha: 0.5)),
                     const SizedBox(width: 14),
                     Expanded(
                       child: Column(
@@ -686,14 +661,14 @@ class _LoadingShimmerState extends State<_LoadingShimmer>
                               height: 13,
                               width: 120,
                               decoration: BoxDecoration(
-                                  color: c.withOpacity(0.5),
+                                  color: c.withValues(alpha: 0.5),
                                   borderRadius: BorderRadius.circular(6))),
                           const SizedBox(height: 8),
                           Container(
                               height: 10,
                               width: 180,
                               decoration: BoxDecoration(
-                                  color: c.withOpacity(0.4),
+                                  color: c.withValues(alpha: 0.4),
                                   borderRadius: BorderRadius.circular(5))),
                         ],
                       ),
@@ -725,7 +700,7 @@ class _TileSkeleton extends StatelessWidget {
       ),
       child: Row(
         children: [
-          CircleAvatar(radius: 27, backgroundColor: c.withOpacity(0.5)),
+          CircleAvatar(radius: 27, backgroundColor: c.withValues(alpha: 0.5)),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
@@ -735,15 +710,13 @@ class _TileSkeleton extends StatelessWidget {
                     height: 12,
                     width: 100,
                     decoration: BoxDecoration(
-                        color: c.withOpacity(0.5),
-                        borderRadius: BorderRadius.circular(6))),
+                        color: c.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(6))),
                 const SizedBox(height: 8),
                 Container(
                     height: 10,
                     width: 160,
                     decoration: BoxDecoration(
-                        color: c.withOpacity(0.4),
-                        borderRadius: BorderRadius.circular(5))),
+                        color: c.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(5))),
               ],
             ),
           ),
@@ -765,18 +738,14 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.cloud_off_rounded,
-                size: 48, color: ColorConstants.greyColor),
+            const Icon(Icons.cloud_off_rounded, size: 48, color: ColorConstants.greyColor),
             const SizedBox(height: 16),
             const Text('Không thể tải dữ liệu',
                 style: TextStyle(
-                    color: ColorConstants.greyColor,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500)),
+                    color: ColorConstants.greyColor, fontSize: 15, fontWeight: FontWeight.w500)),
             const SizedBox(height: 8),
             Text(error,
-                style: const TextStyle(
-                    color: ColorConstants.greyColor, fontSize: 12),
+                style: const TextStyle(color: ColorConstants.greyColor, fontSize: 12),
                 textAlign: TextAlign.center),
           ],
         ),
@@ -785,9 +754,9 @@ class _ErrorState extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 PageRoute _slideRoute(Widget page) {
   return PageRouteBuilder(
@@ -795,8 +764,7 @@ PageRoute _slideRoute(Widget page) {
     transitionsBuilder: (_, animation, __, child) {
       return SlideTransition(
         position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
-            .animate(
-                CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+            .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
         child: child,
       );
     },

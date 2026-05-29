@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'package:flutter_chat_demo/providers/story_provider.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
-import 'package:flutter_chat_demo/providers/story_provider.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// StoryViewerPage
-// ─────────────────────────────────────────────────────────────────────────────
+
+
 
 class StoryViewerPage extends StatefulWidget {
   final List<UserStories> allUserStories;
@@ -30,8 +30,7 @@ class StoryViewerPage extends StatefulWidget {
   State<StoryViewerPage> createState() => _StoryViewerPageState();
 }
 
-class _StoryViewerPageState extends State<StoryViewerPage>
-    with TickerProviderStateMixin {
+class _StoryViewerPageState extends State<StoryViewerPage> with TickerProviderStateMixin {
   late PageController _pageController;
   late AnimationController _progressCtrl;
 
@@ -39,7 +38,7 @@ class _StoryViewerPageState extends State<StoryViewerPage>
   late int _storyIndex;
   bool _isPaused = false;
 
-  // reply bar
+  
   final _replyCtrl = TextEditingController();
   bool _replyVisible = false;
   final _replyFocus = FocusNode();
@@ -51,8 +50,7 @@ class _StoryViewerPageState extends State<StoryViewerPage>
     _storyIndex = 0;
 
     _pageController = PageController(initialPage: _userIndex);
-    _progressCtrl = AnimationController(vsync: this)
-      ..addStatusListener(_onProgressStatus);
+    _progressCtrl = AnimationController(vsync: this)..addStatusListener(_onProgressStatus);
 
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
@@ -79,18 +77,17 @@ class _StoryViewerPageState extends State<StoryViewerPage>
     super.dispose();
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Accessors
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   UserStories get _currentUser => widget.allUserStories[_userIndex];
   List<Story> get _stories => _currentUser.activeStories;
-  Story get _currentStory =>
-      _stories[_storyIndex.clamp(0, _stories.length - 1)];
+  Story get _currentStory => _stories[_storyIndex.clamp(0, _stories.length - 1)];
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Progress control
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _onProgressStatus(AnimationStatus status) {
     if (status == AnimationStatus.completed) _advance();
@@ -109,11 +106,11 @@ class _StoryViewerPageState extends State<StoryViewerPage>
     final story = _currentStory;
     if (story.userId == widget.currentUserId) return;
     context.read<StoryProvider>().markStoryViewed(
-      storyId: story.id,
-      viewerId: widget.currentUserId,
-      viewerName: widget.currentUserName,
-      viewerPhotoUrl: widget.currentUserPhotoUrl,
-    );
+          storyId: story.id,
+          viewerId: widget.currentUserId,
+          viewerName: widget.currentUserName,
+          viewerPhotoUrl: widget.currentUserPhotoUrl,
+        );
   }
 
   void _advance() {
@@ -171,9 +168,9 @@ class _StoryViewerPageState extends State<StoryViewerPage>
     _startCurrentStory();
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Delete
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<void> _deleteStory() async {
     _pause();
@@ -205,9 +202,9 @@ class _StoryViewerPageState extends State<StoryViewerPage>
     }
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Reply
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _openReply() {
     _pause();
@@ -227,12 +224,12 @@ class _StoryViewerPageState extends State<StoryViewerPage>
     _resume();
 
     await context.read<StoryProvider>().replyToStory(
-      storyId: story.id,
-      senderId: widget.currentUserId,
-      senderName: widget.currentUserName,
-      senderPhotoUrl: widget.currentUserPhotoUrl,
-      message: msg,
-    );
+          storyId: story.id,
+          senderId: widget.currentUserId,
+          senderName: widget.currentUserName,
+          senderPhotoUrl: widget.currentUserPhotoUrl,
+          message: msg,
+        );
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -245,9 +242,9 @@ class _StoryViewerPageState extends State<StoryViewerPage>
     }
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Reactions
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _showReactions() {
     _pause();
@@ -261,20 +258,20 @@ class _StoryViewerPageState extends State<StoryViewerPage>
         senderPhotoUrl: widget.currentUserPhotoUrl,
         onSelect: (emoji) async {
           await context.read<StoryProvider>().reactToStory(
-            storyId: _currentStory.id,
-            reactorId: widget.currentUserId,
-            reactorName: widget.currentUserName,
-            reactorPhotoUrl: widget.currentUserPhotoUrl,
-            emoji: emoji,
-          );
+                storyId: _currentStory.id,
+                reactorId: widget.currentUserId,
+                reactorName: widget.currentUserName,
+                reactorPhotoUrl: widget.currentUserPhotoUrl,
+                emoji: emoji,
+              );
         },
       ),
     ).then((_) => _resume());
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Build
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   @override
   Widget build(BuildContext context) {
@@ -283,8 +280,7 @@ class _StoryViewerPageState extends State<StoryViewerPage>
       resizeToAvoidBottomInset: true,
       body: GestureDetector(
         onVerticalDragEnd: (details) {
-          if (details.primaryVelocity != null &&
-              details.primaryVelocity! > 300) {
+          if (details.primaryVelocity != null && details.primaryVelocity! > 300) {
             Navigator.of(context).pop();
           }
         },
@@ -297,9 +293,7 @@ class _StoryViewerPageState extends State<StoryViewerPage>
               itemBuilder: (_, userIdx) {
                 final us = widget.allUserStories[userIdx];
                 final isActive = userIdx == _userIndex;
-                final si = isActive
-                    ? _storyIndex.clamp(0, us.activeStories.length - 1)
-                    : 0;
+                final si = isActive ? _storyIndex.clamp(0, us.activeStories.length - 1) : 0;
 
                 return _UserStoryView(
                   userStories: us,
@@ -319,7 +313,7 @@ class _StoryViewerPageState extends State<StoryViewerPage>
               },
             ),
 
-            // Reply bar overlay
+            
             if (_replyVisible)
               Positioned(
                 bottom: 0,
@@ -344,9 +338,9 @@ class _StoryViewerPageState extends State<StoryViewerPage>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _UserStoryView
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _UserStoryView extends StatelessWidget {
   final UserStories userStories;
@@ -390,13 +384,13 @@ class _UserStoryView extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Content
+        
         _StoryContent(story: story, onPause: onHoldStart, onResume: onHoldEnd),
 
-        // Gradients
+        
         const _Gradients(),
 
-        // Progress bars
+        
         Positioned(
           top: MediaQuery.of(context).padding.top + 8,
           left: 10,
@@ -408,7 +402,7 @@ class _UserStoryView extends StatelessWidget {
           ),
         ),
 
-        // Header
+        
         Positioned(
           top: MediaQuery.of(context).padding.top + 26,
           left: 10,
@@ -421,7 +415,7 @@ class _UserStoryView extends StatelessWidget {
           ),
         ),
 
-        // Tap zones
+        
         Row(
           children: [
             Expanded(
@@ -443,7 +437,7 @@ class _UserStoryView extends StatelessWidget {
           ],
         ),
 
-        // Footer
+        
         Positioned(
           bottom: 0,
           left: 0,
@@ -461,9 +455,9 @@ class _UserStoryView extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _StoryContent – handles image, text, and video
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _StoryContent extends StatefulWidget {
   final Story story;
@@ -487,8 +481,7 @@ class _StoryContentState extends State<_StoryContent> {
   @override
   void initState() {
     super.initState();
-    if (widget.story.type == StoryType.video &&
-        widget.story.mediaUrl != null) {
+    if (widget.story.type == StoryType.video && widget.story.mediaUrl != null) {
       _initVideo();
     }
   }
@@ -516,7 +509,7 @@ class _StoryContentState extends State<_StoryContent> {
   Widget build(BuildContext context) {
     final story = widget.story;
 
-    // ── Video ──────────────────────────────────────────────────────────────
+    
     if (story.type == StoryType.video) {
       if (_videoReady && _videoCtrl != null) {
         return Center(
@@ -534,7 +527,7 @@ class _StoryContentState extends State<_StoryContent> {
       );
     }
 
-    // ── Image ──────────────────────────────────────────────────────────────
+    
     if (story.type == StoryType.image && story.mediaUrl != null) {
       return Image.network(
         story.mediaUrl!,
@@ -544,11 +537,11 @@ class _StoryContentState extends State<_StoryContent> {
         loadingBuilder: (_, child, progress) => progress == null
             ? child
             : const ColoredBox(
-          color: Colors.black87,
-          child: Center(
-            child: CircularProgressIndicator(color: Colors.white),
-          ),
-        ),
+                color: Colors.black87,
+                child: Center(
+                  child: CircularProgressIndicator(color: Colors.white),
+                ),
+              ),
         errorBuilder: (_, __, ___) => const ColoredBox(
           color: Colors.black87,
           child: Center(
@@ -558,7 +551,7 @@ class _StoryContentState extends State<_StoryContent> {
       );
     }
 
-    // ── Text ───────────────────────────────────────────────────────────────
+    
     final bg = story.backgroundColor ?? const Color(0xFF1A1A2E);
     return Container(
       decoration: BoxDecoration(
@@ -586,50 +579,50 @@ class _StoryContentState extends State<_StoryContent> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _Gradients
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _Gradients extends StatelessWidget {
   const _Gradients();
 
   @override
   Widget build(BuildContext context) => Column(
-    children: [
-      Container(
-        height: 160,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.black.withOpacity(0.65),
-              Colors.transparent,
-            ],
+        children: [
+          Container(
+            height: 160,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withValues(alpha: 0.65),
+                  Colors.transparent,
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
-      const Spacer(),
-      Container(
-        height: 220,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.bottomCenter,
-            end: Alignment.topCenter,
-            colors: [
-              Colors.black.withOpacity(0.75),
-              Colors.transparent,
-            ],
+          const Spacer(),
+          Container(
+            height: 220,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: [
+                  Colors.black.withValues(alpha: 0.75),
+                  Colors.transparent,
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
-    ],
-  );
+        ],
+      );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _ProgressBars
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _ProgressBars extends StatelessWidget {
   final int total;
@@ -651,7 +644,7 @@ class _ProgressBars extends StatelessWidget {
             height: 2.5,
             margin: EdgeInsets.only(right: i < total - 1 ? 3 : 0),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.35),
+              color: Colors.white.withValues(alpha: 0.35),
               borderRadius: BorderRadius.circular(2),
             ),
             child: AnimatedBuilder(
@@ -660,8 +653,8 @@ class _ProgressBars extends StatelessWidget {
                 final val = i < current
                     ? 1.0
                     : i == current
-                    ? (controller?.value ?? 0.0)
-                    : 0.0;
+                        ? (controller?.value ?? 0.0)
+                        : 0.0;
                 return FractionallySizedBox(
                   alignment: Alignment.centerLeft,
                   widthFactor: val,
@@ -681,9 +674,9 @@ class _ProgressBars extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _Header
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _Header extends StatelessWidget {
   final Story story;
@@ -712,10 +705,10 @@ class _Header extends StatelessWidget {
           child: ClipOval(
             child: story.userPhotoUrl.isNotEmpty
                 ? Image.network(
-              story.userPhotoUrl,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _defaultAvatar(),
-            )
+                    story.userPhotoUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _defaultAvatar(),
+                  )
                 : _defaultAvatar(),
           ),
         ),
@@ -736,7 +729,7 @@ class _Header extends StatelessWidget {
               Text(
                 _timeAgo(story.createdAt),
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   fontSize: 11,
                 ),
               ),
@@ -760,9 +753,9 @@ class _Header extends StatelessWidget {
   }
 
   Widget _defaultAvatar() => Container(
-    color: Colors.grey.shade700,
-    child: const Icon(Icons.person, color: Colors.white),
-  );
+        color: Colors.grey.shade700,
+        child: const Icon(Icons.person, color: Colors.white),
+      );
 
   String _timeAgo(DateTime dt) {
     final diff = DateTime.now().difference(dt);
@@ -773,9 +766,9 @@ class _Header extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _Footer
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _Footer extends StatelessWidget {
   final Story story;
@@ -801,7 +794,7 @@ class _Footer extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Caption
+            
             if (story.caption?.isNotEmpty == true) ...[
               Text(
                 story.caption!,
@@ -816,7 +809,7 @@ class _Footer extends StatelessWidget {
               const SizedBox(height: 10),
             ],
 
-            // Owner footer
+            
             if (isCurrentUser) ...[
               if (story.viewCount > 0)
                 GestureDetector(
@@ -824,8 +817,7 @@ class _Footer extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.remove_red_eye_outlined,
-                          color: Colors.white70, size: 18),
+                      const Icon(Icons.remove_red_eye_outlined, color: Colors.white70, size: 18),
                       const SizedBox(width: 6),
                       Text(
                         '${story.viewCount} viewer${story.viewCount != 1 ? 's' : ''}',
@@ -836,30 +828,25 @@ class _Footer extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 4),
-                      const Icon(Icons.keyboard_arrow_up,
-                          color: Colors.white70, size: 18),
+                      const Icon(Icons.keyboard_arrow_up, color: Colors.white70, size: 18),
                     ],
                   ),
                 ),
               const SizedBox(height: 4),
               Text(
-                context
-                    .read<StoryProvider>()
-                    .formatTimeRemaining(story.remainingTime),
-                style: TextStyle(
-                    color: Colors.white.withOpacity(0.5), fontSize: 11),
+                context.read<StoryProvider>().formatTimeRemaining(story.remainingTime),
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
               ),
             ],
 
-            // Viewer footer: react + reply
+            
             if (!isCurrentUser) ...[
               Row(
                 children: [
-                  // My reaction badge
+                  
                   if (story.reactionBy(currentUserId) != null)
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       margin: const EdgeInsets.only(right: 8),
                       decoration: BoxDecoration(
                         color: Colors.white10,
@@ -872,12 +859,11 @@ class _Footer extends StatelessWidget {
                       ),
                     ),
 
-                  // React button
+                  
                   GestureDetector(
                     onTap: onReact,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
                         color: Colors.white10,
                         borderRadius: BorderRadius.circular(24),
@@ -886,12 +872,9 @@ class _Footer extends StatelessWidget {
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.emoji_emotions_outlined,
-                              color: Colors.white, size: 18),
+                          Icon(Icons.emoji_emotions_outlined, color: Colors.white, size: 18),
                           SizedBox(width: 6),
-                          Text('React',
-                              style:
-                              TextStyle(color: Colors.white, fontSize: 13)),
+                          Text('React', style: TextStyle(color: Colors.white, fontSize: 13)),
                         ],
                       ),
                     ),
@@ -899,13 +882,12 @@ class _Footer extends StatelessWidget {
 
                   const SizedBox(width: 10),
 
-                  // Reply button
+                  
                   Expanded(
                     child: GestureDetector(
                       onTap: onReply,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                         decoration: BoxDecoration(
                           color: Colors.white10,
                           borderRadius: BorderRadius.circular(24),
@@ -914,13 +896,11 @@ class _Footer extends StatelessWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.reply_rounded,
-                                color: Colors.white, size: 18),
+                            const Icon(Icons.reply_rounded, color: Colors.white, size: 18),
                             const SizedBox(width: 6),
                             Text(
                               'Reply to ${story.userName.split(' ').first}…',
-                              style: const TextStyle(
-                                  color: Colors.white54, fontSize: 13),
+                              style: const TextStyle(color: Colors.white54, fontSize: 13),
                             ),
                           ],
                         ),
@@ -946,9 +926,9 @@ class _Footer extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _ReplyBar
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _ReplyBar extends StatelessWidget {
   final TextEditingController ctrl;
@@ -1013,8 +993,7 @@ class _ReplyBar extends StatelessWidget {
                   color: Color(0xFF2196F3),
                   shape: BoxShape.circle,
                 ),
-                child:
-                const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
               ),
             ),
           ],
@@ -1024,9 +1003,9 @@ class _ReplyBar extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _ReactionsSheet
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _ReactionsSheet extends StatelessWidget {
   final String storyId;
@@ -1067,8 +1046,7 @@ class _ReactionsSheet extends StatelessWidget {
           ),
           const Text(
             'React',
-            style: TextStyle(
-                color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16),
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16),
           ),
           const SizedBox(height: 16),
           Row(
@@ -1083,8 +1061,7 @@ class _ReactionsSheet extends StatelessWidget {
                   tween: Tween(begin: 0.5, end: 1.0),
                   duration: const Duration(milliseconds: 300),
                   curve: Curves.elasticOut,
-                  builder: (_, v, child) =>
-                      Transform.scale(scale: v, child: child),
+                  builder: (_, v, child) => Transform.scale(scale: v, child: child),
                   child: Text(e, style: const TextStyle(fontSize: 36)),
                 ),
               );
@@ -1097,9 +1074,9 @@ class _ReactionsSheet extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _ViewersSheet
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _ViewersSheet extends StatelessWidget {
   final Story story;
@@ -1111,8 +1088,7 @@ class _ViewersSheet extends StatelessWidget {
     final reactions = story.reactions;
 
     return Container(
-      constraints:
-      BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
       decoration: const BoxDecoration(
         color: Color(0xFF1C1C1E),
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -1133,8 +1109,7 @@ class _ViewersSheet extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
-                const Icon(Icons.remove_red_eye_outlined,
-                    color: Colors.white70, size: 20),
+                const Icon(Icons.remove_red_eye_outlined, color: Colors.white70, size: 20),
                 const SizedBox(width: 8),
                 Text(
                   '${views.length} Viewer${views.length != 1 ? 's' : ''}',
@@ -1148,8 +1123,7 @@ class _ViewersSheet extends StatelessWidget {
                 if (reactions.isNotEmpty)
                   Text(
                     '${reactions.length} reaction${reactions.length != 1 ? 's' : ''}',
-                    style:
-                    const TextStyle(color: Colors.white54, fontSize: 13),
+                    style: const TextStyle(color: Colors.white54, fontSize: 13),
                   ),
               ],
             ),
@@ -1159,44 +1133,38 @@ class _ViewersSheet extends StatelessWidget {
           Flexible(
             child: views.isEmpty
                 ? const Padding(
-              padding: EdgeInsets.all(32),
-              child: Text('No viewers yet',
-                  style: TextStyle(color: Colors.white54)),
-            )
+                    padding: EdgeInsets.all(32),
+                    child: Text('No viewers yet', style: TextStyle(color: Colors.white54)),
+                  )
                 : ListView.builder(
-              shrinkWrap: true,
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: views.length,
-              itemBuilder: (_, i) {
-                final v = views[i];
-                final reaction = reactions
-                    .where((r) => r.userId == v.userId)
-                    .map((r) => r.emoji)
-                    .firstOrNull;
-                return ListTile(
-                  leading: CircleAvatar(
-                    backgroundImage: v.photoUrl.isNotEmpty
-                        ? NetworkImage(v.photoUrl)
-                        : null,
-                    backgroundColor: Colors.grey.shade700,
-                    child: v.photoUrl.isEmpty
-                        ? const Icon(Icons.person, color: Colors.white)
-                        : null,
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: views.length,
+                    itemBuilder: (_, i) {
+                      final v = views[i];
+                      final reaction = reactions
+                          .where((r) => r.userId == v.userId)
+                          .map((r) => r.emoji)
+                          .firstOrNull;
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundImage: v.photoUrl.isNotEmpty ? NetworkImage(v.photoUrl) : null,
+                          backgroundColor: Colors.grey.shade700,
+                          child: v.photoUrl.isEmpty
+                              ? const Icon(Icons.person, color: Colors.white)
+                              : null,
+                        ),
+                        title: Text(v.userName, style: const TextStyle(color: Colors.white)),
+                        subtitle: Text(
+                          _fmt(v.viewedAt),
+                          style: const TextStyle(color: Colors.white54, fontSize: 12),
+                        ),
+                        trailing: reaction != null
+                            ? Text(reaction, style: const TextStyle(fontSize: 22))
+                            : null,
+                      );
+                    },
                   ),
-                  title: Text(v.userName,
-                      style: const TextStyle(color: Colors.white)),
-                  subtitle: Text(
-                    _fmt(v.viewedAt),
-                    style: const TextStyle(
-                        color: Colors.white54, fontSize: 12),
-                  ),
-                  trailing: reaction != null
-                      ? Text(reaction,
-                      style: const TextStyle(fontSize: 22))
-                      : null,
-                );
-              },
-            ),
           ),
         ],
       ),

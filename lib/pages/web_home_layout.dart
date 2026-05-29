@@ -1,5 +1,5 @@
-
 import 'package:flutter/material.dart';
+
 import 'package:flutter_chat_demo/constants/color_constants.dart';
 import 'package:flutter_chat_demo/pages/chat_page.dart';
 import 'package:flutter_chat_demo/pages/home_page.dart';
@@ -25,7 +25,6 @@ class _WebHomeLayoutState extends State<WebHomeLayout> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final screenWidth = MediaQuery.of(context).size.width;
 
-    
     double sidebarWidth = screenWidth > 1200 ? 400 : 320;
     if (sidebarWidth > 400) sidebarWidth = 400;
     if (sidebarWidth < 280) sidebarWidth = 280;
@@ -33,14 +32,12 @@ class _WebHomeLayoutState extends State<WebHomeLayout> {
     return Scaffold(
       body: Row(
         children: [
-          
           Container(
             width: sidebarWidth,
             decoration: BoxDecoration(
               border: Border(
                 right: BorderSide(
-                  color:
-                      isDark ? ColorConstants.borderDark : Colors.grey.shade300,
+                  color: isDark ? ColorConstants.borderDark : Colors.grey.shade300,
                   width: 1,
                 ),
               ),
@@ -50,8 +47,6 @@ class _WebHomeLayoutState extends State<WebHomeLayout> {
               isWebSidebar: true,
             ),
           ),
-
-          
           Expanded(
             child: Container(
               color: isDark ? ColorConstants.backgroundDark : Colors.white,
@@ -80,7 +75,7 @@ class _WebHomeLayoutState extends State<WebHomeLayout> {
           Icon(
             Icons.chat_bubble_outline,
             size: 100,
-            color: Colors.blue.withOpacity(0.3),
+            color: Colors.blue.withValues(alpha: 0.3),
           ),
           const SizedBox(height: 20),
           Text(

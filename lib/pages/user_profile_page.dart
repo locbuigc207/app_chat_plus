@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
@@ -15,8 +16,7 @@ class UserProfilePage extends StatefulWidget {
   State<UserProfilePage> createState() => _UserProfilePageState();
 }
 
-class _UserProfilePageState extends State<UserProfilePage>
-    with SingleTickerProviderStateMixin {
+class _UserProfilePageState extends State<UserProfilePage> with SingleTickerProviderStateMixin {
   bool _isLoading = false;
   bool _areFriends = false;
   String? _friendRequestStatus;
@@ -32,8 +32,7 @@ class _UserProfilePageState extends State<UserProfilePage>
     _friendProvider = FriendProvider(
       firebaseFirestore: context.read<HomeProvider>().firebaseFirestore,
     );
-    _fabCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 400));
+    _fabCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
     _fabAnim = CurvedAnimation(parent: _fabCtrl, curve: Curves.easeOut);
     _checkFriendshipStatus();
   }
@@ -46,12 +45,10 @@ class _UserProfilePageState extends State<UserProfilePage>
 
   Future<void> _checkFriendshipStatus() async {
     setState(() => _isLoading = true);
-    final areFriends =
-        await _friendProvider.areFriends(_currentUserId, widget.userChat.id);
+    final areFriends = await _friendProvider.areFriends(_currentUserId, widget.userChat.id);
     String? requestStatus;
     if (!areFriends) {
-      requestStatus = await _friendProvider.checkFriendRequest(
-          _currentUserId, widget.userChat.id);
+      requestStatus = await _friendProvider.checkFriendRequest(_currentUserId, widget.userChat.id);
     }
     if (mounted) {
       setState(() {
@@ -65,8 +62,7 @@ class _UserProfilePageState extends State<UserProfilePage>
 
   Future<void> _handleFriendAction() async {
     if (_areFriends) {
-      await _friendProvider.getOrCreateConversation(
-          _currentUserId, widget.userChat.id, false);
+      await _friendProvider.getOrCreateConversation(_currentUserId, widget.userChat.id, false);
       if (mounted) {
         Navigator.pushReplacement(
           context,
@@ -96,8 +92,7 @@ class _UserProfilePageState extends State<UserProfilePage>
       }
     } else {
       setState(() => _isLoading = true);
-      final success = await _friendProvider.sendFriendRequest(
-          _currentUserId, widget.userChat.id);
+      final success = await _friendProvider.sendFriendRequest(_currentUserId, widget.userChat.id);
       if (success) {
         _toast('Đã gửi lời mời kết bạn!');
         _checkFriendshipStatus();
@@ -157,18 +152,16 @@ class _UserProfilePageState extends State<UserProfilePage>
     final user = widget.userChat;
 
     return Scaffold(
-      backgroundColor:
-          isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF6F6F9),
+      backgroundColor: isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF6F6F9),
       body: Stack(
         children: [
           CustomScrollView(
             slivers: [
-              // ── Hero AppBar ──────────────────────────────────────
+              
               SliverAppBar(
                 expandedHeight: 280,
                 pinned: true,
-                backgroundColor:
-                    isDark ? const Color(0xFF1C1C2E) : Colors.white,
+                backgroundColor: isDark ? const Color(0xFF1C1C2E) : Colors.white,
                 elevation: 0,
                 leading: IconButton(
                   icon: Icon(Icons.arrow_back_ios_new_rounded,
@@ -180,17 +173,17 @@ class _UserProfilePageState extends State<UserProfilePage>
                 ),
               ),
 
-              // ── Content ──────────────────────────────────────────
+              
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Info fields
+                      
                       _buildInfoSection(isDark, user),
                       const SizedBox(height: 20),
-                      // Actions
+                      
                       _buildActionsSection(isDark),
                     ],
                   ),
@@ -199,7 +192,7 @@ class _UserProfilePageState extends State<UserProfilePage>
             ],
           ),
 
-          // ── Floating Action Button ───────────────────────────────
+          
           Positioned(
             bottom: 24,
             left: 24,
@@ -212,22 +205,18 @@ class _UserProfilePageState extends State<UserProfilePage>
                     : SizedBox(
                         height: 54,
                         child: ElevatedButton.icon(
-                          onPressed: _friendRequestStatus == 'sent'
-                              ? null
-                              : _handleFriendAction,
+                          onPressed: _friendRequestStatus == 'sent' ? null : _handleFriendAction,
                           icon: Icon(_getButtonIcon(), size: 20),
                           label: Text(
                             _getButtonLabel(),
-                            style: const TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.w600),
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: _getButtonColor(),
                             foregroundColor: Colors.white,
                             elevation: 0,
                             disabledBackgroundColor: Colors.grey.shade300,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                           ),
                         ),
                       ),
@@ -235,7 +224,7 @@ class _UserProfilePageState extends State<UserProfilePage>
             ),
           ),
 
-          // Loading overlay
+          
           if (_isLoading) Positioned.fill(child: LoadingView()),
         ],
       ),
@@ -250,17 +239,14 @@ class _UserProfilePageState extends State<UserProfilePage>
           end: Alignment.bottomCenter,
           colors: isDark
               ? [const Color(0xFF1C1C2E), const Color(0xFF0D0D0D)]
-              : [
-                  ColorConstants.primaryColor.withOpacity(0.08),
-                  const Color(0xFFF6F6F9)
-                ],
+              : [ColorConstants.primaryColor.withValues(alpha: 0.08), const Color(0xFFF6F6F9)],
         ),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const SizedBox(height: 40),
-          // Avatar
+          
           Stack(
             alignment: Alignment.bottomRight,
             children: [
@@ -269,8 +255,7 @@ class _UserProfilePageState extends State<UserProfilePage>
                 height: 100,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border:
-                      Border.all(color: ColorConstants.primaryColor, width: 3),
+                  border: Border.all(color: ColorConstants.primaryColor, width: 3),
                 ),
                 child: ClipOval(
                   child: user.photoUrl.isNotEmpty
@@ -282,8 +267,7 @@ class _UserProfilePageState extends State<UserProfilePage>
                             if (loadingProgress == null) return child;
                             return Center(
                                 child: CircularProgressIndicator(
-                                    color: ColorConstants.primaryColor,
-                                    strokeWidth: 2));
+                                    color: ColorConstants.primaryColor, strokeWidth: 2));
                           },
                         )
                       : _avatarFallback(user),
@@ -297,8 +281,7 @@ class _UserProfilePageState extends State<UserProfilePage>
                     shape: BoxShape.circle,
                     color: Colors.green,
                   ),
-                  child: const Icon(Icons.check_rounded,
-                      color: Colors.white, size: 14),
+                  child: const Icon(Icons.check_rounded, color: Colors.white, size: 14),
                 ),
             ],
           ),
@@ -314,9 +297,8 @@ class _UserProfilePageState extends State<UserProfilePage>
             const SizedBox(height: 6),
             Text(
               user.aboutMe,
-              style: TextStyle(
-                  fontSize: 13.5,
-                  color: isDark ? Colors.white54 : Colors.grey.shade600),
+              style:
+                  TextStyle(fontSize: 13.5, color: isDark ? Colors.white54 : Colors.grey.shade600),
               textAlign: TextAlign.center,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
@@ -328,17 +310,13 @@ class _UserProfilePageState extends State<UserProfilePage>
   }
 
   Widget _avatarFallback(UserChat user) {
-    final initials = user.nickname.isNotEmpty
-        ? user.nickname.substring(0, 1).toUpperCase()
-        : '?';
+    final initials = user.nickname.isNotEmpty ? user.nickname.substring(0, 1).toUpperCase() : '?';
     return Container(
-      color: ColorConstants.primaryColor.withOpacity(0.2),
+      color: ColorConstants.primaryColor.withValues(alpha: 0.2),
       child: Center(
         child: Text(initials,
             style: TextStyle(
-                fontSize: 36,
-                fontWeight: FontWeight.bold,
-                color: ColorConstants.primaryColor)),
+                fontSize: 36, fontWeight: FontWeight.bold, color: ColorConstants.primaryColor)),
       ),
     );
   }
@@ -428,9 +406,8 @@ class _InfoCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1C1C2E) : Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-            color:
-                isDark ? Colors.white.withOpacity(0.07) : Colors.grey.shade200),
+        border:
+            Border.all(color: isDark ? Colors.white.withValues(alpha: 0.07) : Colors.grey.shade200),
       ),
       child: Column(children: children),
     );
@@ -460,7 +437,7 @@ class _InfoRow extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: ColorConstants.primaryColor.withOpacity(0.1),
+              color: ColorConstants.primaryColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon, color: ColorConstants.primaryColor, size: 20),
@@ -472,8 +449,7 @@ class _InfoRow extends StatelessWidget {
               children: [
                 Text(label,
                     style: TextStyle(
-                        fontSize: 11.5,
-                        color: isDark ? Colors.white38 : Colors.grey.shade500)),
+                        fontSize: 11.5, color: isDark ? Colors.white38 : Colors.grey.shade500)),
                 const SizedBox(height: 3),
                 Text(value,
                     style: TextStyle(
@@ -519,7 +495,7 @@ class _ActionRow extends StatelessWidget {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.12),
+                color: iconColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(icon, color: iconColor, size: 20),
@@ -537,15 +513,12 @@ class _ActionRow extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(subtitle,
                       style: TextStyle(
-                          fontSize: 12.5,
-                          color:
-                              isDark ? Colors.white38 : Colors.grey.shade500)),
+                          fontSize: 12.5, color: isDark ? Colors.white38 : Colors.grey.shade500)),
                 ],
               ),
             ),
             Icon(Icons.chevron_right_rounded,
-                color: isDark ? Colors.white24 : Colors.grey.shade400,
-                size: 20),
+                color: isDark ? Colors.white24 : Colors.grey.shade400, size: 20),
           ],
         ),
       ),
@@ -562,6 +535,6 @@ class _InfoDivider extends StatelessWidget {
         height: 1,
         indent: 70,
         endIndent: 16,
-        color: isDark ? Colors.white.withOpacity(0.07) : Colors.grey.shade100,
+        color: isDark ? Colors.white.withValues(alpha: 0.07) : Colors.grey.shade100,
       );
 }

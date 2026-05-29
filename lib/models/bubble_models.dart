@@ -2,9 +2,9 @@
 
 import 'package:flutter/material.dart';
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// ENUMS
-// ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 enum BubbleState { active, minimized, expanded, closing }
 
@@ -16,9 +16,9 @@ enum BubbleImplementation { bubbleApi, windowManager, none, unknown }
 
 enum MessageDeliveryStatus { sending, sent, delivered, read, failed }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// BUBBLE DATA
-// ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 class BubbleData {
   final String userId;
@@ -29,7 +29,7 @@ class BubbleData {
   final int unreadCount;
   final bool isOnline;
   final BubbleState state;
-  final String? lastMessageType; // 'text' | 'image' | 'voice' | 'file'
+  final String? lastMessageType; 
 
   const BubbleData({
     required this.userId,
@@ -102,21 +102,18 @@ class BubbleData {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is BubbleData &&
-          runtimeType == other.runtimeType &&
-          userId == other.userId;
+      other is BubbleData && runtimeType == other.runtimeType && userId == other.userId;
 
   @override
   int get hashCode => userId.hashCode;
 
   @override
-  String toString() =>
-      'BubbleData(userId: $userId, userName: $userName, unread: $unreadCount)';
+  String toString() => 'BubbleData(userId: $userId, userName: $userName, unread: $unreadCount)';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// EVENTS
-// ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 class BubbleClickEvent {
   final String userId;
@@ -137,9 +134,9 @@ class BubbleClickEvent {
   String toString() => 'BubbleClickEvent(userId: $userId, userName: $userName)';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// MINI CHAT MESSAGE
-// ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 class MiniChatMessage {
   final String userId;
@@ -157,34 +154,34 @@ class MiniChatMessage {
   });
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// BUBBLE CONTEXT (for adaptive UI)
-// ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 class BubbleContext {
   final BubbleMode mode;
   final String? detectedTopic;
   final Map<String, dynamic>? extraData;
-  final DateTime? updatedAt; // Added field
+  final DateTime? updatedAt; 
 
   const BubbleContext({
     this.mode = BubbleMode.normal,
     this.detectedTopic,
     this.extraData,
-    this.updatedAt, // Added to constructor
+    this.updatedAt, 
   });
 
   BubbleContext copyWith({
     BubbleMode? mode,
     String? detectedTopic,
     Map<String, dynamic>? extraData,
-    DateTime? updatedAt, // Added to copyWith
+    DateTime? updatedAt, 
   }) =>
       BubbleContext(
         mode: mode ?? this.mode,
         detectedTopic: detectedTopic ?? this.detectedTopic,
         extraData: extraData ?? this.extraData,
-        updatedAt: updatedAt ?? this.updatedAt, // Pass through
+        updatedAt: updatedAt ?? this.updatedAt, 
       );
 
   static BubbleContext detectFromMessage(String message) {
@@ -199,9 +196,7 @@ class BubbleContext {
         updatedAt: DateTime.now(),
       );
     }
-    if (lower.contains('maps.google') ||
-        lower.contains('location') ||
-        lower.contains('📍')) {
+    if (lower.contains('maps.google') || lower.contains('location') || lower.contains('📍')) {
       return BubbleContext(
         mode: BubbleMode.location,
         updatedAt: DateTime.now(),
@@ -220,13 +215,12 @@ class BubbleContext {
   }
 
   @override
-  String toString() =>
-      'BubbleContext(mode: $mode, topic: $detectedTopic, updated: $updatedAt)';
+  String toString() => 'BubbleContext(mode: $mode, topic: $detectedTopic, updated: $updatedAt)';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// BUBBLE CONFIG
-// ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 class BubbleConfig {
   final double size;
@@ -246,9 +240,9 @@ class BubbleConfig {
   });
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// BUBBLE REACTION
-// ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 
 @immutable
 class BubbleReaction {
@@ -262,8 +256,7 @@ class BubbleReaction {
     this.userIds = const [],
   });
 
-  BubbleReaction copyWith({int? count, List<String>? userIds}) =>
-      BubbleReaction(
+  BubbleReaction copyWith({int? count, List<String>? userIds}) => BubbleReaction(
         emoji: emoji,
         count: count ?? this.count,
         userIds: userIds ?? this.userIds,

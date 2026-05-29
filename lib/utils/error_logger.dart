@@ -1,11 +1,12 @@
 import 'dart:async';
 
-import 'package:firebase_analytics/firebase_analytics.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 
-/// Hệ thống logging lỗi và analytics toàn diện
-/// Tích hợp: Firebase Crashlytics + Firebase Analytics
+import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+
+
+
 class ErrorLogger {
   ErrorLogger._();
 
@@ -14,9 +15,9 @@ class ErrorLogger {
 
   static bool _initialized = false;
 
-  // ─── Khởi tạo ──────────────────────────────────────────────────────────────
+  
 
-  /// Khởi tạo hệ thống logging – gọi trong main() trước runApp()
+  
   static Future<void> initialize() async {
     if (_initialized) return;
 
@@ -24,7 +25,7 @@ class ErrorLogger {
       try {
         await _crashlytics.setCrashlyticsCollectionEnabled(!kDebugMode);
 
-        // Bắt lỗi Flutter framework
+        
         FlutterError.onError = (FlutterErrorDetails details) {
           if (kDebugMode) {
             FlutterError.presentError(details);
@@ -32,7 +33,7 @@ class ErrorLogger {
           _crashlytics.recordFlutterFatalError(details);
         };
 
-        // Bắt lỗi async/zone không được handle
+        
         PlatformDispatcher.instance.onError = (error, stack) {
           _crashlytics.recordError(error, stack, fatal: true);
           return true;
@@ -48,9 +49,9 @@ class ErrorLogger {
     debugPrint('✅ ErrorLogger initialized');
   }
 
-  // ─── Log lỗi ───────────────────────────────────────────────────────────────
+  
 
-  /// Log lỗi runtime với context đầy đủ
+  
   static Future<void> logError(
     dynamic error,
     StackTrace? stackTrace, {
@@ -58,7 +59,7 @@ class ErrorLogger {
     Map<String, dynamic>? additionalInfo,
     bool fatal = false,
   }) async {
-    // Log ra console trong debug mode
+    
     if (kDebugMode) {
       debugPrint('❌ [${context ?? "Unknown"}] $error');
       if (stackTrace != null) debugPrint('$stackTrace');
@@ -70,17 +71,13 @@ class ErrorLogger {
       if (context != null) {
         await _crashlytics.setCustomKey('error_context', context);
       }
-      await _crashlytics.setCustomKey(
-          'timestamp', DateTime.now().toIso8601String());
+      await _crashlytics.setCustomKey('timestamp', DateTime.now().toIso8601String());
 
       if (additionalInfo != null) {
         for (final entry in additionalInfo.entries) {
           final value = entry.value;
-          // Crashlytics chỉ chấp nhận String, int, double, bool
-          if (value is String ||
-              value is int ||
-              value is double ||
-              value is bool) {
+          
+          if (value is String || value is int || value is double || value is bool) {
             await _crashlytics.setCustomKey(entry.key, value);
           } else {
             await _crashlytics.setCustomKey(entry.key, value.toString());
@@ -100,7 +97,7 @@ class ErrorLogger {
     }
   }
 
-  /// Log lỗi nghiêm trọng (fatal = true)
+  
   static Future<void> logFatalError(
     dynamic error,
     StackTrace? stackTrace, {
@@ -108,7 +105,7 @@ class ErrorLogger {
   }) =>
       logError(error, stackTrace, context: context, fatal: true);
 
-  /// Bắt và log lỗi từ một Future, trả về null nếu có lỗi
+  
   static Future<T?> guardAsync<T>(
     Future<T> Function() action, {
     String? context,
@@ -122,15 +119,15 @@ class ErrorLogger {
     }
   }
 
-  // ─── Analytics Events ───────────────────────────────────────────────────────
+  
 
-  /// Log analytics event tùy chỉnh
+  
   static Future<void> logEvent(
     String name,
     Map<String, dynamic>? params,
   ) async {
     try {
-      // Validate event name (Firebase yêu cầu <= 40 chars, chỉ chữ/số/_)
+      
       final sanitizedName = _sanitizeEventName(name);
 
       final Map<String, Object>? converted = params?.map(
@@ -151,7 +148,7 @@ class ErrorLogger {
     }
   }
 
-  // ─── Screen Tracking ────────────────────────────────────────────────────────
+  
 
   static Future<void> logScreenView(String screenName) async {
     if (kDebugMode) debugPrint('📱 Screen: $screenName');
@@ -162,7 +159,7 @@ class ErrorLogger {
     }
   }
 
-  // ─── User Management ────────────────────────────────────────────────────────
+  
 
   static Future<void> setUserId(String userId) async {
     try {
@@ -190,11 +187,11 @@ class ErrorLogger {
     }
   }
 
-  // ─── Chat-specific Events ───────────────────────────────────────────────────
+  
 
   static Future<void> logMessageSent({
     required String conversationId,
-    required int messageType, // 0=text, 1=image, 2=file, 3=voice, 4=sticker
+    required int messageType, 
     int? characterCount,
     bool hasReply = false,
     bool hasMention = false,
@@ -253,14 +250,14 @@ class ErrorLogger {
   }
 
   static Future<void> logMediaViewed({
-    required String type, // image, video, file
-    required String source, // message, profile, story
+    required String type, 
+    required String source, 
   }) async {
     await logEvent('media_viewed', {'type': type, 'source': source});
   }
 
   static Future<void> logSearchUsed({
-    required String searchType, // global, in_chat, contacts
+    required String searchType, 
     int? resultCount,
   }) async {
     await logEvent('search_used', {
@@ -269,29 +266,24 @@ class ErrorLogger {
     });
   }
 
-  // ─── Breadcrumbs (luồng hoạt động) ─────────────────────────────────────────
+  
 
-  /// Ghi breadcrumb để trace luồng hoạt động trước khi crash
+  
   static Future<void> addBreadcrumb(String message, {String? category}) async {
     if (kDebugMode) debugPrint('🍞 [${category ?? "app"}] $message');
     if (kIsWeb) return;
     try {
-      await _crashlytics
-          .log('${category != null ? "[$category] " : ""}$message');
+      await _crashlytics.log('${category != null ? "[$category] " : ""}$message');
     } catch (_) {}
   }
 
-  // ─── Private helpers ────────────────────────────────────────────────────────
+  
 
   static String _sanitizeEventName(String name) {
-    return name
-        .replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_')
-        .substring(0, name.length.clamp(0, 40));
+    return name.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_').substring(0, name.length.clamp(0, 40));
   }
 
   static String _sanitizeParamKey(String key) {
-    return key
-        .replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_')
-        .substring(0, key.length.clamp(0, 40));
+    return key.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_').substring(0, key.length.clamp(0, 40));
   }
 }

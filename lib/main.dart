@@ -1,20 +1,20 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/firebase_options.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
-import 'package:flutter_chat_demo/providers/phone_auth_provider.dart'
-    as custom_auth;
+import 'package:flutter_chat_demo/providers/phone_auth_provider.dart' as custom_auth;
 import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_chat_demo/utils/utils.dart';
@@ -27,35 +27,35 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
-// ─── Globals ──────────────────────────────────────────────────────────────────
 
-/// Plugin thông báo cục bộ – được khởi tạo một lần, dùng toàn app
+
+
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
-/// NavigatorKey toàn cục – dùng để navigate từ ngoài BuildContext
-/// (notification tap, bubble chat, background message handler…)
+
+
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-// ─── Background FCM Handler (phải là top-level function) ─────────────────────
 
-/// Xử lý FCM message khi app ở background / terminated
+
+
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Firebase cần được khởi tạo lại trong isolate nền
+  
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   debugPrint('🔔 Background FCM: ${message.messageId}');
 }
 
-// ─── Entry point ─────────────────────────────────────────────────────────────
+
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Tải biến môi trường
+  
   await dotenv.load(fileName: '.env');
 
-  // Khóa hướng màn hình (portrait only trên mobile)
+  
   if (!kIsWeb) {
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
@@ -63,7 +63,7 @@ Future<void> main() async {
     ]);
   }
 
-  // Cấu hình status bar / navigation bar
+  
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.dark,
@@ -71,26 +71,26 @@ Future<void> main() async {
     systemNavigationBarIconBrightness: Brightness.dark,
   ));
 
-  // ── Khởi tạo Firebase ──────────────────────────────────────────────────────
+  
   await _initializeFirebase();
 
-  // ── Khởi tạo Error Logger ─────────────────────────────────────────────────
+  
   await ErrorLogger.initialize();
 
-  // ── Timezone ──────────────────────────────────────────────────────────────
+  
   tz.initializeTimeZones();
   tz.setLocalLocation(tz.getLocation('Asia/Ho_Chi_Minh'));
 
-  // ── SharedPreferences ─────────────────────────────────────────────────────
+  
   final prefs = await SharedPreferences.getInstance();
 
-  // ── Notifications ─────────────────────────────────────────────────────────
+  
   if (!kIsWeb) {
     await _initializeLocalNotifications(flutterLocalNotificationsPlugin);
     await _initializeFcm();
   }
 
-  // ── Services ──────────────────────────────────────────────────────────────
+  
   final unifiedBubbleService = UnifiedBubbleService();
   final chatBubbleService = ChatBubbleService();
   final notificationService = NotificationService();
@@ -110,7 +110,7 @@ Future<void> _initializeFirebase() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    // ✅ PHẢI set settings NGAY ĐÂY — trước AppCheck và mọi thứ khác
+    
     try {
       FirebaseFirestore.instance.settings = const Settings(
         persistenceEnabled: true,
@@ -121,18 +121,17 @@ Future<void> _initializeFirebase() async {
       debugPrint('⚠️ Offline Persistence (Web không hỗ trợ): $e');
     }
 
-    // App Check — sau khi settings đã được set
+    
     await FirebaseAppCheck.instance.activate(
-      androidProvider:
-          kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+      androidProvider: kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
       appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
     );
 
-    // Local DB (Hive)
+    
     await LocalDbService().initialize();
     debugPrint('✅ LocalDbService khởi tạo xong');
 
-    // Sync Manager
+    
     SyncManager().startListening();
     debugPrint('✅ SyncManager đang lắng nghe');
   } catch (e, stack) {
@@ -141,16 +140,16 @@ Future<void> _initializeFirebase() async {
   }
 }
 
-// ─── FCM Setup ────────────────────────────────────────────────────────────────
+
 
 Future<void> _initializeFcm() async {
   try {
-    // Đăng ký handler background message
+    
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
     final messaging = FirebaseMessaging.instance;
 
-    // Yêu cầu quyền thông báo (iOS / Android 13+)
+    
     final settings = await messaging.requestPermission(
       alert: true,
       badge: true,
@@ -160,14 +159,14 @@ Future<void> _initializeFcm() async {
 
     debugPrint('🔔 FCM permission: ${settings.authorizationStatus.name}');
 
-    // Lấy FCM token để lưu server-side
+    
     final token = await messaging.getToken();
     if (token != null) {
       debugPrint('📱 FCM Token: ${token.substring(0, 20)}...');
       // TODO: Lưu token lên Firestore theo userId khi đăng nhập
     }
 
-    // Refresh token
+    
     messaging.onTokenRefresh.listen((newToken) {
       debugPrint('🔄 FCM Token refreshed');
       // TODO: Cập nhật token mới lên Firestore
@@ -177,14 +176,13 @@ Future<void> _initializeFcm() async {
   }
 }
 
-// ─── Local Notifications Setup ───────────────────────────────────────────────
+
 
 Future<void> _initializeLocalNotifications(
   FlutterLocalNotificationsPlugin plugin,
 ) async {
   try {
-    const androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
 
     final iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
@@ -209,8 +207,7 @@ Future<void> _initializeLocalNotifications(
     await plugin.initialize(
       initSettings,
       onDidReceiveNotificationResponse: _onNotificationTapped,
-      onDidReceiveBackgroundNotificationResponse:
-          _onBackgroundNotificationTapped,
+      onDidReceiveBackgroundNotificationResponse: _onBackgroundNotificationTapped,
     );
 
     if (Platform.isAndroid) {
@@ -219,24 +216,22 @@ Future<void> _initializeLocalNotifications(
 
     if (Platform.isIOS) {
       await plugin
-          .resolvePlatformSpecificImplementation<
-              IOSFlutterLocalNotificationsPlugin>()
+          .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
           ?.requestPermissions(alert: true, badge: true, sound: true);
     }
 
     debugPrint('✅ Local Notifications khởi tạo xong');
   } catch (e, stack) {
     debugPrint('❌ Notification init lỗi: $e');
-    await ErrorLogger.logError(e, stack,
-        context: '_initializeLocalNotifications');
+    await ErrorLogger.logError(e, stack, context: '_initializeLocalNotifications');
   }
 }
 
 Future<void> _setupAndroidNotificationChannels(
   FlutterLocalNotificationsPlugin plugin,
 ) async {
-  final androidPlugin = plugin.resolvePlatformSpecificImplementation<
-      AndroidFlutterLocalNotificationsPlugin>();
+  final androidPlugin =
+      plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
   if (androidPlugin == null) return;
 
   await androidPlugin.requestNotificationsPermission();
@@ -247,7 +242,7 @@ Future<void> _setupAndroidNotificationChannels(
     debugPrint('⚠️ Exact Alarms Permission: $e');
   }
 
-  // Kênh tin nhắn
+  
   await androidPlugin.createNotificationChannel(
     const AndroidNotificationChannel(
       AppConstants.messageChannelId,
@@ -261,7 +256,7 @@ Future<void> _setupAndroidNotificationChannels(
     ),
   );
 
-  // Kênh nhắc nhở
+  
   await androidPlugin.createNotificationChannel(
     const AndroidNotificationChannel(
       AppConstants.reminderChannelId,
@@ -271,7 +266,7 @@ Future<void> _setupAndroidNotificationChannels(
     ),
   );
 
-  // Kênh cuộc gọi
+  
   await androidPlugin.createNotificationChannel(
     const AndroidNotificationChannel(
       AppConstants.callChannelId,
@@ -283,16 +278,16 @@ Future<void> _setupAndroidNotificationChannels(
   );
 }
 
-/// Callback khi người dùng tap vào notification (foreground)
+
 void _onNotificationTapped(NotificationResponse response) {
   final payload = response.payload;
   if (payload == null) return;
 
   debugPrint('🔔 Notification tapped: $payload');
 
-  // Parse payload JSON và navigate đến chat tương ứng
+  
   try {
-    // Payload format: "peerId|peerNickname|peerAvatar"
+    
     final parts = payload.split('|');
     if (parts.length >= 2) {
       _navigateToChat(
@@ -306,13 +301,13 @@ void _onNotificationTapped(NotificationResponse response) {
   }
 }
 
-/// Callback khi tap notification từ background (top-level, không dùng được context)
+
 @pragma('vm:entry-point')
 void _onBackgroundNotificationTapped(NotificationResponse response) {
   debugPrint('🔔 Background notification tapped: ${response.payload}');
 }
 
-/// Navigate đến ChatPage từ notification tap
+
 void _navigateToChat({
   required String peerId,
   required String peerNickname,
@@ -321,7 +316,7 @@ void _navigateToChat({
   final state = navigatorKey.currentState;
   if (state == null) return;
 
-  // Pop về root trước nếu đang ở màn hình khác
+  
   state.pushNamedAndRemoveUntil(
     '/',
     (route) => route.isFirst,
@@ -341,22 +336,21 @@ void _navigateToChat({
   );
 }
 
-// ─── BubbleChatChannelManager ─────────────────────────────────────────────────
 
-/// Quản lý MethodChannel để xử lý navigation từ Android Bubble Chat
+
+
 class BubbleChatChannelManager extends StatefulWidget {
   final Widget child;
   const BubbleChatChannelManager({super.key, required this.child});
 
   @override
-  State<BubbleChatChannelManager> createState() =>
-      _BubbleChatChannelManagerState();
+  State<BubbleChatChannelManager> createState() => _BubbleChatChannelManagerState();
 }
 
 class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
   static const _channel = MethodChannel('bubble_chat_channel');
 
-  /// Deduplicate navigation (tránh push cùng route 2 lần trong 2 giây)
+  
   final _recentNavigations = <String>{};
 
   @override
@@ -383,7 +377,7 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
           navigatorKey.currentState!.pop();
         }
       case 'openApp':
-        // Bring app to foreground
+        
         SystemNavigator.pop();
     }
     return null;
@@ -397,7 +391,7 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
 
     if (peerId == null || peerNickname == null) return;
 
-    // Deduplicate: 2-second window per peerId
+    
     final bucket = DateTime.now().millisecondsSinceEpoch ~/ 2000;
     final dedupKey = '$peerId:$bucket';
     if (_recentNavigations.contains(dedupKey)) return;
@@ -407,7 +401,7 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
       () => _recentNavigations.remove(dedupKey),
     );
 
-    // Đợi navigator sẵn sàng (tối đa 5 lần retry)
+    
     await _waitForNavigator();
 
     if (navigatorKey.currentState == null) {
@@ -432,8 +426,7 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
       );
     } catch (e, stack) {
       _recentNavigations.remove(dedupKey);
-      await ErrorLogger.logError(e, stack,
-          context: 'BubbleChatChannelManager.navigateToChat');
+      await ErrorLogger.logError(e, stack, context: 'BubbleChatChannelManager.navigateToChat');
     }
   }
 
@@ -448,9 +441,9 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
   Widget build(BuildContext context) => widget.child;
 }
 
-// ─── MiniChatOverlayManager ───────────────────────────────────────────────────
 
-/// Hiển thị floating mini-chat overlay qua MethodChannel
+
+
 class MiniChatOverlayManager extends StatefulWidget {
   final Widget child;
   const MiniChatOverlayManager({super.key, required this.child});
@@ -523,9 +516,9 @@ class _MiniChatOverlayManagerState extends State<MiniChatOverlayManager> {
   Widget build(BuildContext context) => widget.child;
 }
 
-// ─── MiniChat Overlay Scaffold ────────────────────────────────────────────────
 
-/// Wrapper xử lý positioning + dismiss khi tap ngoài
+
+
 class _MiniChatOverlayScaffold extends StatelessWidget {
   final String userId, userName, avatarUrl;
   final VoidCallback onMinimize, onClose;
@@ -544,7 +537,7 @@ class _MiniChatOverlayScaffold extends StatelessWidget {
       color: Colors.black26,
       child: Stack(
         children: [
-          // Tap ngoài để minimize
+          
           GestureDetector(onTap: onMinimize),
           MiniChatOverlayWidget(
             userId: userId,
@@ -559,9 +552,9 @@ class _MiniChatOverlayScaffold extends StatelessWidget {
   }
 }
 
-// ─── MiniChatOverlayWidget ────────────────────────────────────────────────────
 
-/// Floating, draggable cửa sổ mini chat
+
+
 class MiniChatOverlayWidget extends StatefulWidget {
   final String userId, userName, avatarUrl;
   final VoidCallback onMinimize, onClose;
@@ -586,7 +579,7 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
   late final AnimationController _animCtrl;
   late final Animation<double> _scaleAnim;
 
-  // Adaptive size
+  
   double get _width {
     final sw = MediaQuery.sizeOf(context).width;
     return sw > 480 ? 360.0 : sw * 0.88;
@@ -661,7 +654,7 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: const Color(0xFF1E88E5).withOpacity(0.6),
+            color: const Color(0xFF1E88E5).withValues(alpha: 0.6),
             width: 1.5,
           ),
         ),
@@ -693,7 +686,7 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
   }
 }
 
-// ─── MiniChat Header ──────────────────────────────────────────────────────────
+
 
 class _MiniChatHeader extends StatelessWidget {
   final String userName, avatarUrl;
@@ -717,23 +710,21 @@ class _MiniChatHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Avatar
+          
           CircleAvatar(
             radius: 17,
             backgroundColor: Colors.white24,
-            backgroundImage:
-                avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+            backgroundImage: avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
             child: avatarUrl.isEmpty
                 ? Text(
                     userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                    style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.bold),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                   )
                 : null,
           ),
           const SizedBox(width: 9),
 
-          // Tên
+          
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -759,14 +750,14 @@ class _MiniChatHeader extends StatelessWidget {
             ),
           ),
 
-          // Minimize
+          
           _HeaderButton(
             icon: Icons.remove_rounded,
             onTap: onMinimize,
             tooltip: 'Thu nhỏ',
           ),
 
-          // Close
+          
           _HeaderButton(
             icon: Icons.close_rounded,
             onTap: onClose,
@@ -805,9 +796,9 @@ class _HeaderButton extends StatelessWidget {
   }
 }
 
-// ─── BubbleModeDetector ───────────────────────────────────────────────────────
 
-/// Phát hiện app có đang chạy trong Android Bubble Mode không
+
+
 class BubbleModeDetector {
   BubbleModeDetector._();
 
@@ -823,7 +814,7 @@ class BubbleModeDetector {
   }
 }
 
-// ─── MyApp ────────────────────────────────────────────────────────────────────
+
 
 class MyApp extends StatelessWidget {
   final SharedPreferences prefs;
@@ -843,12 +834,12 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Firebase instances
+    
     final firebaseFirestore = FirebaseFirestore.instance;
     final firebaseStorage = FirebaseStorage.instance;
     final firebaseAuth = firebase_auth.FirebaseAuth.instance;
 
-    // Widget tree – bọc các layer theo thứ tự từ ngoài vào trong
+    
     Widget appTree = AppInitializer(
       notificationService: notificationService,
       child: const SplashPage(),
@@ -883,13 +874,13 @@ class MyApp extends StatelessWidget {
             themeMode: themeProvider.flutterThemeMode,
             theme: themeProvider.lightTheme,
             darkTheme: themeProvider.darkTheme,
-            // Routes được khai báo rõ ràng
+            
             routes: AppRoutes.routes,
-            // onGenerateRoute để xử lý dynamic routes
+            
             onGenerateRoute: AppRoutes.onGenerateRoute,
-            // Builder để inject overlay (safe area, accessibility)
+            
             builder: (context, child) => _AppBuilder(child: child),
-            home: appTree, // <--- GIỮ LẠI ĐỂ RENDER APPTREE TRÊN ROOT
+            home: appTree, 
           );
         },
       ),
@@ -902,7 +893,7 @@ class MyApp extends StatelessWidget {
     required firebase_auth.FirebaseAuth firebaseAuth,
   }) {
     return [
-      // ── Auth & User ──────────────────────────────────────────────────────
+      
       ChangeNotifierProvider<AppModeProvider>(
         create: (_) => AppModeProvider(),
       ),
@@ -921,7 +912,7 @@ class MyApp extends StatelessWidget {
         ),
       ),
 
-      // ── UI & Theme ───────────────────────────────────────────────────────
+      
       ChangeNotifierProvider<ThemeProvider>(
         create: (_) => ThemeProvider(prefs: prefs),
       ),
@@ -929,7 +920,7 @@ class MyApp extends StatelessWidget {
         create: (_) => TelemetryProvider(),
       ),
 
-      // ── Feature Providers ────────────────────────────────────────────────
+      
       ChangeNotifierProvider<StoryProvider>(
         create: (_) => StoryProvider(
           firebaseFirestore: firebaseFirestore,
@@ -937,7 +928,7 @@ class MyApp extends StatelessWidget {
         ),
       ),
 
-      // ── Non-notifying Providers (Provider, không ChangeNotifier) ─────────
+      
       Provider<SettingProvider>(
         create: (_) => SettingProvider(
           prefs: prefs,
@@ -965,8 +956,7 @@ class MyApp extends StatelessWidget {
         create: (_) => MessageProvider(firebaseFirestore: firebaseFirestore),
       ),
       Provider<ConversationProvider>(
-        create: (_) =>
-            ConversationProvider(firebaseFirestore: firebaseFirestore),
+        create: (_) => ConversationProvider(firebaseFirestore: firebaseFirestore),
       ),
       Provider<ReminderProvider>(
         create: (_) => ReminderProvider(
@@ -978,8 +968,7 @@ class MyApp extends StatelessWidget {
         create: (_) => AutoDeleteProvider(firebaseFirestore: firebaseFirestore),
       ),
       Provider<ConversationLockProvider>(
-        create: (_) =>
-            ConversationLockProvider(firebaseFirestore: firebaseFirestore),
+        create: (_) => ConversationLockProvider(firebaseFirestore: firebaseFirestore),
       ),
       Provider<ViewOnceProvider>(
         create: (_) => ViewOnceProvider(firebaseFirestore: firebaseFirestore),
@@ -988,8 +977,7 @@ class MyApp extends StatelessWidget {
         create: (_) => SmartReplyProvider(),
       ),
       Provider<UserPresenceProvider>(
-        create: (_) =>
-            UserPresenceProvider(firebaseFirestore: firebaseFirestore),
+        create: (_) => UserPresenceProvider(firebaseFirestore: firebaseFirestore),
       ),
       Provider<LocationProvider>(
         create: (_) => LocationProvider(),
@@ -998,7 +986,7 @@ class MyApp extends StatelessWidget {
         create: (_) => TranslationProvider(),
       ),
 
-      // ── Services ─────────────────────────────────────────────────────────
+      
       Provider<ChatBubbleService>(create: (_) => chatBubbleService),
       Provider<UnifiedBubbleService>(create: (_) => unifiedBubbleService),
       Provider<NotificationService>(create: (_) => notificationService),
@@ -1006,9 +994,9 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// ─── AppBuilder ────────────────────────────────────────────────────────────────
 
-/// Wrapper toàn cục: inject banner debug, connectivity snackbar, v.v.
+
+
 class _AppBuilder extends StatelessWidget {
   final Widget? child;
   const _AppBuilder({this.child});
@@ -1016,7 +1004,7 @@ class _AppBuilder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MediaQuery(
-      // Ngăn text scale vượt quá 1.3x (tránh vỡ layout)
+      
       data: MediaQuery.of(context).copyWith(
         textScaler: TextScaler.linear(
           MediaQuery.textScalerOf(context).scale(1.0).clamp(0.8, 1.3),
@@ -1027,9 +1015,9 @@ class _AppBuilder extends StatelessWidget {
   }
 }
 
-// ─── AppRoutes ─────────────────────────────────────────────────────────────────
 
-/// Tập trung định nghĩa tất cả routes của app
+
+
 class AppRoutes {
   AppRoutes._();
 
@@ -1040,9 +1028,9 @@ class AppRoutes {
   static const login = '/login';
 
   static Map<String, WidgetBuilder> get routes => {
-        // ĐÃ SỬA: Bỏ `home: (_) => const SplashPage()` để sửa lỗi
-        // 'home == null || !routes.containsKey(Navigator.defaultRouteName)'
-        // Vì MaterialApp đang dùng thuộc tính `home` để load `appTree`.
+        
+        
+        
       };
 
   static Route<dynamic>? onGenerateRoute(RouteSettings settings) {
@@ -1055,11 +1043,11 @@ class AppRoutes {
             builder: (_) => ChatPage(arguments: args),
           );
         }
-        // Fallback nếu arguments sai kiểu
+        
         return _errorRoute('Chat page: arguments không hợp lệ');
 
       default:
-        return null; // Dùng routes map
+        return null; 
     }
   }
 
@@ -1073,9 +1061,9 @@ class AppRoutes {
   }
 }
 
-// ─── AppInitializer ───────────────────────────────────────────────────────────
 
-/// Khởi động các service cần BuildContext sau khi cây widget sẵn sàng
+
+
 class AppInitializer extends StatefulWidget {
   final NotificationService notificationService;
   final Widget child;
@@ -1090,8 +1078,7 @@ class AppInitializer extends StatefulWidget {
   State<AppInitializer> createState() => _AppInitializerState();
 }
 
-class _AppInitializerState extends State<AppInitializer>
-    with WidgetsBindingObserver {
+class _AppInitializerState extends State<AppInitializer> with WidgetsBindingObserver {
   StreamSubscription<firebase_auth.User?>? _authSub;
   bool _notificationStarted = false;
 
@@ -1102,22 +1089,21 @@ class _AppInitializerState extends State<AppInitializer>
     WidgetsBinding.instance.addPostFrameCallback((_) => _onReady());
   }
 
-  /// Được gọi sau frame đầu tiên – context đã đầy đủ
+  
   void _onReady() {
     _startNotificationService();
     _handleFcmForegroundMessages();
     _handleNotificationLaunch();
   }
 
-  /// Lắng nghe thay đổi auth → bật/tắt notification service
+  
   void _startNotificationService() {
-    _authSub =
-        firebase_auth.FirebaseAuth.instance.authStateChanges().listen((user) {
+    _authSub = firebase_auth.FirebaseAuth.instance.authStateChanges().listen((user) {
       if (user != null && !_notificationStarted) {
         widget.notificationService.listenForNewMessages(user.uid);
         _notificationStarted = true;
 
-        // Gán userId cho crash reporting & analytics
+        
         ErrorLogger.setUserId(user.uid);
       } else if (user == null) {
         widget.notificationService.stopListening();
@@ -1127,14 +1113,14 @@ class _AppInitializerState extends State<AppInitializer>
     });
   }
 
-  /// Xử lý FCM message khi app đang foreground
+  
   void _handleFcmForegroundMessages() {
     FirebaseMessaging.onMessage.listen((message) {
       debugPrint('📩 Foreground FCM: ${message.notification?.title}');
       // TODO: Hiển thị in-app notification banner
     });
 
-    // Khi user tap notification từ background
+    
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
       debugPrint('🔔 FCM opened app: ${message.data}');
       final peerId = message.data['peerId'] as String?;
@@ -1149,16 +1135,15 @@ class _AppInitializerState extends State<AppInitializer>
     });
   }
 
-  /// Kiểm tra app có được mở từ notification terminated không
+  
   Future<void> _handleNotificationLaunch() async {
     try {
-      final initialMessage =
-          await FirebaseMessaging.instance.getInitialMessage();
+      final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
       if (initialMessage != null) {
         final peerId = initialMessage.data['peerId'] as String?;
         final peerNickname = initialMessage.data['peerNickname'] as String?;
         if (peerId != null && peerNickname != null) {
-          // Delay để đảm bảo navigator đã sẵn sàng
+          
           await Future.delayed(const Duration(milliseconds: 800));
           _navigateToChat(
             peerId: peerId,
@@ -1175,16 +1160,16 @@ class _AppInitializerState extends State<AppInitializer>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    // Track app lifecycle cho analytics
+    
     ErrorLogger.addBreadcrumb(state.name, category: 'lifecycle');
 
     switch (state) {
       case AppLifecycleState.resumed:
-        // App về foreground → cập nhật presence online
+        
         _updatePresence(online: true);
       case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
-        // App vào background → cập nhật presence offline
+        
         _updatePresence(online: false);
       case AppLifecycleState.detached:
       case AppLifecycleState.hidden:

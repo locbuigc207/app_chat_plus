@@ -3,26 +3,27 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 
 import '../constants/constants.dart';
 
-// =========================================================
-// MODELS
-// =========================================================
 
-/// Loại nhiệm vụ của AI — ảnh hưởng đến system prompt và config.
+
+
+
+
 enum GeminiTaskType {
-  chat, // Trò chuyện thông thường
-  scamAnalysis, // Phát hiện lừa đảo
-  summarize, // Tóm tắt cuộc trò chuyện
-  translate, // Dịch/diễn giải
-  codeAssist, // Hỗ trợ lập trình
-  sentimentAnalysis, // Phân tích cảm xúc
+  chat, 
+  scamAnalysis, 
+  summarize, 
+  translate, 
+  codeAssist, 
+  sentimentAnalysis, 
 }
 
-/// Kết quả trả về từ Gemini, bao gồm text và metadata.
+
 class GeminiResponse {
   final String text;
   final bool isError;
@@ -36,46 +37,45 @@ class GeminiResponse {
     this.candidateTokenCount,
   });
 
-  factory GeminiResponse.error(String message) =>
-      GeminiResponse(text: message, isError: true);
+  factory GeminiResponse.error(String message) => GeminiResponse(text: message, isError: true);
 }
 
-// =========================================================
-// GEMINI SERVICE
-// =========================================================
 
-/// Service tương tác trực tiếp với Gemini API từ phía client (Flutter).
-///
-/// Tính năng:
-/// - Retry tự động khi bị rate-limit (exponential backoff).
-/// - Hỗ trợ streaming response cho UX mượt mà.
-/// - Multi-task: chat, scam analysis, summarize, translate, code...
-/// - Kiểm tra tính hợp lệ của lịch sử hội thoại (role alternation).
-/// - Xử lý lỗi chi tiết với thông báo tiếng Việt thân thiện.
+
+
+
+
+
+
+
+
+
+
+
 class GeminiService {
-  // ── Singleton ──────────────────────────────────────────
+  
   GeminiService._internal();
   static final GeminiService _instance = GeminiService._internal();
   factory GeminiService() => _instance;
 
-  // ── Config ─────────────────────────────────────────────
+  
   static const String _modelId = 'gemini-2.0-flash';
   static const int _maxRetries = 3;
   static const Duration _baseRetryDelay = Duration(seconds: 2);
-  static const int _maxHistoryMessages = 20; // Tránh vượt context window
+  static const int _maxHistoryMessages = 20; 
 
-  // ── Cache model instance để tránh khởi tạo lại mỗi request ──
+  
   GenerativeModel? _cachedModel;
   String? _cachedApiKey;
 
-  // =========================================================
-  // 1. SEND MESSAGE (Chat thông thường)
-  // =========================================================
+  
+  
+  
 
-  /// Gửi tin nhắn đến Gemini và nhận phản hồi.
-  ///
-  /// [message]: Tin nhắn người dùng.
-  /// [historyRaw]: Lịch sử hội thoại dạng `[{'idFrom': '...', 'content': '...'}]`.
+  
+  
+  
+  
   Future<String> sendMessage(
     String message,
     List<Map<String, dynamic>> historyRaw,
@@ -84,7 +84,7 @@ class GeminiService {
     return response.text;
   }
 
-  /// Phiên bản trả về [GeminiResponse] đầy đủ metadata.
+  
   Future<GeminiResponse> sendMessageDetailed(
     String message,
     List<Map<String, dynamic>> historyRaw, {
@@ -106,12 +106,12 @@ class GeminiService {
     }
   }
 
-  // =========================================================
-  // 2. STREAMING RESPONSE
-  // =========================================================
+  
+  
+  
 
-  /// Gửi tin nhắn và trả về Stream<String> để hiển thị từng chunk.
-  /// Phù hợp cho response dài — UX mượt hơn so với chờ toàn bộ.
+  
+  
   Stream<String> sendMessageStream(
     String message,
     List<Map<String, dynamic>> historyRaw, {
@@ -137,12 +137,12 @@ class GeminiService {
     }
   }
 
-  // =========================================================
-  // 3. SPECIALIZED TASKS
-  // =========================================================
+  
+  
+  
 
-  /// Phân tích một tin nhắn xem có dấu hiệu scam/lừa đảo không.
-  /// Trả về JSON string: `{"level":"SAFE"|"WARNING"|"SCAM","reason":"..."}`
+  
+  
   Future<String> analyzeScam(String message) async {
     const prompt = '''
 Phân tích tin nhắn sau và đánh giá nguy cơ lừa đảo/scam.
@@ -161,7 +161,7 @@ Tin nhắn cần phân tích:
     return response.text;
   }
 
-  /// Tóm tắt danh sách tin nhắn thành đoạn văn ngắn.
+  
   Future<String> summarizeMessages(
     List<String> messages, {
     int maxSentences = 3,
@@ -176,7 +176,7 @@ Tin nhắn cần phân tích:
     return response.text;
   }
 
-  /// Diễn giải lại tin nhắn phù hợp với đối tượng nhận.
+  
   Future<String> translateForAudience(
     String message,
     String targetAudience,
@@ -198,7 +198,7 @@ Tin nhắn cần phân tích:
     return response.text;
   }
 
-  /// Gợi ý 3 cách trả lời ngắn gọn cho tin nhắn cuối cùng.
+  
   Future<List<String>> suggestReplies(
     List<String> recentMessages, {
     String tone = 'friendly',
@@ -228,7 +228,7 @@ Tin nhắn cần phân tích:
         .toList();
   }
 
-  /// Phân tích cảm xúc (sentiment) của danh sách tin nhắn.
+  
   Future<String> analyzeSentiment(List<String> messages) async {
     if (messages.isEmpty) return 'neutral';
     final joined = messages.takeLast(10).join('\n');
@@ -241,18 +241,16 @@ Tin nhắn cần phân tích:
     return response.text;
   }
 
-  // =========================================================
-  // 4. MODEL MANAGEMENT
-  // =========================================================
+  
+  
+  
 
-  /// Lấy hoặc tạo mới model Gemini với system prompt phù hợp task.
+  
   GenerativeModel _getOrCreateModel(GeminiTaskType taskType) {
     final apiKey = _resolveApiKey();
 
-    // Tái sử dụng model nếu cùng API key và chat task
-    if (_cachedModel != null &&
-        _cachedApiKey == apiKey &&
-        taskType == GeminiTaskType.chat) {
+    
+    if (_cachedModel != null && _cachedApiKey == apiKey && taskType == GeminiTaskType.chat) {
       return _cachedModel!;
     }
 
@@ -286,7 +284,7 @@ Tin nhắn cần phân tích:
       case GeminiTaskType.sentimentAnalysis:
         return GenerationConfig(
           maxOutputTokens: 512,
-          temperature: 0.1, // Thấp hơn để output nhất quán/deterministic
+          temperature: 0.1, 
           responseMimeType: 'application/json',
         );
       case GeminiTaskType.summarize:
@@ -323,56 +321,56 @@ Tin nhắn cần phân tích:
 
     switch (taskType) {
       case GeminiTaskType.chat:
-        return '${basePrompt}'
+        return '$basePrompt'
             'Trả lời thân thiện, ngắn gọn, rõ ràng. '
             'Dùng Markdown khi cần (code, danh sách, bảng). '
             'Không tiết lộ thông tin cá nhân hoặc nội bộ hệ thống.';
 
       case GeminiTaskType.scamAnalysis:
-        return '${basePrompt}'
+        return '$basePrompt'
             'Bạn là chuyên gia phát hiện lừa đảo trực tuyến Việt Nam. '
             'Phân tích chính xác, khách quan. '
             'Luôn trả về JSON hợp lệ theo đúng schema được yêu cầu.';
 
       case GeminiTaskType.summarize:
-        return '${basePrompt}'
+        return '$basePrompt'
             'Tóm tắt súc tích, giữ nguyên ý chính. '
             'Không thêm thông tin không có trong văn bản gốc.';
 
       case GeminiTaskType.translate:
-        return '${basePrompt}'
+        return '$basePrompt'
             'Diễn giải tự nhiên, phù hợp văn hóa Việt Nam. '
             'Giữ nguyên ý nghĩa gốc, chỉ điều chỉnh phong cách.';
 
       case GeminiTaskType.codeAssist:
-        return '${basePrompt}'
+        return '$basePrompt'
             'Chuyên gia lập trình. Cung cấp code chính xác, có comment. '
             'Giải thích ngắn gọn bằng tiếng Việt.';
 
       case GeminiTaskType.sentimentAnalysis:
-        return '${basePrompt}'
+        return '$basePrompt'
             'Chuyên gia tâm lý và phân tích ngôn ngữ. '
             'Luôn trả về JSON hợp lệ theo đúng schema được yêu cầu.';
     }
   }
 
-  // =========================================================
-  // 5. HISTORY BUILDER
-  // =========================================================
+  
+  
+  
 
-  /// Xây dựng lịch sử hội thoại hợp lệ cho Gemini API.
-  ///
-  /// Quy tắc Gemini:
-  /// - Phải xen kẽ user/model.
-  /// - Không được bắt đầu bằng 'model'.
-  /// - Không được có 2 role giống nhau liên tiếp.
+  
+  
+  
+  
+  
+  
   List<Content> _buildValidHistory(
     List<Map<String, dynamic>> historyRaw, {
     int maxMessages = 20,
   }) {
     final List<Content> contents = [];
 
-    // Lấy N tin nhắn gần nhất
+    
     final recentMessages = historyRaw.length > maxMessages
         ? historyRaw.sublist(historyRaw.length - maxMessages)
         : historyRaw;
@@ -384,18 +382,18 @@ Tin nhắn cần phân tích:
 
       if (content.isEmpty) continue;
 
-      // Bỏ qua nếu role liên tiếp bị trùng
+      
       if (contents.isNotEmpty && contents.last.role == role) continue;
 
       contents.add(Content(role, [TextPart(content)]));
     }
 
-    // Không được bắt đầu bằng 'model'
+    
     while (contents.isNotEmpty && contents.first.role == 'model') {
       contents.removeAt(0);
     }
 
-    // Không được kết thúc bằng 'model' (message cuối phải là user)
+    
     while (contents.isNotEmpty && contents.last.role == 'model') {
       contents.removeLast();
     }
@@ -403,9 +401,9 @@ Tin nhắn cần phân tích:
     return contents;
   }
 
-  // =========================================================
-  // 6. RETRY LOGIC
-  // =========================================================
+  
+  
+  
 
   Future<GeminiResponse> _sendWithRetry(
     GenerativeModel model,
@@ -421,7 +419,7 @@ Tin nhắn cần phân tích:
 
         final text = response.text;
         if (text == null || text.isEmpty) {
-          // Kiểm tra safety block
+          
           final candidate = response.candidates.firstOrNull;
           if (candidate?.finishReason == FinishReason.safety) {
             return GeminiResponse.error(
@@ -441,10 +439,9 @@ Tin nhắn cần phân tích:
       } catch (e) {
         if (_isRateLimitError(e) && attempt < _maxRetries) {
           attempt++;
-          // Exponential backoff: 2s, 4s, 8s
+          
           final delay = _baseRetryDelay * (1 << attempt);
-          debugPrint(
-              '[GeminiService] Rate limited, retry $attempt sau ${delay.inSeconds}s');
+          debugPrint('[GeminiService] Rate limited, retry $attempt sau ${delay.inSeconds}s');
           await Future.delayed(delay);
           continue;
         }
@@ -465,9 +462,9 @@ Tin nhắn cần phân tích:
         msg.contains('resource_exhausted');
   }
 
-  // =========================================================
-  // 7. ERROR HANDLING
-  // =========================================================
+  
+  
+  
 
   String _handleError(Object e) {
     if (e is _ApiKeyMissingException) {
@@ -480,15 +477,11 @@ Tin nhắn cần phân tích:
     if (msg.contains('429') || msg.contains('quota') || msg.contains('rate')) {
       return '⚠️ Đã đạt giới hạn request. Vui lòng chờ 1 phút rồi thử lại.';
     }
-    if (msg.contains('403') ||
-        msg.contains('api key') ||
-        msg.contains('api_key')) {
+    if (msg.contains('403') || msg.contains('api key') || msg.contains('api_key')) {
       return '🔑 API Key không hợp lệ hoặc chưa được kích hoạt. '
           'Kiểm tra lại Google AI Studio.';
     }
-    if (msg.contains('socketexception') ||
-        msg.contains('network') ||
-        msg.contains('connection')) {
+    if (msg.contains('socketexception') || msg.contains('network') || msg.contains('connection')) {
       return '📶 Lỗi kết nối mạng. Vui lòng kiểm tra internet.';
     }
     if (msg.contains('timeout') || msg.contains('deadline')) {
@@ -502,31 +495,30 @@ Tin nhắn cần phân tích:
     return '❌ Có lỗi xảy ra. Vui lòng thử lại sau.';
   }
 
-  // =========================================================
-  // 8. UTILS
-  // =========================================================
+  
+  
+  
 
-  /// Xóa cache model (khi đổi API key hoặc cài đặt).
+  
   void clearModelCache() {
     _cachedModel = null;
     _cachedApiKey = null;
   }
 }
 
-// =========================================================
-// INTERNAL EXCEPTIONS
-// =========================================================
+
+
+
 
 class _ApiKeyMissingException implements Exception {
   const _ApiKeyMissingException();
   @override
-  String toString() =>
-      'ApiKeyMissingException: GEMINI_API_KEY chưa được thiết lập';
+  String toString() => 'ApiKeyMissingException: GEMINI_API_KEY chưa được thiết lập';
 }
 
-// =========================================================
-// EXTENSION HELPERS
-// =========================================================
+
+
+
 
 extension _ListTakeLast<T> on List<T> {
   List<T> takeLast(int count) {

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+
 import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:flutter_chat_demo/providers/auth_provider.dart';
 import 'package:provider/provider.dart';
@@ -54,7 +55,7 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
       duration: const Duration(milliseconds: 600),
     );
 
-    // Logo animations
+    
     _logoScale = Tween<double>(begin: 0.5, end: 1.0).animate(
       CurvedAnimation(
         parent: _logoController,
@@ -67,7 +68,7 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
       curve: const Interval(0.0, 0.5, curve: Curves.easeOut),
     );
 
-    // Ring ripple
+    
     _ringScale1 = Tween<double>(begin: 0.8, end: 2.0).animate(
       CurvedAnimation(
         parent: _logoController,
@@ -94,12 +95,12 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
       ),
     );
 
-    // Pulse for idle
+    
     _pulseScale = Tween<double>(begin: 1.0, end: 1.06).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
-    // App name
+    
     _appNameFade = CurvedAnimation(
       parent: _logoController,
       curve: const Interval(0.5, 1.0, curve: Curves.easeOut),
@@ -135,7 +136,7 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
   }
 
   void _checkSignedIn() async {
-    // Minimum splash display time for visual polish
+    
     await Future.delayed(const Duration(milliseconds: 800));
 
     if (!mounted) return;
@@ -145,7 +146,7 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
 
     if (!mounted) return;
 
-    // Fade out before navigating
+    
     await _exitController.forward();
 
     if (!mounted) return;
@@ -155,8 +156,7 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
       context,
       PageRouteBuilder(
         pageBuilder: (_, __, ___) => page,
-        transitionsBuilder: (_, anim, __, child) =>
-            FadeTransition(opacity: anim, child: child),
+        transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
         transitionDuration: const Duration(milliseconds: 400),
       ),
     );
@@ -169,7 +169,7 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
         opacity: _exitFade,
         child: Stack(
           children: [
-            // Background
+            
             Container(
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
@@ -184,12 +184,12 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
               ),
             ),
 
-            // Decorative orbs
+            
             Positioned(
               top: -120,
               left: -80,
               child: _Orb(
-                color: const Color(0xFF4F8DFF).withOpacity(0.12),
+                color: const Color(0xFF4F8DFF).withValues(alpha: 0.12),
                 size: 350,
               ),
             ),
@@ -197,12 +197,12 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
               bottom: -100,
               right: -60,
               child: _Orb(
-                color: const Color(0xFF7B4FFF).withOpacity(0.1),
+                color: const Color(0xFF7B4FFF).withValues(alpha: 0.1),
                 size: 300,
               ),
             ),
 
-            // Floating particles
+            
             AnimatedBuilder(
               animation: _particleController,
               builder: (_, __) => CustomPaint(
@@ -211,18 +211,18 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
               ),
             ),
 
-            // Grid lines (subtle)
+            
             CustomPaint(
               painter: _GridPainter(),
               size: MediaQuery.of(context).size,
             ),
 
-            // Center content
+            
             Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Logo with rings
+                  
                   AnimatedBuilder(
                     animation: _logoController,
                     builder: (_, __) {
@@ -232,7 +232,7 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            // Outer ring 2
+                            
                             Transform.scale(
                               scale: _ringScale2.value,
                               child: Container(
@@ -242,13 +242,13 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                                   shape: BoxShape.circle,
                                   border: Border.all(
                                     color: const Color(0xFF4F8DFF)
-                                        .withOpacity(_ringOpacity2.value),
+                                        .withValues(alpha: _ringOpacity2.value),
                                     width: 1,
                                   ),
                                 ),
                               ),
                             ),
-                            // Outer ring 1
+                            
                             Transform.scale(
                               scale: _ringScale1.value,
                               child: Container(
@@ -258,13 +258,13 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                                   shape: BoxShape.circle,
                                   border: Border.all(
                                     color: const Color(0xFF4F8DFF)
-                                        .withOpacity(_ringOpacity1.value),
+                                        .withValues(alpha: _ringOpacity1.value),
                                     width: 1.5,
                                   ),
                                 ),
                               ),
                             ),
-                            // Logo icon
+                            
                             FadeTransition(
                               opacity: _logoFade,
                               child: ScaleTransition(
@@ -287,7 +287,7 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
 
                   const SizedBox(height: 8),
 
-                  // App name
+                  
                   SlideTransition(
                     position: _appNameSlide,
                     child: FadeTransition(
@@ -307,7 +307,7 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                           Text(
                             'Kết nối không giới hạn',
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.4),
+                              color: Colors.white.withValues(alpha: 0.4),
                               fontSize: 14,
                               fontWeight: FontWeight.w400,
                               letterSpacing: 0.5,
@@ -320,7 +320,7 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
 
                   const SizedBox(height: 64),
 
-                  // Loader
+                  
                   FadeTransition(
                     opacity: _loaderFade,
                     child: _AnimatedDotLoader(),
@@ -329,7 +329,7 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
               ),
             ),
 
-            // Version tag at bottom
+            
             FadeTransition(
               opacity: _appNameFade,
               child: Align(
@@ -339,7 +339,7 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                   child: Text(
                     'v2.0.0',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withValues(alpha: 0.2),
                       fontSize: 12,
                       letterSpacing: 1.0,
                     ),
@@ -354,7 +354,7 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
   }
 }
 
-// ─── Logo Icon ────────────────────────────────────────────────────────────────
+
 
 class _LogoIcon extends StatelessWidget {
   @override
@@ -371,13 +371,13 @@ class _LogoIcon extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF4F8DFF).withOpacity(0.45),
+            color: const Color(0xFF4F8DFF).withValues(alpha: 0.45),
             blurRadius: 40,
             offset: const Offset(0, 14),
             spreadRadius: -4,
           ),
           BoxShadow(
-            color: const Color(0xFF7B4FFF).withOpacity(0.25),
+            color: const Color(0xFF7B4FFF).withValues(alpha: 0.25),
             blurRadius: 60,
             offset: const Offset(0, 24),
             spreadRadius: -8,
@@ -387,7 +387,7 @@ class _LogoIcon extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Shine overlay
+          
           Positioned(
             top: 0,
             left: 0,
@@ -395,14 +395,13 @@ class _LogoIcon extends StatelessWidget {
             child: Container(
               height: 48,
               decoration: BoxDecoration(
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(30)),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.white.withOpacity(0.22),
-                    Colors.white.withOpacity(0.0),
+                    Colors.white.withValues(alpha: 0.22),
+                    Colors.white.withValues(alpha: 0.0),
                   ],
                 ),
               ),
@@ -419,15 +418,14 @@ class _LogoIcon extends StatelessWidget {
   }
 }
 
-// ─── Animated Dot Loader ──────────────────────────────────────────────────────
+
 
 class _AnimatedDotLoader extends StatefulWidget {
   @override
   State<_AnimatedDotLoader> createState() => _AnimatedDotLoaderState();
 }
 
-class _AnimatedDotLoaderState extends State<_AnimatedDotLoader>
-    with TickerProviderStateMixin {
+class _AnimatedDotLoaderState extends State<_AnimatedDotLoader> with TickerProviderStateMixin {
   late List<AnimationController> _controllers;
   late List<Animation<double>> _anims;
 
@@ -482,7 +480,7 @@ class _AnimatedDotLoaderState extends State<_AnimatedDotLoader>
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(4),
                 color: Color.lerp(
-                  const Color(0xFF4F8DFF).withOpacity(0.4),
+                  const Color(0xFF4F8DFF).withValues(alpha: 0.4),
                   const Color(0xFF4F8DFF),
                   _anims[i].value,
                 ),
@@ -495,7 +493,7 @@ class _AnimatedDotLoaderState extends State<_AnimatedDotLoader>
   }
 }
 
-// ─── Orb ──────────────────────────────────────────────────────────────────────
+
 
 class _Orb extends StatelessWidget {
   final Color color;
@@ -511,14 +509,14 @@ class _Orb extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: RadialGradient(
-          colors: [color, color.withOpacity(0)],
+          colors: [color, color.withValues(alpha: 0)],
         ),
       ),
     );
   }
 }
 
-// ─── Particle Painter ─────────────────────────────────────────────────────────
+
 
 class _ParticlePainter extends CustomPainter {
   final double progress;
@@ -546,7 +544,7 @@ class _ParticlePainter extends CustomPainter {
       final y = (p.y - t * p.speed) % 1.0;
       final paint = Paint()
         ..color = const Color(0xFF4F8DFF)
-            .withOpacity(p.opacity * (1.0 - (t * p.speed * 5).clamp(0.0, 1.0)))
+            .withValues(alpha: p.opacity * (1.0 - (t * p.speed * 5).clamp(0.0, 1.0)))
         ..style = PaintingStyle.fill;
 
       canvas.drawCircle(
@@ -558,8 +556,7 @@ class _ParticlePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _ParticlePainter old) =>
-      old.progress != progress;
+  bool shouldRepaint(covariant _ParticlePainter old) => old.progress != progress;
 }
 
 class _Particle {
@@ -574,13 +571,13 @@ class _Particle {
   });
 }
 
-// ─── Grid Painter ─────────────────────────────────────────────────────────────
+
 
 class _GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color(0xFF4F8DFF).withOpacity(0.03)
+      ..color = const Color(0xFF4F8DFF).withValues(alpha: 0.03)
       ..strokeWidth = 0.5;
 
     const spacing = 60.0;

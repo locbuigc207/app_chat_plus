@@ -4,21 +4,21 @@ import 'package:flutter/material.dart';
 
 import '../services/realtime_ai_service.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LiveCaptionOverlay
-//
-// Animated live-caption pill shown over the call screen.
-// Listens to [RealtimeAIService.captionStream] and [securityStream].
-//
-// Usage (inside a Stack):
-//   LiveCaptionOverlay(bottomOffset: 110)
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
 
 class LiveCaptionOverlay extends StatefulWidget {
-  /// Distance from the bottom of the parent Stack.
+  
   final double bottomOffset;
 
-  /// Maximum lines of caption text before scrolling.
+  
   final int maxLines;
 
   const LiveCaptionOverlay({
@@ -31,9 +31,8 @@ class LiveCaptionOverlay extends StatefulWidget {
   State<LiveCaptionOverlay> createState() => _LiveCaptionOverlayState();
 }
 
-class _LiveCaptionOverlayState extends State<LiveCaptionOverlay>
-    with TickerProviderStateMixin {
-  // ── Animation controllers ──────────────────────────────────────────────────
+class _LiveCaptionOverlayState extends State<LiveCaptionOverlay> with TickerProviderStateMixin {
+  
   late AnimationController _entryCtrl;
   late Animation<double> _fadeAnim;
   late Animation<Offset> _slideAnim;
@@ -44,7 +43,7 @@ class _LiveCaptionOverlayState extends State<LiveCaptionOverlay>
   late AnimationController _securityBorderCtrl;
   late Animation<double> _securityBorderAnim;
 
-  // ── State ──────────────────────────────────────────────────────────────────
+  
   String _text = '';
   bool _visible = false;
   SecurityStatus _securityStatus = SecurityStatus.safe;
@@ -54,17 +53,16 @@ class _LiveCaptionOverlayState extends State<LiveCaptionOverlay>
   void initState() {
     super.initState();
 
-    // Entry / exit
-    _entryCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 320));
-    _fadeAnim = CurvedAnimation(
-        parent: _entryCtrl, curve: Curves.easeOut, reverseCurve: Curves.easeIn);
+    
+    _entryCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 320));
+    _fadeAnim =
+        CurvedAnimation(parent: _entryCtrl, curve: Curves.easeOut, reverseCurve: Curves.easeIn);
     _slideAnim = Tween<Offset>(
       begin: const Offset(0, 0.25),
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _entryCtrl, curve: Curves.easeOutCubic));
 
-    // Live dot pulse
+    
     _pulseCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -73,13 +71,13 @@ class _LiveCaptionOverlayState extends State<LiveCaptionOverlay>
     )..repeat(reverse: true);
     _pulseAnim = CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut);
 
-    // Security border glow
+    
     _securityBorderCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
     )..repeat(reverse: true);
-    _securityBorderAnim = Tween<double>(begin: 0.3, end: 0.9).animate(
-        CurvedAnimation(parent: _securityBorderCtrl, curve: Curves.easeInOut));
+    _securityBorderAnim = Tween<double>(begin: 0.3, end: 0.9)
+        .animate(CurvedAnimation(parent: _securityBorderCtrl, curve: Curves.easeInOut));
   }
 
   @override
@@ -91,13 +89,13 @@ class _LiveCaptionOverlayState extends State<LiveCaptionOverlay>
     super.dispose();
   }
 
-  // ── Stream handlers ────────────────────────────────────────────────────────
+  
 
   void _onCaptionData(String text) {
     _hideTimer?.cancel();
 
     if (text.isEmpty) {
-      // Delay hiding so short pauses don't flicker
+      
       _hideTimer = Timer(const Duration(seconds: 2), () {
         if (!mounted) return;
         _entryCtrl.reverse().then((_) {
@@ -123,7 +121,7 @@ class _LiveCaptionOverlayState extends State<LiveCaptionOverlay>
     setState(() => _securityStatus = event.status);
   }
 
-  // ── Security accent color ──────────────────────────────────────────────────
+  
 
   Color _accentColor() {
     switch (_securityStatus) {
@@ -138,7 +136,7 @@ class _LiveCaptionOverlayState extends State<LiveCaptionOverlay>
     }
   }
 
-  // ── Build ──────────────────────────────────────────────────────────────────
+  
 
   @override
   Widget build(BuildContext context) {
@@ -183,9 +181,9 @@ class _LiveCaptionOverlayState extends State<LiveCaptionOverlay>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _CaptionBubble
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _CaptionBubble extends StatelessWidget {
   final String text;
@@ -210,25 +208,24 @@ class _CaptionBubble extends StatelessWidget {
       animation: Listenable.merge([pulseAnim, securityBorderAnim]),
       builder: (context, child) {
         final borderColor = securityStatus == SecurityStatus.safe
-            ? accentColor.withOpacity(0.18)
-            : accentColor.withOpacity(securityBorderAnim.value * 0.55);
+            ? accentColor.withValues(alpha: 0.18)
+            : accentColor.withValues(alpha: securityBorderAnim.value * 0.55);
 
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.76),
+            color: Colors.black.withValues(alpha: 0.76),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: borderColor, width: 1.5),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.35),
+                color: Colors.black.withValues(alpha: 0.35),
                 blurRadius: 20,
                 offset: const Offset(0, 6),
               ),
               if (securityStatus != SecurityStatus.safe)
                 BoxShadow(
-                  color:
-                      accentColor.withOpacity(securityBorderAnim.value * 0.2),
+                  color: accentColor.withValues(alpha: securityBorderAnim.value * 0.2),
                   blurRadius: 16,
                   spreadRadius: 2,
                 ),
@@ -240,7 +237,7 @@ class _CaptionBubble extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Animated live dot
+          
           Padding(
             padding: const EdgeInsets.only(top: 5, right: 10),
             child: AnimatedBuilder(
@@ -251,13 +248,13 @@ class _CaptionBubble extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: Color.lerp(
-                    accentColor.withOpacity(0.6),
+                    accentColor.withValues(alpha: 0.6),
                     accentColor,
                     pulseAnim.value,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: accentColor.withOpacity(pulseAnim.value * 0.7),
+                      color: accentColor.withValues(alpha: pulseAnim.value * 0.7),
                       blurRadius: 8,
                       spreadRadius: 2,
                     ),
@@ -267,7 +264,7 @@ class _CaptionBubble extends StatelessWidget {
             ),
           ),
 
-          // Caption text with animated switcher
+          
           Expanded(
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 180),
@@ -292,11 +289,10 @@ class _CaptionBubble extends StatelessWidget {
             ),
           ),
 
-          // Status badge (CC / ⚠ / etc.)
+          
           Padding(
             padding: const EdgeInsets.only(left: 8, top: 1),
-            child:
-                _StatusBadge(status: securityStatus, accentColor: accentColor),
+            child: _StatusBadge(status: securityStatus, accentColor: accentColor),
           ),
         ],
       ),
@@ -304,9 +300,9 @@ class _CaptionBubble extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _StatusBadge
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _StatusBadge extends StatelessWidget {
   final SecurityStatus status;
@@ -339,7 +335,7 @@ class _StatusBadge extends StatelessWidget {
         inner = Text(
           'CC',
           style: TextStyle(
-            color: accentColor.withOpacity(0.65),
+            color: accentColor.withValues(alpha: 0.65),
             fontSize: 9,
             fontWeight: FontWeight.w800,
             letterSpacing: 0.5,
@@ -351,9 +347,9 @@ class _StatusBadge extends StatelessWidget {
       duration: const Duration(milliseconds: 300),
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
       decoration: BoxDecoration(
-        color: accentColor.withOpacity(0.12),
+        color: accentColor.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: accentColor.withOpacity(0.25), width: 0.8),
+        border: Border.all(color: accentColor.withValues(alpha: 0.25), width: 0.8),
       ),
       child: inner,
     );

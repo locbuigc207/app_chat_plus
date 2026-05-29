@@ -1,45 +1,49 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 
 import '../models/call_model.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CallService
-// Handles all Firestore signalling for calls: initiate, answer, decline,
-// end, history, and real-time streaming.
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
+
+
 
 class CallService {
   CallService._();
   static final CallService instance = CallService._();
 
-  final FirebaseFirestore _db   = FirebaseFirestore.instance;
-  final FirebaseAuth      _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  static const String _col               = 'calls';
-  static const int    _timeoutSeconds    = 45;
-  static const int    _historyLimit      = 50;
+  static const String _col = 'calls';
+  static const int _timeoutSeconds = 45;
+  static const int _historyLimit = 50;
 
-  /// Active-call statuses — used in multiple queries.
+  
   static const List<String> _activeStatuses = [
-    'calling', 'ringing', 'dialing', 'connected', 'accepted',
+    'calling',
+    'ringing',
+    'dialing',
+    'connected',
+    'accepted',
   ];
 
-  // ── Convenience ───────────────────────────────────────────────────────────
+  
 
-  CollectionReference<Map<String, dynamic>> get _calls =>
-      _db.collection(_col);
+  CollectionReference<Map<String, dynamic>> get _calls => _db.collection(_col);
 
   String? get _uid => _auth.currentUser?.uid;
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STREAMS
-  // ═══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
-  /// Emits the latest incoming call for the signed-in user, or null.
+  
   Stream<CallModel?> get incomingCallStream {
     final uid = _uid;
     if (uid == null) return Stream.value(null);
@@ -53,13 +57,12 @@ class CallService {
         .map((snap) => snap.docs.isEmpty ? null : _parseDoc(snap.docs.first));
   }
 
-  /// Watches a single call document by ID.
-  Stream<CallModel?> watchCall(String callId) =>
-      _calls.doc(callId).snapshots().map(
-            (doc) => doc.exists ? _parseDoc(doc) : null,
+  
+  Stream<CallModel?> watchCall(String callId) => _calls.doc(callId).snapshots().map(
+        (doc) => doc.exists ? _parseDoc(doc) : null,
       );
 
-  /// Live call history stream (as caller OR callee), merged and sorted.
+  
   Stream<List<CallModel>> get callHistoryStream {
     final uid = _uid;
     if (uid == null) return Stream.value([]);
@@ -92,11 +95,11 @@ class CallService {
     });
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // CALL LIFECYCLE
-  // ═══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
-  /// Creates a new outgoing call document. Returns the [CallModel] or null on error.
+  
   Future<CallModel?> initiateCall({
     required String calleeId,
     required String calleeName,
@@ -110,39 +113,39 @@ class CallService {
     }
 
     try {
-      // Fetch caller profile
+      
       final callerSnap = await _db.collection('users').doc(uid).get();
       final callerData = callerSnap.data() ?? {};
-      final callerName   = callerData['nickname']  as String? ??
-          _auth.currentUser?.displayName ?? 'User';
+      final callerName =
+          callerData['nickname'] as String? ?? _auth.currentUser?.displayName ?? 'User';
       final callerAvatar = callerData['photoUrl'] as String? ?? '';
 
-      // Guard: callee already in a call?
+      
       final busyCall = await _findActiveCallForUser(calleeId);
       if (busyCall != null) {
         debugPrint('⚠️ [CallService] Callee is busy (callId=${busyCall.callId})');
         return null;
       }
 
-      final callId     = _buildCallId(uid);
-      final channel    = 'call_${callId.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_')}';
-      final now        = DateTime.now();
-      final expiresAt  = now.add(Duration(seconds: _timeoutSeconds));
+      final callId = _buildCallId(uid);
+      final channel = 'call_${callId.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_')}';
+      final now = DateTime.now();
+      final expiresAt = now.add(Duration(seconds: _timeoutSeconds));
 
       final call = CallModel(
-        callId:       callId,
-        callerId:     uid,
-        callerName:   callerName,
+        callId: callId,
+        callerId: uid,
+        callerName: callerName,
         callerAvatar: callerAvatar,
-        calleeId:     calleeId,
-        calleeName:   calleeName,
+        calleeId: calleeId,
+        calleeName: calleeName,
         calleeAvatar: calleeAvatar,
-        channelName:  channel,
-        callType:     callType,
-        status:       CallStatus.calling,
-        token:        null,
-        createdAt:    now,
-        expiresAt:    expiresAt,
+        channelName: channel,
+        callType: callType,
+        status: CallStatus.calling,
+        token: null,
+        createdAt: now,
+        expiresAt: expiresAt,
       );
 
       await _calls.doc(callId).set(call.toJson());
@@ -156,11 +159,11 @@ class CallService {
     }
   }
 
-  /// Accepts an incoming call. Returns true on success.
+  
   Future<bool> answerCall(String callId) async {
     try {
       await _calls.doc(callId).update({
-        'status':      CallStatus.connected.name,
+        'status': CallStatus.connected.name,
         'connectedAt': _tsNow(),
       });
       debugPrint('✅ [CallService] Call answered: $callId');
@@ -171,7 +174,7 @@ class CallService {
     }
   }
 
-  /// Declines an incoming call.
+  
   Future<bool> declineCall(String callId) async {
     try {
       await _calls.doc(callId).update({'status': CallStatus.declined.name});
@@ -183,11 +186,11 @@ class CallService {
     }
   }
 
-  /// Ends an active call. Optionally records [durationSeconds].
+  
   Future<bool> endCall(String callId, {int? durationSeconds}) async {
     try {
       final updates = <String, dynamic>{
-        'status':  CallStatus.ended.name,
+        'status': CallStatus.ended.name,
         'endedAt': _tsNow(),
       };
       if (durationSeconds != null) updates['durationSeconds'] = durationSeconds;
@@ -200,7 +203,7 @@ class CallService {
     }
   }
 
-  /// Marks a call as missed if it is still active.
+  
   Future<void> markCallMissed(String callId) async {
     try {
       final doc = await _calls.doc(callId).get();
@@ -215,7 +218,7 @@ class CallService {
     }
   }
 
-  /// Updates the Agora RTC token stored in the call document (set by server).
+  
   Future<void> updateToken(String callId, String token) async {
     try {
       await _calls.doc(callId).update({'token': token});
@@ -224,7 +227,7 @@ class CallService {
     }
   }
 
-  /// Generic status updater for edge cases.
+  
   Future<void> updateCallStatus(String callId, String status) async {
     try {
       await _calls.doc(callId).update({'status': status});
@@ -233,9 +236,9 @@ class CallService {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // FETCH HELPERS
-  // ═══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   Future<CallModel?> getCall(String callId) async {
     try {
@@ -261,7 +264,7 @@ class CallService {
           .limit(limit)
           .get();
 
-      final seen  = <String>{};
+      final seen = <String>{};
       final calls = <CallModel>[];
       for (final doc in [...callerSnap.docs, ...calleeSnap.docs]) {
         if (seen.add(doc.id)) {
@@ -277,9 +280,9 @@ class CallService {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PRIVATE HELPERS
-  // ═══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   CallModel? _parseDoc(DocumentSnapshot<Object?> doc) {
     try {
@@ -318,15 +321,13 @@ class CallService {
 
   String _tsNow() => DateTime.now().millisecondsSinceEpoch.toString();
 
-  /// Merges multiple query snapshot streams, emitting a flat list of docs.
+  
   Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _mergeQuerySnapshots(
-      List<Stream<QuerySnapshot<Map<String, dynamic>>>> streams,
-      ) {
-    final controller =
-    StreamController<List<QueryDocumentSnapshot<Map<String, dynamic>>>>();
+    List<Stream<QuerySnapshot<Map<String, dynamic>>>> streams,
+  ) {
+    final controller = StreamController<List<QueryDocumentSnapshot<Map<String, dynamic>>>>();
     final latest =
-    List<List<QueryDocumentSnapshot<Map<String, dynamic>>>>.filled(
-        streams.length, []);
+        List<List<QueryDocumentSnapshot<Map<String, dynamic>>>>.filled(streams.length, []);
     final initialized = List<bool>.filled(streams.length, false);
     final subs = <StreamSubscription>[];
 
@@ -338,8 +339,8 @@ class CallService {
 
     for (int i = 0; i < streams.length; i++) {
       final sub = streams[i].listen(
-            (snap) {
-          latest[i]      = snap.docs;
+        (snap) {
+          latest[i] = snap.docs;
           initialized[i] = true;
           tryEmit();
         },
@@ -349,7 +350,9 @@ class CallService {
     }
 
     controller.onCancel = () {
-      for (final s in subs) s.cancel();
+      for (final s in subs) {
+        s.cancel();
+      }
     };
 
     return controller.stream;

@@ -2,18 +2,18 @@ import 'package:flutter/material.dart';
 
 import '../services/realtime_ai_service.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// AICallShield
-//
-// Drop-in widget that subscribes to [RealtimeAIService.securityStream] and
-// renders an animated status badge + expandable warning panel.
-//
-// Usage:
-//   Positioned(top: 12, right: 12, child: AICallShield())
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
 
 class AICallShield extends StatefulWidget {
-  /// If true the widget aligns to the right edge (default). False = left.
+  
   final bool alignRight;
 
   const AICallShield({super.key, this.alignRight = true});
@@ -22,9 +22,8 @@ class AICallShield extends StatefulWidget {
   State<AICallShield> createState() => _AICallShieldState();
 }
 
-class _AICallShieldState extends State<AICallShield>
-    with TickerProviderStateMixin {
-  // ── Animation controllers ──────────────────────────────────────────────────
+class _AICallShieldState extends State<AICallShield> with TickerProviderStateMixin {
+  
   late AnimationController _pulseCtrl;
   late Animation<double> _pulseAnim;
 
@@ -45,16 +44,14 @@ class _AICallShieldState extends State<AICallShield>
   void initState() {
     super.initState();
 
-    // Pulse – badge glow
-    _pulseCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1200))
+    
+    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))
       ..repeat(reverse: true);
     _pulseAnim = Tween<double>(begin: 0.6, end: 1.0)
         .animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
 
-    // Shake – triggered on danger
-    _shakeCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 500));
+    
+    _shakeCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
     _shakeAnim = TweenSequence<double>([
       TweenSequenceItem(tween: Tween(begin: 0, end: -6), weight: 1),
       TweenSequenceItem(tween: Tween(begin: -6, end: 6), weight: 2),
@@ -63,17 +60,14 @@ class _AICallShieldState extends State<AICallShield>
       TweenSequenceItem(tween: Tween(begin: 4, end: 0), weight: 1),
     ]).animate(CurvedAnimation(parent: _shakeCtrl, curve: Curves.easeOut));
 
-    // Warning panel slide
-    _panelCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 280));
+    
+    _panelCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 280));
     _panelFade = CurvedAnimation(parent: _panelCtrl, curve: Curves.easeOut);
     _panelSlide = Tween<Offset>(begin: const Offset(0, -0.12), end: Offset.zero)
-        .animate(
-            CurvedAnimation(parent: _panelCtrl, curve: Curves.easeOutCubic));
+        .animate(CurvedAnimation(parent: _panelCtrl, curve: Curves.easeOutCubic));
 
-    // Scanner rotation
-    _scanCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1600))
+    
+    _scanCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))
       ..repeat();
     _scanAnim = Tween<double>(begin: 0, end: 1).animate(_scanCtrl);
   }
@@ -88,8 +82,9 @@ class _AICallShieldState extends State<AICallShield>
   }
 
   void _handleEvent(SecurityEvent event) {
-    if (event.status == _currentEvent.status &&
-        event.message == _currentEvent.message) return;
+    if (event.status == _currentEvent.status && event.message == _currentEvent.message) {
+      return;
+    }
 
     _previousEvent = _currentEvent;
     setState(() => _currentEvent = event);
@@ -104,7 +99,7 @@ class _AICallShieldState extends State<AICallShield>
     }
   }
 
-  // ── Theme helpers ──────────────────────────────────────────────────────────
+  
 
   _ShieldTheme get _theme => _shieldThemeFor(_currentEvent.status);
 
@@ -141,7 +136,7 @@ class _AICallShieldState extends State<AICallShield>
     }
   }
 
-  // ── Build ──────────────────────────────────────────────────────────────────
+  
 
   @override
   Widget build(BuildContext context) {
@@ -158,12 +153,11 @@ class _AICallShieldState extends State<AICallShield>
             child: child,
           ),
           child: Column(
-            crossAxisAlignment: widget.alignRight
-                ? CrossAxisAlignment.end
-                : CrossAxisAlignment.start,
+            crossAxisAlignment:
+                widget.alignRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Warning / danger message panel
+              
               _WarningPanel(
                 event: _currentEvent,
                 theme: _theme,
@@ -171,7 +165,7 @@ class _AICallShieldState extends State<AICallShield>
                 slideAnim: _panelSlide,
               ),
               const SizedBox(height: 6),
-              // Badge
+              
               _ShieldBadge(
                 theme: _theme,
                 event: _currentEvent,
@@ -186,9 +180,9 @@ class _AICallShieldState extends State<AICallShield>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _WarningPanel
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _WarningPanel extends StatelessWidget {
   final SecurityEvent event;
@@ -217,15 +211,15 @@ class _WarningPanel extends StatelessWidget {
           constraints: const BoxConstraints(maxWidth: 260),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: theme.surface.withOpacity(0.95),
+            color: theme.surface.withValues(alpha: 0.95),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: theme.primary.withOpacity(0.5),
+              color: theme.primary.withValues(alpha: 0.5),
               width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: theme.primary.withOpacity(0.25),
+                color: theme.primary.withValues(alpha: 0.25),
                 blurRadius: 16,
                 offset: const Offset(0, 4),
               ),
@@ -252,15 +246,13 @@ class _WarningPanel extends StatelessWidget {
                           child: Text(
                             line,
                             style: TextStyle(
-                              color:
-                                  line.startsWith('⚠️') || line.startsWith('🔍')
-                                      ? theme.primary
-                                      : Colors.white70,
+                              color: line.startsWith('⚠️') || line.startsWith('🔍')
+                                  ? theme.primary
+                                  : Colors.white70,
                               fontSize: 12,
-                              fontWeight:
-                                  line.startsWith('⚠️') || line.startsWith('🔍')
-                                      ? FontWeight.w700
-                                      : FontWeight.w400,
+                              fontWeight: line.startsWith('⚠️') || line.startsWith('🔍')
+                                  ? FontWeight.w700
+                                  : FontWeight.w400,
                               height: 1.4,
                             ),
                           ),
@@ -280,9 +272,9 @@ class _WarningPanel extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _RiskBar
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _RiskBar extends StatelessWidget {
   final double score;
@@ -298,9 +290,7 @@ class _RiskBar extends StatelessWidget {
         Text(
           'Mức độ rủi ro: ${(score * 100).round()}%',
           style: TextStyle(
-              color: color.withOpacity(0.75),
-              fontSize: 10,
-              fontWeight: FontWeight.w600),
+              color: color.withValues(alpha: 0.75), fontSize: 10, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 3),
         ClipRRect(
@@ -317,9 +307,9 @@ class _RiskBar extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _ShieldBadge
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _ShieldBadge extends StatelessWidget {
   final _ShieldTheme theme;
@@ -342,15 +332,15 @@ class _ShieldBadge extends StatelessWidget {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.55),
+            color: Colors.black.withValues(alpha: 0.55),
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
-              color: theme.primary.withOpacity(0.3 + pulseAnim.value * 0.4),
+              color: theme.primary.withValues(alpha: 0.3 + pulseAnim.value * 0.4),
               width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: theme.primary.withOpacity(pulseAnim.value * 0.15),
+                color: theme.primary.withValues(alpha: pulseAnim.value * 0.15),
                 blurRadius: 12,
                 spreadRadius: 1,
               ),
@@ -393,16 +383,16 @@ class _ShieldBadge extends StatelessWidget {
       animation: pulseAnim,
       builder: (_, __) => Icon(
         theme.icon,
-        color: theme.primary.withOpacity(0.7 + pulseAnim.value * 0.3),
+        color: theme.primary.withValues(alpha: 0.7 + pulseAnim.value * 0.3),
         size: 15,
       ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _ShieldTheme
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _ShieldTheme {
   final Color primary;

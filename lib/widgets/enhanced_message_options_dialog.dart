@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// iOS-style message context menu with emoji reactions, action list,
-/// and haptic feedback.
+
+
 class EnhancedMessageOptionsDialog extends StatefulWidget {
   final bool isOwnMessage;
   final bool isPinned;
@@ -38,12 +38,10 @@ class EnhancedMessageOptionsDialog extends StatefulWidget {
   });
 
   @override
-  State<EnhancedMessageOptionsDialog> createState() =>
-      _EnhancedMessageOptionsDialogState();
+  State<EnhancedMessageOptionsDialog> createState() => _EnhancedMessageOptionsDialogState();
 }
 
-class _EnhancedMessageOptionsDialogState
-    extends State<EnhancedMessageOptionsDialog>
+class _EnhancedMessageOptionsDialogState extends State<EnhancedMessageOptionsDialog>
     with SingleTickerProviderStateMixin {
   late AnimationController _animController;
   late Animation<double> _scaleAnim;
@@ -96,7 +94,7 @@ class _EnhancedMessageOptionsDialogState
           borderRadius: BorderRadius.circular(28),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.12),
+              color: Colors.black.withValues(alpha: 0.12),
               blurRadius: 48,
               spreadRadius: 4,
               offset: const Offset(0, 8),
@@ -106,7 +104,7 @@ class _EnhancedMessageOptionsDialogState
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // ── Drag indicator ───────────────────────────────────────────
+            
             Padding(
               padding: const EdgeInsets.only(top: 10, bottom: 4),
               child: Container(
@@ -119,17 +117,16 @@ class _EnhancedMessageOptionsDialogState
               ),
             ),
 
-            // ── Message preview ──────────────────────────────────────────
+            
             if (!widget.isDeleted && widget.messageContent.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
                 child: Container(
                   width: double.infinity,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
                     color: widget.isOwnMessage
-                        ? const Color(0xFF007AFF).withOpacity(0.08)
+                        ? const Color(0xFF007AFF).withValues(alpha: 0.08)
                         : const Color(0xFFF2F2F7),
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -146,7 +143,7 @@ class _EnhancedMessageOptionsDialogState
                 ),
               ),
 
-            // ── Emoji reactions ──────────────────────────────────────────
+            
             if (!widget.isDeleted && widget.onReact != null) ...[
               const SizedBox(height: 14),
               Padding(
@@ -175,7 +172,7 @@ class _EnhancedMessageOptionsDialogState
             ] else
               const SizedBox(height: 8),
 
-            // ── Actions ──────────────────────────────────────────────────
+            
             if (widget.isOwnMessage && !widget.isDeleted) ...[
               _buildOption(
                 icon: Icons.edit_rounded,
@@ -210,9 +207,7 @@ class _EnhancedMessageOptionsDialogState
                 },
               ),
               _buildOption(
-                icon: widget.isPinned
-                    ? Icons.push_pin_rounded
-                    : Icons.push_pin_outlined,
+                icon: widget.isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
                 label: widget.isPinned ? 'Bỏ ghim' : 'Ghim tin nhắn',
                 onTap: () {
                   Navigator.pop(context);
@@ -292,7 +287,7 @@ class _EnhancedMessageOptionsDialogState
         HapticFeedback.selectionClick();
         onTap();
       },
-      highlightColor: effectiveColor.withOpacity(0.04),
+      highlightColor: effectiveColor.withValues(alpha: 0.04),
       splashColor: Colors.transparent,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
@@ -302,7 +297,7 @@ class _EnhancedMessageOptionsDialogState
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: effectiveColor.withOpacity(0.08),
+                color: effectiveColor.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(icon, color: effectiveColor, size: 20),
@@ -330,7 +325,7 @@ class _EnhancedMessageOptionsDialogState
   }
 }
 
-// ── Emoji reaction button ──────────────────────────────────────────────────
+
 class _EmojiButton extends StatefulWidget {
   final String emoji;
   final VoidCallback onTap;
@@ -341,8 +336,7 @@ class _EmojiButton extends StatefulWidget {
   State<_EmojiButton> createState() => _EmojiButtonState();
 }
 
-class _EmojiButtonState extends State<_EmojiButton>
-    with SingleTickerProviderStateMixin {
+class _EmojiButtonState extends State<_EmojiButton> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _scale;
 

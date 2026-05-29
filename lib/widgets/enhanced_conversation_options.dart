@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/services/chat_bubble_service.dart';
 
@@ -40,12 +41,10 @@ class EnhancedConversationOptions extends StatefulWidget {
   });
 
   @override
-  State<EnhancedConversationOptions> createState() =>
-      _EnhancedConversationOptionsState();
+  State<EnhancedConversationOptions> createState() => _EnhancedConversationOptionsState();
 }
 
-class _EnhancedConversationOptionsState
-    extends State<EnhancedConversationOptions>
+class _EnhancedConversationOptionsState extends State<EnhancedConversationOptions>
     with SingleTickerProviderStateMixin {
   late AnimationController _animController;
   late Animation<double> _slideAnim;
@@ -95,7 +94,7 @@ class _EnhancedConversationOptionsState
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // ── Drag handle ─────────────────────────────────────────────
+            
             Padding(
               padding: const EdgeInsets.only(top: 12, bottom: 4),
               child: Container(
@@ -108,7 +107,7 @@ class _EnhancedConversationOptionsState
               ),
             ),
 
-            // ── User header ─────────────────────────────────────────────
+            
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
               child: Row(
@@ -148,8 +147,7 @@ class _EnhancedConversationOptionsState
                                 'Nhấn để xem tùy chọn',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color:
-                                  ColorConstants.greyColor.withOpacity(0.7),
+                                  color: ColorConstants.greyColor.withValues(alpha: 0.7),
                                 ),
                               ),
                           ],
@@ -161,16 +159,14 @@ class _EnhancedConversationOptionsState
               ),
             ),
 
-            // ── Quick action chips ───────────────────────────────────────
+            
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               child: Row(
                 children: [
                   _buildChip(
-                    icon: widget.isPinned
-                        ? Icons.push_pin_rounded
-                        : Icons.push_pin_outlined,
+                    icon: widget.isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
                     label: widget.isPinned ? 'Bỏ ghim' : 'Ghim',
                     color: ColorConstants.primaryColor,
                     onTap: () {
@@ -181,9 +177,7 @@ class _EnhancedConversationOptionsState
                   ),
                   const SizedBox(width: 10),
                   _buildChip(
-                    icon: widget.isMuted
-                        ? Icons.volume_up_rounded
-                        : Icons.volume_off_rounded,
+                    icon: widget.isMuted ? Icons.volume_up_rounded : Icons.volume_off_rounded,
                     label: widget.isMuted ? 'Bật âm' : 'Tắt âm',
                     color: Colors.orange,
                     onTap: () {
@@ -225,7 +219,7 @@ class _EnhancedConversationOptionsState
               child: Divider(height: 1, color: Color(0xFFF2F2F7)),
             ),
 
-            // ── Full options list ────────────────────────────────────────
+            
             if (widget.onViewProfile != null)
               _buildListTile(
                 icon: Icons.account_circle_rounded,
@@ -245,11 +239,9 @@ class _EnhancedConversationOptionsState
               color: const Color(0xFF007AFF),
               onTap: () async {
                 Navigator.pop(context);
-                final hasPermission =
-                await bubbleService.hasOverlayPermission();
+                final hasPermission = await bubbleService.hasOverlayPermission();
                 if (!hasPermission) {
-                  final granted =
-                  await bubbleService.requestOverlayPermission();
+                  final granted = await bubbleService.requestOverlayPermission();
                   if (!granted) {
                     if (context.mounted) {
                       _showSnackBar(
@@ -281,13 +273,10 @@ class _EnhancedConversationOptionsState
 
             if (widget.onArchive != null)
               _buildListTile(
-                icon: widget.isArchived
-                    ? Icons.unarchive_rounded
-                    : Icons.archive_rounded,
+                icon: widget.isArchived ? Icons.unarchive_rounded : Icons.archive_rounded,
                 label: widget.isArchived ? 'Bỏ lưu trữ' : 'Lưu trữ',
-                subtitle: widget.isArchived
-                    ? 'Khôi phục cuộc trò chuyện'
-                    : 'Ẩn khỏi danh sách chính',
+                subtitle:
+                    widget.isArchived ? 'Khôi phục cuộc trò chuyện' : 'Ẩn khỏi danh sách chính',
                 color: const Color(0xFF636366),
                 onTap: () {
                   Navigator.pop(context);
@@ -313,9 +302,7 @@ class _EnhancedConversationOptionsState
 
             if (widget.onBlock != null)
               _buildListTile(
-                icon: widget.isBlocked
-                    ? Icons.block_rounded
-                    : Icons.block_rounded,
+                icon: widget.isBlocked ? Icons.block_rounded : Icons.block_rounded,
                 label: widget.isBlocked ? 'Bỏ chặn người dùng' : 'Chặn',
                 subtitle: widget.isBlocked
                     ? 'Cho phép liên lạc trở lại'
@@ -344,18 +331,18 @@ class _EnhancedConversationOptionsState
             shape: BoxShape.circle,
             gradient: LinearGradient(
               colors: [
-                ColorConstants.primaryColor.withOpacity(0.2),
-                ColorConstants.primaryColor.withOpacity(0.05),
+                ColorConstants.primaryColor.withValues(alpha: 0.2),
+                ColorConstants.primaryColor.withValues(alpha: 0.05),
               ],
             ),
           ),
           child: ClipOval(
             child: widget.userAvatar.isNotEmpty
                 ? Image.network(
-              widget.userAvatar,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _defaultAvatarIcon(),
-            )
+                    widget.userAvatar,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _defaultAvatarIcon(),
+                  )
                 : _defaultAvatarIcon(),
           ),
         ),
@@ -377,17 +364,17 @@ class _EnhancedConversationOptionsState
   }
 
   Widget _defaultAvatarIcon() => Icon(
-    Icons.account_circle_rounded,
-    size: 52,
-    color: ColorConstants.primaryColor.withOpacity(0.4),
-  );
+        Icons.account_circle_rounded,
+        size: 52,
+        color: ColorConstants.primaryColor.withValues(alpha: 0.4),
+      );
 
   Widget _buildTag(IconData icon, String label, Color color) {
     return Container(
       margin: const EdgeInsets.only(right: 6),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -419,9 +406,9 @@ class _EnhancedConversationOptionsState
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
+          color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withOpacity(0.2), width: 1),
+          border: Border.all(color: color.withValues(alpha: 0.2), width: 1),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -454,8 +441,8 @@ class _EnhancedConversationOptionsState
         HapticFeedback.selectionClick();
         onTap();
       },
-      highlightColor: color.withOpacity(0.05),
-      splashColor: color.withOpacity(0.08),
+      highlightColor: color.withValues(alpha: 0.05),
+      splashColor: color.withValues(alpha: 0.08),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
         child: Row(
@@ -464,7 +451,7 @@ class _EnhancedConversationOptionsState
               width: 42,
               height: 42,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: color, size: 21),
@@ -506,14 +493,14 @@ class _EnhancedConversationOptionsState
   }
 
   void _showSnackBar(
-      BuildContext context, {
-        required String message,
-        IconData? icon,
-        String? actionLabel,
-        VoidCallback? onAction,
-        bool isError = false,
-        bool isSuccess = false,
-      }) {
+    BuildContext context, {
+    required String message,
+    IconData? icon,
+    String? actionLabel,
+    VoidCallback? onAction,
+    bool isError = false,
+    bool isSuccess = false,
+  }) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -525,19 +512,17 @@ class _EnhancedConversationOptionsState
             Expanded(child: Text(message)),
           ],
         ),
-        backgroundColor: isError
-            ? Colors.red
-            : (isSuccess ? Colors.green : Colors.grey[800]),
+        backgroundColor: isError ? Colors.red : (isSuccess ? Colors.green : Colors.grey[800]),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
         duration: const Duration(seconds: 3),
         action: actionLabel != null
             ? SnackBarAction(
-          label: actionLabel,
-          textColor: Colors.white,
-          onPressed: onAction ?? () {},
-        )
+                label: actionLabel,
+                textColor: Colors.white,
+                onPressed: onAction ?? () {},
+              )
             : null,
       ),
     );

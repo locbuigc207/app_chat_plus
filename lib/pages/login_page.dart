@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+
 import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:flutter_chat_demo/providers/auth_provider.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -132,7 +133,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     return Scaffold(
       body: Stack(
         children: [
-          // Animated gradient background
+          
           AnimatedBuilder(
             animation: _bgController,
             builder: (_, __) {
@@ -153,7 +154,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             },
           ),
 
-          // Decorative orbs
+          
           Positioned(
             top: -size.height * 0.1,
             left: -size.width * 0.2,
@@ -161,7 +162,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               animation: _bgController,
               builder: (_, __) {
                 return _GlowOrb(
-                  color: const Color(0xFF4F8DFF).withOpacity(0.15),
+                  color: const Color(0xFF4F8DFF).withValues(alpha: 0.15),
                   size: size.width * 0.8,
                   animValue: _bgController.value,
                 );
@@ -175,7 +176,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               animation: _bgController,
               builder: (_, __) {
                 return _GlowOrb(
-                  color: const Color(0xFF7B4FFF).withOpacity(0.12),
+                  color: const Color(0xFF7B4FFF).withValues(alpha: 0.12),
                   size: size.width * 0.7,
                   animValue: 1.0 - _bgController.value,
                 );
@@ -183,20 +184,19 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             ),
           ),
 
-          // Decorative floating particles
+          
           ...List.generate(6, (i) => _FloatingDot(index: i, size: size)),
 
-          // Main content
+          
           SafeArea(
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 440),
                 child: SingleChildScrollView(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
                   child: Column(
                     children: [
-                      // Logo section
+                      
                       SlideTransition(
                         position: _logoSlide,
                         child: FadeTransition(
@@ -219,7 +219,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
                       const SizedBox(height: 40),
 
-                      // Auth card
+                      
                       SlideTransition(
                         position: _cardSlide,
                         child: FadeTransition(
@@ -256,23 +256,22 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             ),
           ),
 
-          // Loading overlay
-          if (authProvider.status == Status.authenticating)
-            const _LoadingOverlay(),
+          
+          if (authProvider.status == Status.authenticating) const _LoadingOverlay(),
         ],
       ),
     );
   }
 }
 
-// ─── Logo Section ─────────────────────────────────────────────────────────────
+
 
 class _LogoSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // App icon with glass effect
+        
         Container(
           width: 90,
           height: 90,
@@ -285,13 +284,13 @@ class _LogoSection extends StatelessWidget {
             ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF4F8DFF).withOpacity(0.4),
+                color: const Color(0xFF4F8DFF).withValues(alpha: 0.4),
                 blurRadius: 32,
                 offset: const Offset(0, 12),
                 spreadRadius: -4,
               ),
               BoxShadow(
-                color: const Color(0xFF7B4FFF).withOpacity(0.25),
+                color: const Color(0xFF7B4FFF).withValues(alpha: 0.25),
                 blurRadius: 48,
                 offset: const Offset(0, 20),
                 spreadRadius: -8,
@@ -305,7 +304,7 @@ class _LogoSection extends StatelessWidget {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  // Inner shine
+                  
                   Positioned(
                     top: 0,
                     left: 0,
@@ -313,14 +312,13 @@ class _LogoSection extends StatelessWidget {
                     child: Container(
                       height: 45,
                       decoration: BoxDecoration(
-                        borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(28)),
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
-                            Colors.white.withOpacity(0.2),
-                            Colors.white.withOpacity(0.0),
+                            Colors.white.withValues(alpha: 0.2),
+                            Colors.white.withValues(alpha: 0.0),
                           ],
                         ),
                       ),
@@ -351,7 +349,7 @@ class _LogoSection extends StatelessWidget {
         Text(
           'Kết nối · Chia sẻ · Trải nghiệm',
           style: TextStyle(
-            color: Colors.white.withOpacity(0.5),
+            color: Colors.white.withValues(alpha: 0.5),
             fontSize: 14,
             fontWeight: FontWeight.w400,
             letterSpacing: 0.5,
@@ -362,7 +360,7 @@ class _LogoSection extends StatelessWidget {
   }
 }
 
-// ─── Auth Card ────────────────────────────────────────────────────────────────
+
 
 class _AuthCard extends StatelessWidget {
   final Animation<double> btnFade;
@@ -386,9 +384,9 @@ class _AuthCard extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(28),
-            color: Colors.white.withOpacity(0.05),
+            color: Colors.white.withValues(alpha: 0.05),
             border: Border.all(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha: 0.1),
               width: 1,
             ),
           ),
@@ -401,7 +399,7 @@ class _AuthCard extends StatelessWidget {
                 Text(
                   'Đăng nhập',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
+                    color: Colors.white.withValues(alpha: 0.9),
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.5,
@@ -411,19 +409,16 @@ class _AuthCard extends StatelessWidget {
                 Text(
                   'Chọn phương thức đăng nhập của bạn',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.4),
+                    color: Colors.white.withValues(alpha: 0.4),
                     fontSize: 13,
                   ),
                 ),
                 const SizedBox(height: 24),
 
-                // Google sign in button
+                
                 _SignInButton(
                   onPressed: () {
-                    authProvider
-                        .handleSignIn()
-                        .then(onSignInSuccess)
-                        .catchError(
+                    authProvider.handleSignIn().then(onSignInSuccess).catchError(
                       (e) {
                         Fluttertoast.showToast(msg: e.toString());
                         authProvider.handleException();
@@ -437,13 +432,13 @@ class _AuthCard extends StatelessWidget {
 
                 const SizedBox(height: 14),
 
-                // Divider
+                
                 Row(
                   children: [
                     Expanded(
                       child: Container(
                         height: 1,
-                        color: Colors.white.withOpacity(0.08),
+                        color: Colors.white.withValues(alpha: 0.08),
                       ),
                     ),
                     Padding(
@@ -451,7 +446,7 @@ class _AuthCard extends StatelessWidget {
                       child: Text(
                         'hoặc',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.3),
+                          color: Colors.white.withValues(alpha: 0.3),
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
                         ),
@@ -460,7 +455,7 @@ class _AuthCard extends StatelessWidget {
                     Expanded(
                       child: Container(
                         height: 1,
-                        color: Colors.white.withOpacity(0.08),
+                        color: Colors.white.withValues(alpha: 0.08),
                       ),
                     ),
                   ],
@@ -468,7 +463,7 @@ class _AuthCard extends StatelessWidget {
 
                 const SizedBox(height: 14),
 
-                // Phone sign in button
+                
                 _SignInButton(
                   onPressed: onPhoneTap,
                   icon: const Icon(
@@ -482,13 +477,13 @@ class _AuthCard extends StatelessWidget {
 
                 const SizedBox(height: 24),
 
-                // Terms text
+                
                 Center(
                   child: Text(
                     'Khi tiếp tục, bạn đồng ý với\nĐiều khoản dịch vụ và Chính sách bảo mật',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.25),
+                      color: Colors.white.withValues(alpha: 0.25),
                       fontSize: 11.5,
                       height: 1.6,
                     ),
@@ -503,7 +498,7 @@ class _AuthCard extends StatelessWidget {
   }
 }
 
-// ─── Sign In Button ───────────────────────────────────────────────────────────
+
 
 class _SignInButton extends StatefulWidget {
   final VoidCallback onPressed;
@@ -522,8 +517,7 @@ class _SignInButton extends StatefulWidget {
   State<_SignInButton> createState() => _SignInButtonState();
 }
 
-class _SignInButtonState extends State<_SignInButton>
-    with SingleTickerProviderStateMixin {
+class _SignInButtonState extends State<_SignInButton> with SingleTickerProviderStateMixin {
   late AnimationController _pressController;
   late Animation<double> _scaleAnim;
 
@@ -562,21 +556,19 @@ class _SignInButtonState extends State<_SignInButton>
           height: 56,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            color: widget.isPrimary
-                ? Colors.white.withOpacity(0.1)
-                : Colors.transparent,
+            color: widget.isPrimary ? Colors.white.withValues(alpha: 0.1) : Colors.transparent,
             border: Border.all(
               color: widget.isPrimary
-                  ? Colors.white.withOpacity(0.15)
-                  : const Color(0xFF4F8DFF).withOpacity(0.3),
+                  ? Colors.white.withValues(alpha: 0.15)
+                  : const Color(0xFF4F8DFF).withValues(alpha: 0.3),
               width: 1,
             ),
             gradient: widget.isPrimary
                 ? null
                 : LinearGradient(
                     colors: [
-                      const Color(0xFF4F8DFF).withOpacity(0.08),
-                      const Color(0xFF7B4FFF).withOpacity(0.08),
+                      const Color(0xFF4F8DFF).withValues(alpha: 0.08),
+                      const Color(0xFF7B4FFF).withValues(alpha: 0.08),
                     ],
                   ),
           ),
@@ -589,7 +581,7 @@ class _SignInButtonState extends State<_SignInButton>
                 widget.label,
                 style: TextStyle(
                   color: widget.isPrimary
-                      ? Colors.white.withOpacity(0.9)
+                      ? Colors.white.withValues(alpha: 0.9)
                       : const Color(0xFF4F8DFF),
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
@@ -604,7 +596,7 @@ class _SignInButtonState extends State<_SignInButton>
   }
 }
 
-// ─── Google Color Icon ────────────────────────────────────────────────────────
+
 
 class _GoogleColorIcon extends StatelessWidget {
   const _GoogleColorIcon();
@@ -641,7 +633,7 @@ class _GooglePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter _) => false;
 }
 
-// ─── Loading Overlay ──────────────────────────────────────────────────────────
+
 
 class _LoadingOverlay extends StatelessWidget {
   const _LoadingOverlay();
@@ -652,20 +644,19 @@ class _LoadingOverlay extends StatelessWidget {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
         child: Container(
-          color: Colors.black.withOpacity(0.4),
+          color: Colors.black.withValues(alpha: 0.4),
           child: Center(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(24),
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 32, vertical: 28),
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 28),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.08),
+                    color: Colors.white.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(24),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.12),
+                      color: Colors.white.withValues(alpha: 0.12),
                     ),
                   ),
                   child: Column(
@@ -677,14 +668,14 @@ class _LoadingOverlay extends StatelessWidget {
                         child: CircularProgressIndicator(
                           color: const Color(0xFF4F8DFF),
                           strokeWidth: 2.5,
-                          backgroundColor: Colors.white.withOpacity(0.1),
+                          backgroundColor: Colors.white.withValues(alpha: 0.1),
                         ),
                       ),
                       const SizedBox(height: 16),
                       Text(
                         'Đang đăng nhập...',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.8),
+                          color: Colors.white.withValues(alpha: 0.8),
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
                         ),
@@ -701,7 +692,7 @@ class _LoadingOverlay extends StatelessWidget {
   }
 }
 
-// ─── Glow Orb ─────────────────────────────────────────────────────────────────
+
 
 class _GlowOrb extends StatelessWidget {
   final Color color;
@@ -724,7 +715,7 @@ class _GlowOrb extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           gradient: RadialGradient(
-            colors: [color, color.withOpacity(0)],
+            colors: [color, color.withValues(alpha: 0)],
           ),
         ),
       ),
@@ -732,7 +723,7 @@ class _GlowOrb extends StatelessWidget {
   }
 }
 
-// ─── Floating Dot ─────────────────────────────────────────────────────────────
+
 
 class _FloatingDot extends StatefulWidget {
   final int index;
@@ -744,8 +735,7 @@ class _FloatingDot extends StatefulWidget {
   State<_FloatingDot> createState() => _FloatingDotState();
 }
 
-class _FloatingDotState extends State<_FloatingDot>
-    with SingleTickerProviderStateMixin {
+class _FloatingDotState extends State<_FloatingDot> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _y;
   late double _x, _dotSize, _opacity;
@@ -764,10 +754,8 @@ class _FloatingDotState extends State<_FloatingDot>
     )..repeat(reverse: true);
 
     _y = Tween<double>(
-      begin: widget.size.height * 0.2 +
-          rng.nextDouble() * widget.size.height * 0.4,
-      end: widget.size.height * 0.2 +
-          rng.nextDouble() * widget.size.height * 0.4,
+      begin: widget.size.height * 0.2 + rng.nextDouble() * widget.size.height * 0.4,
+      end: widget.size.height * 0.2 + rng.nextDouble() * widget.size.height * 0.4,
     ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
   }
 
@@ -789,7 +777,7 @@ class _FloatingDotState extends State<_FloatingDot>
           height: _dotSize,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: const Color(0xFF4F8DFF).withOpacity(_opacity),
+            color: const Color(0xFF4F8DFF).withValues(alpha: _opacity),
           ),
         ),
       ),
@@ -797,15 +785,14 @@ class _FloatingDotState extends State<_FloatingDot>
   }
 }
 
-// ─── Custom Routes ────────────────────────────────────────────────────────────
+
 
 class _FadeRoute extends PageRouteBuilder {
   final Widget page;
   _FadeRoute({required this.page})
       : super(
           pageBuilder: (_, __, ___) => page,
-          transitionsBuilder: (_, anim, __, child) =>
-              FadeTransition(opacity: anim, child: child),
+          transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
           transitionDuration: const Duration(milliseconds: 400),
         );
 }
@@ -819,8 +806,7 @@ class _SlideRoute extends PageRouteBuilder {
             position: Tween<Offset>(
               begin: const Offset(1.0, 0.0),
               end: Offset.zero,
-            ).animate(
-                CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+            ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
             child: child,
           ),
           transitionDuration: const Duration(milliseconds: 350),

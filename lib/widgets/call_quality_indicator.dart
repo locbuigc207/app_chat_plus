@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../services/agora_rtc_manager.dart';
 
-// ─────────────────────────────────────────────────────────────
-// CallQualityIndicator
-//
-// Renders animated signal bars with a tooltip showing RTT,
-// bitrate and packet-loss stats.
-// ─────────────────────────────────────────────────────────────
+
+
+
+
+
+
 
 class CallQualityIndicator extends StatelessWidget {
   final RtcCallStats stats;
@@ -47,8 +47,7 @@ class CallQualityIndicator extends StatelessWidget {
               const SizedBox(width: 6),
               Text(
                 label,
-                style: TextStyle(
-                    color: color, fontSize: 10, fontWeight: FontWeight.w600),
+                style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w600),
               ),
             ],
           ],
@@ -58,7 +57,7 @@ class CallQualityIndicator extends StatelessWidget {
   }
 
   int _qualityLevel() {
-    // No stats yet → assume perfect
+    
     if (stats.rtt == 0 && stats.txBitrate == 0) return 4;
     if (stats.rtt < 80 && stats.txPacketLoss < 2) return 4;
     if (stats.rtt < 160 && stats.txPacketLoss < 5) return 3;
@@ -93,12 +92,12 @@ class CallQualityIndicator extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Signal bars
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _SignalBars extends StatelessWidget {
-  final int level; // 1–4
+  final int level; 
   final Color color;
 
   const _SignalBars({required this.level, required this.color});
@@ -119,7 +118,7 @@ class _SignalBars extends StatelessWidget {
           height: barHeight,
           margin: const EdgeInsets.symmetric(horizontal: 1),
           decoration: BoxDecoration(
-            color: filled ? color : Colors.white.withOpacity(0.2),
+            color: filled ? color : Colors.white.withValues(alpha: 0.2),
             borderRadius: BorderRadius.circular(2),
           ),
         );

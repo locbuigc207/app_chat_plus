@@ -22,7 +22,7 @@ class UserChat {
     this.twoFactorSecret = '',
   });
 
-  // Bổ sung hàm copyWith tại đây
+  
   UserChat copyWith({
     String? id,
     String? photoUrl,

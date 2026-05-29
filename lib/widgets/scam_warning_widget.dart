@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 
-// ─────────────────────────────────────────────────────────────
-//  ScamWarningWidget
-//  Banner cảnh báo lừa đảo được nhúng dưới tin nhắn.
-//  Hỗ trợ 3 cấp: WARNING_MONEY | WARNING_LINK | DANGER
-//  + animation xuất hiện + nút thu gọn/mở rộng.
-// ─────────────────────────────────────────────────────────────
+
+
+
+
+
+
 
 enum _WarningLevel { money, link, danger, none }
 
 class ScamWarningWidget extends StatefulWidget {
-  /// 'WARNING_MONEY' | 'WARNING_LINK' | 'DANGER'
+  
   final String status;
 
-  /// Cho phép người dùng thu gọn banner (mặc định: true)
+  
   final bool collapsible;
 
   const ScamWarningWidget({
@@ -26,14 +26,13 @@ class ScamWarningWidget extends StatefulWidget {
   State<ScamWarningWidget> createState() => _ScamWarningWidgetState();
 }
 
-class _ScamWarningWidgetState extends State<ScamWarningWidget>
-    with SingleTickerProviderStateMixin {
+class _ScamWarningWidgetState extends State<ScamWarningWidget> with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<double> _slideAnim;
   late final Animation<double> _fadeAnim;
   bool _collapsed = false;
 
-  // ── Parse status ──────────────────────────────────────────────
+  
   _WarningLevel get _level {
     switch (widget.status) {
       case 'WARNING_MONEY':
@@ -47,7 +46,7 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget>
     }
   }
 
-  // ── Visual config per level ──────────────────────────────────
+  
   _LevelConfig get _config {
     switch (_level) {
       case _WarningLevel.money:
@@ -114,8 +113,7 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget>
           mainColor: Colors.grey,
           bgColor: Colors.transparent,
           borderColor: Colors.transparent,
-          gradient: const LinearGradient(
-              colors: [Colors.transparent, Colors.transparent]),
+          gradient: const LinearGradient(colors: [Colors.transparent, Colors.transparent]),
           tips: [],
         );
     }
@@ -166,7 +164,7 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget>
             border: Border.all(color: cfg.borderColor, width: 1.5),
             boxShadow: [
               BoxShadow(
-                color: cfg.mainColor.withOpacity(0.12),
+                color: cfg.mainColor.withValues(alpha: 0.12),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               ),
@@ -177,39 +175,37 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // ── Top accent bar ──────────────────────────────
+                
                 Container(
                   height: 4,
                   decoration: BoxDecoration(
                     color: cfg.mainColor,
-                    borderRadius:
-                        const BorderRadius.vertical(top: Radius.circular(16)),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                   ),
                 ),
-                // ── Header row ──────────────────────────────────
+                
                 Padding(
                   padding: const EdgeInsets.fromLTRB(14, 10, 10, 8),
                   child: Row(
                     children: [
-                      // Icon container
+                      
                       Container(
                         width: 40,
                         height: 40,
                         decoration: BoxDecoration(
-                          color: cfg.mainColor.withOpacity(0.12),
+                          color: cfg.mainColor.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Icon(cfg.icon, color: cfg.mainColor, size: 22),
                       ),
                       const SizedBox(width: 10),
-                      // Badge + title
+                      
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 2),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                               decoration: BoxDecoration(
                                 color: cfg.mainColor,
                                 borderRadius: BorderRadius.circular(6),
@@ -236,7 +232,7 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget>
                           ],
                         ),
                       ),
-                      // Collapse toggle
+                      
                       if (widget.collapsible)
                         GestureDetector(
                           onTap: () => setState(() => _collapsed = !_collapsed),
@@ -244,7 +240,7 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget>
                             width: 32,
                             height: 32,
                             decoration: BoxDecoration(
-                              color: cfg.mainColor.withOpacity(0.10),
+                              color: cfg.mainColor.withValues(alpha: 0.10),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: AnimatedRotation(
@@ -262,13 +258,11 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget>
                   ),
                 ),
 
-                // ── Collapsible body ─────────────────────────────
+                
                 AnimatedCrossFade(
                   firstChild: const SizedBox(height: 0),
                   secondChild: _buildBody(cfg),
-                  crossFadeState: _collapsed
-                      ? CrossFadeState.showFirst
-                      : CrossFadeState.showSecond,
+                  crossFadeState: _collapsed ? CrossFadeState.showFirst : CrossFadeState.showSecond,
                   duration: const Duration(milliseconds: 280),
                   sizeCurve: Curves.easeInOut,
                 ),
@@ -288,26 +282,24 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget>
         children: [
           Divider(color: cfg.borderColor, height: 1),
           const SizedBox(height: 10),
-          // Body text
+          
           Text(
             cfg.body,
             style: TextStyle(
-              color: cfg.mainColor.withOpacity(0.85),
+              color: cfg.mainColor.withValues(alpha: 0.85),
               fontSize: 13,
               height: 1.5,
               fontWeight: FontWeight.w500,
             ),
           ),
           const SizedBox(height: 10),
-          // Tips chips
+          
           Wrap(
             spacing: 6,
             runSpacing: 6,
-            children: cfg.tips
-                .map((tip) => _TipChip(tip: tip, color: cfg.mainColor))
-                .toList(),
+            children: cfg.tips.map((tip) => _TipChip(tip: tip, color: cfg.mainColor)).toList(),
           ),
-          // Extra CTA for danger
+          
           if (cfg.isDanger) ...[
             const SizedBox(height: 12),
             _DangerActions(color: cfg.mainColor),
@@ -318,7 +310,7 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget>
   }
 }
 
-// ── Tip chip ─────────────────────────────────────────────────
+
 class _TipChip extends StatelessWidget {
   final String tip;
   final Color color;
@@ -329,9 +321,9 @@ class _TipChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.10),
+        color: color.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.30)),
+        border: Border.all(color: color.withValues(alpha: 0.30)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -352,7 +344,7 @@ class _TipChip extends StatelessWidget {
   }
 }
 
-// ── Danger action buttons ────────────────────────────────────
+
 class _DangerActions extends StatelessWidget {
   final Color color;
   const _DangerActions({required this.color});
@@ -407,7 +399,7 @@ class _ActionBtn extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.30),
+              color: color.withValues(alpha: 0.30),
               blurRadius: 8,
               offset: const Offset(0, 3),
             ),
@@ -433,7 +425,7 @@ class _ActionBtn extends StatelessWidget {
   }
 }
 
-// ── Level config data class ──────────────────────────────────
+
 class _LevelConfig {
   final IconData icon;
   final String badgeLabel;

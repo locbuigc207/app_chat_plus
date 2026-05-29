@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
@@ -8,13 +10,13 @@ class FriendProvider {
 
   FriendProvider({required this.firebaseFirestore});
 
-  // ─── Friend Requests ──────────────────────────────────────────────────────
+  
 
   Future<bool> sendFriendRequest(String requesterId, String receiverId) async {
     try {
       if (requesterId == receiverId) return false;
 
-      // Check both directions
+      
       final checks = await Future.wait([
         firebaseFirestore
             .collection(FirestoreConstants.pathFriendRequestCollection)
@@ -34,22 +36,19 @@ class FriendProvider {
         return false;
       }
 
-      // Check if already friends
+      
       if (await areFriends(requesterId, receiverId)) return false;
 
-      await firebaseFirestore
-          .collection(FirestoreConstants.pathFriendRequestCollection)
-          .add({
+      await firebaseFirestore.collection(FirestoreConstants.pathFriendRequestCollection).add({
         FirestoreConstants.requesterId: requesterId,
         FirestoreConstants.receiverId: receiverId,
         FirestoreConstants.status: 'pending',
-        FirestoreConstants.createdAt:
-            DateTime.now().millisecondsSinceEpoch.toString(),
+        FirestoreConstants.createdAt: DateTime.now().millisecondsSinceEpoch.toString(),
       });
 
       return true;
     } catch (e) {
-      print('❌ Error sending friend request: $e');
+      debugPrint('❌ Error sending friend request: $e');
       return false;
     }
   }
@@ -62,34 +61,29 @@ class FriendProvider {
     try {
       final batch = firebaseFirestore.batch();
 
-      // Update request status
+      
       batch.update(
-        firebaseFirestore
-            .collection(FirestoreConstants.pathFriendRequestCollection)
-            .doc(requestId),
+        firebaseFirestore.collection(FirestoreConstants.pathFriendRequestCollection).doc(requestId),
         {FirestoreConstants.status: 'accepted'},
       );
 
-      // Create friendship document
+      
       final friendshipId = _getFriendshipId(userId1, userId2);
       final sorted = _sortedIds(userId1, userId2);
 
       batch.set(
-        firebaseFirestore
-            .collection(FirestoreConstants.pathFriendshipCollection)
-            .doc(friendshipId),
+        firebaseFirestore.collection(FirestoreConstants.pathFriendshipCollection).doc(friendshipId),
         {
           FirestoreConstants.userId1: sorted[0],
           FirestoreConstants.userId2: sorted[1],
-          FirestoreConstants.createdAt:
-              DateTime.now().millisecondsSinceEpoch.toString(),
+          FirestoreConstants.createdAt: DateTime.now().millisecondsSinceEpoch.toString(),
         },
       );
 
       await batch.commit();
       return true;
     } catch (e) {
-      print('❌ Error accepting friend request: $e');
+      debugPrint('❌ Error accepting friend request: $e');
       return false;
     }
   }
@@ -102,13 +96,12 @@ class FriendProvider {
           .update({FirestoreConstants.status: 'declined'});
       return true;
     } catch (e) {
-      print('❌ Error declining friend request: $e');
+      debugPrint('❌ Error declining friend request: $e');
       return false;
     }
   }
 
-  Future<bool> cancelFriendRequest(
-      String requesterId, String receiverId) async {
+  Future<bool> cancelFriendRequest(String requesterId, String receiverId) async {
     try {
       final request = await firebaseFirestore
           .collection(FirestoreConstants.pathFriendRequestCollection)
@@ -122,7 +115,7 @@ class FriendProvider {
       await request.docs.first.reference.delete();
       return true;
     } catch (e) {
-      print('❌ Error cancelling friend request: $e');
+      debugPrint('❌ Error cancelling friend request: $e');
       return false;
     }
   }
@@ -136,12 +129,12 @@ class FriendProvider {
           .delete();
       return true;
     } catch (e) {
-      print('❌ Error unfriending: $e');
+      debugPrint('❌ Error unfriending: $e');
       return false;
     }
   }
 
-  // ─── Status Queries ───────────────────────────────────────────────────────
+  
 
   Future<bool> areFriends(String userId1, String userId2) async {
     try {
@@ -151,13 +144,12 @@ class FriendProvider {
           .get();
       return doc.exists;
     } catch (e) {
-      print('❌ Error checking friendship: $e');
+      debugPrint('❌ Error checking friendship: $e');
       return false;
     }
   }
 
-  Future<FriendRequestStatus> getFriendStatus(
-      String userId1, String userId2) async {
+  Future<FriendRequestStatus> getFriendStatus(String userId1, String userId2) async {
     try {
       if (await areFriends(userId1, userId2)) {
         return FriendRequestStatus.friends;
@@ -184,12 +176,12 @@ class FriendProvider {
       if (results[1].docs.isNotEmpty) return FriendRequestStatus.received;
       return FriendRequestStatus.none;
     } catch (e) {
-      print('❌ Error getting friend status: $e');
+      debugPrint('❌ Error getting friend status: $e');
       return FriendRequestStatus.none;
     }
   }
 
-  /// Returns 'sent', 'received' (request doc id), or null.
+  
   Future<String?> checkFriendRequest(String userId1, String userId2) async {
     try {
       final results = await Future.wait([
@@ -213,12 +205,12 @@ class FriendProvider {
       if (results[1].docs.isNotEmpty) return results[1].docs.first.id;
       return null;
     } catch (e) {
-      print('❌ Error checking friend request: $e');
+      debugPrint('❌ Error checking friend request: $e');
       return null;
     }
   }
 
-  // ─── Streams ──────────────────────────────────────────────────────────────
+  
 
   Stream<QuerySnapshot> getFriendsList(String userId) {
     return firebaseFirestore
@@ -234,33 +226,27 @@ class FriendProvider {
         .snapshots();
   }
 
-  /// Combined stream merging both friendship directions.
+  
   Stream<List<String>> getFriendIds(String userId) {
     final s1 = firebaseFirestore
         .collection(FirestoreConstants.pathFriendshipCollection)
         .where(FirestoreConstants.userId1, isEqualTo: userId)
         .snapshots()
-        .map((s) => s.docs
-            .map((d) => d.data()[FirestoreConstants.userId2] as String)
-            .toList());
+        .map((s) => s.docs.map((d) => d.data()[FirestoreConstants.userId2] as String).toList());
 
     final s2 = firebaseFirestore
         .collection(FirestoreConstants.pathFriendshipCollection)
         .where(FirestoreConstants.userId2, isEqualTo: userId)
         .snapshots()
-        .map((s) => s.docs
-            .map((d) => d.data()[FirestoreConstants.userId1] as String)
-            .toList());
+        .map((s) => s.docs.map((d) => d.data()[FirestoreConstants.userId1] as String).toList());
 
-    // Combine both streams
+    
     return s1.asyncMap((ids1) async {
       final snap2 = await firebaseFirestore
           .collection(FirestoreConstants.pathFriendshipCollection)
           .where(FirestoreConstants.userId2, isEqualTo: userId)
           .get();
-      final ids2 = snap2.docs
-          .map((d) => d.data()[FirestoreConstants.userId1] as String)
-          .toList();
+      final ids2 = snap2.docs.map((d) => d.data()[FirestoreConstants.userId1] as String).toList();
       return [...ids1, ...ids2];
     });
   }
@@ -282,7 +268,7 @@ class FriendProvider {
         .snapshots();
   }
 
-  // ─── Conversations ────────────────────────────────────────────────────────
+  
 
   Stream<QuerySnapshot> getConversations(String userId) {
     return firebaseFirestore
@@ -303,12 +289,11 @@ class FriendProvider {
           .doc(conversationId)
           .update({
         FirestoreConstants.lastMessage: message,
-        FirestoreConstants.lastMessageTime:
-            DateTime.now().millisecondsSinceEpoch.toString(),
+        FirestoreConstants.lastMessageTime: DateTime.now().millisecondsSinceEpoch.toString(),
         FirestoreConstants.lastMessageType: messageType,
       });
     } catch (e) {
-      print('❌ Error updating conversation: $e');
+      debugPrint('❌ Error updating conversation: $e');
     }
   }
 
@@ -347,16 +332,14 @@ class FriendProvider {
 
       return conversationId;
     } catch (e) {
-      print('❌ Error creating conversation: $e');
+      debugPrint('❌ Error creating conversation: $e');
       return '';
     }
   }
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
+  
 
-  String _getFriendshipId(String a, String b) =>
-      a.compareTo(b) < 0 ? '$a-$b' : '$b-$a';
+  String _getFriendshipId(String a, String b) => a.compareTo(b) < 0 ? '$a-$b' : '$b-$a';
 
-  List<String> _sortedIds(String a, String b) =>
-      a.compareTo(b) < 0 ? [a, b] : [b, a];
+  List<String> _sortedIds(String a, String b) => a.compareTo(b) < 0 ? [a, b] : [b, a];
 }

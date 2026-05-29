@@ -1,8 +1,9 @@
 import 'dart:io';
 
+import 'package:flutter/material.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/models/story_model.dart';
 
 export 'package:flutter_chat_demo/models/story_model.dart';
@@ -20,9 +21,9 @@ class StoryProvider extends ChangeNotifier {
     required this.firebaseStorage,
   });
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Stream: all stories for home feed
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Stream<List<UserStories>> getStoriesStream({
     required String currentUserId,
@@ -40,8 +41,7 @@ class StoryProvider extends ChangeNotifier {
         .map(_groupAndFilter(currentUserId));
   }
 
-  List<UserStories> Function(QuerySnapshot) _groupAndFilter(
-      String currentUserId) {
+  List<UserStories> Function(QuerySnapshot) _groupAndFilter(String currentUserId) {
     return (QuerySnapshot snapshot) {
       final Map<String, List<Story>> grouped = {};
 
@@ -57,8 +57,7 @@ class StoryProvider extends ChangeNotifier {
       }
 
       final result = grouped.entries.map((entry) {
-        final sorted = entry.value
-          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        final sorted = entry.value..sort((a, b) => a.createdAt.compareTo(b.createdAt));
         final first = sorted.first;
         return UserStories(
           userId: entry.key,
@@ -72,12 +71,12 @@ class StoryProvider extends ChangeNotifier {
       result.sort((a, b) {
         if (a.isCurrentUser) return -1;
         if (b.isCurrentUser) return 1;
-        // Sort by unseen stories first
+        
         final aUnseen = a.hasUnseenStoriesBy(currentUserId);
         final bUnseen = b.hasUnseenStoriesBy(currentUserId);
         if (aUnseen && !bUnseen) return -1;
         if (!aUnseen && bUnseen) return 1;
-        // Then by latest story date
+        
         final aLatest = a.latestStory?.createdAt ?? DateTime(2000);
         final bLatest = b.latestStory?.createdAt ?? DateTime(2000);
         return bLatest.compareTo(aLatest);
@@ -87,9 +86,9 @@ class StoryProvider extends ChangeNotifier {
     };
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Stream: my stories only
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Stream<List<Story>> getMyStoriesStream(String userId) {
     return firebaseFirestore
@@ -112,9 +111,9 @@ class StoryProvider extends ChangeNotifier {
             .toList());
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Create stories
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<String?> createImageStory({
     required String userId,
@@ -125,8 +124,7 @@ class StoryProvider extends ChangeNotifier {
     StoryPrivacy privacy = StoryPrivacy.friends,
   }) async {
     try {
-      final fileName =
-          'stories/${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final fileName = 'stories/${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final ref = firebaseStorage.ref().child(fileName);
       final task = await ref.putFile(
         imageFile,
@@ -159,8 +157,7 @@ class StoryProvider extends ChangeNotifier {
     StoryPrivacy privacy = StoryPrivacy.friends,
   }) async {
     try {
-      final fileName =
-          'stories/${userId}_${DateTime.now().millisecondsSinceEpoch}.mp4';
+      final fileName = 'stories/${userId}_${DateTime.now().millisecondsSinceEpoch}.mp4';
       final ref = firebaseStorage.ref().child(fileName);
       final task = await ref.putFile(
         videoFile,
@@ -240,8 +237,8 @@ class StoryProvider extends ChangeNotifier {
       'thumbnailUrl': thumbnailUrl,
       'textContent': textContent,
       'caption': caption,
-      'backgroundColor': backgroundColor?.value,
-      'textColor': textColor?.value,
+      'backgroundColor': backgroundColor?.toARGB32(),
+      'textColor': textColor?.toARGB32(),
       'fontFamily': fontFamily,
       'fontSize': fontSize,
       'createdAt': now.millisecondsSinceEpoch.toString(),
@@ -250,8 +247,7 @@ class StoryProvider extends ChangeNotifier {
       'reactions': <dynamic>[],
       'privacy': privacy.index,
       'isDeleted': false,
-      if (videoDuration != null)
-        'videoDurationMs': videoDuration.inMilliseconds,
+      if (videoDuration != null) 'videoDurationMs': videoDuration.inMilliseconds,
     };
 
     final doc = await firebaseFirestore.collection(_col).add(data);
@@ -259,9 +255,9 @@ class StoryProvider extends ChangeNotifier {
     return doc.id;
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Mark viewed
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<void> markStoryViewed({
     required String storyId,
@@ -293,9 +289,9 @@ class StoryProvider extends ChangeNotifier {
     }
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // React to story
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<void> reactToStory({
     required String storyId,
@@ -311,11 +307,9 @@ class StoryProvider extends ChangeNotifier {
 
       final story = Story.fromDocument(snap);
 
-      // Remove previous reaction from same user
-      final existingReaction = story.reactions
-          .where((r) => r.userId == reactorId)
-          .map((r) => r.toJson())
-          .toList();
+      
+      final existingReaction =
+          story.reactions.where((r) => r.userId == reactorId).map((r) => r.toJson()).toList();
 
       if (existingReaction.isNotEmpty) {
         await ref.update({
@@ -339,9 +333,9 @@ class StoryProvider extends ChangeNotifier {
     }
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Reply to story (stored in a sub-collection)
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<void> replyToStory({
     required String storyId,
@@ -351,11 +345,7 @@ class StoryProvider extends ChangeNotifier {
     required String message,
   }) async {
     try {
-      await firebaseFirestore
-          .collection(_col)
-          .doc(storyId)
-          .collection(_repliesCol)
-          .add({
+      await firebaseFirestore.collection(_col).doc(storyId).collection(_repliesCol).add({
         'senderId': senderId,
         'senderName': senderName,
         'senderPhotoUrl': senderPhotoUrl,
@@ -367,16 +357,13 @@ class StoryProvider extends ChangeNotifier {
     }
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Delete
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<bool> deleteStory(String storyId) async {
     try {
-      await firebaseFirestore
-          .collection(_col)
-          .doc(storyId)
-          .update({'isDeleted': true});
+      await firebaseFirestore.collection(_col).doc(storyId).update({'isDeleted': true});
       return true;
     } catch (e) {
       debugPrint('❌ deleteStory: $e');
@@ -384,9 +371,9 @@ class StoryProvider extends ChangeNotifier {
     }
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Cleanup expired (call on startup or periodically)
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<void> cleanupExpired(String userId) async {
     try {
@@ -416,9 +403,9 @@ class StoryProvider extends ChangeNotifier {
     }
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Helpers
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   String formatTimeRemaining(Duration d) {
     if (d.inHours > 0) return '${d.inHours}h ${d.inMinutes % 60}m remaining';

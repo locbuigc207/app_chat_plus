@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
@@ -10,20 +12,20 @@ class MessageProvider {
 
   MessageProvider({required this.firebaseFirestore});
 
-  // ─── References ───────────────────────────────────────────────────────────
+  
 
   CollectionReference _msgCollection(String groupChatId) => firebaseFirestore
       .collection(FirestoreConstants.pathMessageCollection)
       .doc(groupChatId)
       .collection(groupChatId);
 
-  // ─── Streams ──────────────────────────────────────────────────────────────
+  
 
   Stream<QuerySnapshot> getMessages(
-      String groupChatId, {
-        int limit = 30,
-        DocumentSnapshot? startAfter,
-      }) {
+    String groupChatId, {
+    int limit = 30,
+    DocumentSnapshot? startAfter,
+  }) {
     var query = _msgCollection(groupChatId)
         .orderBy(FirestoreConstants.timestamp, descending: true)
         .limit(limit);
@@ -39,21 +41,20 @@ class MessageProvider {
         .snapshots();
   }
 
-  Stream<QuerySnapshot> getStarredMessages(
-      String groupChatId, String userId) {
+  Stream<QuerySnapshot> getStarredMessages(String groupChatId, String userId) {
     return _msgCollection(groupChatId)
         .where('starredBy', arrayContains: userId)
         .orderBy(FirestoreConstants.timestamp, descending: true)
         .snapshots();
   }
 
-  // ─── Edit ─────────────────────────────────────────────────────────────────
+  
 
   Future<bool> editMessage(
-      String groupChatId,
-      String messageId,
-      String newContent,
-      ) async {
+    String groupChatId,
+    String messageId,
+    String newContent,
+  ) async {
     try {
       await _msgCollection(groupChatId).doc(messageId).update({
         FirestoreConstants.content: newContent,
@@ -64,18 +65,18 @@ class MessageProvider {
       await _syncConversationLastMessage(groupChatId, messageId, newContent);
       return true;
     } catch (e) {
-      print('❌ Error editing message: $e');
+      debugPrint('❌ Error editing message: $e');
       return false;
     }
   }
 
-  // ─── Delete ───────────────────────────────────────────────────────────────
+  
 
   Future<bool> deleteMessage(
-      String groupChatId,
-      String messageId, {
-        bool forEveryone = true,
-      }) async {
+    String groupChatId,
+    String messageId, {
+    bool forEveryone = true,
+  }) async {
     try {
       final now = DateTime.now().millisecondsSinceEpoch.toString();
 
@@ -87,7 +88,7 @@ class MessageProvider {
           'autoDeleteAt': FieldValue.delete(),
         });
       } else {
-        // Soft delete for sender only — UI hides it
+        
         await _msgCollection(groupChatId).doc(messageId).update({
           'deletedBySender': true,
           'deletedAt': now,
@@ -96,15 +97,15 @@ class MessageProvider {
 
       return true;
     } catch (e) {
-      print('❌ Error deleting message: $e');
+      debugPrint('❌ Error deleting message: $e');
       return false;
     }
   }
 
   Future<int> deleteMultipleMessages(
-      String groupChatId,
-      List<String> messageIds,
-      ) async {
+    String groupChatId,
+    List<String> messageIds,
+  ) async {
     try {
       WriteBatch batch = firebaseFirestore.batch();
       int count = 0;
@@ -130,55 +131,52 @@ class MessageProvider {
       if (count > 0) await batch.commit();
       return deleted;
     } catch (e) {
-      print('❌ Error deleting multiple messages: $e');
+      debugPrint('❌ Error deleting multiple messages: $e');
       return 0;
     }
   }
 
-  // ─── Pin / Unpin ──────────────────────────────────────────────────────────
+  
 
   Future<bool> togglePinMessage(
-      String groupChatId,
-      String messageId,
-      bool currentPinStatus,
-      ) async {
+    String groupChatId,
+    String messageId,
+    bool currentPinStatus,
+  ) async {
     try {
       final newPinned = !currentPinStatus;
       await _msgCollection(groupChatId).doc(messageId).update({
         'isPinned': newPinned,
-        'pinnedAt': newPinned
-            ? DateTime.now().millisecondsSinceEpoch.toString()
-            : FieldValue.delete(),
+        'pinnedAt':
+            newPinned ? DateTime.now().millisecondsSinceEpoch.toString() : FieldValue.delete(),
       });
       return true;
     } catch (e) {
-      print('❌ Error toggling pin: $e');
+      debugPrint('❌ Error toggling pin: $e');
       return false;
     }
   }
 
-  // ─── Star ─────────────────────────────────────────────────────────────────
+  
 
   Future<bool> toggleStarMessage(
-      String groupChatId,
-      String messageId,
-      String userId,
-      bool isStarred,
-      ) async {
+    String groupChatId,
+    String messageId,
+    String userId,
+    bool isStarred,
+  ) async {
     try {
       await _msgCollection(groupChatId).doc(messageId).update({
-        'starredBy': isStarred
-            ? FieldValue.arrayRemove([userId])
-            : FieldValue.arrayUnion([userId]),
+        'starredBy': isStarred ? FieldValue.arrayRemove([userId]) : FieldValue.arrayUnion([userId]),
       });
       return true;
     } catch (e) {
-      print('❌ Error toggling star: $e');
+      debugPrint('❌ Error toggling star: $e');
       return false;
     }
   }
 
-  // ─── Forward ─────────────────────────────────────────────────────────────
+  
 
   Future<bool> forwardMessage({
     required String fromGroupChatId,
@@ -187,14 +185,12 @@ class MessageProvider {
     required String senderId,
   }) async {
     try {
-      final original =
-      await _msgCollection(fromGroupChatId).doc(messageId).get();
+      final original = await _msgCollection(fromGroupChatId).doc(messageId).get();
       if (!original.exists) return false;
 
-      final data = Map<String, dynamic>.from(
-          original.data() as Map<String, dynamic>);
+      final data = Map<String, dynamic>.from(original.data() as Map<String, dynamic>);
 
-      // Strip metadata from original
+      
       data.remove('isPinned');
       data.remove('pinnedAt');
       data.remove('starredBy');
@@ -202,20 +198,19 @@ class MessageProvider {
       data.remove('autoDeleteAt');
 
       data[FirestoreConstants.idFrom] = senderId;
-      data[FirestoreConstants.timestamp] =
-          DateTime.now().millisecondsSinceEpoch.toString();
+      data[FirestoreConstants.timestamp] = DateTime.now().millisecondsSinceEpoch.toString();
       data['isForwarded'] = true;
       data['forwardedFrom'] = fromGroupChatId;
 
       await _msgCollection(toGroupChatId).add(data);
       return true;
     } catch (e) {
-      print('❌ Error forwarding message: $e');
+      debugPrint('❌ Error forwarding message: $e');
       return false;
     }
   }
 
-  // ─── Reply ────────────────────────────────────────────────────────────────
+  
 
   Future<bool> sendReply({
     required String groupChatId,
@@ -223,8 +218,7 @@ class MessageProvider {
     required Map<String, dynamic> messageData,
   }) async {
     try {
-      final replyToDoc =
-      await _msgCollection(groupChatId).doc(replyToMessageId).get();
+      final replyToDoc = await _msgCollection(groupChatId).doc(replyToMessageId).get();
 
       String replyPreview = '';
       String replyToSender = '';
@@ -238,49 +232,46 @@ class MessageProvider {
         ...messageData,
         'replyTo': {
           'messageId': replyToMessageId,
-          'preview': replyPreview.length > 100
-              ? '${replyPreview.substring(0, 100)}…'
-              : replyPreview,
+          'preview':
+              replyPreview.length > 100 ? '${replyPreview.substring(0, 100)}…' : replyPreview,
           'senderId': replyToSender,
         },
       });
 
       return true;
     } catch (e) {
-      print('❌ Error sending reply: $e');
+      debugPrint('❌ Error sending reply: $e');
       return false;
     }
   }
 
-  // ─── Read Receipts ────────────────────────────────────────────────────────
+  
 
   Future<void> markMessageRead(
-      String groupChatId,
-      String messageId,
-      String userId,
-      ) async {
+    String groupChatId,
+    String messageId,
+    String userId,
+  ) async {
     try {
       await _msgCollection(groupChatId).doc(messageId).update({
         'readBy': FieldValue.arrayUnion([userId]),
         'readAt.$userId': DateTime.now().millisecondsSinceEpoch.toString(),
       });
     } catch (e) {
-      print('❌ Error marking message read: $e');
+      debugPrint('❌ Error marking message read: $e');
     }
   }
 
   Future<void> markAllMessagesRead(
-      String groupChatId,
-      String userId,
-      ) async {
+    String groupChatId,
+    String userId,
+  ) async {
     try {
-      final unread = await _msgCollection(groupChatId)
-          .where('readBy', arrayContainsAny: [
-        'NOT_${userId}_PLACEHOLDER'
-      ]) // workaround: fetch unread
+      final unread = await _msgCollection(groupChatId).where('readBy',
+              arrayContainsAny: ['NOT_${userId}_PLACEHOLDER']) 
           .get();
 
-      // Alternative: fetch all unread by checking absence
+      
       final all = await _msgCollection(groupChatId)
           .where(FirestoreConstants.idTo, isEqualTo: userId)
           .where('isRead', isEqualTo: false)
@@ -306,16 +297,16 @@ class MessageProvider {
 
       if (count > 0) await batch.commit();
     } catch (e) {
-      print('❌ Error marking all messages read: $e');
+      debugPrint('❌ Error marking all messages read: $e');
     }
   }
 
-  // ─── Search ───────────────────────────────────────────────────────────────
+  
 
   Future<List<QueryDocumentSnapshot>> searchMessages(
-      String groupChatId,
-      String query,
-      ) async {
+    String groupChatId,
+    String query,
+  ) async {
     try {
       final trimmed = query.trim().toLowerCase();
       if (trimmed.isEmpty) return [];
@@ -326,26 +317,25 @@ class MessageProvider {
           .get();
 
       return snapshot.docs.where((doc) {
-        final content =
-            (doc.data() as Map<String, dynamic>)[FirestoreConstants.content]
+        final content = (doc.data() as Map<String, dynamic>)[FirestoreConstants.content]
                 ?.toString()
                 .toLowerCase() ??
-                '';
+            '';
         return content.contains(trimmed);
       }).toList();
     } catch (e) {
-      print('❌ Error searching messages: $e');
+      debugPrint('❌ Error searching messages: $e');
       return [];
     }
   }
 
-  // ─── Helper ───────────────────────────────────────────────────────────────
+  
 
   Future<void> _syncConversationLastMessage(
-      String groupChatId,
-      String messageId,
-      String newContent,
-      ) async {
+    String groupChatId,
+    String messageId,
+    String newContent,
+  ) async {
     try {
       final latest = await _msgCollection(groupChatId)
           .orderBy(FirestoreConstants.timestamp, descending: true)
@@ -359,7 +349,7 @@ class MessageProvider {
             .update({FirestoreConstants.lastMessage: newContent});
       }
     } catch (e) {
-      print('❌ Error syncing conversation last message: $e');
+      debugPrint('❌ Error syncing conversation last message: $e');
     }
   }
 }

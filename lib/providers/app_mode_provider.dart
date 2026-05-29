@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
-// ============================================================
-// ENUM & CONSTANTS
-// ============================================================
+
+
+
 
 enum AppMode { student, work, elder }
 
@@ -65,12 +66,12 @@ extension AppModeExtension on AppMode {
   }
 }
 
-// ============================================================
-// THEME TOKENS PER MODE
-// ============================================================
+
+
+
 
 class AppModeTokens {
-  // Colors
+  
   final Color primaryColor;
   final Color secondaryColor;
   final Color accentColor;
@@ -92,7 +93,7 @@ class AppModeTokens {
   final Color surfaceColor;
   final Color errorColor;
 
-  // Typography
+  
   final double bubbleFontSize;
   final double inputFontSize;
   final double captionFontSize;
@@ -102,7 +103,7 @@ class AppModeTokens {
   final double lineHeightMultiplier;
   final double letterSpacing;
 
-  // Layout
+  
   final double bubblePadding;
   final double bubbleRadius;
   final double avatarSize;
@@ -113,18 +114,18 @@ class AppModeTokens {
   final double messageSpacing;
   final double sectionSpacing;
 
-  // Shadows & Elevation
+  
   final List<BoxShadow> bubbleShadow;
   final List<BoxShadow> inputShadow;
   final List<BoxShadow> appBarShadow;
   final double elevation;
 
-  // Animation
+  
   final Duration animationDuration;
   final Duration longAnimationDuration;
   final Curve animationCurve;
 
-  // Accessibility
+  
   final double minTouchTarget;
   final bool highContrast;
   final double focusRingWidth;
@@ -179,7 +180,7 @@ class AppModeTokens {
     required this.focusRingWidth,
   });
 
-  // Convenience getters
+  
   Gradient get myBubbleGradient => LinearGradient(
         colors: [myBubbleGradientStart, myBubbleGradientEnd],
         begin: Alignment.topLeft,
@@ -193,9 +194,9 @@ class AppModeTokens {
       )!;
 }
 
-// ============================================================
-// PROVIDER
-// ============================================================
+
+
+
 
 class AppModeProvider with ChangeNotifier {
   AppMode _currentMode = AppMode.student;
@@ -216,9 +217,9 @@ class AppModeProvider with ChangeNotifier {
     _loadPrefs();
   }
 
-  // ----------------------------------------------------------
-  // PUBLIC SETTERS
-  // ----------------------------------------------------------
+  
+  
+  
 
   Future<void> setMode(AppMode mode) async {
     if (_currentMode == mode) return;
@@ -268,7 +269,7 @@ class AppModeProvider with ChangeNotifier {
     await prefs.setDouble('text_scale', _textScaleFactor);
   }
 
-  // Haptic wrapper respecting user preference
+  
   void _triggerHaptic(HapticFeedbackType type) {
     if (!_useHaptics) return;
     switch (type) {
@@ -287,17 +288,14 @@ class AppModeProvider with ChangeNotifier {
     }
   }
 
-  void triggerMessageSentHaptic() =>
-      _triggerHaptic(HapticFeedbackType.lightImpact);
-  void triggerReactionHaptic() =>
-      _triggerHaptic(HapticFeedbackType.selectionClick);
+  void triggerMessageSentHaptic() => _triggerHaptic(HapticFeedbackType.lightImpact);
+  void triggerReactionHaptic() => _triggerHaptic(HapticFeedbackType.selectionClick);
   void triggerErrorHaptic() => _triggerHaptic(HapticFeedbackType.heavyImpact);
-  void triggerSuccessHaptic() =>
-      _triggerHaptic(HapticFeedbackType.mediumImpact);
+  void triggerSuccessHaptic() => _triggerHaptic(HapticFeedbackType.mediumImpact);
 
-  // ----------------------------------------------------------
-  // LOAD
-  // ----------------------------------------------------------
+  
+  
+  
 
   Future<void> _loadPrefs() async {
     try {
@@ -316,22 +314,22 @@ class AppModeProvider with ChangeNotifier {
       _reduceMotion = reduceMotion;
       _textScaleFactor = textScale.clamp(0.8, 2.0);
     } catch (_) {
-      // Use defaults on error
+      
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  // ----------------------------------------------------------
-  // DESIGN TOKENS
-  // ----------------------------------------------------------
+  
+  
+  
 
   AppModeTokens get tokens {
     switch (_currentMode) {
-      // ─────────────────────────────────────────
-      // STUDENT
-      // ─────────────────────────────────────────
+      
+      
+      
       case AppMode.student:
         return _isDark
             ? const AppModeTokens(
@@ -465,9 +463,9 @@ class AppModeProvider with ChangeNotifier {
                 focusRingWidth: 2.0,
               );
 
-      // ─────────────────────────────────────────
-      // WORK
-      // ─────────────────────────────────────────
+      
+      
+      
       case AppMode.work:
         return _isDark
             ? const AppModeTokens(
@@ -605,9 +603,9 @@ class AppModeProvider with ChangeNotifier {
                 focusRingWidth: 2.0,
               );
 
-      // ─────────────────────────────────────────
-      // ELDER
-      // ─────────────────────────────────────────
+      
+      
+      
       case AppMode.elder:
         return _isDark
             ? const AppModeTokens(
@@ -741,21 +739,19 @@ class AppModeProvider with ChangeNotifier {
     }
   }
 
-  // ----------------------------------------------------------
-  // EFFECTIVE ANIMATION DURATION (respects reduceMotion)
-  // ----------------------------------------------------------
+  
+  
+  
 
-  Duration get effectiveAnimationDuration => _reduceMotion
-      ? const Duration(milliseconds: 1)
-      : tokens.animationDuration;
+  Duration get effectiveAnimationDuration =>
+      _reduceMotion ? const Duration(milliseconds: 1) : tokens.animationDuration;
 
-  Duration get effectiveLongAnimationDuration => _reduceMotion
-      ? const Duration(milliseconds: 1)
-      : tokens.longAnimationDuration;
+  Duration get effectiveLongAnimationDuration =>
+      _reduceMotion ? const Duration(milliseconds: 1) : tokens.longAnimationDuration;
 
-  // ----------------------------------------------------------
-  // THEME DATA (Material 3)
-  // ----------------------------------------------------------
+  
+  
+  
 
   ThemeData get themeData {
     final t = tokens;
@@ -780,9 +776,7 @@ class AppModeProvider with ChangeNotifier {
         backgroundColor: t.appBarBg,
         foregroundColor: _isDark ? Colors.white : const Color(0xFF1A1A2E),
         elevation: t.elevation,
-        shadowColor: t.appBarShadow.isNotEmpty
-            ? t.appBarShadow.first.color
-            : Colors.transparent,
+        shadowColor: t.appBarShadow.isNotEmpty ? t.appBarShadow.first.color : Colors.transparent,
         surfaceTintColor: Colors.transparent,
         toolbarHeight: t.appBarHeight,
         titleTextStyle: TextStyle(
@@ -879,8 +873,7 @@ class AppModeProvider with ChangeNotifier {
           borderRadius: BorderRadius.circular(
             _currentMode == AppMode.work ? 6 : 24,
           ),
-          borderSide:
-              BorderSide(color: t.primaryColor, width: t.focusRingWidth),
+          borderSide: BorderSide(color: t.primaryColor, width: t.focusRingWidth),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(
@@ -977,7 +970,7 @@ class AppModeProvider with ChangeNotifier {
         }),
         trackColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return t.primaryColor.withOpacity(0.4);
+            return t.primaryColor.withValues(alpha: 0.4);
           }
           return _isDark ? Colors.white12 : Colors.black12;
         }),
@@ -985,7 +978,7 @@ class AppModeProvider with ChangeNotifier {
       sliderTheme: SliderThemeData(
         activeTrackColor: t.primaryColor,
         thumbColor: t.primaryColor,
-        inactiveTrackColor: t.primaryColor.withOpacity(0.3),
+        inactiveTrackColor: t.primaryColor.withValues(alpha: 0.3),
         trackHeight: _currentMode == AppMode.elder ? 6.0 : 4.0,
         thumbShape: RoundSliderThumbShape(
           enabledThumbRadius: _currentMode == AppMode.elder ? 14.0 : 10.0,
@@ -993,14 +986,14 @@ class AppModeProvider with ChangeNotifier {
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(
         color: t.primaryColor,
-        circularTrackColor: t.primaryColor.withOpacity(0.2),
+        circularTrackColor: t.primaryColor.withValues(alpha: 0.2),
       ),
     );
   }
 
-  // ----------------------------------------------------------
-  // HELPERS
-  // ----------------------------------------------------------
+  
+  
+  
 
   String get _fontFamily {
     switch (_currentMode) {
@@ -1014,8 +1007,7 @@ class AppModeProvider with ChangeNotifier {
   }
 
   TextTheme _buildTextTheme(AppModeTokens t) {
-    final bodyColor =
-        _isDark ? const Color(0xFFE8E8F0) : const Color(0xFF1A1A2E);
+    final bodyColor = _isDark ? const Color(0xFFE8E8F0) : const Color(0xFF1A1A2E);
     final secondaryColor = _isDark ? Colors.white70 : Colors.black54;
     final captionColor = _isDark ? Colors.white54 : Colors.black45;
 
@@ -1113,9 +1105,9 @@ class AppModeProvider with ChangeNotifier {
     );
   }
 
-  // ----------------------------------------------------------
-  // UTILITY: SystemUI Overlay Style
-  // ----------------------------------------------------------
+  
+  
+  
 
   SystemUiOverlayStyle get systemOverlayStyle {
     final t = tokens;
@@ -1123,14 +1115,13 @@ class AppModeProvider with ChangeNotifier {
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: _isDark ? Brightness.light : Brightness.dark,
       systemNavigationBarColor: t.appBarBg,
-      systemNavigationBarIconBrightness:
-          _isDark ? Brightness.light : Brightness.dark,
+      systemNavigationBarIconBrightness: _isDark ? Brightness.light : Brightness.dark,
     );
   }
 
-  // ----------------------------------------------------------
-  // DEBUG
-  // ----------------------------------------------------------
+  
+  
+  
 
   Map<String, dynamic> exportConfig() => {
         'mode': _currentMode.name,
@@ -1142,9 +1133,9 @@ class AppModeProvider with ChangeNotifier {
       };
 }
 
-// ============================================================
-// HAPTIC FEEDBACK TYPE ENUM (internal helper)
-// ============================================================
+
+
+
 
 enum HapticFeedbackType {
   selectionClick,

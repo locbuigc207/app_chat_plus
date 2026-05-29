@@ -1,13 +1,15 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:audio_session/audio_session.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Enums & Models
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 enum SecurityStatus { safe, scanning, warning, danger }
 
@@ -25,7 +27,7 @@ class SecurityEvent {
   final SecurityStatus status;
   final ThreatCategory category;
   final String message;
-  final double riskScore; // 0.0 – 1.0
+  final double riskScore; 
   final DateTime timestamp;
 
   const SecurityEvent({
@@ -47,8 +49,7 @@ class SecurityEvent {
         timestamp: DateTime.now(),
       );
 
-  bool get isAlert =>
-      status == SecurityStatus.warning || status == SecurityStatus.danger;
+  bool get isAlert => status == SecurityStatus.warning || status == SecurityStatus.danger;
 }
 
 class _ThreatPattern {
@@ -59,47 +60,46 @@ class _ThreatPattern {
   const _ThreatPattern(this.keyword, this.category, this.weight);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// RealtimeAIService
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class RealtimeAIService {
-  // Singleton
+  
   static final RealtimeAIService _instance = RealtimeAIService._internal();
   factory RealtimeAIService() => _instance;
   RealtimeAIService._internal();
 
-  // Dependencies
+  
   final FirebaseFunctions _functions = FirebaseFunctions.instance;
   final stt.SpeechToText _speech = stt.SpeechToText();
 
-  // State
+  
   bool _isInitialized = false;
   bool _isListening = false;
   String _currentTranscript = '';
-  String _accumulatedTranscript = ''; // rolling window for AI analysis
+  String _accumulatedTranscript = ''; 
   Timer? _aiAnalysisTimer;
   Timer? _resetStatusTimer;
   int _analysisCount = 0;
 
-  // Streams
+  
   final _captionController = StreamController<String>.broadcast();
   Stream<String> get captionStream => _captionController.stream;
 
   final _securityController = StreamController<SecurityEvent>.broadcast();
   Stream<SecurityEvent> get securityStream => _securityController.stream;
 
-  // Convenience legacy stream (backward-compat with widgets that use SecurityStatus)
-  Stream<SecurityStatus> get statusStream =>
-      securityStream.map((e) => e.status);
+  
+  Stream<SecurityStatus> get statusStream => securityStream.map((e) => e.status);
 
-  // Legacy warning message stream (kept for AICallShield compatibility)
+  
   Stream<String> get warningMsgStream => securityStream.map((e) => e.message);
 
-  // ── Threat Patterns ────────────────────────────────────────────────────────
+  
 
   static const List<_ThreatPattern> _threatPatterns = [
-    // Financial fraud – high weight
+    
     _ThreatPattern('chuyển tiền', ThreatCategory.financialFraud, 0.75),
     _ThreatPattern('chuyển khoản', ThreatCategory.financialFraud, 0.75),
     _ThreatPattern('ngân hàng', ThreatCategory.financialFraud, 0.5),
@@ -110,7 +110,7 @@ class RealtimeAIService {
     _ThreatPattern('vay gấp', ThreatCategory.financialFraud, 0.7),
     _ThreatPattern('cần tiền gấp', ThreatCategory.financialFraud, 0.8),
 
-    // OTP / credential theft
+    
     _ThreatPattern('mã otp', ThreatCategory.otp, 0.9),
     _ThreatPattern('mã xác nhận', ThreatCategory.otp, 0.85),
     _ThreatPattern('mật khẩu', ThreatCategory.otp, 0.7),
@@ -118,7 +118,7 @@ class RealtimeAIService {
     _ThreatPattern('số bí mật', ThreatCategory.otp, 0.8),
     _ThreatPattern('đừng chia sẻ', ThreatCategory.otp, 0.65),
 
-    // Phishing / impersonation
+    
     _ThreatPattern('công an', ThreatCategory.phishing, 0.6),
     _ThreatPattern('cảnh sát', ThreatCategory.phishing, 0.55),
     _ThreatPattern('kiểm sát', ThreatCategory.phishing, 0.6),
@@ -127,7 +127,7 @@ class RealtimeAIService {
     _ThreatPattern('truy tố', ThreatCategory.phishing, 0.75),
     _ThreatPattern('lệnh bắt', ThreatCategory.phishing, 0.8),
 
-    // Urgency tricks
+    
     _ThreatPattern('cấp cứu', ThreatCategory.urgencyTrick, 0.65),
     _ThreatPattern('tai nạn', ThreatCategory.urgencyTrick, 0.5),
     _ThreatPattern('khẩn cấp', ThreatCategory.urgencyTrick, 0.55),
@@ -136,7 +136,7 @@ class RealtimeAIService {
     _ThreatPattern('bị phạt', ThreatCategory.urgencyTrick, 0.5),
   ];
 
-  // ── Category labels ────────────────────────────────────────────────────────
+  
 
   static String _categoryLabel(ThreatCategory cat) {
     switch (cat) {
@@ -155,7 +155,7 @@ class RealtimeAIService {
     }
   }
 
-  // ── Initialise ─────────────────────────────────────────────────────────────
+  
 
   Future<bool> initialize() async {
     if (_isInitialized) return true;
@@ -164,10 +164,9 @@ class RealtimeAIService {
       await session.configure(
         AudioSessionConfiguration(
           avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
-          avAudioSessionCategoryOptions:
-              AVAudioSessionCategoryOptions.allowBluetooth |
-                  AVAudioSessionCategoryOptions.mixWithOthers |
-                  AVAudioSessionCategoryOptions.defaultToSpeaker,
+          avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.allowBluetooth |
+              AVAudioSessionCategoryOptions.mixWithOthers |
+              AVAudioSessionCategoryOptions.defaultToSpeaker,
           avAudioSessionMode: AVAudioSessionMode.videoChat,
         ),
       );
@@ -186,7 +185,7 @@ class RealtimeAIService {
 
   void _onSpeechError(dynamic error) {
     debugLog('STT error: $error');
-    // Auto-restart listening on recoverable errors
+    
     if (_isListening) {
       Future.delayed(const Duration(seconds: 1), _restartListening);
     }
@@ -201,7 +200,7 @@ class RealtimeAIService {
     }
   }
 
-  // ── Start / Stop ───────────────────────────────────────────────────────────
+  
 
   Future<void> startProtection(String peerId, String conversationId) async {
     if (!_isInitialized) await initialize();
@@ -213,7 +212,7 @@ class RealtimeAIService {
 
     await _startListening();
 
-    // Cloud AI every 15 s (offset by 5 s to avoid burst on first tick)
+    
     await Future.delayed(const Duration(seconds: 5));
     _aiAnalysisTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
       if (_accumulatedTranscript.trim().length > 15) {
@@ -254,17 +253,17 @@ class RealtimeAIService {
 
     if (result.finalResult) {
       _accumulatedTranscript = '${_accumulatedTranscript.trim()} $words'.trim();
-      // Keep rolling window ≤ 600 chars
+      
       if (_accumulatedTranscript.length > 600) {
-        _accumulatedTranscript = _accumulatedTranscript
-            .substring(_accumulatedTranscript.length - 600);
+        _accumulatedTranscript =
+            _accumulatedTranscript.substring(_accumulatedTranscript.length - 600);
       }
     }
 
     _localPatternScan(words);
   }
 
-  // ── Local pattern scan (< 1 ms, no network) ───────────────────────────────
+  
 
   void _localPatternScan(String text) {
     final lower = text.toLowerCase();
@@ -299,14 +298,14 @@ class RealtimeAIService {
       timestamp: DateTime.now(),
     ));
 
-    // Auto-clear warning after 8 s if no cloud result comes
+    
     _resetStatusTimer?.cancel();
     _resetStatusTimer = Timer(const Duration(seconds: 8), () {
       if (_isListening) _emit(SecurityEvent.safe());
     });
   }
 
-  // ── Cloud AI analysis ──────────────────────────────────────────────────────
+  
 
   Future<void> _runCloudAIAnalysis(String peerId, String conversationId) async {
     if (!_isListening) return;
@@ -329,7 +328,7 @@ class RealtimeAIService {
       final data = result.data as Map<dynamic, dynamic>;
       _handleCloudResult(data);
 
-      // Clear only the analysed portion
+      
       _accumulatedTranscript = '';
     } on TimeoutException {
       debugLog('Cloud AI timeout – falling back to safe');
@@ -350,13 +349,10 @@ class RealtimeAIService {
     if (!isSafe || riskLevel == 'HIGH' || riskLevel == 'MEDIUM') {
       final category = _parseThreatCategory(rawCategory);
       _emit(SecurityEvent(
-        status: riskLevel == 'HIGH'
-            ? SecurityStatus.danger
-            : SecurityStatus.warning,
+        status: riskLevel == 'HIGH' ? SecurityStatus.danger : SecurityStatus.warning,
         category: category,
-        message: warningMsg.isNotEmpty
-            ? warningMsg
-            : '⚠️ AI phát hiện: ${_categoryLabel(category)}',
+        message:
+            warningMsg.isNotEmpty ? warningMsg : '⚠️ AI phát hiện: ${_categoryLabel(category)}',
         riskScore: riskScore,
         timestamp: DateTime.now(),
       ));
@@ -383,7 +379,7 @@ class RealtimeAIService {
     }
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  
 
   void _emit(SecurityEvent event) {
     if (!_securityController.isClosed) {
@@ -392,9 +388,9 @@ class RealtimeAIService {
   }
 
   // ignore: avoid_print
-  void debugLog(String msg) => print('[RealtimeAI] $msg');
+  void debugLog(String msg) => debugPrint('[RealtimeAI] $msg');
 
-  // ── Stop / Dispose ─────────────────────────────────────────────────────────
+  
 
   Future<void> stopProtection() async {
     _isListening = false;

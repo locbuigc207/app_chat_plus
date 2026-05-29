@@ -2,30 +2,31 @@
 
 import 'dart:math' as math;
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/models/message_chat.dart';
 import 'package:flutter_chat_demo/services/ai_backend_service.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:intl/intl.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DESIGN TOKENS
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 const _kBg = Color(0xFF0D0D14);
 const _kSurface = Color(0xFF16161F);
 const _kSurface2 = Color(0xFF1E1E2A);
 const _kBorder = Color(0xFF2A2A3A);
-const _kAccent = Color(0xFF7C6EFF); // Violet
-const _kAccent2 = Color(0xFFFF6E9C); // Rose
-const _kAccent3 = Color(0xFF6EFFCB); // Mint
+const _kAccent = Color(0xFF7C6EFF); 
+const _kAccent2 = Color(0xFFFF6E9C); 
+const _kAccent3 = Color(0xFF6EFFCB); 
 const _kTextPri = Color(0xFFF0F0FF);
 const _kTextSec = Color(0xFF8888AA);
 const _kTextDim = Color(0xFF55556A);
 
-// Màu theo category
+
 const _kCatColors = {
   'memory': Color(0xFF7C6EFF),
   'preference': Color(0xFFFF6E9C),
@@ -35,9 +36,9 @@ const _kCatColors = {
   'gratitude': Color(0xFFFFE56E),
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MODELS
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 enum MemoryCategory {
   memory,
@@ -169,18 +170,15 @@ class _RelationshipData {
     final memories = (map['memories'] as List<dynamic>? ?? [])
         .map((e) => _MemoryEntry.fromMap(e as Map))
         .toList();
-    final sharedTopics = (map['sharedTopics'] as List<dynamic>? ?? [])
-        .map((e) => e.toString())
-        .toList();
-    final importantDates = (map['importantDates'] as List<dynamic>? ?? [])
-        .map((e) => e.toString())
-        .toList();
+    final sharedTopics =
+        (map['sharedTopics'] as List<dynamic>? ?? []).map((e) => e.toString()).toList();
+    final importantDates =
+        (map['importantDates'] as List<dynamic>? ?? []).map((e) => e.toString()).toList();
 
     return _RelationshipData(
       healthScore: (map['healthScore'] as num?)?.toInt() ?? 0,
       summary: map['summary'] as String? ?? '',
-      relationshipType:
-          RelationshipType.fromString(map['relationshipType'] as String?),
+      relationshipType: RelationshipType.fromString(map['relationshipType'] as String?),
       communicationStyle: map['communicationStyle'] as String? ?? 'mixed',
       closenessLevel: (map['closenessLevel'] as num?)?.toInt() ?? 1,
       sharedTopics: sharedTopics,
@@ -190,9 +188,9 @@ class _RelationshipData {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PAGE
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class MemoryTimelinePage extends StatefulWidget {
   const MemoryTimelinePage({
@@ -212,16 +210,15 @@ class MemoryTimelinePage extends StatefulWidget {
   State<MemoryTimelinePage> createState() => _MemoryTimelinePageState();
 }
 
-class _MemoryTimelinePageState extends State<MemoryTimelinePage>
-    with TickerProviderStateMixin {
-  // ── State ──────────────────────────────────────────────────────────────────
+class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProviderStateMixin {
+  
   bool _isLoading = true;
   bool _isAnalyzing = false;
   _RelationshipData? _data;
   DateTime? _lastUpdated;
   String? _errorMessage;
 
-  // ── Animations ─────────────────────────────────────────────────────────────
+  
   late final AnimationController _fadeAc;
   late final AnimationController _scoreAc;
   late final Animation<double> _scoreAnim;
@@ -229,10 +226,8 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
   @override
   void initState() {
     super.initState();
-    _fadeAc = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 600));
-    _scoreAc = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1200));
+    _fadeAc = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+    _scoreAc = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200));
     _scoreAnim = CurvedAnimation(parent: _scoreAc, curve: Curves.easeOutCubic);
     _fetchCachedMemory();
     SystemChrome.setSystemUIOverlayStyle(
@@ -250,7 +245,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
     super.dispose();
   }
 
-  // ── Data loading ───────────────────────────────────────────────────────────
+  
 
   Future<void> _fetchCachedMemory() async {
     setState(() {
@@ -285,7 +280,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
   }
 
   Future<void> _analyzeMemory({bool forceRefresh = false}) async {
-    // Throttle: nếu cập nhật < 7 ngày và không force
+    
     if (!forceRefresh && _lastUpdated != null) {
       final days = DateTime.now().difference(_lastUpdated!).inDays;
       if (days < 7) {
@@ -316,9 +311,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
       final chatHistory = querySnapshot.docs
           .map((doc) {
             final msg = MessageChat.fromDocument(doc);
-            final who = msg.idFrom == widget.currentUserId
-                ? 'Tôi'
-                : widget.peerNickname;
+            final who = msg.idFrom == widget.currentUserId ? 'Tôi' : widget.peerNickname;
             return '$who: ${msg.content}';
           })
           .toList()
@@ -333,7 +326,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
       if (result != null) {
         final dataMap = result.rawData;
 
-        // Ghi cache vào Firestore
+        
         await FirebaseFirestore.instance
             .collection('relationship_memories')
             .doc(widget.conversationId)
@@ -393,9 +386,9 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // BUILD
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   @override
   Widget build(BuildContext context) {
@@ -412,8 +405,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
       backgroundColor: Colors.transparent,
       elevation: 0,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new_rounded,
-            color: _kTextPri, size: 20),
+        icon: const Icon(Icons.arrow_back_ios_new_rounded, color: _kTextPri, size: 20),
         onPressed: () => Navigator.pop(context),
       ),
       title: Column(
@@ -465,7 +457,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
     return _buildContent();
   }
 
-  // ── Loading ────────────────────────────────────────────────────────────────
+  
 
   Widget _buildLoadingState() {
     return const Center(
@@ -474,14 +466,13 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
         children: [
           _PulsingOrb(),
           SizedBox(height: 20),
-          Text('Đang tải dữ liệu…',
-              style: TextStyle(color: _kTextSec, fontSize: 14)),
+          Text('Đang tải dữ liệu…', style: TextStyle(color: _kTextSec, fontSize: 14)),
         ],
       ),
     );
   }
 
-  // ── Empty ──────────────────────────────────────────────────────────────────
+  
 
   Widget _buildEmptyState() {
     return Center(
@@ -506,8 +497,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
               'Để AI phân tích mối quan hệ của bạn với ${widget.peerNickname}, '
               'nhấn nút bên dưới.',
               textAlign: TextAlign.center,
-              style:
-                  const TextStyle(color: _kTextSec, fontSize: 14, height: 1.6),
+              style: const TextStyle(color: _kTextSec, fontSize: 14, height: 1.6),
             ),
             if (_errorMessage != null) ...[
               const SizedBox(height: 16),
@@ -519,8 +509,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
                   border: Border.all(color: const Color(0x44FF6E6E)),
                 ),
                 child: Text(_errorMessage!,
-                    style: const TextStyle(
-                        color: Color(0xFFFF6E6E), fontSize: 12)),
+                    style: const TextStyle(color: Color(0xFFFF6E6E), fontSize: 12)),
               ),
             ],
             const SizedBox(height: 32),
@@ -537,7 +526,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
     );
   }
 
-  // ── Content ────────────────────────────────────────────────────────────────
+  
 
   Widget _buildContent() {
     final data = _data!;
@@ -553,27 +542,27 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Health Score Card
+            
             _buildHealthScoreCard(data),
             const SizedBox(height: 16),
 
-            // Relationship Info Row
+            
             _buildInfoRow(data),
             const SizedBox(height: 16),
 
-            // Shared Topics
+            
             if (data.sharedTopics.isNotEmpty) ...[
               _buildTopicsSection(data.sharedTopics),
               const SizedBox(height: 16),
             ],
 
-            // Important Dates
+            
             if (data.importantDates.isNotEmpty) ...[
               _buildDatesSection(data.importantDates),
               const SizedBox(height: 16),
             ],
 
-            // Memory Timeline
+            
             if (data.memories.isNotEmpty) ...[
               _buildSectionHeader('Ký ức & Dấu mốc', Icons.timeline_rounded),
               const SizedBox(height: 12),
@@ -588,7 +577,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
     );
   }
 
-  // ── Health Score Card ──────────────────────────────────────────────────────
+  
 
   Widget _buildHealthScoreCard(_RelationshipData data) {
     final score = data.healthScore.clamp(0, 100);
@@ -606,7 +595,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
         border: Border.all(color: _kBorder),
         boxShadow: [
           BoxShadow(
-            color: scoreColor.withOpacity(0.08),
+            color: scoreColor.withValues(alpha: 0.08),
             blurRadius: 30,
             spreadRadius: 0,
           ),
@@ -644,7 +633,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
                     ),
                     Text('/100',
                         style: TextStyle(
-                            color: scoreColor.withOpacity(0.5),
+                            color: scoreColor.withValues(alpha: 0.5),
                             fontSize: 16,
                             fontWeight: FontWeight.w600)),
                   ],
@@ -654,7 +643,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
             ],
           ),
           const SizedBox(height: 20),
-          // Progress bar
+          
           AnimatedBuilder(
             animation: _scoreAnim,
             builder: (_, __) => ClipRRect(
@@ -708,15 +697,14 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
             color: color,
           ),
           child: Center(
-            child: Icon(Icons.favorite_rounded,
-                color: color.withOpacity(0.7), size: 22),
+            child: Icon(Icons.favorite_rounded, color: color.withValues(alpha: 0.7), size: 22),
           ),
         ),
       ),
     );
   }
 
-  // ── Info Row ───────────────────────────────────────────────────────────────
+  
 
   Widget _buildInfoRow(_RelationshipData data) {
     final styleLabel = {
@@ -750,7 +738,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
           child: _InfoChip(
             icon: Icons.thermostat_rounded,
             label: 'Độ thân thiết',
-            value: '${'❤️' * data.closenessLevel.clamp(1, 5)}',
+            value: '❤️' * data.closenessLevel.clamp(1, 5),
             color: _kAccent3,
           ),
         ),
@@ -758,7 +746,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
     );
   }
 
-  // ── Shared Topics ──────────────────────────────────────────────────────────
+  
 
   Widget _buildTopicsSection(List<String> topics) {
     return Column(
@@ -775,7 +763,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
     );
   }
 
-  // ── Important Dates ────────────────────────────────────────────────────────
+  
 
   Widget _buildDatesSection(List<String> dates) {
     return Column(
@@ -791,7 +779,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
     );
   }
 
-  // ── Memory Timeline ────────────────────────────────────────────────────────
+  
 
   Widget _buildMemoryTimeline(List<_MemoryEntry> memories) {
     return ListView.separated(
@@ -807,7 +795,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
     );
   }
 
-  // ── Footer ─────────────────────────────────────────────────────────────────
+  
 
   Widget _buildFooter() {
     return Column(
@@ -815,8 +803,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
         if (_isAnalyzing) ...[
           const _PulsingOrb(),
           const SizedBox(height: 12),
-          const Text('AI đang phân tích…',
-              style: TextStyle(color: _kTextSec, fontSize: 13)),
+          const Text('AI đang phân tích…', style: TextStyle(color: _kTextSec, fontSize: 13)),
           const SizedBox(height: 24),
         ],
         Row(
@@ -825,9 +812,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
               child: _GlowButton(
                 label: 'Phân tích lại',
                 icon: Icons.refresh_rounded,
-                onTap: _isAnalyzing
-                    ? null
-                    : () => _analyzeMemory(forceRefresh: true),
+                onTap: _isAnalyzing ? null : () => _analyzeMemory(forceRefresh: true),
                 compact: true,
               ),
             ),
@@ -845,7 +830,7 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
     );
   }
 
-  // ── Section Header ─────────────────────────────────────────────────────────
+  
 
   Widget _buildSectionHeader(String title, IconData icon) {
     return Row(
@@ -866,9 +851,9 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// COMPONENTS
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _InfoChip extends StatelessWidget {
   final IconData icon;
@@ -901,7 +886,7 @@ class _InfoChip extends StatelessWidget {
             Text(label,
                 style: TextStyle(
                     fontSize: 10,
-                    color: color.withOpacity(0.8),
+                    color: color.withValues(alpha: 0.8),
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.4)),
           ]),
@@ -931,9 +916,9 @@ class _TopicChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: _kAccent.withOpacity(0.1),
+        color: _kAccent.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _kAccent.withOpacity(0.3)),
+        border: Border.all(color: _kAccent.withValues(alpha: 0.3)),
       ),
       child: Text(
         label,
@@ -964,7 +949,7 @@ class _DateRow extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: _kBorder),
         boxShadow: [
-          BoxShadow(color: c.withOpacity(0.04), blurRadius: 12),
+          BoxShadow(color: c.withValues(alpha: 0.04), blurRadius: 12),
         ],
       ),
       child: Row(children: [
@@ -978,9 +963,7 @@ class _DateRow extends StatelessWidget {
         ),
         const SizedBox(width: 14),
         Expanded(
-          child: Text(label,
-              style:
-                  const TextStyle(color: _kTextPri, fontSize: 13, height: 1.5)),
+          child: Text(label, style: const TextStyle(color: _kTextPri, fontSize: 13, height: 1.5)),
         ),
       ]),
     );
@@ -1005,7 +988,7 @@ class _TimelineEntry extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Timeline line + dot
+          
           SizedBox(
             width: 36,
             child: Column(
@@ -1014,10 +997,9 @@ class _TimelineEntry extends StatelessWidget {
                   width: 32,
                   height: 32,
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.15),
+                    color: color.withValues(alpha: 0.15),
                     shape: BoxShape.circle,
-                    border:
-                        Border.all(color: color.withOpacity(0.4), width: 1.5),
+                    border: Border.all(color: color.withValues(alpha: 0.4), width: 1.5),
                   ),
                   child: Icon(entry.category.icon, size: 14, color: color),
                 ),
@@ -1030,7 +1012,7 @@ class _TimelineEntry extends StatelessWidget {
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
-                          colors: [color.withOpacity(0.3), _kBorder],
+                          colors: [color.withValues(alpha: 0.3), _kBorder],
                         ),
                       ),
                     ),
@@ -1039,7 +1021,7 @@ class _TimelineEntry extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          // Content card
+          
           Expanded(
             child: Container(
               margin: EdgeInsets.only(bottom: isLast ? 0 : 12),
@@ -1047,16 +1029,15 @@ class _TimelineEntry extends StatelessWidget {
               decoration: BoxDecoration(
                 color: _kSurface,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: color.withOpacity(0.2)),
+                border: Border.all(color: color.withValues(alpha: 0.2)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: color.withOpacity(0.12),
+                      color: color.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
@@ -1107,19 +1088,16 @@ class _GlowButton extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding: EdgeInsets.symmetric(
-            horizontal: compact ? 20 : 28, vertical: compact ? 12 : 16),
+        padding: EdgeInsets.symmetric(horizontal: compact ? 20 : 28, vertical: compact ? 12 : 16),
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: onTap != null
-                ? [_kAccent, const Color(0xFF9B6EFF)]
-                : [_kSurface2, _kSurface2],
+            colors: onTap != null ? [_kAccent, const Color(0xFF9B6EFF)] : [_kSurface2, _kSurface2],
           ),
           borderRadius: BorderRadius.circular(14),
           boxShadow: onTap != null
               ? [
                   BoxShadow(
-                      color: _kAccent.withOpacity(0.3),
+                      color: _kAccent.withValues(alpha: 0.3),
                       blurRadius: 16,
                       offset: const Offset(0, 4))
                 ]
@@ -1129,8 +1107,7 @@ class _GlowButton extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: compact ? MainAxisSize.max : MainAxisSize.min,
           children: [
-            Icon(icon,
-                color: onTap != null ? Colors.white : _kTextDim, size: 16),
+            Icon(icon, color: onTap != null ? Colors.white : _kTextDim, size: 16),
             const SizedBox(width: 8),
             Text(
               label,
@@ -1172,9 +1149,9 @@ class _IconBtn extends StatelessWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: outlined ? Colors.transparent : color.withOpacity(0.12),
+            color: outlined ? Colors.transparent : color.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(12),
-            border: outlined ? Border.all(color: color.withOpacity(0.3)) : null,
+            border: outlined ? Border.all(color: color.withValues(alpha: 0.3)) : null,
           ),
           child: Icon(icon, color: color, size: 20),
         ),
@@ -1188,8 +1165,7 @@ class _GlowOrb extends StatelessWidget {
   final Color color;
   final double glowRadius;
 
-  const _GlowOrb(
-      {required this.size, required this.color, required this.glowRadius});
+  const _GlowOrb({required this.size, required this.color, required this.glowRadius});
 
   @override
   Widget build(BuildContext context) {
@@ -1198,10 +1174,10 @@ class _GlowOrb extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         boxShadow: [
-          BoxShadow(color: color.withOpacity(0.3), blurRadius: glowRadius),
-          BoxShadow(color: color.withOpacity(0.15), blurRadius: glowRadius * 2),
+          BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: glowRadius),
+          BoxShadow(color: color.withValues(alpha: 0.15), blurRadius: glowRadius * 2),
         ],
       ),
       child: Icon(Icons.psychology_rounded, color: color, size: size * 0.45),
@@ -1215,8 +1191,7 @@ class _PulsingOrb extends StatefulWidget {
   State<_PulsingOrb> createState() => _PulsingOrbState();
 }
 
-class _PulsingOrbState extends State<_PulsingOrb>
-    with SingleTickerProviderStateMixin {
+class _PulsingOrbState extends State<_PulsingOrb> with SingleTickerProviderStateMixin {
   late final AnimationController _ac = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1000),
@@ -1237,24 +1212,23 @@ class _PulsingOrbState extends State<_PulsingOrb>
         height: 48,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: _kAccent.withOpacity(0.05 + _ac.value * 0.1),
+          color: _kAccent.withValues(alpha: 0.05 + _ac.value * 0.1),
           boxShadow: [
             BoxShadow(
-              color: _kAccent.withOpacity(0.2 + _ac.value * 0.2),
+              color: _kAccent.withValues(alpha: 0.2 + _ac.value * 0.2),
               blurRadius: 16 + _ac.value * 16,
             ),
           ],
         ),
-        child:
-            const Icon(Icons.auto_awesome_rounded, color: _kAccent, size: 22),
+        child: const Icon(Icons.auto_awesome_rounded, color: _kAccent, size: 22),
       ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CONFIRM DIALOG
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _ConfirmDialog extends StatelessWidget {
   final String title;
@@ -1288,8 +1262,7 @@ class _ConfirmDialog extends StatelessWidget {
             const SizedBox(height: 12),
             Text(message,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                    color: _kTextSec, fontSize: 13, height: 1.5)),
+                style: const TextStyle(color: _kTextSec, fontSize: 13, height: 1.5)),
             const SizedBox(height: 24),
             Row(
               children: [
@@ -1305,8 +1278,7 @@ class _ConfirmDialog extends StatelessWidget {
                       ),
                       child: const Center(
                         child: Text('Huỷ',
-                            style: TextStyle(
-                                color: _kTextSec, fontWeight: FontWeight.w600)),
+                            style: TextStyle(color: _kTextSec, fontWeight: FontWeight.w600)),
                       ),
                     ),
                   ),
@@ -1318,10 +1290,9 @@ class _ConfirmDialog extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       decoration: BoxDecoration(
-                        color: confirmColor.withOpacity(0.15),
+                        color: confirmColor.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(12),
-                        border:
-                            Border.all(color: confirmColor.withOpacity(0.4)),
+                        border: Border.all(color: confirmColor.withValues(alpha: 0.4)),
                       ),
                       child: Center(
                         child: Text(confirmLabel,
@@ -1342,9 +1313,9 @@ class _ConfirmDialog extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CUSTOM PAINTER — Score Gauge
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _ScoreGaugePainter extends CustomPainter {
   final double progress;
@@ -1359,7 +1330,7 @@ class _ScoreGaugePainter extends CustomPainter {
     const startAngle = -math.pi * 0.8;
     const sweepMax = math.pi * 1.6;
 
-    // Track background
+    
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: radius),
       startAngle,
@@ -1372,7 +1343,7 @@ class _ScoreGaugePainter extends CustomPainter {
         ..strokeCap = StrokeCap.round,
     );
 
-    // Progress arc
+    
     if (progress > 0) {
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
@@ -1386,7 +1357,7 @@ class _ScoreGaugePainter extends CustomPainter {
           ..strokeCap = StrokeCap.round
           ..maskFilter = MaskFilter.blur(BlurStyle.normal, 3),
       );
-      // Clean arc on top
+      
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
         startAngle,
@@ -1402,6 +1373,5 @@ class _ScoreGaugePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_ScoreGaugePainter old) =>
-      old.progress != progress || old.color != color;
+  bool shouldRepaint(_ScoreGaugePainter old) => old.progress != progress || old.color != color;
 }

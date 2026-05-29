@@ -1,11 +1,12 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+
 import 'package:geolocator/geolocator.dart';
 
-/// Widget hiển thị tin nhắn ẩn theo tọa độ địa lý.
-/// content: JSON string dạng {"text": "...", "lat": 21.0, "lng": 105.0}
-/// isMe: true nếu người dùng hiện tại là người gửi tin nhắn
+
+
+
 class GeoLockedMessageWidget extends StatefulWidget {
   final String content;
   final bool isMe;
@@ -33,7 +34,7 @@ class _GeoLockedMessageWidgetState extends State<GeoLockedMessageWidget>
   void initState() {
     super.initState();
 
-    // Animation lắc nhẹ khi chưa đủ điều kiện mở khóa
+    
     _shakeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
@@ -42,7 +43,7 @@ class _GeoLockedMessageWidgetState extends State<GeoLockedMessageWidget>
       CurvedAnimation(parent: _shakeController, curve: Curves.elasticIn),
     );
 
-    // Người gửi luôn thấy được nội dung
+    
     if (widget.isMe) {
       _isUnlocked = true;
     }
@@ -54,9 +55,9 @@ class _GeoLockedMessageWidgetState extends State<GeoLockedMessageWidget>
     super.dispose();
   }
 
-  // ──────────────────────────────────────────────
-  // Kiểm tra quyền & lấy vị trí (geolocator ^14)
-  // ──────────────────────────────────────────────
+  
+  
+  
   Future<bool> _handlePermission() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
@@ -75,8 +76,7 @@ class _GeoLockedMessageWidgetState extends State<GeoLockedMessageWidget>
 
     if (permission == LocationPermission.deniedForever) {
       setState(
-        () => _distanceText =
-            "Quyền định vị bị chặn vĩnh viễn. Vào Cài đặt để cấp quyền.",
+        () => _distanceText = "Quyền định vị bị chặn vĩnh viễn. Vào Cài đặt để cấp quyền.",
       );
       return false;
     }
@@ -96,7 +96,7 @@ class _GeoLockedMessageWidgetState extends State<GeoLockedMessageWidget>
         return;
       }
 
-      // geolocator ^14 dùng LocationSettings thay vì desiredAccuracy trực tiếp
+      
       final LocationSettings locationSettings = const LocationSettings(
         accuracy: LocationAccuracy.high,
         distanceFilter: 0,
@@ -118,8 +118,7 @@ class _GeoLockedMessageWidgetState extends State<GeoLockedMessageWidget>
       } else {
         final int dist = distanceInMeters.round();
         setState(
-          () => _distanceText =
-              "Bạn cách ${dist}m. Cần đến gần hơn (<50m) để mở khóa!",
+          () => _distanceText = "Bạn cách ${dist}m. Cần đến gần hơn (<50m) để mở khóa!",
         );
         _shakeController.forward(from: 0);
       }
@@ -137,9 +136,9 @@ class _GeoLockedMessageWidgetState extends State<GeoLockedMessageWidget>
     }
   }
 
-  // ──────────────────────────────────────────────
-  // UI – Trạng thái đã mở khóa
-  // ──────────────────────────────────────────────
+  
+  
+  
   Widget _buildUnlocked(String secretText) {
     return Container(
       constraints: const BoxConstraints(maxWidth: 260),
@@ -173,15 +172,14 @@ class _GeoLockedMessageWidgetState extends State<GeoLockedMessageWidget>
     );
   }
 
-  // ──────────────────────────────────────────────
-  // UI – Trạng thái bị khóa
-  // ──────────────────────────────────────────────
+  
+  
+  
   Widget _buildLocked(double lat, double lng) {
     return AnimatedBuilder(
       animation: _shakeAnimation,
       builder: (context, child) {
-        final offset =
-            _shakeController.isAnimating ? _shakeAnimation.value : 0.0;
+        final offset = _shakeController.isAnimating ? _shakeAnimation.value : 0.0;
         return Transform.translate(
           offset: Offset(offset * (_shakeController.value < 0.5 ? 1 : -1), 0),
           child: child,
@@ -201,7 +199,7 @@ class _GeoLockedMessageWidgetState extends State<GeoLockedMessageWidget>
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withValues(alpha: 0.3),
                 blurRadius: 8,
                 offset: const Offset(0, 4),
               ),
@@ -210,7 +208,7 @@ class _GeoLockedMessageWidgetState extends State<GeoLockedMessageWidget>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Icon khóa + định vị
+              
               Stack(
                 alignment: Alignment.center,
                 children: [
@@ -224,8 +222,7 @@ class _GeoLockedMessageWidgetState extends State<GeoLockedMessageWidget>
                         shape: BoxShape.circle,
                       ),
                       padding: const EdgeInsets.all(2),
-                      child:
-                          const Icon(Icons.lock, color: Colors.amber, size: 16),
+                      child: const Icon(Icons.lock, color: Colors.amber, size: 16),
                     ),
                   ),
                 ],
@@ -263,7 +260,7 @@ class _GeoLockedMessageWidgetState extends State<GeoLockedMessageWidget>
                       textAlign: TextAlign.center,
                     ),
               const SizedBox(height: 8),
-              // Chip tọa độ
+              
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
@@ -286,9 +283,9 @@ class _GeoLockedMessageWidgetState extends State<GeoLockedMessageWidget>
     );
   }
 
-  // ──────────────────────────────────────────────
-  // Build
-  // ──────────────────────────────────────────────
+  
+  
+  
   @override
   Widget build(BuildContext context) {
     late Map<String, dynamic> data;

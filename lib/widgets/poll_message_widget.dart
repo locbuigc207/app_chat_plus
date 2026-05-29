@@ -5,15 +5,15 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// =============================================================================
-// DATA MODELS
-// =============================================================================
 
-/// Một lựa chọn trong poll
+
+
+
+
 class PollOption {
   final String id;
   final String text;
-  final List<String> votes; // danh sách userId đã vote
+  final List<String> votes; 
 
   const PollOption({
     required this.id,
@@ -36,7 +36,7 @@ class PollOption {
       );
 }
 
-/// Toàn bộ dữ liệu của một poll
+
 class PollData {
   final String question;
   final List<PollOption> options;
@@ -61,12 +61,10 @@ class PollData {
             .toList(),
         isMultipleChoice: json['isMultipleChoice'] as bool? ?? false,
         isAnonymous: json['isAnonymous'] as bool? ?? false,
-        expiresAt: json['expiresAt'] != null
-            ? DateTime.tryParse(json['expiresAt'] as String)
-            : null,
-        createdAt: json['createdAt'] != null
-            ? DateTime.tryParse(json['createdAt'] as String)
-            : null,
+        expiresAt:
+            json['expiresAt'] != null ? DateTime.tryParse(json['expiresAt'] as String) : null,
+        createdAt:
+            json['createdAt'] != null ? DateTime.tryParse(json['createdAt'] as String) : null,
       );
 
   bool get isExpired => expiresAt != null && DateTime.now().isAfter(expiresAt!);
@@ -79,35 +77,35 @@ class PollData {
   }
 }
 
-// =============================================================================
-// PollMessageWidget
-// =============================================================================
-//
-// Widget hiển thị tin nhắn poll với:
-//   • Header gradient + câu hỏi
-//   • Các option với progress bar animate khi vote
-//   • Single/multiple choice
-//   • Ẩn danh (ẩn số phiếu chi tiết)
-//   • Expiry countdown realtime
-//   • "Xem kết quả" khi chưa vote nhưng đã hết hạn
-//   • Confetti nhẹ khi vote thành công
-//   • Accessible: semantics đầy đủ
-// =============================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 class PollMessageWidget extends StatefulWidget {
-  /// Chuỗi JSON chứa toàn bộ dữ liệu poll
+  
   final String content;
 
-  /// ID của message trong Firestore
+  
   final String messageId;
 
-  /// ID của user hiện tại
+  
   final String currentUserId;
 
-  /// Callback khi user bấm vote
+  
   final Future<void> Function(String messageId, String optionId) onVote;
 
-  /// true = tin nhắn của mình (hiển thị bên phải)
+  
   final bool isSentByMe;
 
   const PollMessageWidget({
@@ -123,31 +121,30 @@ class PollMessageWidget extends StatefulWidget {
   State<PollMessageWidget> createState() => _PollMessageWidgetState();
 }
 
-class _PollMessageWidgetState extends State<PollMessageWidget>
-    with TickerProviderStateMixin {
-  // ── State ────────────────────────────────────────────────────────────────────
+class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProviderStateMixin {
+  
 
   late PollData _poll;
   bool _isVoting = false;
   bool _showResults = false;
   Timer? _expiryTimer;
 
-  // ── Animation controllers ─────────────────────────────────────────────────────
+  
 
-  // Entrance animation
+  
   late AnimationController _entranceController;
   late Animation<double> _entranceFade;
   late Animation<Offset> _entranceSlide;
 
-  // Progress bar animations (một per option)
+  
   final List<AnimationController> _barControllers = [];
   final List<Animation<double>> _barAnims = [];
 
-  // Confetti (nhẹ, không cần lib ngoài)
+  
   late AnimationController _confettiController;
   final List<_Particle> _particles = [];
 
-  // ── Design tokens ─────────────────────────────────────────────────────────────
+  
 
   static const _optionPalette = [
     Color(0xFF6C63FF),
@@ -162,7 +159,7 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
     Color(0xFFFF7849),
   ];
 
-  // ── Lifecycle ─────────────────────────────────────────────────────────────────
+  
 
   @override
   void initState() {
@@ -193,12 +190,11 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
     super.dispose();
   }
 
-  // ── Init helpers ──────────────────────────────────────────────────────────────
+  
 
   void _parsePoll() {
     try {
-      _poll =
-          PollData.fromJson(jsonDecode(widget.content) as Map<String, dynamic>);
+      _poll = PollData.fromJson(jsonDecode(widget.content) as Map<String, dynamic>);
     } catch (_) {
       _poll = const PollData(
         question: 'Không thể tải bình chọn',
@@ -209,7 +205,7 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
   }
 
   void _initAnimations() {
-    // Entrance
+    
     _entranceController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
@@ -226,16 +222,16 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
       curve: Curves.easeOutCubic,
     ));
 
-    // Confetti
+    
     _confettiController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
 
-    // Bar animations
+    
     _rebuildBarAnimations();
 
-    // Nếu đã vote / hết hạn → play bars ngay
+    
     if (_showResults) {
       for (final c in _barControllers) {
         c.forward();
@@ -262,7 +258,7 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
   }
 
   void _syncBarAnimations() {
-    // Nếu số option thay đổi → rebuild
+    
     if (_barControllers.length != _poll.options.length) {
       _rebuildBarAnimations();
     }
@@ -287,7 +283,7 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
       if (mounted) setState(() => _showResults = true);
     });
 
-    // Cập nhật countdown mỗi phút
+    
     Timer.periodic(const Duration(minutes: 1), (t) {
       if (!mounted) {
         t.cancel();
@@ -297,12 +293,12 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
         t.cancel();
         setState(() => _showResults = true);
       } else {
-        setState(() {}); // rebuild countdown
+        setState(() {}); 
       }
     });
   }
 
-  // ── Vote logic ────────────────────────────────────────────────────────────────
+  
 
   bool _hasVotedFor(PollOption opt) => opt.votes.contains(widget.currentUserId);
 
@@ -317,7 +313,7 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
     try {
       await widget.onVote(widget.messageId, optionId);
 
-      // Hiện kết quả & animate bars
+      
       if (mounted) {
         setState(() => _showResults = true);
         for (final c in _barControllers) {
@@ -364,7 +360,7 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
       ..forward();
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────────
+  
 
   @override
   Widget build(BuildContext context) {
@@ -375,8 +371,7 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
       child: SlideTransition(
         position: _entranceSlide,
         child: Align(
-          alignment:
-              widget.isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
+          alignment: widget.isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
           child: Container(
             width: maxW,
             margin: const EdgeInsets.symmetric(vertical: 4),
@@ -385,7 +380,7 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
               borderRadius: _bubbleRadius(),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.07),
+                  color: Colors.black.withValues(alpha: 0.07),
                   blurRadius: 18,
                   offset: const Offset(0, 5),
                 ),
@@ -415,7 +410,7 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
                     ),
                   ],
                 ),
-                // Confetti overlay
+                
                 if (_particles.isNotEmpty)
                   Positioned.fill(
                     child: IgnorePointer(
@@ -447,7 +442,7 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
     );
   }
 
-  // ── Header ────────────────────────────────────────────────────────────────────
+  
 
   Widget _buildHeader() {
     return Container(
@@ -462,7 +457,7 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Chips row
+          
           Row(
             children: [
               const Icon(Icons.poll_rounded, color: Colors.white70, size: 14),
@@ -484,18 +479,17 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
                 _HeaderChip(label: 'Ẩn danh'),
               ],
               const Spacer(),
-              // Total votes badge
+              
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.people_outline_rounded,
-                        color: Colors.white70, size: 12),
+                    const Icon(Icons.people_outline_rounded, color: Colors.white70, size: 12),
                     const SizedBox(width: 3),
                     Text(
                       '${_poll.totalVotes}',
@@ -511,7 +505,7 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
             ],
           ),
           const SizedBox(height: 7),
-          // Question
+          
           Text(
             _poll.question,
             style: const TextStyle(
@@ -522,7 +516,7 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
               letterSpacing: -0.2,
             ),
           ),
-          // Expiry
+          
           if (_poll.expiresAt != null) ...[
             const SizedBox(height: 6),
             _ExpiryBadge(
@@ -535,7 +529,7 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
     );
   }
 
-  // ── Option row ────────────────────────────────────────────────────────────────
+  
 
   Widget _buildOption(int index, PollOption opt) {
     final hasVoted = _hasVotedFor(opt);
@@ -543,9 +537,8 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
     final pct = _poll.percentageFor(opt);
     final canTap = !_poll.isExpired && !_isVoting;
 
-    // Semantics label
-    final semanticsLabel =
-        '${opt.text}: ${(pct * 100).round()}% (${opt.votes.length} phiếu)'
+    
+    final semanticsLabel = '${opt.text}: ${(pct * 100).round()}% (${opt.votes.length} phiếu)'
         '${hasVoted ? ', đã bình chọn' : ''}';
 
     return Semantics(
@@ -558,11 +551,10 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
           margin: const EdgeInsets.only(bottom: 7),
           height: 46,
           decoration: BoxDecoration(
-            color: hasVoted ? color.withOpacity(0.08) : const Color(0xFFF9FAFB),
+            color: hasVoted ? color.withValues(alpha: 0.08) : const Color(0xFFF9FAFB),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color:
-                  hasVoted ? color.withOpacity(0.5) : const Color(0xFFE5E7EB),
+              color: hasVoted ? color.withValues(alpha: 0.5) : const Color(0xFFE5E7EB),
               width: hasVoted ? 1.5 : 1,
             ),
           ),
@@ -570,7 +562,7 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
             borderRadius: BorderRadius.circular(12),
             child: Stack(
               children: [
-                // Animated progress bar
+                
                 if (_showResults && index < _barAnims.length)
                   AnimatedBuilder(
                     animation: _barAnims[index],
@@ -581,21 +573,20 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
                         heightFactor: 1,
                         child: Container(
                           decoration: BoxDecoration(
-                            color: hasVoted
-                                ? color.withOpacity(0.22)
-                                : const Color(0xFFE5E7EB),
+                            color:
+                                hasVoted ? color.withValues(alpha: 0.22) : const Color(0xFFE5E7EB),
                           ),
                         ),
                       );
                     },
                   ),
 
-                // Content
+                
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 11),
                   child: Row(
                     children: [
-                      // Vote indicator icon
+                      
                       _VoteIndicator(
                         hasVoted: hasVoted,
                         isMultiple: _poll.isMultipleChoice,
@@ -604,7 +595,7 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
                       ),
                       const SizedBox(width: 8),
 
-                      // Option text
+                      
                       Expanded(
                         child: Text(
                           opt.text,
@@ -612,14 +603,13 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 13.5,
-                            fontWeight:
-                                hasVoted ? FontWeight.w700 : FontWeight.w500,
+                            fontWeight: hasVoted ? FontWeight.w700 : FontWeight.w500,
                             color: hasVoted ? color : const Color(0xFF374151),
                           ),
                         ),
                       ),
 
-                      // Loading spinner (voting in progress)
+                      
                       if (_isVoting && canTap) ...[
                         const SizedBox(width: 8),
                         SizedBox(
@@ -632,7 +622,7 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
                         ),
                       ],
 
-                      // Result stats
+                      
                       if (_showResults) ...[
                         const SizedBox(width: 6),
                         _ResultStats(
@@ -644,7 +634,7 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
                         ),
                       ],
 
-                      // "Winner" crown for leading option when expired
+                      
                       if (_poll.isExpired &&
                           opt.votes.length == _getMaxVotes() &&
                           _poll.totalVotes > 0) ...[
@@ -668,12 +658,12 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
     return _poll.options.map((o) => o.votes.length).reduce(math.max);
   }
 
-  // ── Footer ────────────────────────────────────────────────────────────────────
+  
 
   Widget _buildFooter() {
     return Row(
       children: [
-        // "Xem kết quả" / "Ẩn kết quả" toggle (khi chưa vote & chưa hết hạn)
+        
         if (!_hasVotedAny && !_poll.isExpired) ...[
           GestureDetector(
             onTap: () => setState(() {
@@ -697,7 +687,7 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
           ),
         ],
 
-        // Đã vote → nút "Thay đổi" (chỉ khi không hết hạn & single choice)
+        
         if (_hasVotedAny && !_poll.isExpired && !_poll.isMultipleChoice) ...[
           GestureDetector(
             onTap: () {
@@ -717,7 +707,7 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
 
         const Spacer(),
 
-        // Trạng thái poll
+        
         Text(
           _pollStatusText(),
           style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
@@ -733,9 +723,9 @@ class _PollMessageWidgetState extends State<PollMessageWidget>
   }
 }
 
-// =============================================================================
-// _VoteIndicator
-// =============================================================================
+
+
+
 
 class _VoteIndicator extends StatelessWidget {
   final bool hasVoted;
@@ -753,27 +743,24 @@ class _VoteIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (isExpired && !hasVoted) {
-      return Icon(Icons.radio_button_unchecked_rounded,
-          size: 18, color: Colors.grey.shade300);
+      return Icon(Icons.radio_button_unchecked_rounded, size: 18, color: Colors.grey.shade300);
     }
 
     if (isMultiple) {
       return hasVoted
           ? Icon(Icons.check_box_rounded, size: 18, color: color)
-          : Icon(Icons.check_box_outline_blank_rounded,
-              size: 18, color: Colors.grey.shade400);
+          : Icon(Icons.check_box_outline_blank_rounded, size: 18, color: Colors.grey.shade400);
     }
 
     return hasVoted
         ? Icon(Icons.radio_button_checked_rounded, size: 18, color: color)
-        : Icon(Icons.radio_button_unchecked_rounded,
-            size: 18, color: Colors.grey.shade400);
+        : Icon(Icons.radio_button_unchecked_rounded, size: 18, color: Colors.grey.shade400);
   }
 }
 
-// =============================================================================
-// _ResultStats
-// =============================================================================
+
+
+
 
 class _ResultStats extends StatelessWidget {
   final double pct;
@@ -814,9 +801,9 @@ class _ResultStats extends StatelessWidget {
   }
 }
 
-// =============================================================================
-// _HeaderChip
-// =============================================================================
+
+
+
 
 class _HeaderChip extends StatelessWidget {
   final String label;
@@ -828,7 +815,7 @@ class _HeaderChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.18),
+        color: Colors.white.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
@@ -844,9 +831,9 @@ class _HeaderChip extends StatelessWidget {
   }
 }
 
-// =============================================================================
-// _ExpiryBadge – countdown realtime
-// =============================================================================
+
+
+
 
 class _ExpiryBadge extends StatefulWidget {
   final DateTime expiresAt;
@@ -890,8 +877,7 @@ class _ExpiryBadgeState extends State<_ExpiryBadge> {
     return 'Còn ${_remaining.inSeconds}s';
   }
 
-  bool get _isUrgent =>
-      !widget.isExpired && _remaining.inMinutes < 10 && !_remaining.isNegative;
+  bool get _isUrgent => !widget.isExpired && _remaining.inMinutes < 10 && !_remaining.isNegative;
 
   @override
   Widget build(BuildContext context) {
@@ -919,14 +905,14 @@ class _ExpiryBadgeState extends State<_ExpiryBadge> {
   }
 }
 
-// =============================================================================
-// Confetti painter (lightweight, no external lib)
-// =============================================================================
+
+
+
 
 class _Particle {
   final Color color;
-  final double x; // 0..1 horizontal position
-  final double delay; // 0..1 animation delay
+  final double x; 
+  final double delay; 
   final double size;
   final double angle;
 
@@ -941,7 +927,7 @@ class _Particle {
 
 class _ConfettiPainter extends CustomPainter {
   final List<_Particle> particles;
-  final double progress; // 0..1
+  final double progress; 
 
   const _ConfettiPainter({
     required this.particles,
@@ -959,14 +945,14 @@ class _ConfettiPainter extends CustomPainter {
       final dy = -20 + t * size.height * 0.7;
 
       final paint = Paint()
-        ..color = p.color.withOpacity(opacity)
+        ..color = p.color.withValues(alpha: opacity)
         ..style = PaintingStyle.fill;
 
       canvas.save();
       canvas.translate(dx, dy);
       canvas.rotate(p.angle + t * math.pi * 2);
 
-      // Rectangle confetti piece
+      
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromCenter(

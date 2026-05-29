@@ -1,10 +1,12 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:http/http.dart' as http;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Models
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 enum ReplyCategory {
   greeting,
@@ -38,42 +40,41 @@ class SmartReply {
   String toString() => 'SmartReply(text: $text, confidence: $confidence)';
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Provider
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class SmartReplyProvider {
-  /// Maximum replies returned to the UI.
+  
   static const int maxReplies = 3;
 
-  // ───────────────────────────────────────────────
-  // Public entry-point
-  // ───────────────────────────────────────────────
+  
+  
+  
 
-  /// Returns up to [maxReplies] smart reply suggestions.
-  ///
-  /// Priority chain:
-  ///   1. Rule-based (fast, deterministic)
-  ///   2. Context-aware (uses conversation history)
-  ///   3. Anthropic Claude API (best quality, async)
-  ///   4. Fallback stubs
+  
+  
+  
+  
+  
+  
+  
   Future<List<SmartReply>> getSmartReplies({
     required String message,
     List<String>? conversationHistory,
     String? anthropicApiKey,
   }) async {
-    // 1. Rule-based
+    
     final ruleReplies = getRuleBasedReplies(message);
     if (ruleReplies.isNotEmpty) return ruleReplies;
 
-    // 2. Context-aware
+    
     if (conversationHistory != null && conversationHistory.isNotEmpty) {
-      final contextReplies =
-      getContextAwareReplies(message, conversationHistory);
+      final contextReplies = getContextAwareReplies(message, conversationHistory);
       if (contextReplies.isNotEmpty) return contextReplies;
     }
 
-    // 3. Anthropic API
+    
     if (anthropicApiKey != null && anthropicApiKey.isNotEmpty) {
       final aiReplies = await getAnthropicReplies(
         message: message,
@@ -83,132 +84,299 @@ class SmartReplyProvider {
       if (aiReplies.isNotEmpty) return aiReplies;
     }
 
-    // 4. Fallback
+    
     return _fallbackReplies;
   }
 
-  // ───────────────────────────────────────────────
-  // Rule-based replies
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   List<SmartReply> getRuleBasedReplies(String message) {
     final lower = message.toLowerCase().trim();
     final List<SmartReply> replies = [];
 
-    // Greeting
-    if (_matchesAny(lower, ['hello', 'hi ', 'hey', 'greetings', 'howdy', 'sup', 'what\'s up', 'hiya'])) {
+    
+    if (_matchesAny(
+        lower, ['hello', 'hi ', 'hey', 'greetings', 'howdy', 'sup', 'what\'s up', 'hiya'])) {
       replies.addAll([
-        const SmartReply(text: 'Hey! How are you? 😊', confidence: 0.95, category: ReplyCategory.greeting),
-        const SmartReply(text: 'Hi there! What\'s up?', confidence: 0.90, category: ReplyCategory.greeting),
-        const SmartReply(text: 'Hello! Great to hear from you!', confidence: 0.85, category: ReplyCategory.greeting),
+        const SmartReply(
+            text: 'Hey! How are you? 😊', confidence: 0.95, category: ReplyCategory.greeting),
+        const SmartReply(
+            text: 'Hi there! What\'s up?', confidence: 0.90, category: ReplyCategory.greeting),
+        const SmartReply(
+            text: 'Hello! Great to hear from you!',
+            confidence: 0.85,
+            category: ReplyCategory.greeting),
       ]);
     }
 
-    // How are you
-    if (_matchesAny(lower, ['how are you', 'how r u', 'how\'s it going', 'how do you do', 'how have you been', 'you okay', 'u ok'])) {
+    
+    if (_matchesAny(lower, [
+      'how are you',
+      'how r u',
+      'how\'s it going',
+      'how do you do',
+      'how have you been',
+      'you okay',
+      'u ok'
+    ])) {
       replies.addAll([
-        const SmartReply(text: 'I\'m doing great, thanks! You? 😄', confidence: 0.95, category: ReplyCategory.greeting),
-        const SmartReply(text: 'Pretty good! How about you?', confidence: 0.90, category: ReplyCategory.greeting),
-        const SmartReply(text: 'All good here! What\'s new?', confidence: 0.85, category: ReplyCategory.greeting),
+        const SmartReply(
+            text: 'I\'m doing great, thanks! You? 😄',
+            confidence: 0.95,
+            category: ReplyCategory.greeting),
+        const SmartReply(
+            text: 'Pretty good! How about you?',
+            confidence: 0.90,
+            category: ReplyCategory.greeting),
+        const SmartReply(
+            text: 'All good here! What\'s new?',
+            confidence: 0.85,
+            category: ReplyCategory.greeting),
       ]);
     }
 
-    // Thanks
-    if (_matchesAny(lower, ['thank you', 'thanks', 'thx', 'ty ', 'appreciate', 'grateful', 'cheers', 'thnx'])) {
+    
+    if (_matchesAny(
+        lower, ['thank you', 'thanks', 'thx', 'ty ', 'appreciate', 'grateful', 'cheers', 'thnx'])) {
       replies.addAll([
-        const SmartReply(text: 'You\'re welcome! 😊', confidence: 0.95, category: ReplyCategory.acknowledgement),
-        const SmartReply(text: 'No problem at all!', confidence: 0.90, category: ReplyCategory.acknowledgement),
-        const SmartReply(text: 'Happy to help! 🙌', confidence: 0.85, category: ReplyCategory.acknowledgement),
+        const SmartReply(
+            text: 'You\'re welcome! 😊', confidence: 0.95, category: ReplyCategory.acknowledgement),
+        const SmartReply(
+            text: 'No problem at all!', confidence: 0.90, category: ReplyCategory.acknowledgement),
+        const SmartReply(
+            text: 'Happy to help! 🙌', confidence: 0.85, category: ReplyCategory.acknowledgement),
       ]);
     }
 
-    // Sorry / apology
-    if (_matchesAny(lower, ['sorry', 'apologize', 'my bad', 'excuse me', 'forgive', 'pardon', 'oops'])) {
+    
+    if (_matchesAny(
+        lower, ['sorry', 'apologize', 'my bad', 'excuse me', 'forgive', 'pardon', 'oops'])) {
       replies.addAll([
-        const SmartReply(text: 'No worries at all! 😊', confidence: 0.95, category: ReplyCategory.acknowledgement),
-        const SmartReply(text: 'It\'s totally okay!', confidence: 0.90, category: ReplyCategory.acknowledgement),
-        const SmartReply(text: 'Don\'t worry about it 👍', confidence: 0.85, category: ReplyCategory.acknowledgement),
+        const SmartReply(
+            text: 'No worries at all! 😊',
+            confidence: 0.95,
+            category: ReplyCategory.acknowledgement),
+        const SmartReply(
+            text: 'It\'s totally okay!', confidence: 0.90, category: ReplyCategory.acknowledgement),
+        const SmartReply(
+            text: 'Don\'t worry about it 👍',
+            confidence: 0.85,
+            category: ReplyCategory.acknowledgement),
       ]);
     }
 
-    // Farewell
-    if (_matchesAny(lower, ['bye', 'goodbye', 'see you', 'later', 'gotta go', 'ttyl', 'take care', 'cya', 'night', 'good night'])) {
+    
+    if (_matchesAny(lower, [
+      'bye',
+      'goodbye',
+      'see you',
+      'later',
+      'gotta go',
+      'ttyl',
+      'take care',
+      'cya',
+      'night',
+      'good night'
+    ])) {
       replies.addAll([
-        const SmartReply(text: 'Bye! Take care! 👋', confidence: 0.95, category: ReplyCategory.farewell),
-        const SmartReply(text: 'See you soon! 😊', confidence: 0.90, category: ReplyCategory.farewell),
-        const SmartReply(text: 'Talk to you later! 💬', confidence: 0.85, category: ReplyCategory.farewell),
+        const SmartReply(
+            text: 'Bye! Take care! 👋', confidence: 0.95, category: ReplyCategory.farewell),
+        const SmartReply(
+            text: 'See you soon! 😊', confidence: 0.90, category: ReplyCategory.farewell),
+        const SmartReply(
+            text: 'Talk to you later! 💬', confidence: 0.85, category: ReplyCategory.farewell),
       ]);
     }
 
-    // Question
-    if (lower.endsWith('?') || _matchesAny(lower, ['can you', 'could you', 'would you', 'is it', 'are you', 'do you'])) {
+    
+    if (lower.endsWith('?') ||
+        _matchesAny(lower, ['can you', 'could you', 'would you', 'is it', 'are you', 'do you'])) {
       replies.addAll([
-        const SmartReply(text: 'Let me check and get back to you!', confidence: 0.80, category: ReplyCategory.question),
-        const SmartReply(text: 'I\'ll look into it right away 🔍', confidence: 0.75, category: ReplyCategory.question),
-        const SmartReply(text: 'Good question! Give me a moment.', confidence: 0.70, category: ReplyCategory.question),
+        const SmartReply(
+            text: 'Let me check and get back to you!',
+            confidence: 0.80,
+            category: ReplyCategory.question),
+        const SmartReply(
+            text: 'I\'ll look into it right away 🔍',
+            confidence: 0.75,
+            category: ReplyCategory.question),
+        const SmartReply(
+            text: 'Good question! Give me a moment.',
+            confidence: 0.70,
+            category: ReplyCategory.question),
       ]);
     }
 
-    // Affirmation
-    if (_matchesAny(lower, [' yes', 'yeah', 'yep', 'sure', 'okay', ' ok ', 'alright', 'absolutely', 'definitely', 'of course', 'roger', 'affirmative'])) {
+    
+    if (_matchesAny(lower, [
+      ' yes',
+      'yeah',
+      'yep',
+      'sure',
+      'okay',
+      ' ok ',
+      'alright',
+      'absolutely',
+      'definitely',
+      'of course',
+      'roger',
+      'affirmative'
+    ])) {
       replies.addAll([
         const SmartReply(text: 'Great! 🎉', confidence: 0.85, category: ReplyCategory.affirmation),
-        const SmartReply(text: 'Sounds good to me!', confidence: 0.80, category: ReplyCategory.affirmation),
-        const SmartReply(text: 'Perfect! Let\'s do it 👍', confidence: 0.75, category: ReplyCategory.affirmation),
+        const SmartReply(
+            text: 'Sounds good to me!', confidence: 0.80, category: ReplyCategory.affirmation),
+        const SmartReply(
+            text: 'Perfect! Let\'s do it 👍',
+            confidence: 0.75,
+            category: ReplyCategory.affirmation),
       ]);
     }
 
-    // Negation
-    if (_matchesAny(lower, [' no ', 'nope', 'nah', 'not really', 'don\'t think so', 'negative', 'can\'t', 'cannot', 'won\'t'])) {
+    
+    if (_matchesAny(lower, [
+      ' no ',
+      'nope',
+      'nah',
+      'not really',
+      'don\'t think so',
+      'negative',
+      'can\'t',
+      'cannot',
+      'won\'t'
+    ])) {
       replies.addAll([
-        const SmartReply(text: 'I understand, no problem!', confidence: 0.85, category: ReplyCategory.negation),
-        const SmartReply(text: 'Okay, that\'s alright 👌', confidence: 0.80, category: ReplyCategory.negation),
-        const SmartReply(text: 'Got it, thanks for letting me know', confidence: 0.75, category: ReplyCategory.negation),
+        const SmartReply(
+            text: 'I understand, no problem!', confidence: 0.85, category: ReplyCategory.negation),
+        const SmartReply(
+            text: 'Okay, that\'s alright 👌', confidence: 0.80, category: ReplyCategory.negation),
+        const SmartReply(
+            text: 'Got it, thanks for letting me know',
+            confidence: 0.75,
+            category: ReplyCategory.negation),
       ]);
     }
 
-    // Scheduling / time
-    if (_matchesAny(lower, ['when', 'what time', 'schedule', 'meeting', 'appointment', 'calendar', 'available', 'free'])) {
+    
+    if (_matchesAny(lower, [
+      'when',
+      'what time',
+      'schedule',
+      'meeting',
+      'appointment',
+      'calendar',
+      'available',
+      'free'
+    ])) {
       replies.addAll([
-        const SmartReply(text: 'Let me check my calendar 📅', confidence: 0.80, category: ReplyCategory.scheduling),
-        const SmartReply(text: 'I\'ll confirm the time shortly', confidence: 0.75, category: ReplyCategory.scheduling),
-        const SmartReply(text: 'I\'ll get back to you on that!', confidence: 0.70, category: ReplyCategory.scheduling),
+        const SmartReply(
+            text: 'Let me check my calendar 📅',
+            confidence: 0.80,
+            category: ReplyCategory.scheduling),
+        const SmartReply(
+            text: 'I\'ll confirm the time shortly',
+            confidence: 0.75,
+            category: ReplyCategory.scheduling),
+        const SmartReply(
+            text: 'I\'ll get back to you on that!',
+            confidence: 0.70,
+            category: ReplyCategory.scheduling),
       ]);
     }
 
-    // Location
-    if (_matchesAny(lower, ['where', 'location', 'address', 'place', 'directions', 'map', 'how to get'])) {
+    
+    if (_matchesAny(
+        lower, ['where', 'location', 'address', 'place', 'directions', 'map', 'how to get'])) {
       replies.addAll([
-        const SmartReply(text: 'I\'ll share the location with you 📍', confidence: 0.80, category: ReplyCategory.location),
-        const SmartReply(text: 'Let me send you the address', confidence: 0.75, category: ReplyCategory.location),
-        const SmartReply(text: 'I\'ll look up directions for you 🗺️', confidence: 0.70, category: ReplyCategory.location),
+        const SmartReply(
+            text: 'I\'ll share the location with you 📍',
+            confidence: 0.80,
+            category: ReplyCategory.location),
+        const SmartReply(
+            text: 'Let me send you the address',
+            confidence: 0.75,
+            category: ReplyCategory.location),
+        const SmartReply(
+            text: 'I\'ll look up directions for you 🗺️',
+            confidence: 0.70,
+            category: ReplyCategory.location),
       ]);
     }
 
-    // Urgent / emergency
-    if (_matchesAny(lower, ['urgent', 'emergency', 'asap', 'immediately', 'critical', 'important', 'help me', 'need help'])) {
+    
+    if (_matchesAny(lower, [
+      'urgent',
+      'emergency',
+      'asap',
+      'immediately',
+      'critical',
+      'important',
+      'help me',
+      'need help'
+    ])) {
       replies.addAll([
-        const SmartReply(text: 'On it right away! 🚀', confidence: 0.95, category: ReplyCategory.urgent),
-        const SmartReply(text: 'I\'ll handle this immediately!', confidence: 0.90, category: ReplyCategory.urgent),
-        const SmartReply(text: 'Prioritizing this now — give me a sec', confidence: 0.85, category: ReplyCategory.urgent),
+        const SmartReply(
+            text: 'On it right away! 🚀', confidence: 0.95, category: ReplyCategory.urgent),
+        const SmartReply(
+            text: 'I\'ll handle this immediately!',
+            confidence: 0.90,
+            category: ReplyCategory.urgent),
+        const SmartReply(
+            text: 'Prioritizing this now — give me a sec',
+            confidence: 0.85,
+            category: ReplyCategory.urgent),
       ]);
     }
 
-    // Work / project
-    if (_matchesAny(lower, ['work', 'project', 'deadline', 'presentation', 'task', 'report', 'client', 'deliverable'])) {
+    
+    if (_matchesAny(lower, [
+      'work',
+      'project',
+      'deadline',
+      'presentation',
+      'task',
+      'report',
+      'client',
+      'deliverable'
+    ])) {
       replies.addAll([
-        const SmartReply(text: 'I\'ll take care of it ✅', confidence: 0.80, category: ReplyCategory.work),
-        const SmartReply(text: 'Working on it now!', confidence: 0.75, category: ReplyCategory.work),
-        const SmartReply(text: 'I\'ll update you soon 📊', confidence: 0.70, category: ReplyCategory.work),
+        const SmartReply(
+            text: 'I\'ll take care of it ✅', confidence: 0.80, category: ReplyCategory.work),
+        const SmartReply(
+            text: 'Working on it now!', confidence: 0.75, category: ReplyCategory.work),
+        const SmartReply(
+            text: 'I\'ll update you soon 📊', confidence: 0.70, category: ReplyCategory.work),
       ]);
     }
 
-    // Emotional / feeling
-    if (_matchesAny(lower, ['happy', 'sad', 'excited', 'angry', 'frustrated', 'stressed', 'tired', 'amazing', 'awesome', 'terrible', 'love', 'hate'])) {
+    
+    if (_matchesAny(lower, [
+      'happy',
+      'sad',
+      'excited',
+      'angry',
+      'frustrated',
+      'stressed',
+      'tired',
+      'amazing',
+      'awesome',
+      'terrible',
+      'love',
+      'hate'
+    ])) {
       replies.addAll([
-        const SmartReply(text: 'I totally get that! 💯', confidence: 0.80, category: ReplyCategory.emotional),
-        const SmartReply(text: 'That makes complete sense 😊', confidence: 0.75, category: ReplyCategory.emotional),
-        const SmartReply(text: 'Thanks for sharing that with me', confidence: 0.70, category: ReplyCategory.emotional),
+        const SmartReply(
+            text: 'I totally get that! 💯', confidence: 0.80, category: ReplyCategory.emotional),
+        const SmartReply(
+            text: 'That makes complete sense 😊',
+            confidence: 0.75,
+            category: ReplyCategory.emotional),
+        const SmartReply(
+            text: 'Thanks for sharing that with me',
+            confidence: 0.70,
+            category: ReplyCategory.emotional),
       ]);
     }
 
@@ -218,39 +386,61 @@ class SmartReplyProvider {
     return replies.take(maxReplies).toList();
   }
 
-  // ───────────────────────────────────────────────
-  // Context-aware replies
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   List<SmartReply> getContextAwareReplies(
-      String currentMessage,
-      List<String> history,
-      ) {
+    String currentMessage,
+    List<String> history,
+  ) {
     final context = _analyzeContext(history);
     switch (context) {
       case 'question':
         return const [
-          SmartReply(text: 'Yes, I can definitely help with that!', confidence: 0.85, category: ReplyCategory.question),
+          SmartReply(
+              text: 'Yes, I can definitely help with that!',
+              confidence: 0.85,
+              category: ReplyCategory.question),
           SmartReply(text: 'Let me explain...', confidence: 0.80, category: ReplyCategory.question),
-          SmartReply(text: 'Here\'s what I know about that:', confidence: 0.75, category: ReplyCategory.question),
+          SmartReply(
+              text: 'Here\'s what I know about that:',
+              confidence: 0.75,
+              category: ReplyCategory.question),
         ];
       case 'plan':
         return const [
-          SmartReply(text: 'Sounds like a great plan! 🙌', confidence: 0.85, category: ReplyCategory.scheduling),
-          SmartReply(text: 'I\'m available for that!', confidence: 0.80, category: ReplyCategory.scheduling),
+          SmartReply(
+              text: 'Sounds like a great plan! 🙌',
+              confidence: 0.85,
+              category: ReplyCategory.scheduling),
+          SmartReply(
+              text: 'I\'m available for that!',
+              confidence: 0.80,
+              category: ReplyCategory.scheduling),
           SmartReply(text: 'Count me in! 🎯', confidence: 0.75, category: ReplyCategory.scheduling),
         ];
       case 'problem':
         return const [
-          SmartReply(text: 'Let\'s figure this out together 💪', confidence: 0.85, category: ReplyCategory.urgent),
-          SmartReply(text: 'What can I do to help?', confidence: 0.80, category: ReplyCategory.urgent),
-          SmartReply(text: 'I\'ve got you covered!', confidence: 0.75, category: ReplyCategory.urgent),
+          SmartReply(
+              text: 'Let\'s figure this out together 💪',
+              confidence: 0.85,
+              category: ReplyCategory.urgent),
+          SmartReply(
+              text: 'What can I do to help?', confidence: 0.80, category: ReplyCategory.urgent),
+          SmartReply(
+              text: 'I\'ve got you covered!', confidence: 0.75, category: ReplyCategory.urgent),
         ];
       case 'celebration':
         return const [
-          SmartReply(text: 'That\'s amazing! 🎉', confidence: 0.90, category: ReplyCategory.emotional),
-          SmartReply(text: 'Congrats!! So happy for you 🥳', confidence: 0.85, category: ReplyCategory.emotional),
-          SmartReply(text: 'Awesome news!! 🚀', confidence: 0.80, category: ReplyCategory.emotional),
+          SmartReply(
+              text: 'That\'s amazing! 🎉', confidence: 0.90, category: ReplyCategory.emotional),
+          SmartReply(
+              text: 'Congrats!! So happy for you 🥳',
+              confidence: 0.85,
+              category: ReplyCategory.emotional),
+          SmartReply(
+              text: 'Awesome news!! 🚀', confidence: 0.80, category: ReplyCategory.emotional),
         ];
       default:
         return [];
@@ -294,9 +484,9 @@ class SmartReplyProvider {
     return 'general';
   }
 
-  // ───────────────────────────────────────────────
-  // Anthropic Claude API
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   Future<List<SmartReply>> getAnthropicReplies({
     required String message,
@@ -305,8 +495,7 @@ class SmartReplyProvider {
     String model = 'claude-haiku-4-5-20251001',
   }) async {
     try {
-      final systemPrompt =
-          'You are a smart reply assistant for a chat application. '
+      final systemPrompt = 'You are a smart reply assistant for a chat application. '
           'Generate exactly 3 short, natural, conversational reply suggestions for the given message. '
           'Each reply should be on its own line. '
           'Keep replies concise (under 15 words each). '
@@ -320,7 +509,8 @@ class SmartReplyProvider {
         final historyContext = conversationHistory.take(6).join('\n');
         messages.add({
           'role': 'user',
-          'content': 'Recent conversation context:\n$historyContext\n\nGenerate replies for the latest message: $message',
+          'content':
+              'Recent conversation context:\n$historyContext\n\nGenerate replies for the latest message: $message',
         });
       } else {
         messages.add({
@@ -331,28 +521,26 @@ class SmartReplyProvider {
 
       final response = await http
           .post(
-        Uri.parse('https://api.anthropic.com/v1/messages'),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: jsonEncode({
-          'model': model,
-          'max_tokens': 150,
-          'system': systemPrompt,
-          'messages': messages,
-        }),
-      )
+            Uri.parse('https://api.anthropic.com/v1/messages'),
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
+            },
+            body: jsonEncode({
+              'model': model,
+              'max_tokens': 150,
+              'system': systemPrompt,
+              'messages': messages,
+            }),
+          )
           .timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         final content = data['content'] as List<dynamic>;
-        final text = content
-            .where((c) => c['type'] == 'text')
-            .map((c) => c['text'] as String)
-            .join();
+        final text =
+            content.where((c) => c['type'] == 'text').map((c) => c['text'] as String).join();
 
         final suggestions = text
             .split('\n')
@@ -360,33 +548,33 @@ class SmartReplyProvider {
             .where((s) => s.isNotEmpty && s.length > 2)
             .take(maxReplies)
             .map((t) => SmartReply(
-          text: t,
-          confidence: 0.92,
-          category: ReplyCategory.general,
-          isAiGenerated: true,
-        ))
+                  text: t,
+                  confidence: 0.92,
+                  category: ReplyCategory.general,
+                  isAiGenerated: true,
+                ))
             .toList();
 
         if (suggestions.isNotEmpty) {
-          print('✅ Got ${suggestions.length} AI replies from Claude');
+          debugPrint('✅ Got ${suggestions.length} AI replies from Claude');
           return suggestions;
         }
       } else {
-        print('⚠️ Anthropic API error: ${response.statusCode} ${response.body}');
+        debugPrint('⚠️ Anthropic API error: ${response.statusCode} ${response.body}');
       }
     } catch (e) {
-      print('⚠️ Anthropic API unavailable: $e');
+      debugPrint('⚠️ Anthropic API unavailable: $e');
     }
 
-    // Fallback to rule-based
+    
     return getRuleBasedReplies(message);
   }
 
-  // ───────────────────────────────────────────────
-  // Tone-aware reply generation
-  // ───────────────────────────────────────────────
+  
+  
+  
 
-  /// Generate a full reply draft for a given message with a specified tone.
+  
   Future<String?> generateReplyDraft({
     required String message,
     required String apiKey,
@@ -394,8 +582,7 @@ class SmartReplyProvider {
     List<String>? conversationHistory,
   }) async {
     try {
-      final system =
-          'You are helping a user draft a chat reply. '
+      final system = 'You are helping a user draft a chat reply. '
           'Tone: $tone. Keep it concise and natural (1–3 sentences). '
           'Return only the reply text, nothing else.';
 
@@ -411,19 +598,19 @@ class SmartReplyProvider {
 
       final response = await http
           .post(
-        Uri.parse('https://api.anthropic.com/v1/messages'),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: jsonEncode({
-          'model': 'claude-haiku-4-5-20251001',
-          'max_tokens': 200,
-          'system': system,
-          'messages': msgs,
-        }),
-      )
+            Uri.parse('https://api.anthropic.com/v1/messages'),
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
+            },
+            body: jsonEncode({
+              'model': 'claude-haiku-4-5-20251001',
+              'max_tokens': 200,
+              'system': system,
+              'messages': msgs,
+            }),
+          )
           .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
@@ -435,21 +622,21 @@ class SmartReplyProvider {
             .join();
       }
     } catch (e) {
-      print('⚠️ Error generating reply draft: $e');
+      debugPrint('⚠️ Error generating reply draft: $e');
     }
     return null;
   }
 
-  // ───────────────────────────────────────────────
-  // Helpers
-  // ───────────────────────────────────────────────
+  
+  
+  
 
-  bool _matchesAny(String text, List<String> keywords) =>
-      keywords.any((k) => text.contains(k));
+  bool _matchesAny(String text, List<String> keywords) => keywords.any((k) => text.contains(k));
 
   static const List<SmartReply> _fallbackReplies = [
     SmartReply(text: 'Got it! 👍', confidence: 0.50, category: ReplyCategory.general),
-    SmartReply(text: 'Thanks for letting me know!', confidence: 0.45, category: ReplyCategory.general),
+    SmartReply(
+        text: 'Thanks for letting me know!', confidence: 0.45, category: ReplyCategory.general),
     SmartReply(text: 'Understood!', confidence: 0.40, category: ReplyCategory.general),
   ];
 }

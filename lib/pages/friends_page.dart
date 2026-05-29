@@ -1,6 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
@@ -8,9 +9,9 @@ import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
 import 'package:provider/provider.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FriendsPage
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class FriendsPage extends StatefulWidget {
   const FriendsPage({super.key});
@@ -19,8 +20,7 @@ class FriendsPage extends StatefulWidget {
   State<FriendsPage> createState() => _FriendsPageState();
 }
 
-class _FriendsPageState extends State<FriendsPage>
-    with SingleTickerProviderStateMixin {
+class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   late final String _currentUserId;
   late final FriendProvider _friendProvider;
@@ -48,8 +48,7 @@ class _FriendsPageState extends State<FriendsPage>
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor:
-          isDark ? ColorConstants.backgroundDark : const Color(0xFFF5F7FF),
+      backgroundColor: isDark ? ColorConstants.backgroundDark : const Color(0xFFF5F7FF),
       body: NestedScrollView(
         headerSliverBuilder: (ctx, innerScrolled) => [
           SliverAppBar(
@@ -58,12 +57,10 @@ class _FriendsPageState extends State<FriendsPage>
             floating: false,
             elevation: 0,
             backgroundColor: Colors.transparent,
-            systemOverlayStyle:
-                isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+            systemOverlayStyle: isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
             leading: IconButton(
               icon: Icon(Icons.arrow_back_ios_new_rounded,
-                  color: isDark ? Colors.white70 : ColorConstants.primaryColor,
-                  size: 20),
+                  color: isDark ? Colors.white70 : ColorConstants.primaryColor, size: 20),
               onPressed: () => Navigator.pop(context),
             ),
             flexibleSpace: FlexibleSpaceBar(
@@ -92,10 +89,8 @@ class _FriendsPageState extends State<FriendsPage>
                   indicatorSize: TabBarIndicatorSize.label,
                   labelColor: ColorConstants.primaryColor,
                   unselectedLabelColor: ColorConstants.greyColor,
-                  labelStyle: const TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 14),
-                  unselectedLabelStyle: const TextStyle(
-                      fontWeight: FontWeight.w400, fontSize: 14),
+                  labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                  unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w400, fontSize: 14),
                   tabs: const [
                     Tab(text: 'Bạn bè của tôi'),
                     Tab(text: 'Gợi ý'),
@@ -127,9 +122,9 @@ class _FriendsPageState extends State<FriendsPage>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// My Friends Tab
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _MyFriendsTab extends StatelessWidget {
   final String currentUserId;
@@ -152,9 +147,8 @@ class _MyFriendsTab extends StatelessWidget {
         return StreamBuilder<QuerySnapshot>(
           stream: friendProvider.getFriendsList2(currentUserId),
           builder: (_, snap2) {
-            final isWaiting =
-                snap1.connectionState == ConnectionState.waiting &&
-                    snap2.connectionState == ConnectionState.waiting;
+            final isWaiting = snap1.connectionState == ConnectionState.waiting &&
+                snap2.connectionState == ConnectionState.waiting;
 
             if (isWaiting) {
               return const _FriendListSkeleton();
@@ -174,9 +168,8 @@ class _MyFriendsTab extends StatelessWidget {
               itemCount: all.length,
               itemBuilder: (_, i) {
                 final friendship = Friendship.fromDocument(all[i]);
-                final friendId = friendship.userId1 == currentUserId
-                    ? friendship.userId2
-                    : friendship.userId1;
+                final friendId =
+                    friendship.userId1 == currentUserId ? friendship.userId2 : friendship.userId1;
 
                 return FutureBuilder<DocumentSnapshot>(
                   future: firebaseFirestore
@@ -189,10 +182,7 @@ class _MyFriendsTab extends StatelessWidget {
                     }
                     final user = UserChat.fromDocument(snap.data!);
                     return _FriendTile(
-                        user: user,
-                        isDark: isDark,
-                        index: i,
-                        currentUserId: currentUserId);
+                        user: user, isDark: isDark, index: i, currentUserId: currentUserId);
                   },
                 );
               },
@@ -221,8 +211,7 @@ class _FriendTile extends StatefulWidget {
   State<_FriendTile> createState() => _FriendTileState();
 }
 
-class _FriendTileState extends State<_FriendTile>
-    with SingleTickerProviderStateMixin {
+class _FriendTileState extends State<_FriendTile> with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<Offset> _slide;
   late final Animation<double> _fade;
@@ -237,8 +226,8 @@ class _FriendTileState extends State<_FriendTile>
     _slide = Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
     _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
-    Future.delayed(Duration(milliseconds: widget.index * 50),
-        () => mounted ? _ctrl.forward() : null);
+    Future.delayed(
+        Duration(milliseconds: widget.index * 50), () => mounted ? _ctrl.forward() : null);
   }
 
   @override
@@ -267,18 +256,16 @@ class _FriendTileState extends State<_FriendTile>
               child: Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color:
-                      widget.isDark ? ColorConstants.surfaceDark : Colors.white,
+                  color: widget.isDark ? ColorConstants.surfaceDark : Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: widget.isDark
-                        ? Colors.white.withOpacity(0.07)
-                        : Colors.black.withOpacity(0.05),
+                        ? Colors.white.withValues(alpha: 0.07)
+                        : Colors.black.withValues(alpha: 0.05),
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color:
-                          Colors.black.withOpacity(widget.isDark ? 0.18 : 0.04),
+                      color: Colors.black.withValues(alpha: widget.isDark ? 0.18 : 0.04),
                       blurRadius: 12,
                       offset: const Offset(0, 3),
                     ),
@@ -300,28 +287,20 @@ class _FriendTileState extends State<_FriendTile>
                           Text(
                             u.nickname,
                             style: TextStyle(
-                              color: widget.isDark
-                                  ? Colors.white
-                                  : const Color(0xFF1A1D2E),
+                              color: widget.isDark ? Colors.white : const Color(0xFF1A1D2E),
                               fontWeight: FontWeight.w600,
                               fontSize: 15,
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            u.aboutMe.isNotEmpty
-                                ? u.aboutMe
-                                : 'Chưa có tiểu sử',
+                            u.aboutMe.isNotEmpty ? u.aboutMe : 'Chưa có tiểu sử',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: widget.isDark
-                                  ? Colors.white38
-                                  : Colors.black45,
+                              color: widget.isDark ? Colors.white38 : Colors.black45,
                               fontSize: 12,
-                              fontStyle: u.aboutMe.isEmpty
-                                  ? FontStyle.italic
-                                  : FontStyle.normal,
+                              fontStyle: u.aboutMe.isEmpty ? FontStyle.italic : FontStyle.normal,
                             ),
                           ),
                         ],
@@ -353,9 +332,9 @@ class _FriendTileState extends State<_FriendTile>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Suggestions Tab
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _SuggestionsTab extends StatefulWidget {
   final String currentUserId;
@@ -379,7 +358,7 @@ class _SuggestionsTabState extends State<_SuggestionsTab> {
   Map<String, List<String>> _mutualFriendsMap = {};
   bool _isLoading = true;
 
-  /// FIX: Tránh gọi setState() sau khi widget đã bị dispose (async gap).
+  
   bool _isDisposed = false;
 
   @override
@@ -390,11 +369,11 @@ class _SuggestionsTabState extends State<_SuggestionsTab> {
 
   @override
   void dispose() {
-    _isDisposed = true; // PHẢI đặt TRƯỚC super.dispose()
+    _isDisposed = true; 
     super.dispose();
   }
 
-  /// Helper an toàn: chỉ gọi setState khi widget còn sống.
+  
   void _safeSetState(VoidCallback fn) {
     if (!_isDisposed && mounted) setState(fn);
   }
@@ -524,8 +503,7 @@ class _SuggestionTile extends StatefulWidget {
   State<_SuggestionTile> createState() => _SuggestionTileState();
 }
 
-class _SuggestionTileState extends State<_SuggestionTile>
-    with SingleTickerProviderStateMixin {
+class _SuggestionTileState extends State<_SuggestionTile> with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<Offset> _slide;
   late final Animation<double> _fade;
@@ -541,8 +519,8 @@ class _SuggestionTileState extends State<_SuggestionTile>
     _slide = Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
     _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
-    Future.delayed(Duration(milliseconds: widget.index * 50),
-        () => mounted ? _ctrl.forward() : null);
+    Future.delayed(
+        Duration(milliseconds: widget.index * 50), () => mounted ? _ctrl.forward() : null);
   }
 
   @override
@@ -555,8 +533,8 @@ class _SuggestionTileState extends State<_SuggestionTile>
     if (_requesting) return;
     setState(() => _requesting = true);
     HapticFeedback.lightImpact();
-    final success = await widget.friendProvider
-        .sendFriendRequest(widget.currentUserId, widget.user.id);
+    final success =
+        await widget.friendProvider.sendFriendRequest(widget.currentUserId, widget.user.id);
     if (!mounted) return;
     setState(() => _requesting = false);
     if (success) {
@@ -565,8 +543,7 @@ class _SuggestionTileState extends State<_SuggestionTile>
           content: Text('Đã gửi lời mời kết bạn tới ${widget.user.nickname}'),
           backgroundColor: Colors.green[700],
           behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
       widget.onRefresh();
@@ -585,23 +562,21 @@ class _SuggestionTileState extends State<_SuggestionTile>
           child: Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: () => Navigator.push(
-                  context, _slideRoute(UserProfilePage(userChat: u))),
+              onTap: () => Navigator.push(context, _slideRoute(UserProfilePage(userChat: u))),
               borderRadius: BorderRadius.circular(16),
               child: Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color:
-                      widget.isDark ? ColorConstants.surfaceDark : Colors.white,
+                  color: widget.isDark ? ColorConstants.surfaceDark : Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: ColorConstants.primaryColor
-                        .withOpacity(widget.isDark ? 0.18 : 0.1),
+                    color:
+                        ColorConstants.primaryColor.withValues(alpha: widget.isDark ? 0.18 : 0.1),
                   ),
                   boxShadow: [
                     BoxShadow(
                       color: ColorConstants.primaryColor
-                          .withOpacity(widget.isDark ? 0.06 : 0.04),
+                          .withValues(alpha: widget.isDark ? 0.06 : 0.04),
                       blurRadius: 12,
                       offset: const Offset(0, 3),
                     ),
@@ -618,9 +593,7 @@ class _SuggestionTileState extends State<_SuggestionTile>
                           Text(
                             u.nickname,
                             style: TextStyle(
-                              color: widget.isDark
-                                  ? Colors.white
-                                  : const Color(0xFF1A1D2E),
+                              color: widget.isDark ? Colors.white : const Color(0xFF1A1D2E),
                               fontWeight: FontWeight.w600,
                               fontSize: 15,
                             ),
@@ -647,9 +620,7 @@ class _SuggestionTileState extends State<_SuggestionTile>
                               u.aboutMe,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  color: ColorConstants.greyColor,
-                                  fontSize: 12),
+                              style: const TextStyle(color: ColorConstants.greyColor, fontSize: 12),
                             ),
                           ],
                         ],
@@ -682,37 +653,33 @@ class _SuggestionTileState extends State<_SuggestionTile>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Shared helpers / sub-widgets
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _SimpleAvatar extends StatelessWidget {
   final String url;
   final String name;
   final double size;
 
-  const _SimpleAvatar(
-      {required this.url, required this.name, required this.size});
+  const _SimpleAvatar({required this.url, required this.name, required this.size});
 
   @override
   Widget build(BuildContext context) {
-    final colorIndex = name.isEmpty
-        ? 0
-        : name.codeUnitAt(0) % ColorConstants.avatarColors.length;
+    final colorIndex = name.isEmpty ? 0 : name.codeUnitAt(0) % ColorConstants.avatarColors.length;
     final color = ColorConstants.avatarColors[colorIndex];
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: color.withOpacity(0.12),
-        border: Border.all(color: color.withOpacity(0.25), width: 1.5),
+        color: color.withValues(alpha: 0.12),
+        border: Border.all(color: color.withValues(alpha: 0.25), width: 1.5),
       ),
       child: ClipOval(
         child: url.isNotEmpty
             ? Image.network(url,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _placeholder(color))
+                fit: BoxFit.cover, errorBuilder: (_, __, ___) => _placeholder(color))
             : _placeholder(color),
       ),
     );
@@ -720,12 +687,11 @@ class _SimpleAvatar extends StatelessWidget {
 
   Widget _placeholder(Color color) {
     return Container(
-      color: color.withOpacity(0.1),
+      color: color.withValues(alpha: 0.1),
       child: Center(
         child: Text(
           name.isNotEmpty ? name[0].toUpperCase() : '?',
-          style: TextStyle(
-              color: color, fontWeight: FontWeight.w700, fontSize: size * 0.36),
+          style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: size * 0.36),
         ),
       ),
     );
@@ -749,16 +715,14 @@ class _IconActionBtn extends StatefulWidget {
   State<_IconActionBtn> createState() => _IconActionBtnState();
 }
 
-class _IconActionBtnState extends State<_IconActionBtn>
-    with SingleTickerProviderStateMixin {
+class _IconActionBtnState extends State<_IconActionBtn> with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 80));
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 80));
     _scale = Tween<double>(begin: 1.0, end: 0.84)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
   }
@@ -786,9 +750,9 @@ class _IconActionBtnState extends State<_IconActionBtn>
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: widget.color.withOpacity(0.1),
+              color: widget.color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: widget.color.withOpacity(0.25)),
+              border: Border.all(color: widget.color.withValues(alpha: 0.25)),
             ),
             child: Icon(widget.icon, color: widget.color, size: 20),
           ),
@@ -798,9 +762,9 @@ class _IconActionBtnState extends State<_IconActionBtn>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Empty / Loading states
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _EmptyFriendsState extends StatelessWidget {
   final bool isDark;
@@ -816,11 +780,11 @@ class _EmptyFriendsState extends StatelessWidget {
             width: 88,
             height: 88,
             decoration: BoxDecoration(
-              color: ColorConstants.primaryColor.withOpacity(0.07),
+              color: ColorConstants.primaryColor.withValues(alpha: 0.07),
               shape: BoxShape.circle,
             ),
             child: Icon(Icons.people_outline_rounded,
-                size: 40, color: ColorConstants.primaryColor.withOpacity(0.4)),
+                size: 40, color: ColorConstants.primaryColor.withValues(alpha: 0.4)),
           ),
           const SizedBox(height: 20),
           Text(
@@ -856,11 +820,11 @@ class _EmptySuggestionsState extends StatelessWidget {
             width: 88,
             height: 88,
             decoration: BoxDecoration(
-              color: ColorConstants.primaryColor.withOpacity(0.07),
+              color: ColorConstants.primaryColor.withValues(alpha: 0.07),
               shape: BoxShape.circle,
             ),
             child: Icon(Icons.person_search_rounded,
-                size: 40, color: ColorConstants.primaryColor.withOpacity(0.4)),
+                size: 40, color: ColorConstants.primaryColor.withValues(alpha: 0.4)),
           ),
           const SizedBox(height: 20),
           Text(
@@ -897,8 +861,7 @@ class _FriendListSkeletonState extends State<_FriendListSkeleton>
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1200))
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))
       ..repeat(reverse: true);
     _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
   }
@@ -916,10 +879,8 @@ class _FriendListSkeletonState extends State<_FriendListSkeleton>
       animation: _anim,
       builder: (_, __) {
         final c = isDark
-            ? Color.lerp(ColorConstants.surfaceDark2, const Color(0xFF2E3448),
-                _anim.value)!
-            : Color.lerp(
-                const Color(0xFFF0F2FF), const Color(0xFFE0E4F5), _anim.value)!;
+            ? Color.lerp(ColorConstants.surfaceDark2, const Color(0xFF2E3448), _anim.value)!
+            : Color.lerp(const Color(0xFFF0F2FF), const Color(0xFFE0E4F5), _anim.value)!;
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
           child: Column(
@@ -928,12 +889,10 @@ class _FriendListSkeletonState extends State<_FriendListSkeleton>
               (_) => Container(
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                    color: c, borderRadius: BorderRadius.circular(16)),
+                decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(16)),
                 child: Row(
                   children: [
-                    CircleAvatar(
-                        radius: 27, backgroundColor: c.withOpacity(0.5)),
+                    CircleAvatar(radius: 27, backgroundColor: c.withValues(alpha: 0.5)),
                     const SizedBox(width: 14),
                     Expanded(
                       child: Column(
@@ -943,14 +902,14 @@ class _FriendListSkeletonState extends State<_FriendListSkeleton>
                               height: 13,
                               width: 130,
                               decoration: BoxDecoration(
-                                  color: c.withOpacity(0.5),
+                                  color: c.withValues(alpha: 0.5),
                                   borderRadius: BorderRadius.circular(6))),
                           const SizedBox(height: 8),
                           Container(
                               height: 10,
                               width: 180,
                               decoration: BoxDecoration(
-                                  color: c.withOpacity(0.4),
+                                  color: c.withValues(alpha: 0.4),
                                   borderRadius: BorderRadius.circular(5))),
                         ],
                       ),
@@ -976,18 +935,16 @@ class _FriendTileSkeleton extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
-      decoration:
-          BoxDecoration(color: c, borderRadius: BorderRadius.circular(16)),
+      decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(16)),
       child: Row(children: [
-        CircleAvatar(radius: 27, backgroundColor: c.withOpacity(0.5)),
+        CircleAvatar(radius: 27, backgroundColor: c.withValues(alpha: 0.5)),
         const SizedBox(width: 14),
         Expanded(
             child: Container(
                 height: 12,
                 width: 120,
                 decoration: BoxDecoration(
-                    color: c.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(6)))),
+                    color: c.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(6)))),
       ]),
     );
   }
@@ -998,8 +955,7 @@ PageRoute _slideRoute(Widget page) {
     pageBuilder: (_, animation, __) => page,
     transitionsBuilder: (_, animation, __, child) => SlideTransition(
       position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
-          .animate(
-              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+          .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
       child: child,
     ),
     transitionDuration: const Duration(milliseconds: 280),

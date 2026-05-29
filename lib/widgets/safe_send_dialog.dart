@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// ─────────────────────────────────────────────────────────────
-//  SafeSendDialog
-//  Hiển thị xác nhận trước khi gửi tin nhắn nhạy cảm.
-//  Hỗ trợ nhiều loại cảnh báo (warn / danger) với animation.
-// ─────────────────────────────────────────────────────────────
+
+
+
+
+
 
 enum SafeSendLevel { warning, danger }
 
@@ -14,13 +14,13 @@ class SafeSendDialog extends StatefulWidget {
   final String content;
   final IconData icon;
 
-  /// Cấp độ cảnh báo: warning (cam) hoặc danger (đỏ)
+  
   final SafeSendLevel level;
 
-  /// Nhãn nút xác nhận (mặc định tiếng Việt)
+  
   final String confirmLabel;
 
-  /// Nhãn nút huỷ (mặc định tiếng Việt)
+  
   final String cancelLabel;
 
   const SafeSendDialog({
@@ -33,7 +33,7 @@ class SafeSendDialog extends StatefulWidget {
     this.cancelLabel = 'KHÔNG, TÔI BẤM NHẦM',
   });
 
-  /// Factory tiện lợi cho cảnh báo tiền tệ
+  
   factory SafeSendDialog.money() => const SafeSendDialog(
         title: 'Xác nhận chuyển tiền?',
         content:
@@ -42,7 +42,7 @@ class SafeSendDialog extends StatefulWidget {
         level: SafeSendLevel.warning,
       );
 
-  /// Factory tiện lợi cho cảnh báo đường link
+  
   factory SafeSendDialog.link() => const SafeSendDialog(
         title: 'Gửi đường link lạ?',
         content:
@@ -51,11 +51,10 @@ class SafeSendDialog extends StatefulWidget {
         level: SafeSendLevel.warning,
       );
 
-  /// Factory tiện lợi cho tình huống nguy hiểm cao
+  
   factory SafeSendDialog.danger() => const SafeSendDialog(
         title: 'NGUY HIỂM!',
-        content:
-            'Nội dung này có dấu hiệu lừa đảo nghiêm trọng.\nBạn có chắc chắn muốn gửi không?',
+        content: 'Nội dung này có dấu hiệu lừa đảo nghiêm trọng.\nBạn có chắc chắn muốn gửi không?',
         icon: Icons.gpp_bad_rounded,
         level: SafeSendLevel.danger,
         confirmLabel: 'TÔI HIỂU, VẪN GỬI',
@@ -66,8 +65,7 @@ class SafeSendDialog extends StatefulWidget {
   State<SafeSendDialog> createState() => _SafeSendDialogState();
 }
 
-class _SafeSendDialogState extends State<SafeSendDialog>
-    with SingleTickerProviderStateMixin {
+class _SafeSendDialogState extends State<SafeSendDialog> with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<double> _scaleAnim;
   late final Animation<double> _fadeAnim;
@@ -99,7 +97,7 @@ class _SafeSendDialogState extends State<SafeSendDialog>
 
     _ctrl.forward();
 
-    // Rung nhẹ khi mở dialog nguy hiểm
+    
     if (widget.level == SafeSendLevel.danger) {
       HapticFeedback.heavyImpact();
     } else {
@@ -113,20 +111,17 @@ class _SafeSendDialogState extends State<SafeSendDialog>
     super.dispose();
   }
 
-  // ── Màu sắc theo cấp độ ──────────────────────────────────────
-  Color get _primaryColor => widget.level == SafeSendLevel.danger
-      ? const Color(0xFFE53935)
-      : const Color(0xFFF57C00);
+  
+  Color get _primaryColor =>
+      widget.level == SafeSendLevel.danger ? const Color(0xFFE53935) : const Color(0xFFF57C00);
 
-  Color get _accentLight => widget.level == SafeSendLevel.danger
-      ? const Color(0xFFFFEBEE)
-      : const Color(0xFFFFF3E0);
+  Color get _accentLight =>
+      widget.level == SafeSendLevel.danger ? const Color(0xFFFFEBEE) : const Color(0xFFFFF3E0);
 
-  Color get _confirmBg => widget.level == SafeSendLevel.danger
-      ? const Color(0xFFE53935)
-      : const Color(0xFF1565C0);
+  Color get _confirmBg =>
+      widget.level == SafeSendLevel.danger ? const Color(0xFFE53935) : const Color(0xFF1565C0);
 
-  // ── Build ─────────────────────────────────────────────────────
+  
   @override
   Widget build(BuildContext context) {
     return FadeTransition(
@@ -135,15 +130,14 @@ class _SafeSendDialogState extends State<SafeSendDialog>
         scale: _scaleAnim,
         child: Dialog(
           backgroundColor: Colors.transparent,
-          insetPadding:
-              const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
           child: Container(
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(28),
               boxShadow: [
                 BoxShadow(
-                  color: _primaryColor.withOpacity(0.25),
+                  color: _primaryColor.withValues(alpha: 0.25),
                   blurRadius: 40,
                   spreadRadius: 4,
                   offset: const Offset(0, 12),
@@ -153,9 +147,9 @@ class _SafeSendDialogState extends State<SafeSendDialog>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // ── Header strip ───────────────────────────────
+                
                 _buildHeader(),
-                // ── Body ───────────────────────────────────────
+                
                 Padding(
                   padding: const EdgeInsets.fromLTRB(28, 20, 28, 28),
                   child: Column(
@@ -188,7 +182,7 @@ class _SafeSendDialogState extends State<SafeSendDialog>
       ),
       child: Column(
         children: [
-          // Pulsing ring
+          
           AnimatedBuilder(
             animation: _iconBounce,
             builder: (_, child) => Transform.scale(
@@ -200,15 +194,14 @@ class _SafeSendDialogState extends State<SafeSendDialog>
               height: 90,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: _primaryColor.withOpacity(0.12),
-                border: Border.all(
-                    color: _primaryColor.withOpacity(0.30), width: 2.5),
+                color: _primaryColor.withValues(alpha: 0.12),
+                border: Border.all(color: _primaryColor.withValues(alpha: 0.30), width: 2.5),
               ),
               child: Icon(widget.icon, size: 48, color: _primaryColor),
             ),
           ),
           const SizedBox(height: 10),
-          // Badge label
+          
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
             decoration: BoxDecoration(
@@ -216,9 +209,7 @@ class _SafeSendDialogState extends State<SafeSendDialog>
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
-              widget.level == SafeSendLevel.danger
-                  ? '⚠ MỨC NGUY HIỂM CAO'
-                  : '⚠ CẢNH BÁO',
+              widget.level == SafeSendLevel.danger ? '⚠ MỨC NGUY HIỂM CAO' : '⚠ CẢNH BÁO',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 11,
@@ -274,20 +265,16 @@ class _SafeSendDialogState extends State<SafeSendDialog>
           backgroundColor: _confirmBg,
           foregroundColor: Colors.white,
           elevation: 3,
-          shadowColor: _confirmBg.withOpacity(0.45),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shadowColor: _confirmBg.withValues(alpha: 0.45),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
         icon: Icon(
-          widget.level == SafeSendLevel.danger
-              ? Icons.send_rounded
-              : Icons.check_circle_rounded,
+          widget.level == SafeSendLevel.danger ? Icons.send_rounded : Icons.check_circle_rounded,
           size: 20,
         ),
         label: Text(
           widget.confirmLabel,
-          style: const TextStyle(
-              fontSize: 15, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, letterSpacing: 0.5),
         ),
         onPressed: () {
           HapticFeedback.selectionClick();
@@ -305,8 +292,7 @@ class _SafeSendDialogState extends State<SafeSendDialog>
         style: TextButton.styleFrom(
           foregroundColor: Colors.grey.shade700,
           backgroundColor: Colors.grey.shade100,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
         icon: const Icon(Icons.cancel_outlined, size: 18),
         label: Text(
@@ -322,13 +308,12 @@ class _SafeSendDialogState extends State<SafeSendDialog>
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-//  Helper: show the dialog and await result
-//  Usage:
-//    final confirmed = await showSafeSendDialog(context, SafeSendDialog.money());
-// ─────────────────────────────────────────────────────────────
-Future<bool> showSafeSendDialog(
-    BuildContext context, SafeSendDialog dialog) async {
+
+
+
+
+
+Future<bool> showSafeSendDialog(BuildContext context, SafeSendDialog dialog) async {
   final result = await showDialog<bool>(
     context: context,
     barrierDismissible: false,

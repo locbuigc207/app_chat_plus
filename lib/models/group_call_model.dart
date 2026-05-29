@@ -1,10 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-// ─────────────────────────────────────────────────────────────
-// Enums
-// ─────────────────────────────────────────────────────────────
 
-enum GroupCallStatus { calling, ongoing, ended, missed } // <-- Thêm 'missed'
+
+
+
+enum GroupCallStatus { calling, ongoing, ended, missed } 
 
 enum GroupCallType { video, voice }
 
@@ -37,9 +37,9 @@ extension CallReactionEmoji on CallReactionType {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// CallReaction — ephemeral emoji burst
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class CallReaction {
   final String userId;
@@ -64,16 +64,15 @@ class CallReaction {
   factory CallReaction.fromJson(Map<String, dynamic> j) => CallReaction(
         userId: j['userId'] ?? '',
         userName: j['userName'] ?? '',
-        type:
-            CallReactionEmoji.fromName(j['type']) ?? CallReactionType.thumbsUp,
-        sentAt: DateTime.fromMillisecondsSinceEpoch(
-            int.tryParse(j['sentAt']?.toString() ?? '0') ?? 0),
+        type: CallReactionEmoji.fromName(j['type']) ?? CallReactionType.thumbsUp,
+        sentAt:
+            DateTime.fromMillisecondsSinceEpoch(int.tryParse(j['sentAt']?.toString() ?? '0') ?? 0),
       );
 }
 
-// ─────────────────────────────────────────────────────────────
-// GroupCallParticipant
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class GroupCallParticipant {
   final String userId;
@@ -83,10 +82,10 @@ class GroupCallParticipant {
   final bool isCameraOff;
   final bool isScreenSharing;
   final bool hasRaisedHand;
-  final bool isAdmin; // <-- Thêm trường isAdmin
-  final bool isSpeaking; // updated by local audio level detection
+  final bool isAdmin; 
+  final bool isSpeaking; 
   final DateTime joinedAt;
-  final int networkQuality; // 0-5 (0=unknown, 5=excellent)
+  final int networkQuality; 
 
   const GroupCallParticipant({
     required this.userId,
@@ -96,7 +95,7 @@ class GroupCallParticipant {
     this.isCameraOff = false,
     this.isScreenSharing = false,
     this.hasRaisedHand = false,
-    required this.isAdmin, // <-- Bắt buộc truyền vào khi khởi tạo
+    required this.isAdmin, 
     this.isSpeaking = false,
     required this.joinedAt,
     this.networkQuality = 0,
@@ -110,13 +109,12 @@ class GroupCallParticipant {
         'isCameraOff': isCameraOff,
         'isScreenSharing': isScreenSharing,
         'hasRaisedHand': hasRaisedHand,
-        'isAdmin': isAdmin, // <-- Thêm vào JSON
+        'isAdmin': isAdmin, 
         'joinedAt': joinedAt.millisecondsSinceEpoch.toString(),
         'networkQuality': networkQuality,
       };
 
-  factory GroupCallParticipant.fromJson(Map<String, dynamic> j) =>
-      GroupCallParticipant(
+  factory GroupCallParticipant.fromJson(Map<String, dynamic> j) => GroupCallParticipant(
         userId: j['userId'] ?? '',
         userName: j['userName'] ?? '',
         userAvatar: j['userAvatar'] ?? '',
@@ -124,7 +122,7 @@ class GroupCallParticipant {
         isCameraOff: j['isCameraOff'] ?? false,
         isScreenSharing: j['isScreenSharing'] ?? false,
         hasRaisedHand: j['hasRaisedHand'] ?? false,
-        isAdmin: j['isAdmin'] ?? false, // <-- Lấy từ JSON
+        isAdmin: j['isAdmin'] ?? false, 
         joinedAt: DateTime.fromMillisecondsSinceEpoch(
             int.tryParse(j['joinedAt']?.toString() ?? '0') ?? 0),
         networkQuality: (j['networkQuality'] as int?) ?? 0,
@@ -135,7 +133,7 @@ class GroupCallParticipant {
     bool? isCameraOff,
     bool? isScreenSharing,
     bool? hasRaisedHand,
-    bool? isAdmin, // <-- Thêm vào copyWith
+    bool? isAdmin, 
     bool? isSpeaking,
     int? networkQuality,
   }) =>
@@ -147,7 +145,7 @@ class GroupCallParticipant {
         isCameraOff: isCameraOff ?? this.isCameraOff,
         isScreenSharing: isScreenSharing ?? this.isScreenSharing,
         hasRaisedHand: hasRaisedHand ?? this.hasRaisedHand,
-        isAdmin: isAdmin ?? this.isAdmin, // <-- Cập nhật hoặc giữ nguyên
+        isAdmin: isAdmin ?? this.isAdmin, 
         isSpeaking: isSpeaking ?? this.isSpeaking,
         joinedAt: joinedAt,
         networkQuality: networkQuality ?? this.networkQuality,
@@ -156,17 +154,15 @@ class GroupCallParticipant {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is GroupCallParticipant &&
-          runtimeType == other.runtimeType &&
-          userId == other.userId;
+      other is GroupCallParticipant && runtimeType == other.runtimeType && userId == other.userId;
 
   @override
   int get hashCode => userId.hashCode;
 }
 
-// ─────────────────────────────────────────────────────────────
-// GroupCallModel
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class GroupCallModel {
   final String callId;
@@ -184,7 +180,7 @@ class GroupCallModel {
   final DateTime createdAt;
   final DateTime? endedAt;
   final int? durationSeconds;
-  final String? screenShareUserId; // who is currently sharing screen
+  final String? screenShareUserId; 
   final List<CallReaction> recentReactions;
   final List<String> raisedHandUserIds;
 
@@ -209,7 +205,7 @@ class GroupCallModel {
     this.raisedHandUserIds = const [],
   });
 
-  // ── Computed getters ──────────────────────────────────────
+  
 
   bool get isVideo => callType == GroupCallType.video;
   bool get isVoice => callType == GroupCallType.voice;
@@ -227,8 +223,7 @@ class GroupCallModel {
     }
   }
 
-  bool isParticipant(String userId) =>
-      participants.any((p) => p.userId == userId);
+  bool isParticipant(String userId) => participants.any((p) => p.userId == userId);
 
   bool hasRaisedHand(String userId) => raisedHandUserIds.contains(userId);
 
@@ -241,7 +236,7 @@ class GroupCallModel {
     return h > 0 ? '$h:$m:$s' : '$m:$s';
   }
 
-  // ── Serialization ─────────────────────────────────────────
+  
 
   Map<String, dynamic> toJson() => {
         'callId': callId,
@@ -280,9 +275,7 @@ class GroupCallModel {
       groupAvatarUrl: data['groupAvatarUrl'] ?? '',
       initiatorId: data['initiatorId'] ?? '',
       initiatorName: data['initiatorName'] ?? '',
-      callType: data['callType'] == 'voice'
-          ? GroupCallType.voice
-          : GroupCallType.video,
+      callType: data['callType'] == 'voice' ? GroupCallType.voice : GroupCallType.video,
       status: _parseStatus(data['status']),
       channelName: data['channelName'] ?? '',
       participants: participantsRaw
@@ -293,14 +286,12 @@ class GroupCallModel {
       createdAt: DateTime.fromMillisecondsSinceEpoch(
           int.tryParse(data['createdAt']?.toString() ?? '0') ?? 0),
       endedAt: data['endedAt'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(
-              int.tryParse(data['endedAt'].toString()) ?? 0)
+          ? DateTime.fromMillisecondsSinceEpoch(int.tryParse(data['endedAt'].toString()) ?? 0)
           : null,
       durationSeconds: data['durationSeconds'] as int?,
       screenShareUserId: data['screenShareUserId'] as String?,
-      recentReactions: reactionsRaw
-          .map((r) => CallReaction.fromJson(r as Map<String, dynamic>))
-          .toList(),
+      recentReactions:
+          reactionsRaw.map((r) => CallReaction.fromJson(r as Map<String, dynamic>)).toList(),
       raisedHandUserIds: List<String>.from(data['raisedHandUserIds'] ?? []),
     );
   }
@@ -311,7 +302,7 @@ class GroupCallModel {
         return GroupCallStatus.ongoing;
       case 'ended':
         return GroupCallStatus.ended;
-      case 'missed': // <-- Thêm phân tích trạng thái missed
+      case 'missed': 
         return GroupCallStatus.missed;
       default:
         return GroupCallStatus.calling;
@@ -345,9 +336,7 @@ class GroupCallModel {
         createdAt: createdAt,
         endedAt: endedAt ?? this.endedAt,
         durationSeconds: durationSeconds ?? this.durationSeconds,
-        screenShareUserId: clearScreenShare
-            ? null
-            : (screenShareUserId ?? this.screenShareUserId),
+        screenShareUserId: clearScreenShare ? null : (screenShareUserId ?? this.screenShareUserId),
         recentReactions: recentReactions ?? this.recentReactions,
         raisedHandUserIds: raisedHandUserIds ?? this.raisedHandUserIds,
       );

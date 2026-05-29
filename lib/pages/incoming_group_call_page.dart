@@ -29,12 +29,12 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
     with TickerProviderStateMixin {
   final _service = GroupCallService.instance;
 
-  // ── Subscriptions ────────────────────────────────────────
+  
   StreamSubscription? _callSub;
   Timer? _countdownTimer;
   int _countdown = 30;
 
-  // ── Animations ───────────────────────────────────────────
+  
   late AnimationController _rippleCtrl;
   late AnimationController _pulseCtrl;
   late AnimationController _slideInCtrl;
@@ -89,8 +89,7 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
     _pulse = Tween<double>(begin: 0.96, end: 1.04)
         .animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
     _slideIn = Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
-        .animate(
-            CurvedAnimation(parent: _slideInCtrl, curve: Curves.elasticOut));
+        .animate(CurvedAnimation(parent: _slideInCtrl, curve: Curves.elasticOut));
     _fadeIn = CurvedAnimation(parent: _slideInCtrl, curve: Curves.easeIn);
     _glow = Tween<double>(begin: 0.3, end: 0.7)
         .animate(CurvedAnimation(parent: _glowCtrl, curve: Curves.easeInOut));
@@ -175,9 +174,9 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
     super.dispose();
   }
 
-  // ─────────────────────────────────────────────
-  // Build
-  // ─────────────────────────────────────────────
+  
+  
+  
 
   @override
   Widget build(BuildContext context) {
@@ -216,9 +215,9 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Decorative blobs
+          
           _buildBackgroundBlobs(isVideo),
-          // Main content
+          
           SafeArea(child: _buildContent(isVideo)),
         ],
       ),
@@ -244,27 +243,27 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
       children: [
         const SizedBox(height: 20),
 
-        // Call type badge
+        
         _buildCallTypeBadge(isVideo),
 
         const Spacer(flex: 2),
 
-        // Avatar with ripples
+        
         _buildAvatarSection(isVideo),
 
         const SizedBox(height: 28),
 
-        // Group info
+        
         _buildGroupInfo(isVideo),
 
         const Spacer(flex: 1),
 
-        // Participants preview
+        
         if (_shouldShowParticipants) _buildParticipantsPreview(),
 
         const Spacer(flex: 2),
 
-        // Action buttons
+        
         _buildActionButtons(isVideo),
 
         const SizedBox(height: 32),
@@ -273,21 +272,20 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
   }
 
   bool get _shouldShowParticipants =>
-      widget.call.participants.isNotEmpty &&
-      widget.call.participants.length > 1;
+      widget.call.participants.isNotEmpty && widget.call.participants.length > 1;
 
-  // ─────────────────────────────────────────────
+  
 
   Widget _buildCallTypeBadge(bool isVideo) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.12),
+        color: Colors.white.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withOpacity(0.2)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
+            color: Colors.black.withValues(alpha: 0.2),
             blurRadius: 10,
           ),
         ],
@@ -322,7 +320,7 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Ripple rings
+          
           ...List.generate(3, (i) {
             return AnimatedBuilder(
               animation: _ripple,
@@ -343,8 +341,8 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
                         shape: BoxShape.circle,
                         border: Border.all(
                           color: isVideo
-                              ? const Color(0xFF60A5FA).withOpacity(0.6)
-                              : const Color(0xFF4ADE80).withOpacity(0.6),
+                              ? const Color(0xFF60A5FA).withValues(alpha: 0.6)
+                              : const Color(0xFF4ADE80).withValues(alpha: 0.6),
                           width: 2,
                         ),
                       ),
@@ -355,11 +353,10 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
             );
           }),
 
-          // Pulse avatar
+          
           AnimatedBuilder(
             animation: _pulse,
-            builder: (_, child) =>
-                Transform.scale(scale: _pulse.value, child: child),
+            builder: (_, child) => Transform.scale(scale: _pulse.value, child: child),
             child: _buildAvatar(),
           ),
         ],
@@ -374,10 +371,10 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
       height: 116,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: Colors.white.withOpacity(0.3), width: 3),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 3),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.4),
+            color: Colors.black.withValues(alpha: 0.4),
             blurRadius: 24,
             offset: const Offset(0, 8),
           ),
@@ -411,13 +408,13 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
         Text(
           '${widget.call.initiatorName} đang gọi cho nhóm…',
           style: TextStyle(
-            color: Colors.white.withOpacity(0.7),
+            color: Colors.white.withValues(alpha: 0.7),
             fontSize: 15,
           ),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 14),
-        // Countdown
+        
         _buildCountdownBadge(),
       ],
     );
@@ -434,14 +431,14 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
           child: CircularProgressIndicator(
             value: fraction,
             strokeWidth: 2.5,
-            backgroundColor: Colors.white.withOpacity(0.1),
-            valueColor: AlwaysStoppedAnimation(Colors.white.withOpacity(0.6)),
+            backgroundColor: Colors.white.withValues(alpha: 0.1),
+            valueColor: AlwaysStoppedAnimation(Colors.white.withValues(alpha: 0.6)),
           ),
         ),
         Text(
           '$_countdown',
           style: TextStyle(
-            color: Colors.white.withOpacity(0.85),
+            color: Colors.white.withValues(alpha: 0.85),
             fontSize: 18,
             fontWeight: FontWeight.w700,
           ),
@@ -452,9 +449,7 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
 
   Widget _buildParticipantsPreview() {
     final shown = widget.call.participants.take(4).toList();
-    final extra = widget.call.participants.length > 4
-        ? widget.call.participants.length - 4
-        : 0;
+    final extra = widget.call.participants.length > 4 ? widget.call.participants.length - 4 : 0;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -463,7 +458,7 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
           Text(
             '${widget.call.participants.length} người đang trong cuộc gọi',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.55),
+              color: Colors.white.withValues(alpha: 0.55),
               fontSize: 12,
             ),
           ),
@@ -479,18 +474,14 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
                   child: Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border:
-                          Border.all(color: const Color(0xFF1e293b), width: 2),
+                      border: Border.all(color: const Color(0xFF1e293b), width: 2),
                     ),
                     child: CircleAvatar(
                       radius: 18,
-                      backgroundImage: p.userAvatar.isNotEmpty
-                          ? NetworkImage(p.userAvatar)
-                          : null,
+                      backgroundImage: p.userAvatar.isNotEmpty ? NetworkImage(p.userAvatar) : null,
                       backgroundColor: const Color(0xFF475569),
                       child: p.userAvatar.isEmpty
-                          ? const Icon(Icons.person,
-                              size: 16, color: Colors.white54)
+                          ? const Icon(Icons.person, size: 16, color: Colors.white54)
                           : null,
                     ),
                   ),
@@ -502,16 +493,14 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
                   child: Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border:
-                          Border.all(color: const Color(0xFF1e293b), width: 2),
+                      border: Border.all(color: const Color(0xFF1e293b), width: 2),
                     ),
                     child: CircleAvatar(
                       radius: 18,
                       backgroundColor: const Color(0xFF334155),
                       child: Text(
                         '+$extra',
-                        style:
-                            const TextStyle(color: Colors.white, fontSize: 10),
+                        style: const TextStyle(color: Colors.white, fontSize: 10),
                       ),
                     ),
                   ),
@@ -565,11 +554,11 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
             width: 72,
             height: 72,
             decoration: BoxDecoration(
-              color: loading ? color.withOpacity(0.6) : color,
+              color: loading ? color.withValues(alpha: 0.6) : color,
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: color.withOpacity(0.45),
+                  color: color.withValues(alpha: 0.45),
                   blurRadius: 20,
                   offset: const Offset(0, 8),
                 ),
@@ -601,9 +590,9 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Background blob painter
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _BlobPainter extends CustomPainter {
   final double opacity;
@@ -613,29 +602,27 @@ class _BlobPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final baseColor =
-        isVideo ? const Color(0xFF3B82F6) : const Color(0xFF22C55E);
+    final baseColor = isVideo ? const Color(0xFF3B82F6) : const Color(0xFF22C55E);
 
     final paint = Paint()
-      ..color = baseColor.withOpacity(opacity * 0.08)
+      ..color = baseColor.withValues(alpha: opacity * 0.08)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 80);
 
-    // Top-left blob
+    
     canvas.drawCircle(
       Offset(size.width * 0.15, size.height * 0.2),
       size.width * 0.45,
       paint,
     );
 
-    // Bottom-right blob
+    
     canvas.drawCircle(
       Offset(size.width * 0.85, size.height * 0.78),
       size.width * 0.5,
-      paint..color = baseColor.withOpacity(opacity * 0.06),
+      paint..color = baseColor.withValues(alpha: opacity * 0.06),
     );
   }
 
   @override
-  bool shouldRepaint(_BlobPainter old) =>
-      old.opacity != opacity || old.isVideo != isVideo;
+  bool shouldRepaint(_BlobPainter old) => old.opacity != opacity || old.isVideo != isVideo;
 }

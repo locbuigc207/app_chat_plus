@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'dart:math';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class TicTacToeMessageWidget extends StatefulWidget {
   final String content;
@@ -68,7 +69,7 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
       ));
     }
 
-    // Trigger win line if already won
+    
     final state = jsonDecode(widget.content) as Map<String, dynamic>;
     final board = List<String>.from(state['board'] ?? List.filled(9, ''));
     final line = _getWinningLine(board);
@@ -91,7 +92,7 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
     super.dispose();
   }
 
-  // ─── Game Logic ──────────────────────────────────────────────────────────────
+  
 
   Future<void> _onCellTapped(int index, Map<String, dynamic> gameState) async {
     List<dynamic> board = List.from(gameState['board']);
@@ -102,7 +103,7 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
 
     if (winner.isNotEmpty || board[index].toString().isNotEmpty) return;
 
-    // Seat assignment
+    
     if (playerX.isEmpty) {
       playerX = widget.currentUserId;
       turn = widget.currentUserId;
@@ -115,7 +116,7 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
     final mySymbol = (widget.currentUserId == playerX) ? 'X' : 'O';
     board[index] = mySymbol;
 
-    // Animate tapped cell
+    
     if (index < _cellControllers.length) {
       _cellControllers[index].forward(from: 0);
     }
@@ -124,9 +125,8 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
     final newWinner = _checkWinner(board);
     final winLine = _getWinningLine(board);
 
-    final nextTurn = (widget.currentUserId == playerX)
-        ? (playerO.isEmpty ? playerX : playerO)
-        : playerX;
+    final nextTurn =
+        (widget.currentUserId == playerX) ? (playerO.isEmpty ? playerX : playerO) : playerX;
 
     final newState = {
       'board': board,
@@ -185,7 +185,7 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
     return '';
   }
 
-  // ─── Build ────────────────────────────────────────────────────────────────────
+  
 
   @override
   Widget build(BuildContext context) {
@@ -205,8 +205,7 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
           gameState = jsonDecode(widget.content) as Map<String, dynamic>;
         }
 
-        final board =
-            List<String>.from(gameState['board'] ?? List.filled(9, ''));
+        final board = List<String>.from(gameState['board'] ?? List.filled(9, ''));
         final winner = gameState['winner'] ?? '';
         final myTurn = _isMyturn(gameState);
         final symbol = _mySymbol(gameState);
@@ -224,7 +223,7 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
               ),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF0F3460).withOpacity(0.55),
+                  color: const Color(0xFF0F3460).withValues(alpha: 0.55),
                   blurRadius: 24,
                   spreadRadius: 2,
                   offset: const Offset(0, 8),
@@ -248,8 +247,7 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
     );
   }
 
-  Widget _buildHeader(
-      String winner, bool myTurn, String symbol, Map<String, dynamic> state) {
+  Widget _buildHeader(String winner, bool myTurn, String symbol, Map<String, dynamic> state) {
     String statusText;
     Color statusColor;
 
@@ -257,9 +255,8 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
       statusText = '🤝 Hòa nhau!';
       statusColor = const Color(0xFFFFD700);
     } else if (winner.isNotEmpty) {
-      final isIWon =
-          (winner == 'X' && state['playerX'] == widget.currentUserId) ||
-              (winner == 'O' && state['playerO'] == widget.currentUserId);
+      final isIWon = (winner == 'X' && state['playerX'] == widget.currentUserId) ||
+          (winner == 'O' && state['playerO'] == widget.currentUserId);
       statusText = isIWon ? '🏆 Bạn thắng!' : '💀 Bạn thua!';
       statusColor = isIWon ? const Color(0xFF00E676) : const Color(0xFFFF5252);
     } else if (symbol.isEmpty) {
@@ -288,9 +285,7 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: statusColor,
-              boxShadow: [
-                BoxShadow(color: statusColor.withOpacity(0.7), blurRadius: 6)
-              ],
+              boxShadow: [BoxShadow(color: statusColor.withValues(alpha: 0.7), blurRadius: 6)],
             ),
           ),
           const SizedBox(width: 8),
@@ -319,8 +314,7 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
     );
   }
 
-  Widget _buildGrid(
-      List<String> board, String winner, Map<String, dynamic> gameState) {
+  Widget _buildGrid(List<String> board, String winner, Map<String, dynamic> gameState) {
     return Padding(
       padding: const EdgeInsets.all(14),
       child: Stack(
@@ -334,8 +328,7 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
                   return Expanded(
                     child: Padding(
                       padding: const EdgeInsets.all(3.5),
-                      child: _buildCell(
-                          index, board[index], winner, isWinCell, gameState),
+                      child: _buildCell(index, board[index], winner, isWinCell, gameState),
                     ),
                   );
                 }),
@@ -343,7 +336,7 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
             }),
           ),
 
-          // Win line overlay
+          
           if (_winningLine.isNotEmpty)
             Positioned.fill(
               child: IgnorePointer(
@@ -363,8 +356,8 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
     );
   }
 
-  Widget _buildCell(int index, String value, String winner, bool isWinCell,
-      Map<String, dynamic> gameState) {
+  Widget _buildCell(
+      int index, String value, String winner, bool isWinCell, Map<String, dynamic> gameState) {
     final canTap = winner.isEmpty && value.isEmpty && _isMyturn(gameState);
 
     return GestureDetector(
@@ -390,21 +383,21 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
                             : const Color(0xFF0A0A1A),
                 border: Border.all(
                   color: isWinCell
-                      ? const Color(0xFF64FFDA).withOpacity(0.6)
-                      : const Color(0xFF0F3460).withOpacity(0.6),
+                      ? const Color(0xFF64FFDA).withValues(alpha: 0.6)
+                      : const Color(0xFF0F3460).withValues(alpha: 0.6),
                   width: isWinCell ? 1.8 : 1.2,
                 ),
                 boxShadow: isWinCell
                     ? [
                         BoxShadow(
-                          color: const Color(0xFF64FFDA).withOpacity(0.18),
+                          color: const Color(0xFF64FFDA).withValues(alpha: 0.18),
                           blurRadius: 10,
                         )
                       ]
                     : canTap
                         ? [
                             BoxShadow(
-                              color: Colors.white.withOpacity(0.04),
+                              color: Colors.white.withValues(alpha: 0.04),
                               blurRadius: 4,
                             )
                           ]
@@ -464,7 +457,7 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.06),
+              color: Colors.white.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Text(
@@ -483,17 +476,16 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
     );
   }
 
-  Widget _buildPlayerChip(
-      String symbol, String userId, bool isMe, Color color) {
+  Widget _buildPlayerChip(String symbol, String userId, bool isMe, Color color) {
     final isEmpty = userId.isEmpty;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: isMe ? color.withOpacity(0.12) : Colors.transparent,
+        color: isMe ? color.withValues(alpha: 0.12) : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: isMe ? color.withOpacity(0.4) : Colors.white12,
+          color: isMe ? color.withValues(alpha: 0.4) : Colors.white12,
           width: 1.2,
         ),
       ),
@@ -523,7 +515,7 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
   }
 }
 
-// ─── Custom Painters ──────────────────────────────────────────────────────────
+
 
 class _XPainter extends CustomPainter {
   final Color color;
@@ -540,15 +532,12 @@ class _XPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     final pad = size.width * 0.1;
-    canvas.drawLine(
-        Offset(pad, pad), Offset(size.width - pad, size.height - pad), paint);
-    canvas.drawLine(
-        Offset(size.width - pad, pad), Offset(pad, size.height - pad), paint);
+    canvas.drawLine(Offset(pad, pad), Offset(size.width - pad, size.height - pad), paint);
+    canvas.drawLine(Offset(size.width - pad, pad), Offset(pad, size.height - pad), paint);
   }
 
   @override
-  bool shouldRepaint(_XPainter old) =>
-      old.color != color || old.strokeWidth != strokeWidth;
+  bool shouldRepaint(_XPainter old) => old.color != color || old.strokeWidth != strokeWidth;
 }
 
 class _OPainter extends CustomPainter {
@@ -570,8 +559,7 @@ class _OPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_OPainter old) =>
-      old.color != color || old.strokeWidth != strokeWidth;
+  bool shouldRepaint(_OPainter old) => old.color != color || old.strokeWidth != strokeWidth;
 }
 
 class _WinLinePainter extends CustomPainter {
@@ -584,7 +572,7 @@ class _WinLinePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (winLine.isEmpty || progress <= 0) return;
 
-    // Cell size estimation (3 cols, 3 rows with equal padding)
+    
     final cellW = size.width / 3;
     final cellH = size.height / 3;
 
@@ -600,7 +588,7 @@ class _WinLinePainter extends CustomPainter {
     final current = Offset.lerp(start, end, progress)!;
 
     final paint = Paint()
-      ..color = const Color(0xFF64FFDA).withOpacity(0.85)
+      ..color = const Color(0xFF64FFDA).withValues(alpha: 0.85)
       ..strokeWidth = 3.5
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke
@@ -610,6 +598,5 @@ class _WinLinePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_WinLinePainter old) =>
-      old.progress != progress || old.winLine != winLine;
+  bool shouldRepaint(_WinLinePainter old) => old.progress != progress || old.winLine != winLine;
 }

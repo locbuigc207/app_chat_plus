@@ -3,12 +3,13 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// EnhancedPhotoViewer
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class EnhancedPhotoViewer extends StatefulWidget {
   final List<String> imageUrls;
@@ -47,8 +48,7 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
       duration: const Duration(milliseconds: 250),
       value: 1.0,
     );
-    _controlsFade =
-        CurvedAnimation(parent: _controlsAnim, curve: Curves.easeOut);
+    _controlsFade = CurvedAnimation(parent: _controlsAnim, curve: Curves.easeOut);
 
     _scheduleHideControls();
   }
@@ -93,7 +93,7 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
         onTap: _toggleControls,
         child: Stack(
           children: [
-            // ── Main gallery ────────────────────────────────────────────────
+            
             PhotoViewGallery.builder(
               pageController: _pageController,
               itemCount: widget.imageUrls.length,
@@ -116,8 +116,7 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
               loadingBuilder: (context, event) {
                 final progress = event == null
                     ? 0.0
-                    : event.cumulativeBytesLoaded /
-                        (event.expectedTotalBytes ?? 1);
+                    : event.cumulativeBytesLoaded / (event.expectedTotalBytes ?? 1);
                 return Center(
                   child: SizedBox(
                     width: 64,
@@ -133,8 +132,7 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
                         if (progress > 0)
                           Text(
                             '${(progress * 100).toInt()}%',
-                            style: const TextStyle(
-                                color: Colors.white60, fontSize: 11),
+                            style: const TextStyle(color: Colors.white60, fontSize: 11),
                           ),
                       ],
                     ),
@@ -143,7 +141,7 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
               },
             ),
 
-            // ── Top bar ─────────────────────────────────────────────────────
+            
             FadeTransition(
               opacity: _controlsFade,
               child: Positioned(
@@ -154,21 +152,19 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                     child: Container(
-                      padding: EdgeInsets.only(
-                          top: MediaQuery.of(context).padding.top),
+                      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
-                            Colors.black.withOpacity(0.7),
+                            Colors.black.withValues(alpha: 0.7),
                             Colors.transparent,
                           ],
                         ),
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                         child: Row(
                           children: [
                             _TopBarBtn(
@@ -178,10 +174,9 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
                             const Spacer(),
                             if (widget.imageUrls.length > 1)
                               Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.15),
+                                  color: Colors.white.withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(20),
                                   border: Border.all(color: Colors.white24),
                                 ),
@@ -197,13 +192,11 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
                             const Spacer(),
                             _TopBarBtn(
                               icon: Icons.share_rounded,
-                              onTap: () =>
-                                  _onShare(widget.imageUrls[_currentIndex]),
+                              onTap: () => _onShare(widget.imageUrls[_currentIndex]),
                             ),
                             _TopBarBtn(
                               icon: Icons.download_rounded,
-                              onTap: () =>
-                                  _onDownload(widget.imageUrls[_currentIndex]),
+                              onTap: () => _onDownload(widget.imageUrls[_currentIndex]),
                             ),
                           ],
                         ),
@@ -214,7 +207,7 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
               ),
             ),
 
-            // ── Thumbnail strip (multi-image only) ──────────────────────────
+            
             if (widget.imageUrls.length > 1)
               FadeTransition(
                 opacity: _controlsFade,
@@ -231,7 +224,7 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
                             begin: Alignment.bottomCenter,
                             end: Alignment.topCenter,
                             colors: [
-                              Colors.black.withOpacity(0.75),
+                              Colors.black.withValues(alpha: 0.75),
                               Colors.transparent,
                             ],
                           ),
@@ -242,8 +235,7 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
                             height: 86,
                             child: ListView.builder(
                               scrollDirection: Axis.horizontal,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 10),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               itemCount: widget.imageUrls.length,
                               itemBuilder: (context, index) {
                                 final isSelected = _currentIndex == index;
@@ -251,8 +243,7 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
                                   onTap: () {
                                     _pageController.animateToPage(
                                       index,
-                                      duration:
-                                          const Duration(milliseconds: 300),
+                                      duration: const Duration(milliseconds: 300),
                                       curve: Curves.easeOutCubic,
                                     );
                                   },
@@ -260,21 +251,17 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
                                     duration: const Duration(milliseconds: 200),
                                     width: isSelected ? 72 : 60,
                                     height: isSelected ? 68 : 60,
-                                    margin: const EdgeInsets.symmetric(
-                                        horizontal: 4),
+                                    margin: const EdgeInsets.symmetric(horizontal: 4),
                                     decoration: BoxDecoration(
                                       borderRadius: BorderRadius.circular(10),
                                       border: Border.all(
-                                        color: isSelected
-                                            ? Colors.white
-                                            : Colors.transparent,
+                                        color: isSelected ? Colors.white : Colors.transparent,
                                         width: 2.5,
                                       ),
                                       boxShadow: isSelected
                                           ? [
                                               BoxShadow(
-                                                color: Colors.white
-                                                    .withOpacity(0.3),
+                                                color: Colors.white.withValues(alpha: 0.3),
                                                 blurRadius: 12,
                                               )
                                             ]
@@ -289,11 +276,9 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
                                             widget.imageUrls[index],
                                             fit: BoxFit.cover,
                                             errorBuilder: (_, __, ___) =>
-                                                Container(
-                                                    color: Colors.white12),
+                                                Container(color: Colors.white12),
                                           ),
-                                          if (!isSelected)
-                                            Container(color: Colors.black38),
+                                          if (!isSelected) Container(color: Colors.black38),
                                         ],
                                       ),
                                     ),
@@ -309,7 +294,7 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
                 ),
               ),
 
-            // ── Prev / next arrows ───────────────────────────────────────────
+            
             if (widget.imageUrls.length > 1) ...[
               if (_currentIndex > 0)
                 FadeTransition(
@@ -355,12 +340,12 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
   }
 
   void _onShare(String url) {
-    // Integrate with share_plus: Share.shareUri(Uri.parse(url));
+    
     HapticFeedback.lightImpact();
   }
 
   void _onDownload(String url) {
-    // Integrate with gallery_saver or permission_handler + http
+    
     HapticFeedback.lightImpact();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -373,9 +358,9 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sub-widgets
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _TopBarBtn extends StatelessWidget {
   final IconData icon;
@@ -392,7 +377,7 @@ class _TopBarBtn extends StatelessWidget {
         height: 44,
         margin: const EdgeInsets.symmetric(horizontal: 4),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha: 0.1),
           shape: BoxShape.circle,
         ),
         child: Icon(icon, color: Colors.white, size: 22),
@@ -415,7 +400,7 @@ class _NavArrow extends StatelessWidget {
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.45),
+          color: Colors.black.withValues(alpha: 0.45),
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white24),
         ),

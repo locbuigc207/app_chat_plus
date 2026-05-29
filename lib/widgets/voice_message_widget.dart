@@ -1,17 +1,18 @@
 import 'dart:async';
 
-import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/providers/voice_message_provider.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// VoiceMessageWidget
-// ─────────────────────────────────────────────────────────────────────────────
 
-/// Bubble widget that plays a voice message with waveform, elapsed time,
-/// and seek-by-tap support.
+
+
+
+
+
 class VoiceMessageWidget extends StatefulWidget {
   final String voiceUrl;
   final bool isMyMessage;
@@ -64,15 +65,15 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
 
   Future<void> _preparePlayer() async {
     try {
-      final localPath =
-          await widget.voiceProvider.downloadVoiceMessage(widget.voiceUrl);
+      final localPath = await widget.voiceProvider.downloadVoiceMessage(widget.voiceUrl);
 
       if (localPath == null) {
-        if (mounted)
+        if (mounted) {
           setState(() {
             _isLoading = false;
             _hasError = true;
           });
+        }
         return;
       }
 
@@ -82,7 +83,7 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
         volume: 1.0,
       );
 
-      // Total duration
+      
       final ms = _playerController.maxDuration;
       if (ms > 0) {
         _totalDuration = Duration(milliseconds: ms);
@@ -109,11 +110,12 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
       if (mounted) setState(() => _isLoading = false);
     } catch (e) {
       debugPrint('❌ VoiceMessageWidget._preparePlayer: $e');
-      if (mounted)
+      if (mounted) {
         setState(() {
           _isLoading = false;
           _hasError = true;
         });
+      }
     }
   }
 
@@ -174,8 +176,8 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
           boxShadow: [
             BoxShadow(
               color: isMe
-                  ? const Color(0xFF007AFF).withOpacity(0.3)
-                  : Colors.black.withOpacity(0.06),
+                  ? const Color(0xFF007AFF).withValues(alpha: 0.3)
+                  : Colors.black.withValues(alpha: 0.06),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -184,7 +186,7 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // ── Play / Pause ──────────────────────────────────────────
+            
             _PlayButton(
               isPlaying: _isPlaying,
               isLoading: _isLoading,
@@ -195,7 +197,7 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
 
             const SizedBox(width: 10),
 
-            // ── Waveform + time ───────────────────────────────────────
+            
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -211,23 +213,21 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
                     enableSeekGesture: true,
                     waveformType: WaveformType.fitWidth,
                     playerWaveStyle: PlayerWaveStyle(
-                      fixedWaveColor: isMe
-                          ? Colors.white.withOpacity(0.35)
-                          : const Color(0xFFD1D5DB),
-                      liveWaveColor:
-                          isMe ? Colors.white : const Color(0xFF007AFF),
+                      fixedWaveColor:
+                          isMe ? Colors.white.withValues(alpha: 0.35) : const Color(0xFFD1D5DB),
+                      liveWaveColor: isMe ? Colors.white : const Color(0xFF007AFF),
                       spacing: 3.5,
                       waveThickness: 2.5,
                       seekLineColor: isMe
-                          ? Colors.white.withOpacity(0.6)
-                          : const Color(0xFF007AFF).withOpacity(0.5),
+                          ? Colors.white.withValues(alpha: 0.6)
+                          : const Color(0xFF007AFF).withValues(alpha: 0.5),
                       seekLineThickness: 1.5,
                     ),
                   ),
 
                 const SizedBox(height: 3),
 
-                // Duration label
+                
                 Text(
                   _isLoading
                       ? '--:--'
@@ -237,9 +237,7 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w500,
-                    color: isMe
-                        ? Colors.white.withOpacity(0.7)
-                        : const Color(0xFF9CA3AF),
+                    color: isMe ? Colors.white.withValues(alpha: 0.7) : const Color(0xFF9CA3AF),
                   ),
                 ),
               ],
@@ -251,7 +249,7 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
   }
 }
 
-// ── Play button ───────────────────────────────────────────────────────────────
+
 
 class _PlayButton extends StatefulWidget {
   final bool isPlaying;
@@ -272,8 +270,7 @@ class _PlayButton extends StatefulWidget {
   State<_PlayButton> createState() => _PlayButtonState();
 }
 
-class _PlayButtonState extends State<_PlayButton>
-    with SingleTickerProviderStateMixin {
+class _PlayButtonState extends State<_PlayButton> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
 
   @override
@@ -296,8 +293,7 @@ class _PlayButtonState extends State<_PlayButton>
 
   @override
   Widget build(BuildContext context) {
-    final bg =
-        widget.isMe ? Colors.white.withOpacity(0.22) : const Color(0xFFF0F0F5);
+    final bg = widget.isMe ? Colors.white.withValues(alpha: 0.22) : const Color(0xFFF0F0F5);
     final iconColor = widget.isMe ? Colors.white : const Color(0xFF007AFF);
 
     return GestureDetector(
@@ -328,7 +324,7 @@ class _PlayButtonState extends State<_PlayButton>
                 )
               : widget.hasError
                   ? Icon(Icons.error_outline_rounded,
-                      color: iconColor.withOpacity(0.6), size: 22)
+                      color: iconColor.withValues(alpha: 0.6), size: 22)
                   : AnimatedSwitcher(
                       duration: const Duration(milliseconds: 200),
                       transitionBuilder: (child, anim) => ScaleTransition(
@@ -336,9 +332,7 @@ class _PlayButtonState extends State<_PlayButton>
                         child: child,
                       ),
                       child: Icon(
-                        widget.isPlaying
-                            ? Icons.pause_rounded
-                            : Icons.play_arrow_rounded,
+                        widget.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                         key: ValueKey(widget.isPlaying),
                         color: iconColor,
                         size: 24,
@@ -350,7 +344,7 @@ class _PlayButtonState extends State<_PlayButton>
   }
 }
 
-// ── Waveform placeholder (loading shimmer) ────────────────────────────────────
+
 
 class _WaveformPlaceholder extends StatefulWidget {
   final bool isMe;
@@ -386,12 +380,9 @@ class _WaveformPlaceholderState extends State<_WaveformPlaceholder>
     return AnimatedBuilder(
       animation: _anim,
       builder: (_, __) {
-        final base = widget.isMe
-            ? Colors.white.withOpacity(0.2)
-            : const Color(0xFFE8EBF0);
-        final highlight = widget.isMe
-            ? Colors.white.withOpacity(0.45)
-            : const Color(0xFFF5F5F5);
+        final base = widget.isMe ? Colors.white.withValues(alpha: 0.2) : const Color(0xFFE8EBF0);
+        final highlight =
+            widget.isMe ? Colors.white.withValues(alpha: 0.45) : const Color(0xFFF5F5F5);
         return Container(
           width: 150,
           height: 28,
@@ -405,7 +396,7 @@ class _WaveformPlaceholderState extends State<_WaveformPlaceholder>
   }
 }
 
-// ── Error fallback waveform ───────────────────────────────────────────────────
+
 
 class _ErrorWaveform extends StatelessWidget {
   final bool isMe;
@@ -418,15 +409,14 @@ class _ErrorWaveform extends StatelessWidget {
         Icon(
           Icons.wifi_off_rounded,
           size: 14,
-          color: isMe ? Colors.white.withOpacity(0.6) : const Color(0xFF9CA3AF),
+          color: isMe ? Colors.white.withValues(alpha: 0.6) : const Color(0xFF9CA3AF),
         ),
         const SizedBox(width: 6),
         Text(
           'Không tải được',
           style: TextStyle(
             fontSize: 12,
-            color:
-                isMe ? Colors.white.withOpacity(0.7) : const Color(0xFF9CA3AF),
+            color: isMe ? Colors.white.withValues(alpha: 0.7) : const Color(0xFF9CA3AF),
           ),
         ),
       ],
@@ -434,12 +424,12 @@ class _ErrorWaveform extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// VoiceRecordingIndicator
-// ─────────────────────────────────────────────────────────────────────────────
 
-/// Full-width banner shown while recording a voice message.
-/// Features: animated red dot, slide-to-cancel hint, waveform bars.
+
+
+
+
+
 class VoiceRecordingIndicator extends StatefulWidget {
   final String duration;
   final VoidCallback onCancel;
@@ -453,8 +443,7 @@ class VoiceRecordingIndicator extends StatefulWidget {
   });
 
   @override
-  State<VoiceRecordingIndicator> createState() =>
-      _VoiceRecordingIndicatorState();
+  State<VoiceRecordingIndicator> createState() => _VoiceRecordingIndicatorState();
 }
 
 class _VoiceRecordingIndicatorState extends State<VoiceRecordingIndicator>
@@ -500,18 +489,17 @@ class _VoiceRecordingIndicatorState extends State<VoiceRecordingIndicator>
   @override
   Widget build(BuildContext context) {
     return SlideTransition(
-      position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
-          .animate(_slideAnim),
+      position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero).animate(_slideAnim),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: Colors.white,
           border: Border(
-            top: BorderSide(color: Colors.red.withOpacity(0.15), width: 1),
+            top: BorderSide(color: Colors.red.withValues(alpha: 0.15), width: 1),
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.06),
+              color: Colors.black.withValues(alpha: 0.06),
               blurRadius: 12,
               offset: const Offset(0, -4),
             ),
@@ -519,18 +507,18 @@ class _VoiceRecordingIndicatorState extends State<VoiceRecordingIndicator>
         ),
         child: Row(
           children: [
-            // ── Red dot ────────────────────────────────────────────────
+            
             AnimatedBuilder(
               animation: _dotCtrl,
               builder: (_, __) => Container(
                 width: 11,
                 height: 11,
                 decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.5 + _dotCtrl.value * 0.5),
+                  color: Colors.red.withValues(alpha: 0.5 + _dotCtrl.value * 0.5),
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.red.withOpacity(0.4 * _dotCtrl.value),
+                      color: Colors.red.withValues(alpha: 0.4 * _dotCtrl.value),
                       blurRadius: 8,
                     ),
                   ],
@@ -540,7 +528,7 @@ class _VoiceRecordingIndicatorState extends State<VoiceRecordingIndicator>
 
             const SizedBox(width: 10),
 
-            // ── Duration ───────────────────────────────────────────────
+            
             Text(
               widget.duration,
               style: const TextStyle(
@@ -553,12 +541,12 @@ class _VoiceRecordingIndicatorState extends State<VoiceRecordingIndicator>
 
             const SizedBox(width: 12),
 
-            // ── Animated bars ──────────────────────────────────────────
+            
             _AnimatedBars(controller: _barsCtrl),
 
             const Spacer(),
 
-            // ── Cancel button ──────────────────────────────────────────
+            
             _IconBtn(
               icon: Icons.delete_rounded,
               color: Colors.red,
@@ -568,7 +556,7 @@ class _VoiceRecordingIndicatorState extends State<VoiceRecordingIndicator>
 
             const SizedBox(width: 8),
 
-            // ── Send button ────────────────────────────────────────────
+            
             _SendVoiceButton(onTap: widget.onSend),
           ],
         ),
@@ -577,7 +565,7 @@ class _VoiceRecordingIndicatorState extends State<VoiceRecordingIndicator>
   }
 }
 
-// ── Animated equalizer bars ───────────────────────────────────────────────────
+
 
 class _AnimatedBars extends StatelessWidget {
   final AnimationController controller;
@@ -601,7 +589,7 @@ class _AnimatedBars extends StatelessWidget {
               width: 3,
               height: h,
               decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.6),
+                color: Colors.red.withValues(alpha: 0.6),
                 borderRadius: BorderRadius.circular(2),
               ),
             );
@@ -612,7 +600,7 @@ class _AnimatedBars extends StatelessWidget {
   }
 }
 
-// ── Icon button ───────────────────────────────────────────────────────────────
+
 
 class _IconBtn extends StatelessWidget {
   final IconData icon;
@@ -640,7 +628,7 @@ class _IconBtn extends StatelessWidget {
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
+            color: color.withValues(alpha: 0.08),
             shape: BoxShape.circle,
           ),
           child: Icon(icon, color: color, size: 20),
@@ -650,7 +638,7 @@ class _IconBtn extends StatelessWidget {
   }
 }
 
-// ── Send voice button ─────────────────────────────────────────────────────────
+
 
 class _SendVoiceButton extends StatefulWidget {
   final VoidCallback onTap;
@@ -660,8 +648,7 @@ class _SendVoiceButton extends StatefulWidget {
   State<_SendVoiceButton> createState() => _SendVoiceButtonState();
 }
 
-class _SendVoiceButtonState extends State<_SendVoiceButton>
-    with SingleTickerProviderStateMixin {
+class _SendVoiceButtonState extends State<_SendVoiceButton> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
 
   @override
@@ -701,13 +688,13 @@ class _SendVoiceButtonState extends State<_SendVoiceButton>
             gradient: LinearGradient(
               colors: [
                 ColorConstants.primaryColor,
-                ColorConstants.primaryColor.withOpacity(0.8),
+                ColorConstants.primaryColor.withValues(alpha: 0.8),
               ],
             ),
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
-                color: ColorConstants.primaryColor.withOpacity(0.4),
+                color: ColorConstants.primaryColor.withValues(alpha: 0.4),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               ),

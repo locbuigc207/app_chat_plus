@@ -1,9 +1,10 @@
 import 'dart:io';
 import 'dart:ui';
 
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
@@ -19,15 +20,14 @@ class SettingsPage extends StatefulWidget {
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage>
-    with TickerProviderStateMixin {
-  // ── Controllers & Focus ───────────────────────────────────────────────────
+class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMixin {
+  
   late final TextEditingController _nicknameCtrl;
   late final TextEditingController _aboutMeCtrl;
   final FocusNode _nicknameFocus = FocusNode();
   final FocusNode _aboutMeFocus = FocusNode();
 
-  // ── User State ────────────────────────────────────────────────────────────
+  
   String _userId = '';
   String _nickname = '';
   String _aboutMe = '';
@@ -37,20 +37,20 @@ class _SettingsPageState extends State<SettingsPage>
   bool _is2FAEnabled = false;
   String _twoFactorSecret = '';
 
-  // ── UI State ──────────────────────────────────────────────────────────────
+  
   bool _isSaving = false;
   bool _isUploadingAvatar = false;
   File? _avatarFile;
   bool _hasUnsavedChanges = false;
 
-  // ── Animation ─────────────────────────────────────────────────────────────
+  
   late AnimationController _entryCtrl;
   late Animation<double> _entryFade;
   late Animation<Offset> _entrySlide;
 
   late final SettingProvider _settingProvider = context.read<SettingProvider>();
 
-  // ── Lifecycle ─────────────────────────────────────────────────────────────
+  
 
   @override
   void initState() {
@@ -79,7 +79,7 @@ class _SettingsPageState extends State<SettingsPage>
     super.dispose();
   }
 
-  // ── Data ──────────────────────────────────────────────────────────────────
+  
 
   void _readLocal() {
     setState(() {
@@ -87,8 +87,7 @@ class _SettingsPageState extends State<SettingsPage>
       _nickname = _settingProvider.getPref(FirestoreConstants.nickname) ?? '';
       _aboutMe = _settingProvider.getPref(FirestoreConstants.aboutMe) ?? '';
       _avatarUrl = _settingProvider.getPref(FirestoreConstants.photoUrl) ?? '';
-      _phoneNumber =
-          _settingProvider.getPref(FirestoreConstants.phoneNumber) ?? '';
+      _phoneNumber = _settingProvider.getPref(FirestoreConstants.phoneNumber) ?? '';
       _qrCode = _settingProvider.getPref(FirestoreConstants.qrCode) ?? '';
 
       _is2FAEnabled = _settingProvider.getBoolPref('is2FAEnabled') ?? false;
@@ -103,14 +102,13 @@ class _SettingsPageState extends State<SettingsPage>
   }
 
   void _onFieldChanged() {
-    final changed =
-        _nicknameCtrl.text != _nickname || _aboutMeCtrl.text != _aboutMe;
+    final changed = _nicknameCtrl.text != _nickname || _aboutMeCtrl.text != _aboutMe;
     if (changed != _hasUnsavedChanges) {
       setState(() => _hasUnsavedChanges = changed);
     }
   }
 
-  // ── Avatar ────────────────────────────────────────────────────────────────
+  
 
   Future<void> _pickAndUploadAvatar() async {
     try {
@@ -162,7 +160,7 @@ class _SettingsPageState extends State<SettingsPage>
     }
   }
 
-  // ── Save Profile ──────────────────────────────────────────────────────────
+  
 
   Future<void> _saveProfile() async {
     _nicknameFocus.unfocus();
@@ -210,7 +208,7 @@ class _SettingsPageState extends State<SettingsPage>
     }
   }
 
-  // ── 2FA Toggle ────────────────────────────────────────────────────────────
+  
 
   void _on2FAToggle(bool val) {
     if (val) {
@@ -230,22 +228,21 @@ class _SettingsPageState extends State<SettingsPage>
         filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
         child: AlertDialog(
           backgroundColor: const Color(0xFF0D1B3E),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Text(
             'Tắt xác thực 2 lớp?',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
           ),
           content: Text(
             'Tài khoản của bạn sẽ kém bảo mật hơn. Bạn có chắc chắn muốn tắt 2FA không?',
-            style: TextStyle(color: Colors.white.withOpacity(0.6), height: 1.5),
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.6), height: 1.5),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: Text(
                 'Hủy',
-                style: TextStyle(color: Colors.white.withOpacity(0.5)),
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
               ),
             ),
             TextButton(
@@ -266,8 +263,7 @@ class _SettingsPageState extends State<SettingsPage>
               },
               child: const Text(
                 'Tắt 2FA',
-                style: TextStyle(
-                    color: Color(0xFFFF4B4B), fontWeight: FontWeight.w700),
+                style: TextStyle(color: Color(0xFFFF4B4B), fontWeight: FontWeight.w700),
               ),
             ),
           ],
@@ -276,7 +272,7 @@ class _SettingsPageState extends State<SettingsPage>
     );
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  
 
   UserChat _buildUserChat({
     String? nickname,
@@ -323,7 +319,7 @@ class _SettingsPageState extends State<SettingsPage>
         transitionDuration: const Duration(milliseconds: 350),
       );
 
-  // ── Build ─────────────────────────────────────────────────────────────────
+  
 
   @override
   Widget build(BuildContext context) {
@@ -331,7 +327,7 @@ class _SettingsPageState extends State<SettingsPage>
       backgroundColor: const Color(0xFF0A0E1A),
       body: Stack(
         children: [
-          // Background gradient
+          
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
@@ -346,7 +342,7 @@ class _SettingsPageState extends State<SettingsPage>
             ),
           ),
 
-          // Subtle orb
+          
           Positioned(
             top: -100,
             right: -60,
@@ -356,7 +352,7 @@ class _SettingsPageState extends State<SettingsPage>
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: RadialGradient(colors: [
-                  const Color(0xFF4F8DFF).withOpacity(0.08),
+                  const Color(0xFF4F8DFF).withValues(alpha: 0.08),
                   Colors.transparent,
                 ]),
               ),
@@ -393,13 +389,13 @@ class _SettingsPageState extends State<SettingsPage>
             ),
           ),
 
-          // Global loading overlay
+          
           if (_isSaving)
             Positioned.fill(
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
                 child: Container(
-                  color: Colors.black.withOpacity(0.3),
+                  color: Colors.black.withValues(alpha: 0.3),
                   child: Center(
                     child: _GlassCard(
                       child: Column(
@@ -417,7 +413,7 @@ class _SettingsPageState extends State<SettingsPage>
                           Text(
                             'Đang lưu...',
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.8),
+                              color: Colors.white.withValues(alpha: 0.8),
                               fontSize: 14,
                               fontWeight: FontWeight.w500,
                             ),
@@ -434,7 +430,7 @@ class _SettingsPageState extends State<SettingsPage>
     );
   }
 
-  // ── App Bar ───────────────────────────────────────────────────────────────
+  
 
   Widget _buildAppBar() {
     return Padding(
@@ -471,7 +467,7 @@ class _SettingsPageState extends State<SettingsPage>
     );
   }
 
-  // ── Avatar Section ────────────────────────────────────────────────────────
+  
 
   Widget _buildAvatarSection() {
     final initial = _nickname.isNotEmpty ? _nickname[0].toUpperCase() : '?';
@@ -483,7 +479,7 @@ class _SettingsPageState extends State<SettingsPage>
             onTap: _isUploadingAvatar ? null : _pickAndUploadAvatar,
             child: Stack(
               children: [
-                // Avatar circle
+                
                 Container(
                   width: 106,
                   height: 106,
@@ -496,7 +492,7 @@ class _SettingsPageState extends State<SettingsPage>
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF4F8DFF).withOpacity(0.3),
+                        color: const Color(0xFF4F8DFF).withValues(alpha: 0.3),
                         blurRadius: 24,
                         offset: const Offset(0, 8),
                       ),
@@ -510,7 +506,7 @@ class _SettingsPageState extends State<SettingsPage>
                   ),
                 ),
 
-                // Camera badge
+                
                 Positioned(
                   right: 0,
                   bottom: 2,
@@ -561,7 +557,7 @@ class _SettingsPageState extends State<SettingsPage>
             Text(
               _phoneNumber,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.4),
+                color: Colors.white.withValues(alpha: 0.4),
                 fontSize: 13,
               ),
             ),
@@ -601,7 +597,7 @@ class _SettingsPageState extends State<SettingsPage>
     );
   }
 
-  // ── Profile Card ──────────────────────────────────────────────────────────
+  
 
   Widget _buildProfileCard() {
     return _SectionCard(
@@ -615,14 +611,13 @@ class _SettingsPageState extends State<SettingsPage>
             controller: _nicknameCtrl,
             focusNode: _nicknameFocus,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.9),
+              color: Colors.white.withValues(alpha: 0.9),
               fontSize: 15,
               fontWeight: FontWeight.w500,
             ),
             decoration: InputDecoration(
               hintText: 'Nhập tên của bạn',
-              hintStyle: TextStyle(
-                  color: Colors.white.withOpacity(0.25), fontSize: 14),
+              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 14),
               border: InputBorder.none,
               isDense: true,
               contentPadding: EdgeInsets.zero,
@@ -638,13 +633,12 @@ class _SettingsPageState extends State<SettingsPage>
             focusNode: _aboutMeFocus,
             maxLines: 3,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.9),
+              color: Colors.white.withValues(alpha: 0.9),
               fontSize: 15,
             ),
             decoration: InputDecoration(
               hintText: 'Viết gì đó về bản thân...',
-              hintStyle: TextStyle(
-                  color: Colors.white.withOpacity(0.25), fontSize: 14),
+              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 14),
               border: InputBorder.none,
               isDense: true,
               contentPadding: EdgeInsets.zero,
@@ -661,7 +655,7 @@ class _SettingsPageState extends State<SettingsPage>
                 Text(
                   _phoneNumber,
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.7),
+                    color: Colors.white.withValues(alpha: 0.7),
                     fontSize: 15,
                   ),
                 ),
@@ -678,7 +672,7 @@ class _SettingsPageState extends State<SettingsPage>
     );
   }
 
-  // ── Security Card ─────────────────────────────────────────────────────────
+  
 
   Widget _buildSecurityCard() {
     return _SectionCard(
@@ -693,19 +687,13 @@ class _SettingsPageState extends State<SettingsPage>
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: (_is2FAEnabled
-                          ? const Color(0xFF00C896)
-                          : const Color(0xFF4F8DFF))
-                      .withOpacity(0.12),
+                  color: (_is2FAEnabled ? const Color(0xFF00C896) : const Color(0xFF4F8DFF))
+                      .withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
-                  _is2FAEnabled
-                      ? Icons.verified_user_rounded
-                      : Icons.shield_outlined,
-                  color: _is2FAEnabled
-                      ? const Color(0xFF00C896)
-                      : const Color(0xFF4F8DFF),
+                  _is2FAEnabled ? Icons.verified_user_rounded : Icons.shield_outlined,
+                  color: _is2FAEnabled ? const Color(0xFF00C896) : const Color(0xFF4F8DFF),
                   size: 18,
                 ),
               ),
@@ -724,11 +712,9 @@ class _SettingsPageState extends State<SettingsPage>
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      _is2FAEnabled
-                          ? 'Tài khoản được bảo vệ'
-                          : 'Bật để tăng cường bảo mật',
+                      _is2FAEnabled ? 'Tài khoản được bảo vệ' : 'Bật để tăng cường bảo mật',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.4),
+                        color: Colors.white.withValues(alpha: 0.4),
                         fontSize: 12,
                       ),
                     ),
@@ -738,10 +724,10 @@ class _SettingsPageState extends State<SettingsPage>
               Switch(
                 value: _is2FAEnabled,
                 onChanged: _on2FAToggle,
-                activeColor: const Color(0xFF00C896),
-                activeTrackColor: const Color(0xFF00C896).withOpacity(0.25),
-                inactiveThumbColor: Colors.white.withOpacity(0.4),
-                inactiveTrackColor: Colors.white.withOpacity(0.1),
+                activeThumbColor: const Color(0xFF00C896),
+                activeTrackColor: const Color(0xFF00C896).withValues(alpha: 0.25),
+                inactiveThumbColor: Colors.white.withValues(alpha: 0.4),
+                inactiveTrackColor: Colors.white.withValues(alpha: 0.1),
               ),
             ],
           ),
@@ -756,7 +742,7 @@ class _SettingsPageState extends State<SettingsPage>
                   width: 38,
                   height: 38,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFB300).withOpacity(0.1),
+                    color: const Color(0xFFFFB300).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(
@@ -784,7 +770,7 @@ class _SettingsPageState extends State<SettingsPage>
                             ? '${_twoFactorSecret.substring(0, 4)}··············'
                             : '—',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.4),
+                          color: Colors.white.withValues(alpha: 0.4),
                           fontSize: 12,
                           fontFamily: 'monospace',
                         ),
@@ -798,17 +784,16 @@ class _SettingsPageState extends State<SettingsPage>
                     _showSuccess('Đã sao chép secret key');
                   },
                   child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.06),
+                      color: Colors.white.withValues(alpha: 0.06),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.white.withOpacity(0.1)),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
                     ),
                     child: Text(
                       'Sao chép',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.6),
+                        color: Colors.white.withValues(alpha: 0.6),
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),
@@ -823,7 +808,7 @@ class _SettingsPageState extends State<SettingsPage>
     );
   }
 
-  // ── Account Card ──────────────────────────────────────────────────────────
+  
 
   Widget _buildAccountCard() {
     return _SectionCard(
@@ -855,18 +840,15 @@ class _SettingsPageState extends State<SettingsPage>
         filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
         child: AlertDialog(
           backgroundColor: const Color(0xFF0D1B3E),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Text('Đăng xuất?',
-              style:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
           content: Text('Bạn chắc chắn muốn đăng xuất?',
-              style: TextStyle(color: Colors.white.withOpacity(0.6))),
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text('Hủy',
-                  style: TextStyle(color: Colors.white.withOpacity(0.5))),
+              child: Text('Hủy', style: TextStyle(color: Colors.white.withValues(alpha: 0.5))),
             ),
             TextButton(
               onPressed: () async {
@@ -886,8 +868,7 @@ class _SettingsPageState extends State<SettingsPage>
                 }
               },
               child: const Text('Đăng xuất',
-                  style: TextStyle(
-                      color: Color(0xFFFF6B6B), fontWeight: FontWeight.w700)),
+                  style: TextStyle(color: Color(0xFFFF6B6B), fontWeight: FontWeight.w700)),
             ),
           ],
         ),
@@ -902,26 +883,22 @@ class _SettingsPageState extends State<SettingsPage>
         filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
         child: AlertDialog(
           backgroundColor: const Color(0xFF0D1B3E),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Text('Xóa tài khoản?',
-              style: TextStyle(
-                  color: Color(0xFFFF4B4B), fontWeight: FontWeight.w700)),
+              style: TextStyle(color: Color(0xFFFF4B4B), fontWeight: FontWeight.w700)),
           content: Text(
             'Hành động này không thể hoàn tác. Tất cả dữ liệu của bạn sẽ bị xóa vĩnh viễn.',
-            style: TextStyle(color: Colors.white.withOpacity(0.6), height: 1.5),
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.6), height: 1.5),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text('Hủy',
-                  style: TextStyle(color: Colors.white.withOpacity(0.5))),
+              child: Text('Hủy', style: TextStyle(color: Colors.white.withValues(alpha: 0.5))),
             ),
             TextButton(
               onPressed: () async {
                 Navigator.pop(context);
-                final success =
-                    await context.read<AuthProvider>().deleteAccount();
+                final success = await context.read<AuthProvider>().deleteAccount();
                 if (success && mounted) {
                   Navigator.pushAndRemoveUntil(
                     context,
@@ -935,8 +912,7 @@ class _SettingsPageState extends State<SettingsPage>
                 }
               },
               child: const Text('Xóa vĩnh viễn',
-                  style: TextStyle(
-                      color: Color(0xFFFF4B4B), fontWeight: FontWeight.w700)),
+                  style: TextStyle(color: Color(0xFFFF4B4B), fontWeight: FontWeight.w700)),
             ),
           ],
         ),
@@ -948,11 +924,11 @@ class _SettingsPageState extends State<SettingsPage>
         height: 1,
         indent: 68,
         endIndent: 0,
-        color: Colors.white.withOpacity(0.06),
+        color: Colors.white.withValues(alpha: 0.06),
       );
 }
 
-// ─── Reusable Widgets ─────────────────────────────────────────────────────────
+
 
 class _SectionCard extends StatelessWidget {
   final String title;
@@ -974,8 +950,8 @@ class _SectionCard extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            color: Colors.white.withOpacity(0.05),
-            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            color: Colors.white.withValues(alpha: 0.05),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -984,14 +960,12 @@ class _SectionCard extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 2),
                 child: Row(
                   children: [
-                    Icon(icon,
-                        size: 14,
-                        color: const Color(0xFF4F8DFF).withOpacity(0.8)),
+                    Icon(icon, size: 14, color: const Color(0xFF4F8DFF).withValues(alpha: 0.8)),
                     const SizedBox(width: 6),
                     Text(
                       title.toUpperCase(),
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.35),
+                        color: Colors.white.withValues(alpha: 0.35),
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 1.0,
@@ -1032,7 +1006,7 @@ class _FieldRow extends StatelessWidget {
             height: 38,
             margin: const EdgeInsets.only(right: 14, top: 2),
             decoration: BoxDecoration(
-              color: const Color(0xFF4F8DFF).withOpacity(0.08),
+              color: const Color(0xFF4F8DFF).withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, color: const Color(0xFF4F8DFF), size: 18),
@@ -1044,7 +1018,7 @@ class _FieldRow extends StatelessWidget {
                 Text(
                   label,
                   style: TextStyle(
-                    color: const Color(0xFF4F8DFF).withOpacity(0.7),
+                    color: const Color(0xFF4F8DFF).withValues(alpha: 0.7),
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.3,
@@ -1089,7 +1063,7 @@ class _ActionRow extends StatelessWidget {
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.1),
+                color: iconColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: iconColor, size: 18),
@@ -1098,7 +1072,7 @@ class _ActionRow extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                color: labelColor ?? Colors.white.withOpacity(0.85),
+                color: labelColor ?? Colors.white.withValues(alpha: 0.85),
                 fontSize: 15,
                 fontWeight: FontWeight.w500,
               ),
@@ -1106,7 +1080,7 @@ class _ActionRow extends StatelessWidget {
             const Spacer(),
             Icon(
               Icons.chevron_right_rounded,
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               size: 20,
             ),
           ],
@@ -1127,9 +1101,9 @@ class _Badge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.25)),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
       ),
       child: Text(
         label,
@@ -1157,8 +1131,8 @@ class _GlassCard extends StatelessWidget {
           padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            color: Colors.white.withOpacity(0.07),
-            border: Border.all(color: Colors.white.withOpacity(0.12)),
+            color: Colors.white.withValues(alpha: 0.07),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
           ),
           child: child,
         ),
@@ -1185,10 +1159,10 @@ class _GlassIconBtn extends StatelessWidget {
             height: 40,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              color: Colors.white.withOpacity(0.07),
-              border: Border.all(color: Colors.white.withOpacity(0.1)),
+              color: Colors.white.withValues(alpha: 0.07),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
             ),
-            child: Icon(icon, color: Colors.white.withOpacity(0.8), size: 20),
+            child: Icon(icon, color: Colors.white.withValues(alpha: 0.8), size: 20),
           ),
         ),
       ),
@@ -1221,15 +1195,12 @@ class _GradientButton extends StatelessWidget {
           gradient: LinearGradient(
             colors: onTap != null
                 ? const [Color(0xFF4F8DFF), Color(0xFF7B4FFF)]
-                : [
-                    Colors.white.withOpacity(0.1),
-                    Colors.white.withOpacity(0.1)
-                  ],
+                : [Colors.white.withValues(alpha: 0.1), Colors.white.withValues(alpha: 0.1)],
           ),
           boxShadow: onTap != null
               ? [
                   BoxShadow(
-                    color: const Color(0xFF4F8DFF).withOpacity(0.3),
+                    color: const Color(0xFF4F8DFF).withValues(alpha: 0.3),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   )
@@ -1239,7 +1210,7 @@ class _GradientButton extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            color: onTap != null ? Colors.white : Colors.white.withOpacity(0.3),
+            color: onTap != null ? Colors.white : Colors.white.withValues(alpha: 0.3),
             fontSize: 14,
             fontWeight: FontWeight.w700,
           ),

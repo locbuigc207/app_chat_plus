@@ -2,9 +2,10 @@
 
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/providers/auth_provider.dart';
@@ -12,9 +13,9 @@ import 'package:flutter_chat_demo/services/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DESIGN TOKENS (Dark premium — consistent with app)
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 const _kBg = Color(0xFF0D0D14);
 const _kSurface = Color(0xFF16161F);
@@ -27,9 +28,9 @@ const _kTextSec = Color(0xFF8888AA);
 const _kTextDim = Color(0xFF55556A);
 const _kHighlight = Color(0xFFFFE066);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MODEL
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class SearchResult {
   final String messageId;
@@ -37,7 +38,7 @@ class SearchResult {
   final String content;
   final String timestamp;
   final bool isMyMessage;
-  final String source; // 'local' | 'cloud'
+  final String source; 
 
   const SearchResult({
     required this.messageId,
@@ -85,9 +86,9 @@ class SearchResult {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PAGE
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class SearchMessagesPage extends StatefulWidget {
   const SearchMessagesPage({
@@ -107,43 +108,41 @@ class SearchMessagesPage extends StatefulWidget {
 
 class _SearchMessagesPageState extends State<SearchMessagesPage>
     with SingleTickerProviderStateMixin {
-  // ── Controllers ────────────────────────────────────────────────────────────
+  
   final _searchController = TextEditingController();
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
 
-  // ── State ──────────────────────────────────────────────────────────────────
+  
   List<SearchResult> _results = [];
   bool _isSearching = false;
   bool _usingLocal = false;
   String _query = '';
   String? _errorMsg;
 
-  // Debounce
+  
   Timer? _debounce;
 
-  // Firestore search cancellation flag
+  
   String? _lastFirestoreQuery;
 
   late final String _currentUserId;
 
-  // ── Animation ──────────────────────────────────────────────────────────────
+  
   late final AnimationController _listAc;
 
   @override
   void initState() {
     super.initState();
     _currentUserId = context.read<AuthProvider>().userFirebaseId ?? '';
-    _listAc = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 400));
+    _listAc = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.light,
       ),
     );
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => _focusNode.requestFocus());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _focusNode.requestFocus());
   }
 
   @override
@@ -156,12 +155,12 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
     super.dispose();
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // SEARCH LOGIC
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _onQueryChanged(String raw) {
-    setState(() {}); // Refresh clear button
+    setState(() {}); 
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 300), () {
       _performSearch(raw);
@@ -188,7 +187,7 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
       _errorMsg = null;
     });
 
-    // 1. Local DB — synchronous, instant
+    
     final local = _searchLocalDb(_query);
     if (local.isNotEmpty) {
       if (mounted) {
@@ -202,7 +201,7 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
       return;
     }
 
-    // 2. Firestore fallback — async + decrypt
+    
     await _searchFirestore(_query);
   }
 
@@ -252,8 +251,7 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
         );
 
         if (decrypted.toLowerCase().contains(query)) {
-          temp.add(
-              SearchResult.fromFirestore(doc, msg, decrypted, _currentUserId));
+          temp.add(SearchResult.fromFirestore(doc, msg, decrypted, _currentUserId));
         }
       }
 
@@ -280,9 +278,9 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
     _listAc.forward(from: 0);
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // BUILD
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   @override
   Widget build(BuildContext context) {
@@ -304,16 +302,14 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
       backgroundColor: _kSurface,
       elevation: 0,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new_rounded,
-            color: _kTextPri, size: 20),
+        icon: const Icon(Icons.arrow_back_ios_new_rounded, color: _kTextPri, size: 20),
         onPressed: () => Navigator.pop(context),
       ),
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('Tìm kiếm tin nhắn',
-              style: TextStyle(
-                  color: _kTextPri, fontSize: 16, fontWeight: FontWeight.w700)),
+              style: TextStyle(color: _kTextPri, fontSize: 16, fontWeight: FontWeight.w700)),
           Text(
             widget.peerName,
             style: const TextStyle(color: _kTextSec, fontSize: 11),
@@ -336,12 +332,10 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
         decoration: InputDecoration(
           hintText: 'Nhập ít nhất 2 ký tự…',
           hintStyle: const TextStyle(color: _kTextDim, fontSize: 14),
-          prefixIcon:
-              const Icon(Icons.search_rounded, color: _kTextSec, size: 20),
+          prefixIcon: const Icon(Icons.search_rounded, color: _kTextSec, size: 20),
           suffixIcon: _searchController.text.isNotEmpty
               ? IconButton(
-                  icon: const Icon(Icons.clear_rounded,
-                      color: _kTextSec, size: 18),
+                  icon: const Icon(Icons.clear_rounded, color: _kTextSec, size: 18),
                   onPressed: () {
                     _searchController.clear();
                     _performSearch('');
@@ -350,8 +344,7 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
               : null,
           filled: true,
           fillColor: _kSurface2,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
             borderSide: const BorderSide(color: _kBorder),
@@ -376,8 +369,7 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
 
     final count = _results.length;
     final source = _usingLocal ? '· local' : '· cloud';
-    final label =
-        count == 0 ? 'Không tìm thấy kết quả' : '$count kết quả $source';
+    final label = count == 0 ? 'Không tìm thấy kết quả' : '$count kết quả $source';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -390,9 +382,7 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
             color: count > 0 ? _kAccent : _kTextDim,
           ),
           const SizedBox(width: 6),
-          Text(label,
-              style: TextStyle(
-                  color: count > 0 ? _kTextSec : _kTextDim, fontSize: 12)),
+          Text(label, style: TextStyle(color: count > 0 ? _kTextSec : _kTextDim, fontSize: 12)),
         ],
       ),
     );
@@ -417,12 +407,11 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
             child: CircularProgressIndicator(
               color: _kAccent,
               strokeWidth: 2.5,
-              backgroundColor: _kAccent.withOpacity(0.15),
+              backgroundColor: _kAccent.withValues(alpha: 0.15),
             ),
           ),
           const SizedBox(height: 14),
-          const Text('Đang tìm kiếm…',
-              style: TextStyle(color: _kTextSec, fontSize: 13)),
+          const Text('Đang tìm kiếm…', style: TextStyle(color: _kTextSec, fontSize: 13)),
         ],
       ),
     );
@@ -438,14 +427,13 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
             height: 80,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: _kAccent.withOpacity(0.08),
+              color: _kAccent.withValues(alpha: 0.08),
             ),
             child: const Icon(Icons.search_rounded, color: _kAccent, size: 36),
           ),
           const SizedBox(height: 18),
           const Text('Tìm kiếm trong cuộc trò chuyện',
-              style: TextStyle(
-                  color: _kTextPri, fontSize: 16, fontWeight: FontWeight.w600)),
+              style: TextStyle(color: _kTextPri, fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
           const Text('Nhập ít nhất 2 ký tự để bắt đầu',
               style: TextStyle(color: _kTextSec, fontSize: 13)),
@@ -461,11 +449,9 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
         children: [
           const Icon(Icons.search_off_rounded, color: _kTextDim, size: 56),
           const SizedBox(height: 14),
-          Text('Không tìm thấy "$_query"',
-              style: const TextStyle(color: _kTextSec, fontSize: 15)),
+          Text('Không tìm thấy "$_query"', style: const TextStyle(color: _kTextSec, fontSize: 15)),
           const SizedBox(height: 6),
-          const Text('Thử từ khóa khác',
-              style: TextStyle(color: _kTextDim, fontSize: 12)),
+          const Text('Thử từ khóa khác', style: TextStyle(color: _kTextDim, fontSize: 12)),
         ],
       ),
     );
@@ -481,10 +467,7 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
             const Icon(Icons.error_outline_rounded, color: _kAccent2, size: 48),
             const SizedBox(height: 12),
             const Text('Lỗi tìm kiếm',
-                style: TextStyle(
-                    color: _kTextPri,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600)),
+                style: TextStyle(color: _kTextPri, fontSize: 16, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             Text(msg,
                 textAlign: TextAlign.center,
@@ -493,16 +476,14 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
             GestureDetector(
               onTap: () => _performSearch(_query),
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
                 decoration: BoxDecoration(
-                  color: _kAccent.withOpacity(0.15),
+                  color: _kAccent.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _kAccent.withOpacity(0.4)),
+                  border: Border.all(color: _kAccent.withValues(alpha: 0.4)),
                 ),
                 child: const Text('Thử lại',
-                    style: TextStyle(
-                        color: _kAccent, fontWeight: FontWeight.w600)),
+                    style: TextStyle(color: _kAccent, fontWeight: FontWeight.w600)),
               ),
             ),
           ],
@@ -544,9 +525,9 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// RESULT CARD
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _SearchResultCard extends StatelessWidget {
   final SearchResult result;
@@ -565,9 +546,8 @@ class _SearchResultCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dateStr = result.dateTime != null
-        ? DateFormat('dd/MM HH:mm').format(result.dateTime!)
-        : '';
+    final dateStr =
+        result.dateTime != null ? DateFormat('dd/MM HH:mm').format(result.dateTime!) : '';
 
     return GestureDetector(
       onTap: onTap,
@@ -582,20 +562,17 @@ class _SearchResultCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header row
+            
             Row(
               children: [
                 Container(
                   padding: const EdgeInsets.all(5),
                   decoration: BoxDecoration(
-                    color: (result.isMyMessage ? _kAccent : _kAccent2)
-                        .withOpacity(0.12),
+                    color: (result.isMyMessage ? _kAccent : _kAccent2).withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
-                    result.isMyMessage
-                        ? Icons.send_rounded
-                        : Icons.reply_rounded,
+                    result.isMyMessage ? Icons.send_rounded : Icons.reply_rounded,
                     size: 12,
                     color: result.isMyMessage ? _kAccent : _kAccent2,
                   ),
@@ -611,13 +588,11 @@ class _SearchResultCard extends StatelessWidget {
                 ),
                 const Spacer(),
                 if (dateStr.isNotEmpty)
-                  Text(dateStr,
-                      style: const TextStyle(color: _kTextDim, fontSize: 11)),
+                  Text(dateStr, style: const TextStyle(color: _kTextDim, fontSize: 11)),
                 const SizedBox(width: 6),
-                // Source badge
+                
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: _kSurface2,
                     borderRadius: BorderRadius.circular(6),
@@ -635,7 +610,7 @@ class _SearchResultCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-            // Highlighted content
+            
             _HighlightedText(
               text: result.content,
               query: query,
@@ -647,9 +622,9 @@ class _SearchResultCard extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HIGHLIGHTED TEXT
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _HighlightedText extends StatelessWidget {
   final String text;
@@ -676,22 +651,19 @@ class _HighlightedText extends StatelessWidget {
           style: const TextStyle(color: _kTextSec, fontSize: 13, height: 1.5));
     }
 
-    // Show context around match (max 120 chars)
+    
     String display = text;
     int matchIdx = idx;
     if (text.length > 120) {
       final start = (idx - 40).clamp(0, text.length);
       final prefix = start > 0 ? '…' : '';
-      display =
-          prefix + text.substring(start, (idx + 80).clamp(0, text.length));
+      display = prefix + text.substring(start, (idx + 80).clamp(0, text.length));
       matchIdx = prefix.length + (idx - start);
     }
 
     final before = display.substring(0, matchIdx);
-    final match = display.substring(
-        matchIdx, (matchIdx + query.length).clamp(0, display.length));
-    final after =
-        display.substring((matchIdx + query.length).clamp(0, display.length));
+    final match = display.substring(matchIdx, (matchIdx + query.length).clamp(0, display.length));
+    final after = display.substring((matchIdx + query.length).clamp(0, display.length));
 
     return RichText(
       maxLines: 3,

@@ -1,11 +1,10 @@
-// ignore_for_file: use_build_context_synchronously
-
 import 'dart:async';
 import 'dart:io';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
@@ -21,47 +20,47 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DESIGN TOKENS
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 abstract final class _T {
-  // Background
+  
   static const bg = Color(0xFFF6F7FB);
   static const surface = Colors.white;
   static const surfaceAlt = Color(0xFFF0F1F7);
 
-  // Brand
+  
   static const primary = Color(0xFF5A67D8);
   static const primaryLight = Color(0xFFEEF0FD);
   static const primaryDark = Color(0xFF4254C7);
   static const primaryGlow = Color(0x265A67D8);
 
-  // Bubbles
+  
   static const bubbleMe = Color(0xFF5A67D8);
   static const bubblePeer = Colors.white;
   static const bubbleMeText = Colors.white;
   static const bubblePeerText = Color(0xFF1A1D2E);
 
-  // Text
+  
   static const textPrimary = Color(0xFF1A1D2E);
   static const textSecondary = Color(0xFF6B7280);
   static const textMuted = Color(0xFFB0B7C3);
 
-  // Status
+  
   static const success = Color(0xFF22C55E);
   static const danger = Color(0xFFEF4444);
   static const warning = Color(0xFFF59E0B);
   static const info = Color(0xFF3B82F6);
 
-  // Borders
+  
   static const border = Color(0xFFE8EAF0);
   static const borderLight = Color(0xFFF3F4F8);
 
-  // Shadows
+  
   static List<BoxShadow> get shadowSm => [
         BoxShadow(
-          color: Colors.black.withOpacity(0.05),
+          color: Colors.black.withValues(alpha: 0.05),
           blurRadius: 8,
           offset: const Offset(0, 2),
         ),
@@ -69,7 +68,7 @@ abstract final class _T {
 
   static List<BoxShadow> get shadowMd => [
         BoxShadow(
-          color: Colors.black.withOpacity(0.08),
+          color: Colors.black.withValues(alpha: 0.08),
           blurRadius: 16,
           offset: const Offset(0, 4),
         ),
@@ -77,13 +76,13 @@ abstract final class _T {
 
   static List<BoxShadow> get shadowPrimary => [
         BoxShadow(
-          color: primary.withOpacity(0.35),
+          color: primary.withValues(alpha: 0.35),
           blurRadius: 12,
           offset: const Offset(0, 4),
         ),
       ];
 
-  // Radii
+  
   static const r4 = Radius.circular(4);
   static const r8 = Radius.circular(8);
   static const r10 = Radius.circular(10);
@@ -95,7 +94,7 @@ abstract final class _T {
   static const r28 = Radius.circular(28);
   static const rFull = Radius.circular(999);
 
-  // Typography
+  
   static const fontDisplay = TextStyle(
     fontFamily: 'SF Pro Display',
     fontSize: 17,
@@ -117,15 +116,15 @@ abstract final class _T {
     letterSpacing: 0.1,
   );
 
-  // Durations
+  
   static const fast = Duration(milliseconds: 180);
   static const normal = Duration(milliseconds: 260);
   static const slow = Duration(milliseconds: 400);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ARGUMENTS
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class ChatPageArguments {
   final String peerId;
@@ -139,9 +138,9 @@ class ChatPageArguments {
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CHAT PAGE
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class ChatPage extends StatefulWidget {
   const ChatPage({
@@ -162,31 +161,28 @@ class ChatPage extends StatefulWidget {
 }
 
 class ChatPageState extends State<ChatPage>
-    with
-        WidgetsBindingObserver,
-        ResourceManagerMixin,
-        TickerProviderStateMixin {
-  // ── Identity ────────────────────────────────────────────────────────────────
+    with WidgetsBindingObserver, ResourceManagerMixin, TickerProviderStateMixin {
+  
   late final String _currentUserId;
   String _groupChatId = '';
 
-  // ── Controllers ─────────────────────────────────────────────────────────────
+  
   late final TextEditingController _inputController;
   late final ScrollController _scrollController;
   late final FocusNode _focusNode;
 
-  // ── Animation Controllers ────────────────────────────────────────────────────
+  
   late final AnimationController _sendBtnAnim;
   late final AnimationController _fabAnim;
   late final AnimationController _menuAnim;
   late final AnimationController _replyAnim;
   late final AnimationController _appBarAnim;
 
-  // ── Platform Channels ───────────────────────────────────────────────────────
+  
   static const _miniChatChannel = MethodChannel('mini_chat_channel');
   static const _bubbleChannel = MethodChannel('bubble_chat_channel');
 
-  // ── Providers ───────────────────────────────────────────────────────────────
+  
   late ChatProvider _chatProvider;
   late AuthProvider _authProvider;
   late MessageProvider _messageProvider;
@@ -202,11 +198,11 @@ class ChatPageState extends State<ChatPage>
   VoiceMessageProvider? _voiceProvider;
   LocationProvider? _locationProvider;
 
-  // ── Pagination ──────────────────────────────────────────────────────────────
+  
   int _limit = 30;
   final int _limitIncrement = 20;
 
-  // ── UI State ────────────────────────────────────────────────────────────────
+  
   bool _isLoading = false;
   bool _isShowSticker = false;
   bool _isLoadingMedia = false;
@@ -217,12 +213,12 @@ class ChatPageState extends State<ChatPage>
   bool _lockChecked = false;
   bool _isProcessingMsg = false;
 
-  // ── Recording ───────────────────────────────────────────────────────────────
+  
   String _recDuration = '0:00';
   int _recSeconds = 0;
   Timer? _recTimer;
 
-  // ── Message State ───────────────────────────────────────────────────────────
+  
   List<DocumentSnapshot> _pinned = [];
   List<SmartReply> _smartReplies = [];
   MessageChat? _replyingTo;
@@ -235,9 +231,9 @@ class ChatPageState extends State<ChatPage>
 
   final ImagePicker _picker = ImagePicker();
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // LIFECYCLE
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   @override
   void initState() {
@@ -268,7 +264,7 @@ class ChatPageState extends State<ChatPage>
       duration: _T.slow,
     )..forward();
 
-    // Register with resource manager
+    
     resourceManager
       ..addAnimationController(_sendBtnAnim)
       ..addAnimationController(_fabAnim)
@@ -337,9 +333,9 @@ class ChatPageState extends State<ChatPage>
     super.dispose();
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // INITIALIZATION
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _initProviders(BuildContext ctx) {
     if (resourceManager.isDisposed) return;
@@ -363,8 +359,7 @@ class ChatPageState extends State<ChatPage>
 
     final sub = _bubbleService?.bubbleClickStream.listen((event) {
       if (event.userId == widget.arguments.peerId && mounted) {
-        _toast('📨 ${widget.arguments.peerNickname}: ${event.message}',
-            isSuccess: true);
+        _toast('📨 ${widget.arguments.peerNickname}: ${event.message}', isSuccess: true);
       }
     });
     if (sub != null) resourceManager.addSubscription(sub);
@@ -424,9 +419,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // SCROLL
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _onScroll() {
     if (resourceManager.isDisposed || !_scrollController.hasClients) return;
@@ -457,9 +452,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // INPUT HANDLERS
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _onInputChanged() {
     final hasText = _inputController.text.trim().isNotEmpty;
@@ -534,8 +529,7 @@ class ChatPageState extends State<ChatPage>
       SnackBar(
         content: const Row(
           children: [
-            Icon(Icons.accessibility_new_rounded,
-                color: Colors.white, size: 18),
+            Icon(Icons.accessibility_new_rounded, color: Colors.white, size: 18),
             SizedBox(width: 10),
             Expanded(
               child: Text(
@@ -563,9 +557,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // PINNED MESSAGES
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _loadPinned() {
     if (resourceManager.isDisposed) return;
@@ -579,14 +573,14 @@ class ChatPageState extends State<ChatPage>
     resourceManager.addSubscription(sub);
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // INCOMING MESSAGE LISTENER
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _listenIncoming() {
-    if (resourceManager.isDisposed ||
-        _groupChatId.isEmpty ||
-        _currentUserId.isEmpty) return;
+    if (resourceManager.isDisposed || _groupChatId.isEmpty || _currentUserId.isEmpty) {
+      return;
+    }
 
     final sub = FirebaseFirestore.instance
         .collection(FirestoreConstants.pathMessageCollection)
@@ -625,9 +619,9 @@ class ChatPageState extends State<ChatPage>
     resourceManager.addSubscription(sub);
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // MARK READ
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<void> _markRead() async {
     if (resourceManager.isDisposed) return;
@@ -657,9 +651,9 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // SEND MESSAGE
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<void> _onSend(String content, int type) async {
     if (resourceManager.isDisposed) return;
@@ -723,9 +717,9 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // BUBBLE
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<void> _updateBubble(
     String content,
@@ -751,8 +745,7 @@ class ChatPageState extends State<ChatPage>
         display = '🎤 Tin nhắn thoại';
         break;
       default:
-        if (content.contains('maps.google.com') ||
-            content.contains('Location:')) {
+        if (content.contains('maps.google.com') || content.contains('Location:')) {
           msgType = 'location';
           display = '📍 Vị trí';
         }
@@ -806,8 +799,7 @@ class ChatPageState extends State<ChatPage>
         userName: widget.arguments.peerNickname,
         avatarUrl: widget.arguments.peerAvatar,
       );
-      _toast(ok ? '💬 Chat bubble đã tạo' : '❌ Không thể tạo bubble',
-          isSuccess: ok);
+      _toast(ok ? '💬 Chat bubble đã tạo' : '❌ Không thể tạo bubble', isSuccess: ok);
     } else if (choice == 'minichat') {
       final ok = await _bubbleService!.showMiniChat(
         userId: widget.arguments.peerId,
@@ -845,8 +837,7 @@ class ChatPageState extends State<ChatPage>
               isPrimary: true,
               onTap: () => Navigator.pop(ctx, 'bubble'),
             ),
-            if (_bubbleService!.currentImplementation ==
-                BubbleImplementation.windowManager)
+            if (_bubbleService!.currentImplementation == BubbleImplementation.windowManager)
               _ChatDialogAction(
                 label: 'Mini Chat',
                 onTap: () => Navigator.pop(ctx, 'minichat'),
@@ -859,9 +850,9 @@ class ChatPageState extends State<ChatPage>
         ),
       );
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // MEDIA
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<void> _pickImage() async {
     HapticFeedback.lightImpact();
@@ -888,8 +879,7 @@ class ChatPageState extends State<ChatPage>
 
     final confirmed = await _confirm(
       title: 'Gửi ${isVideo ? 'Video' : 'Ảnh'}',
-      message:
-          'Gửi ${isVideo ? 'video' : 'ảnh'} này đến ${widget.arguments.peerNickname}?',
+      message: 'Gửi ${isVideo ? 'video' : 'ảnh'} này đến ${widget.arguments.peerNickname}?',
       confirmLabel: 'Gửi',
       icon: isVideo ? Icons.videocam_rounded : Icons.image_rounded,
     );
@@ -931,9 +921,9 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // STICKER
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _toggleSticker() {
     if (resourceManager.isDisposed) return;
@@ -946,9 +936,9 @@ class ChatPageState extends State<ChatPage>
     _menuAnim.reverse();
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // VOICE
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<void> _startRec() async {
     if (_voiceProvider == null) {
@@ -992,11 +982,12 @@ class ChatPageState extends State<ChatPage>
       _toast('Ghi âm thất bại');
       return;
     }
-    if (mounted)
+    if (mounted) {
       setState(() {
         _isRecording = false;
         _isLoading = true;
       });
+    }
     final fileName = 'voice_${DateTime.now().millisecondsSinceEpoch}.aac';
     final result = await _voiceProvider!.uploadVoiceMessage(path, fileName);
     if (mounted) setState(() => _isLoading = false);
@@ -1016,9 +1007,9 @@ class ChatPageState extends State<ChatPage>
     HapticFeedback.heavyImpact();
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // LOCATION
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<void> _shareLocation() async {
     if (_locationProvider == null) return;
@@ -1053,9 +1044,9 @@ class ChatPageState extends State<ChatPage>
     } catch (_) {}
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // SCHEDULE MESSAGE
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<void> _scheduleMessage() async {
     if (resourceManager.isDisposed) return;
@@ -1088,9 +1079,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // SMART REPLIES
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _loadSmartReplies() {
     if (resourceManager.isDisposed) return;
@@ -1106,9 +1097,9 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // MESSAGE OPTIONS
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _showMsgOptions(MessageChat msg, String msgId) {
     if (resourceManager.isDisposed) return;
@@ -1140,8 +1131,7 @@ class ChatPageState extends State<ChatPage>
       builder: (_) => EditMessageDialog(
         originalContent: current,
         onSave: (newContent) async {
-          final ok =
-              await _messageProvider.editMessage(_groupChatId, id, newContent);
+          final ok = await _messageProvider.editMessage(_groupChatId, id, newContent);
           if (ok) _toast('Đã chỉnh sửa', isSuccess: true);
         },
       ),
@@ -1163,8 +1153,7 @@ class ChatPageState extends State<ChatPage>
   }
 
   Future<void> _pinMsg(String id, bool isPinned) async {
-    final ok =
-        await _messageProvider.togglePinMessage(_groupChatId, id, isPinned);
+    final ok = await _messageProvider.togglePinMessage(_groupChatId, id, isPinned);
     if (ok) {
       _toast(isPinned ? 'Đã bỏ ghim' : '📌 Đã ghim', isSuccess: true);
     }
@@ -1205,9 +1194,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // REMINDER
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<void> _setReminder(MessageChat msg, String msgId) async {
     final time = await _pickReminderTime();
@@ -1241,9 +1230,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // TRANSLATE
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _translate(String content) {
     showDialog(
@@ -1252,9 +1241,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // LOCK
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<void> _checkLock() async {
     if (resourceManager.isDisposed) return;
@@ -1292,8 +1281,7 @@ class ChatPageState extends State<ChatPage>
       remaining = 5 - result.failedAttempts;
       errorMsg = result.message;
       if (remaining <= 0 || result.locked) {
-        await _lockProvider.autoDeleteMessagesAfterFailedAttempts(
-            conversationId: _groupChatId);
+        await _lockProvider.autoDeleteMessagesAfterFailedAttempts(conversationId: _groupChatId);
         _toast('Đã xóa tin nhắn do vi phạm bảo mật', isSuccess: false);
         return false;
       }
@@ -1342,9 +1330,9 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // AI ANALYSIS
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _showAI() {
     final msgs = LocalDbService().getMessages(_groupChatId);
@@ -1355,9 +1343,7 @@ class ChatPageState extends State<ChatPage>
     final recent = msgs
         .take(15)
         .map((d) {
-          final s = d['idFrom'] == _currentUserId
-              ? 'Tôi'
-              : widget.arguments.peerNickname;
+          final s = d['idFrom'] == _currentUserId ? 'Tôi' : widget.arguments.peerNickname;
           return '$s: ${d['content']}';
         })
         .toList()
@@ -1372,15 +1358,13 @@ class ChatPageState extends State<ChatPage>
         icon: Icons.auto_awesome_rounded,
         iconColor: const Color(0xFF8B5CF6),
         content: FutureBuilder<String?>(
-          future: AIBackendService()
-              .analyzeChatContext(recent, 'work', 'extract_tasks'),
+          future: AIBackendService().analyzeChatContext(recent, 'work', 'extract_tasks'),
           builder: (_, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
               return const SizedBox(
                 height: 100,
                 child: Center(
-                  child: CircularProgressIndicator(
-                      color: Color(0xFF8B5CF6), strokeWidth: 2),
+                  child: CircularProgressIndicator(color: Color(0xFF8B5CF6), strokeWidth: 2),
                 ),
               );
             }
@@ -1411,9 +1395,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // SEARCH
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<void> _openSearch() async {
     if (resourceManager.isDisposed) return;
@@ -1453,8 +1437,7 @@ class ChatPageState extends State<ChatPage>
       }
       return;
     }
-    final offset =
-        (idx * 76.0).clamp(0.0, _scrollController.position.maxScrollExtent);
+    final offset = (idx * 76.0).clamp(0.0, _scrollController.position.maxScrollExtent);
     _scrollController.animateTo(
       offset,
       duration: _T.slow,
@@ -1463,9 +1446,9 @@ class ChatPageState extends State<ChatPage>
     if (mounted) setState(() => _pendingScrollId = null);
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // BACK & NAVIGATION
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _onBack() {
     if (_isShowSticker || _showMenu) {
@@ -1486,9 +1469,9 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // HELPERS
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _toast(String msg, {bool isSuccess = false}) {
     Fluttertoast.showToast(
@@ -1512,8 +1495,7 @@ class ChatPageState extends State<ChatPage>
           title: title,
           icon: icon ?? Icons.help_outline_rounded,
           iconColor: isDanger ? _T.danger : _T.primary,
-          content: Text(message,
-              style: _T.fontBody.copyWith(color: _T.textSecondary)),
+          content: Text(message, style: _T.fontBody.copyWith(color: _T.textSecondary)),
           actions: [
             _ChatDialogAction(
               label: confirmLabel,
@@ -1529,8 +1511,7 @@ class ChatPageState extends State<ChatPage>
         ),
       );
 
-  bool _sameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
+  bool _sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
 
   String _fmtTimestamp(String ts) {
     final ms = int.tryParse(ts) ?? 0;
@@ -1538,9 +1519,9 @@ class ChatPageState extends State<ChatPage>
     return DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(ms));
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // BUILD
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   @override
   Widget build(BuildContext context) {
@@ -1695,16 +1676,13 @@ class ChatPageState extends State<ChatPage>
                     borderRadius: BorderRadius.all(_T.r16),
                   ),
                   itemBuilder: (_) => [
-                    _popItem('ai', Icons.auto_awesome_rounded, 'AI Assistant',
-                        const Color(0xFF8B5CF6)),
                     _popItem(
-                        'search', Icons.search_rounded, 'Tìm kiếm', _T.primary),
-                    _popItem('reminders', Icons.alarm_rounded, 'Nhắc nhở',
-                        _T.warning),
+                        'ai', Icons.auto_awesome_rounded, 'AI Assistant', const Color(0xFF8B5CF6)),
+                    _popItem('search', Icons.search_rounded, 'Tìm kiếm', _T.primary),
+                    _popItem('reminders', Icons.alarm_rounded, 'Nhắc nhở', _T.warning),
                     const PopupMenuDivider(),
                     _popItem('lock', Icons.lock_rounded, 'Khoá chat', _T.info),
-                    _popItem('bubble', Icons.bubble_chart_rounded,
-                        'Chat Bubble', _T.success),
+                    _popItem('bubble', Icons.bubble_chart_rounded, 'Chat Bubble', _T.success),
                   ],
                 ),
                 const SizedBox(width: 4),
@@ -1728,7 +1706,7 @@ class ChatPageState extends State<ChatPage>
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.all(_T.r8),
               ),
               child: Icon(icon, color: color, size: 17),
@@ -1743,14 +1721,14 @@ class ChatPageState extends State<ChatPage>
         ),
       );
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // BODY
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildBody() {
     return Stack(
       children: [
-        // Chat background
+        
         Positioned.fill(
           child: Container(
             decoration: const BoxDecoration(color: _T.bg),
@@ -1762,10 +1740,8 @@ class ChatPageState extends State<ChatPage>
             _buildPinnedBar(),
             _buildMsgList(),
             _buildTypingBar(),
-            if (_isShowSticker && !widget.isMiniChat && !widget.isBubbleMode)
-              _buildStickerPanel(),
-            if (_showMenu && !widget.isMiniChat && !widget.isBubbleMode)
-              _buildFeatureMenu(),
+            if (_isShowSticker && !widget.isMiniChat && !widget.isBubbleMode) _buildStickerPanel(),
+            if (_showMenu && !widget.isMiniChat && !widget.isBubbleMode) _buildFeatureMenu(),
             _buildInput(),
           ],
         ),
@@ -1775,9 +1751,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // PINNED BAR
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildPinnedBar() {
     if (_pinned.isEmpty) return const SizedBox.shrink();
@@ -1800,8 +1776,7 @@ class ChatPageState extends State<ChatPage>
             decoration: BoxDecoration(
               color: _T.primaryLight,
               borderRadius: BorderRadius.all(_T.rFull),
-              border:
-                  Border.all(color: _T.primary.withOpacity(0.25), width: 0.8),
+              border: Border.all(color: _T.primary.withValues(alpha: 0.25), width: 0.8),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -1828,9 +1803,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // MESSAGE LIST
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildMsgList() {
     return Flexible(
@@ -1862,9 +1837,8 @@ class ChatPageState extends State<ChatPage>
                         const SizedBox(height: 16),
                         Text(
                           'Bắt đầu cuộc trò chuyện',
-                          style: _T.fontBody.copyWith(
-                              color: _T.textSecondary,
-                              fontWeight: FontWeight.w600),
+                          style: _T.fontBody
+                              .copyWith(color: _T.textSecondary, fontWeight: FontWeight.w600),
                         ),
                         const SizedBox(height: 6),
                         Text(
@@ -1886,10 +1860,9 @@ class ChatPageState extends State<ChatPage>
                         parent: AlwaysScrollableScrollPhysics(),
                       ),
                       itemCount: display.length,
-                      itemBuilder: (_, i) =>
-                          _buildMsgItem(i, display[i], display),
+                      itemBuilder: (_, i) => _buildMsgItem(i, display[i], display),
                     ),
-                    // Scroll to bottom FAB
+                    
                     Positioned(
                       right: 12,
                       bottom: 12,
@@ -1943,8 +1916,7 @@ class ChatPageState extends State<ChatPage>
               int.tryParse(full[index + 1]['timestamp'] ?? '0') ?? 0),
         )) {
       sep = _DateDivider(
-        date: DateTime.fromMillisecondsSinceEpoch(
-            int.tryParse(msg.timestamp) ?? 0),
+        date: DateTime.fromMillisecondsSinceEpoch(int.tryParse(msg.timestamp) ?? 0),
       );
     }
 
@@ -1969,9 +1941,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // BUBBLE BUILDER
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildBubble({
     required String msgId,
@@ -1992,14 +1964,14 @@ class ChatPageState extends State<ChatPage>
       return AnimatedContainer(
         duration: _T.slow,
         decoration: BoxDecoration(
-          color: _T.primary.withOpacity(0.06),
+          color: _T.primary.withValues(alpha: 0.06),
           borderRadius: BorderRadius.all(_T.r16),
         ),
         child: child,
       );
     }
 
-    // View Once
+    
     if (isViewOnce) {
       return wrap(_BubbleRow(
         isMe: isMe,
@@ -2016,7 +1988,7 @@ class ChatPageState extends State<ChatPage>
       ));
     }
 
-    // Voice
+    
     if (msg.type == 3 && _voiceProvider != null) {
       return wrap(_BubbleRow(
         isMe: isMe,
@@ -2029,7 +2001,7 @@ class ChatPageState extends State<ChatPage>
       ));
     }
 
-    // Video
+    
     if (msg.type == TypeMessage.video) {
       return wrap(_buildVideoBubble(
         msgId: msgId,
@@ -2040,7 +2012,7 @@ class ChatPageState extends State<ChatPage>
       ));
     }
 
-    // Image
+    
     if (msg.type == TypeMessage.image) {
       return wrap(_buildImageBubble(
         msgId: msgId,
@@ -2051,7 +2023,7 @@ class ChatPageState extends State<ChatPage>
       ));
     }
 
-    // Sticker
+    
     if (msg.type == TypeMessage.sticker) {
       return wrap(_BubbleRow(
         isMe: isMe,
@@ -2068,7 +2040,7 @@ class ChatPageState extends State<ChatPage>
       ));
     }
 
-    // Text (default)
+    
     return wrap(_buildTextBubble(
       msgId: msgId,
       msg: msg,
@@ -2098,15 +2070,13 @@ class ChatPageState extends State<ChatPage>
     return Container(
       margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
       child: Column(
-        crossAxisAlignment:
-            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment:
-                isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+            mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              // Peer avatar
+              
               if (!isMe && isLastInGroup) ...[
                 _Avatar(photoUrl: widget.arguments.peerAvatar, radius: 16),
                 const SizedBox(width: 6),
@@ -2114,7 +2084,7 @@ class ChatPageState extends State<ChatPage>
                 const SizedBox(width: 38),
               ],
 
-              // Bubble
+              
               GestureDetector(
                 onLongPress: () {
                   HapticFeedback.heavyImpact();
@@ -2129,8 +2099,7 @@ class ChatPageState extends State<ChatPage>
                     maxWidth: MediaQuery.of(context).size.width * 0.72,
                   ),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
                       gradient: isMe
                           ? const LinearGradient(
@@ -2156,8 +2125,7 @@ class ChatPageState extends State<ChatPage>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (!isMe && isScam) _ScamWarning(reason: scamReason),
-                        if (!isMe && hasReminder)
-                          _ReminderHint(onView: _showReminders),
+                        if (!isMe && hasReminder) _ReminderHint(onView: _showReminders),
                         if (msg.isDeleted)
                           Row(
                             mainAxisSize: MainAxisSize.min,
@@ -2189,10 +2157,7 @@ class ChatPageState extends State<ChatPage>
                             data: msg.content,
                             selectable: true,
                             styleSheet: MarkdownStyleSheet(
-                              p: const TextStyle(
-                                  fontSize: 15,
-                                  color: _T.textPrimary,
-                                  height: 1.5),
+                              p: const TextStyle(fontSize: 15, color: _T.textPrimary, height: 1.5),
                             ),
                           )
                         else
@@ -2215,7 +2180,7 @@ class ChatPageState extends State<ChatPage>
                                   '(đã sửa) ',
                                   style: TextStyle(
                                     fontSize: 10,
-                                    color: Colors.white.withOpacity(0.6),
+                                    color: Colors.white.withValues(alpha: 0.6),
                                   ),
                                 ),
                               Icon(
@@ -2240,7 +2205,7 @@ class ChatPageState extends State<ChatPage>
                 ),
               ),
               const SizedBox(width: 4),
-              // Quick actions
+              
               if (!msg.isDeleted)
                 Column(
                   mainAxisSize: MainAxisSize.min,
@@ -2259,7 +2224,7 @@ class ChatPageState extends State<ChatPage>
             ],
           ),
 
-          // Scam scan
+          
           if (!isMe && msg.type == TypeMessage.text) ...[
             const SizedBox(height: 3),
             Padding(
@@ -2275,7 +2240,7 @@ class ChatPageState extends State<ChatPage>
             ),
           ],
 
-          // Reactions
+          
           _ReactionRow(
             groupChatId: _groupChatId,
             msgId: msgId,
@@ -2290,7 +2255,7 @@ class ChatPageState extends State<ChatPage>
             ),
           ),
 
-          // Timestamp
+          
           if (isLastInGroup)
             Padding(
               padding: EdgeInsets.only(
@@ -2324,8 +2289,7 @@ class ChatPageState extends State<ChatPage>
             if (!isPending) {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                    builder: (_) => FullPhotoPage(url: msg.content)),
+                MaterialPageRoute(builder: (_) => FullPhotoPage(url: msg.content)),
               );
             }
           },
@@ -2345,12 +2309,10 @@ class ChatPageState extends State<ChatPage>
                           : _MediaPlaceholder(
                               isLoading: true,
                               progress: prog.expectedTotalBytes != null
-                                  ? prog.cumulativeBytesLoaded /
-                                      prog.expectedTotalBytes!
+                                  ? prog.cumulativeBytesLoaded / prog.expectedTotalBytes!
                                   : null,
                             ),
-                      errorBuilder: (_, __, ___) =>
-                          const _MediaPlaceholder(isLoading: false),
+                      errorBuilder: (_, __, ___) => const _MediaPlaceholder(isLoading: false),
                     ),
             ),
           ),
@@ -2379,8 +2341,7 @@ class ChatPageState extends State<ChatPage>
             if (!isPending) {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                    builder: (_) => VideoPlayerPage(videoUrl: videoUrl)),
+                MaterialPageRoute(builder: (_) => VideoPlayerPage(videoUrl: videoUrl)),
               );
             }
           },
@@ -2400,14 +2361,11 @@ class ChatPageState extends State<ChatPage>
                 if (thumbUrl.isNotEmpty && !isPending)
                   Image.network(thumbUrl,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
-                          const ColoredBox(color: Colors.black54)),
-                if (!thumbUrl.isNotEmpty || isPending)
-                  const ColoredBox(color: Color(0xFF1F2937)),
+                      errorBuilder: (_, __, ___) => const ColoredBox(color: Colors.black54)),
+                if (!thumbUrl.isNotEmpty || isPending) const ColoredBox(color: Color(0xFF1F2937)),
                 if (isPending)
                   const Center(
-                    child: CircularProgressIndicator(
-                        color: Colors.white, strokeWidth: 2),
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                   )
                 else
                   Center(
@@ -2415,7 +2373,7 @@ class ChatPageState extends State<ChatPage>
                       width: 54,
                       height: 54,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.92),
+                        color: Colors.white.withValues(alpha: 0.92),
                         shape: BoxShape.circle,
                         boxShadow: _T.shadowMd,
                       ),
@@ -2430,8 +2388,7 @@ class ChatPageState extends State<ChatPage>
                   bottom: 8,
                   right: 10,
                   child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: Colors.black54,
                       borderRadius: BorderRadius.all(_T.r8),
@@ -2439,12 +2396,9 @@ class ChatPageState extends State<ChatPage>
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.videocam_rounded,
-                            size: 11, color: Colors.white),
+                        Icon(Icons.videocam_rounded, size: 11, color: Colors.white),
                         SizedBox(width: 3),
-                        Text('Video',
-                            style:
-                                TextStyle(fontSize: 10, color: Colors.white)),
+                        Text('Video', style: TextStyle(fontSize: 10, color: Colors.white)),
                       ],
                     ),
                   ),
@@ -2457,9 +2411,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // TYPING INDICATOR
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildTypingBar() {
     if (_presenceProvider == null) return const SizedBox.shrink();
@@ -2477,9 +2431,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // STICKER PANEL
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildStickerPanel() {
     return Container(
@@ -2514,15 +2468,14 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // FEATURE MENU
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildFeatureMenu() {
     final items = <_FeatureItem>[
       _FeatureItem(Icons.image_rounded, 'Ảnh', _pickImage, _T.primary),
-      _FeatureItem(
-          Icons.videocam_rounded, 'Video', _pickVideo, const Color(0xFFFF6B9D)),
+      _FeatureItem(Icons.videocam_rounded, 'Video', _pickVideo, const Color(0xFFFF6B9D)),
       _FeatureItem(
           Icons.visibility_off_rounded,
           'View Once',
@@ -2554,12 +2507,9 @@ class ChatPageState extends State<ChatPage>
               ),
           _T.warning),
       _FeatureItem(Icons.lock_rounded, 'Khoá', _showLockOptions, _T.info),
-      _FeatureItem(
-          Icons.location_on_rounded, 'Vị trí', _shareLocation, _T.danger),
-      _FeatureItem(Icons.schedule_send_rounded, 'Lên lịch', _scheduleMessage,
-          _T.success),
-      _FeatureItem(
-          Icons.bubble_chart_rounded, 'Bubble', _createBubble, _T.primary),
+      _FeatureItem(Icons.location_on_rounded, 'Vị trí', _shareLocation, _T.danger),
+      _FeatureItem(Icons.schedule_send_rounded, 'Lên lịch', _scheduleMessage, _T.success),
+      _FeatureItem(Icons.bubble_chart_rounded, 'Bubble', _createBubble, _T.primary),
     ];
 
     return SlideTransition(
@@ -2588,8 +2538,7 @@ class ChatPageState extends State<ChatPage>
                       },
                       child: Container(
                         width: 72,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 4, vertical: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -2597,14 +2546,12 @@ class ChatPageState extends State<ChatPage>
                               width: 46,
                               height: 46,
                               decoration: BoxDecoration(
-                                color: item.color.withOpacity(0.1),
+                                color: item.color.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.all(_T.r14),
                                 border: Border.all(
-                                    color: item.color.withOpacity(0.2),
-                                    width: 0.8),
+                                    color: item.color.withValues(alpha: 0.2), width: 0.8),
                               ),
-                              child:
-                                  Icon(item.icon, color: item.color, size: 22),
+                              child: Icon(item.icon, color: item.color, size: 22),
                             ),
                             const SizedBox(height: 5),
                             Text(
@@ -2628,17 +2575,17 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // RECORDING BAR
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildRecBar() {
     if (!_isRecording) return const SizedBox.shrink();
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: _T.danger.withOpacity(0.05),
-        border: Border(top: BorderSide(color: _T.danger.withOpacity(0.2))),
+        color: _T.danger.withValues(alpha: 0.05),
+        border: Border(top: BorderSide(color: _T.danger.withValues(alpha: 0.2))),
       ),
       child: Row(
         children: [
@@ -2669,9 +2616,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // INPUT
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildInput() {
     final full = !widget.isBubbleMode && !widget.isMiniChat;
@@ -2679,7 +2626,7 @@ class ChatPageState extends State<ChatPage>
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Smart replies
+        
         if (_smartReplies.isNotEmpty && full)
           SizedBox(
             height: 44,
@@ -2711,7 +2658,7 @@ class ChatPageState extends State<ChatPage>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Reply preview
+              
               AnimatedSize(
                 duration: _T.normal,
                 curve: Curves.easeOutCubic,
@@ -2719,8 +2666,7 @@ class ChatPageState extends State<ChatPage>
                     ? const SizedBox.shrink()
                     : Container(
                         margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 9),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
                         decoration: BoxDecoration(
                           color: _T.surface,
                           borderRadius: BorderRadius.all(_T.r16),
@@ -2731,8 +2677,7 @@ class ChatPageState extends State<ChatPage>
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.reply_rounded,
-                                color: _T.primary, size: 17),
+                            const Icon(Icons.reply_rounded, color: _T.primary, size: 17),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
@@ -2754,15 +2699,14 @@ class ChatPageState extends State<ChatPage>
                                   _focusNode.requestFocus();
                                 }
                               },
-                              child: const Icon(Icons.close_rounded,
-                                  size: 17, color: _T.textMuted),
+                              child: const Icon(Icons.close_rounded, size: 17, color: _T.textMuted),
                             ),
                           ],
                         ),
                       ),
               ),
 
-              // Input row
+              
               Container(
                 decoration: BoxDecoration(
                   color: _T.surface,
@@ -2772,7 +2716,7 @@ class ChatPageState extends State<ChatPage>
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    // Add / Menu
+                    
                     if (full)
                       GestureDetector(
                         onTap: () {
@@ -2802,17 +2746,16 @@ class ChatPageState extends State<ChatPage>
                           ),
                         ),
                       ),
-                    // Image quick
+                    
                     if (full && !_showMenu)
                       GestureDetector(
                         onTap: _pickImage,
                         child: const Padding(
                           padding: EdgeInsets.all(10),
-                          child: Icon(Icons.image_rounded,
-                              color: _T.textMuted, size: 24),
+                          child: Icon(Icons.image_rounded, color: _T.textMuted, size: 24),
                         ),
                       ),
-                    // Sticker
+                    
                     if (full && !_showMenu)
                       GestureDetector(
                         onTap: _toggleSticker,
@@ -2825,7 +2768,7 @@ class ChatPageState extends State<ChatPage>
                           ),
                         ),
                       ),
-                    // TextField
+                    
                     Expanded(
                       child: Padding(
                         padding: EdgeInsets.only(
@@ -2843,9 +2786,7 @@ class ChatPageState extends State<ChatPage>
                           autofocus: widget.isMiniChat || widget.isBubbleMode,
                           onChanged: (t) {
                             _handleTyping(t);
-                            if (t.isNotEmpty &&
-                                _smartReplies.isNotEmpty &&
-                                mounted) {
+                            if (t.isNotEmpty && _smartReplies.isNotEmpty && mounted) {
                               setState(() => _smartReplies = []);
                             }
                           },
@@ -2866,7 +2807,7 @@ class ChatPageState extends State<ChatPage>
                         ),
                       ),
                     ),
-                    // Send / Mic
+                    
                     Padding(
                       padding: const EdgeInsets.all(6),
                       child: ValueListenableBuilder<TextEditingValue>(
@@ -2906,9 +2847,7 @@ class ChatPageState extends State<ChatPage>
                               child: AnimatedSwitcher(
                                 duration: _T.fast,
                                 child: Icon(
-                                  hasText
-                                      ? Icons.send_rounded
-                                      : Icons.mic_rounded,
+                                  hasText ? Icons.send_rounded : Icons.mic_rounded,
                                   key: ValueKey(hasText),
                                   color: hasText ? Colors.white : _T.textMuted,
                                   size: 20,
@@ -2929,9 +2868,9 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // MEDIA OVERLAY
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildMediaOverlay() => Container(
         color: Colors.black54,
@@ -2964,9 +2903,9 @@ class ChatPageState extends State<ChatPage>
       );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PRIVATE HELPER WIDGETS
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _AppBarTitle extends StatelessWidget {
   const _AppBarTitle({
@@ -3045,8 +2984,7 @@ class _OverlayHeader extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(nickname,
-                    style: _T.fontDisplay.copyWith(fontSize: 15),
-                    overflow: TextOverflow.ellipsis),
+                    style: _T.fontDisplay.copyWith(fontSize: 15), overflow: TextOverflow.ellipsis),
                 UserStatusIndicator(
                   userId: peerId,
                   showText: true,
@@ -3103,9 +3041,8 @@ class _Avatar extends StatelessWidget {
         radius: radius,
         backgroundColor: _T.primaryLight,
         backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
-        child: photoUrl.isEmpty
-            ? Icon(Icons.person_rounded, size: radius, color: _T.primary)
-            : null,
+        child:
+            photoUrl.isEmpty ? Icon(Icons.person_rounded, size: radius, color: _T.primary) : null,
       );
 }
 
@@ -3212,8 +3149,7 @@ class _DateDivider extends StatelessWidget {
     );
   }
 
-  bool _sameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
+  bool _sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
 }
 
 class _MediaPlaceholder extends StatelessWidget {
@@ -3231,8 +3167,7 @@ class _MediaPlaceholder extends StatelessWidget {
                   color: _T.primary,
                   strokeWidth: 2.5,
                 )
-              : const Icon(Icons.broken_image_rounded,
-                  color: _T.textMuted, size: 32),
+              : const Icon(Icons.broken_image_rounded, color: _T.textMuted, size: 32),
         ),
       );
 }
@@ -3298,9 +3233,9 @@ class _ScamWarning extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: _T.danger.withOpacity(0.08),
+          color: _T.danger.withValues(alpha: 0.08),
           borderRadius: const BorderRadius.all(_T.r10),
-          border: Border.all(color: _T.danger.withOpacity(0.3)),
+          border: Border.all(color: _T.danger.withValues(alpha: 0.3)),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -3331,7 +3266,7 @@ class _ReminderHint extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
-          color: _T.info.withOpacity(0.08),
+          color: _T.info.withValues(alpha: 0.08),
           borderRadius: const BorderRadius.all(_T.r10),
         ),
         child: Row(
@@ -3407,19 +3342,18 @@ class _LocationContent extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                color: isMe ? Colors.white.withOpacity(0.18) : _T.primaryLight,
+                color: isMe ? Colors.white.withValues(alpha: 0.18) : _T.primaryLight,
                 borderRadius: const BorderRadius.all(_T.r10),
                 border: Border.all(
                   color: isMe
-                      ? Colors.white.withOpacity(0.3)
-                      : _T.primary.withOpacity(0.3),
+                      ? Colors.white.withValues(alpha: 0.3)
+                      : _T.primary.withValues(alpha: 0.3),
                 ),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.map_rounded,
-                      size: 13, color: isMe ? Colors.white : _T.primary),
+                  Icon(Icons.map_rounded, size: 13, color: isMe ? Colors.white : _T.primary),
                   const SizedBox(width: 4),
                   Text(
                     'Xem trên Maps',
@@ -3473,9 +3407,9 @@ class _ScamScanWidget extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: _T.success.withOpacity(0.08),
+            color: _T.success.withValues(alpha: 0.08),
             borderRadius: const BorderRadius.all(_T.r10),
-            border: Border.all(color: _T.success.withOpacity(0.3), width: 0.8),
+            border: Border.all(color: _T.success.withValues(alpha: 0.3), width: 0.8),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -3542,7 +3476,7 @@ class _ReactionRow extends StatelessWidget {
       );
 }
 
-// Modern Dialog
+
 class _ChatDialog extends StatelessWidget {
   const _ChatDialog({
     required this.title,
@@ -3559,8 +3493,7 @@ class _ChatDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Dialog(
-        shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.all(_T.r24)),
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(_T.r24)),
         elevation: 0,
         backgroundColor: _T.surface,
         child: Padding(
@@ -3575,7 +3508,7 @@ class _ChatDialog extends StatelessWidget {
                     width: 42,
                     height: 42,
                     decoration: BoxDecoration(
-                      color: iconColor.withOpacity(0.1),
+                      color: iconColor.withValues(alpha: 0.1),
                       borderRadius: const BorderRadius.all(_T.r12),
                     ),
                     child: Icon(icon, color: iconColor, size: 22),
@@ -3622,8 +3555,7 @@ class _ChatDialogAction extends StatelessWidget {
         onPressed: onTap,
         style: FilledButton.styleFrom(
           backgroundColor: _T.primary,
-          shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.all(_T.r12)),
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(_T.r12)),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
         ),
         child: Text(label),
@@ -3669,8 +3601,7 @@ class _LockOptionsSheet extends StatelessWidget {
               ),
             ),
             ListTile(
-              leading:
-                  const Icon(Icons.lock_outline_rounded, color: _T.primary),
+              leading: const Icon(Icons.lock_outline_rounded, color: _T.primary),
               title: const Text('Đặt mã PIN'),
               onTap: () => Navigator.pop(context, 'set_pin'),
             ),
@@ -3717,8 +3648,8 @@ class _ReminderPickerDialogState extends State<_ReminderPickerDialog> {
                   lastDate: DateTime.now().add(const Duration(days: 365)),
                 );
                 if (d != null && mounted) {
-                  setState(() => _selected = DateTime(d.year, d.month, d.day,
-                      _selected.hour, _selected.minute));
+                  setState(() => _selected =
+                      DateTime(d.year, d.month, d.day, _selected.hour, _selected.minute));
                 }
               },
             ),
@@ -3733,8 +3664,8 @@ class _ReminderPickerDialogState extends State<_ReminderPickerDialog> {
                   initialTime: TimeOfDay.fromDateTime(_selected),
                 );
                 if (t != null && mounted) {
-                  setState(() => _selected = DateTime(_selected.year,
-                      _selected.month, _selected.day, t.hour, t.minute));
+                  setState(() => _selected =
+                      DateTime(_selected.year, _selected.month, _selected.day, t.hour, t.minute));
                 }
               },
             ),
@@ -3793,8 +3724,7 @@ class _PickerTile extends StatelessWidget {
                 ],
               ),
               const Spacer(),
-              const Icon(Icons.chevron_right_rounded,
-                  color: _T.textMuted, size: 20),
+              const Icon(Icons.chevron_right_rounded, color: _T.textMuted, size: 20),
             ],
           ),
         ),
@@ -3824,8 +3754,7 @@ class _RemindersPage extends StatelessWidget {
           builder: (_, snap) {
             if (!snap.hasData) {
               return const Center(
-                child: CircularProgressIndicator(
-                    color: _T.primary, strokeWidth: 2),
+                child: CircularProgressIndicator(color: _T.primary, strokeWidth: 2),
               );
             }
             final reminders = snap.data!;
@@ -3834,8 +3763,7 @@ class _RemindersPage extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.alarm_off_rounded,
-                        size: 60, color: _T.textMuted),
+                    Icon(Icons.alarm_off_rounded, size: 60, color: _T.textMuted),
                     const SizedBox(height: 14),
                     Text('Chưa có nhắc nhở',
                         style: _T.fontBody.copyWith(
@@ -3859,8 +3787,7 @@ class _RemindersPage extends StatelessWidget {
                     boxShadow: _T.shadowSm,
                   ),
                   child: ListTile(
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     leading: Container(
                       width: 44,
                       height: 44,
@@ -3885,8 +3812,7 @@ class _RemindersPage extends StatelessWidget {
                     ),
                     trailing: GestureDetector(
                       onTap: () => reminderProvider.deleteReminder(r.id),
-                      child: const Icon(Icons.delete_outline_rounded,
-                          color: _T.danger),
+                      child: const Icon(Icons.delete_outline_rounded, color: _T.danger),
                     ),
                   ),
                 );
@@ -3897,7 +3823,7 @@ class _RemindersPage extends StatelessWidget {
       );
 }
 
-// Private data class
+
 class _FeatureItem {
   const _FeatureItem(this.icon, this.label, this.onTap, this.color);
   final IconData icon;

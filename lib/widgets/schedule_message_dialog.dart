@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:intl/intl.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Result model
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 enum RepeatOption { none, daily, weekly, monthly }
 
@@ -25,15 +26,15 @@ class ScheduleMessageResult {
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Entry point
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class ScheduleMessageDialog extends StatelessWidget {
-  /// Optional pre-filled message text.
+  
   final String? initialMessage;
 
-  /// Optional minimum date (defaults to now).
+  
   final DateTime? minDate;
 
   const ScheduleMessageDialog({
@@ -42,14 +43,14 @@ class ScheduleMessageDialog extends StatelessWidget {
     this.minDate,
   });
 
-  /// Convenience static method — shows the dialog and returns the result.
+  
   static Future<ScheduleMessageResult?> show(
     BuildContext context, {
     String? initialMessage,
   }) {
     return showDialog<ScheduleMessageResult>(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.55),
+      barrierColor: Colors.black.withValues(alpha: 0.55),
       builder: (_) => ScheduleMessageDialog(initialMessage: initialMessage),
     );
   }
@@ -63,9 +64,9 @@ class ScheduleMessageDialog extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Internal stateful widget
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _ScheduleMessageContent extends StatefulWidget {
   final String? initialMessage;
@@ -74,8 +75,7 @@ class _ScheduleMessageContent extends StatefulWidget {
   const _ScheduleMessageContent({this.initialMessage, this.minDate});
 
   @override
-  State<_ScheduleMessageContent> createState() =>
-      _ScheduleMessageContentState();
+  State<_ScheduleMessageContent> createState() => _ScheduleMessageContentState();
 }
 
 class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
@@ -98,7 +98,7 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
   late final AnimationController _confirmController;
   late final Animation<double> _confirmScale;
 
-  // Quick-time presets
+  
   static const _quickPresets = [
     (label: '30 min', duration: Duration(minutes: 30)),
     (label: '1 hour', duration: Duration(hours: 1)),
@@ -118,13 +118,11 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
       vsync: this,
       duration: const Duration(milliseconds: 340),
     );
-    _entryFade =
-        CurvedAnimation(parent: _entryController, curve: Curves.easeOut);
+    _entryFade = CurvedAnimation(parent: _entryController, curve: Curves.easeOut);
     _entrySlide = Tween<Offset>(
       begin: const Offset(0, 0.08),
       end: Offset.zero,
-    ).animate(
-        CurvedAnimation(parent: _entryController, curve: Curves.easeOutCubic));
+    ).animate(CurvedAnimation(parent: _entryController, curve: Curves.easeOutCubic));
 
     _confirmController = AnimationController(
       vsync: this,
@@ -146,9 +144,9 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     super.dispose();
   }
 
-  // ───────────────────────────────────────────────
-  // Date / time picking
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   Future<void> _pickDateTime() async {
     final now = DateTime.now();
@@ -172,8 +170,7 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
     if (time == null || !mounted) return;
 
-    final selected =
-        DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    final selected = DateTime(date.year, date.month, date.day, time.hour, time.minute);
 
     if (selected.isBefore(now)) {
       _showError('Please choose a future time.');
@@ -187,12 +184,11 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
   void _applyQuickPreset(Duration offset) {
     setState(() {
       _scheduledTime = DateTime.now().add(offset);
-      // Round to nearest 5 min
+      
       final extra = _scheduledTime!.minute % 5;
       if (extra != 0) {
-        _scheduledTime = _scheduledTime!
-            .add(Duration(minutes: 5 - extra))
-            .copyWith(second: 0, millisecond: 0);
+        _scheduledTime =
+            _scheduledTime!.add(Duration(minutes: 5 - extra)).copyWith(second: 0, millisecond: 0);
       }
     });
     HapticFeedback.selectionClick();
@@ -217,14 +213,14 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
   }
 
-  // ───────────────────────────────────────────────
-  // Submit
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   Future<void> _handleSchedule() async {
     if (_isConfirming) return;
 
-    // Validate
+    
     final text = _messageController.text.trim();
     if (text.isEmpty) {
       _showError('Message cannot be empty.');
@@ -275,9 +271,9 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
       ));
   }
 
-  // ───────────────────────────────────────────────
-  // Helpers
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   String get _timeUntilText {
     if (_scheduledTime == null) return '';
@@ -293,9 +289,9 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
 
   Color get _primaryColor => ColorConstants.primaryColor;
 
-  // ───────────────────────────────────────────────
-  // Build
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   @override
   Widget build(BuildContext context) {
@@ -305,8 +301,7 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
         position: _entrySlide,
         child: Dialog(
           backgroundColor: Colors.transparent,
-          insetPadding:
-              const EdgeInsets.symmetric(horizontal: 18, vertical: 32),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 32),
           child: Container(
             constraints: const BoxConstraints(maxWidth: 460, maxHeight: 680),
             decoration: BoxDecoration(
@@ -314,7 +309,7 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.18),
+                  color: Colors.black.withValues(alpha: 0.18),
                   blurRadius: 40,
                   offset: const Offset(0, 16),
                 ),
@@ -368,9 +363,9 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
   }
 
-  // ───────────────────────────────────────────────
-  // Header
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildHeader() {
     return Container(
@@ -379,7 +374,7 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
         gradient: LinearGradient(
           colors: [
             _primaryColor,
-            _primaryColor.withOpacity(0.80),
+            _primaryColor.withValues(alpha: 0.80),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -391,7 +386,7 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.20),
+              color: Colors.white.withValues(alpha: 0.20),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(
@@ -426,7 +421,7 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
           ),
           const Spacer(),
           Material(
-            color: Colors.white.withOpacity(0.15),
+            color: Colors.white.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(10),
             child: InkWell(
               borderRadius: BorderRadius.circular(10),
@@ -442,9 +437,9 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
   }
 
-  // ───────────────────────────────────────────────
-  // Message field
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildMessageField() {
     return Column(
@@ -478,8 +473,7 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
-              borderSide:
-                  BorderSide(color: const Color(0xFFE8ECF4), width: 1.5),
+              borderSide: BorderSide(color: const Color(0xFFE8ECF4), width: 1.5),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
@@ -492,9 +486,9 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
   }
 
-  // ───────────────────────────────────────────────
-  // Quick presets
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildQuickPresets() {
     return Column(
@@ -528,9 +522,9 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
   }
 
-  // ───────────────────────────────────────────────
-  // DateTime selector
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildDateTimeSelector() {
     return Column(
@@ -548,12 +542,12 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
               decoration: BoxDecoration(
                 color: _scheduledTime != null
-                    ? _primaryColor.withOpacity(0.06)
+                    ? _primaryColor.withValues(alpha: 0.06)
                     : const Color(0xFFF8F9FF),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
                   color: _scheduledTime != null
-                      ? _primaryColor.withOpacity(0.40)
+                      ? _primaryColor.withValues(alpha: 0.40)
                       : const Color(0xFFE8ECF4),
                   width: 1.5,
                 ),
@@ -565,15 +559,13 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
                     height: 36,
                     decoration: BoxDecoration(
                       color: _scheduledTime != null
-                          ? _primaryColor.withOpacity(0.12)
+                          ? _primaryColor.withValues(alpha: 0.12)
                           : Colors.grey.shade100,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(
                       Icons.calendar_today_rounded,
-                      color: _scheduledTime != null
-                          ? _primaryColor
-                          : Colors.grey.shade500,
+                      color: _scheduledTime != null ? _primaryColor : Colors.grey.shade500,
                       size: 18,
                     ),
                   ),
@@ -584,8 +576,7 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                DateFormat('EEEE, MMM d, yyyy')
-                                    .format(_scheduledTime!),
+                                DateFormat('EEEE, MMM d, yyyy').format(_scheduledTime!),
                                 style: TextStyle(
                                   color: _primaryColor,
                                   fontWeight: FontWeight.w600,
@@ -596,7 +587,7 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
                               Text(
                                 DateFormat('hh:mm a').format(_scheduledTime!),
                                 style: TextStyle(
-                                  color: _primaryColor.withOpacity(0.70),
+                                  color: _primaryColor.withValues(alpha: 0.70),
                                   fontSize: 12,
                                 ),
                               ),
@@ -612,9 +603,7 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
                   ),
                   Icon(
                     Icons.chevron_right_rounded,
-                    color: _scheduledTime != null
-                        ? _primaryColor
-                        : Colors.grey.shade400,
+                    color: _scheduledTime != null ? _primaryColor : Colors.grey.shade400,
                     size: 20,
                   ),
                 ],
@@ -626,28 +615,27 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
   }
 
-  // ───────────────────────────────────────────────
-  // Time badge
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildTimeBadge() {
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOutBack,
-      builder: (_, v, child) =>
-          Opacity(opacity: v, child: Transform.scale(scale: v, child: child)),
+      builder: (_, v, child) => Opacity(opacity: v, child: Transform.scale(scale: v, child: child)),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              _primaryColor.withOpacity(0.10),
-              _primaryColor.withOpacity(0.05),
+              _primaryColor.withValues(alpha: 0.10),
+              _primaryColor.withValues(alpha: 0.05),
             ],
           ),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: _primaryColor.withOpacity(0.20), width: 1),
+          border: Border.all(color: _primaryColor.withValues(alpha: 0.20), width: 1),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -668,9 +656,9 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
   }
 
-  // ───────────────────────────────────────────────
-  // Repeat selector
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildRepeatSelector() {
     return Column(
@@ -697,16 +685,12 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
                   },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                     decoration: BoxDecoration(
-                      color:
-                          isSelected ? _primaryColor : const Color(0xFFF8F9FF),
+                      color: isSelected ? _primaryColor : const Color(0xFFF8F9FF),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: isSelected
-                            ? _primaryColor
-                            : const Color(0xFFE8ECF4),
+                        color: isSelected ? _primaryColor : const Color(0xFFE8ECF4),
                         width: 1.5,
                       ),
                     ),
@@ -729,9 +713,9 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
   }
 
-  // ───────────────────────────────────────────────
-  // Notify toggle
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildNotifyToggle() {
     return GestureDetector(
@@ -743,14 +727,10 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: _notifyBefore
-              ? _primaryColor.withOpacity(0.06)
-              : const Color(0xFFF8F9FF),
+          color: _notifyBefore ? _primaryColor.withValues(alpha: 0.06) : const Color(0xFFF8F9FF),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: _notifyBefore
-                ? _primaryColor.withOpacity(0.35)
-                : const Color(0xFFE8ECF4),
+            color: _notifyBefore ? _primaryColor.withValues(alpha: 0.35) : const Color(0xFFE8ECF4),
             width: 1.5,
           ),
         ),
@@ -771,9 +751,7 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: _notifyBefore
-                          ? _primaryColor
-                          : const Color(0xFF1A1A2E),
+                      color: _notifyBefore ? _primaryColor : const Color(0xFF1A1A2E),
                     ),
                   ),
                   if (_notifyBefore) ...[
@@ -782,7 +760,7 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
                       'Get a heads-up $_remindMinutes min before',
                       style: TextStyle(
                         fontSize: 11,
-                        color: _primaryColor.withOpacity(0.70),
+                        color: _primaryColor.withValues(alpha: 0.70),
                       ),
                     ),
                   ],
@@ -800,9 +778,9 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
   }
 
-  // ───────────────────────────────────────────────
-  // Remind slider
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildRemindSlider() {
     final options = [2, 5, 10, 15, 30, 60];
@@ -824,8 +802,7 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
               },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: selected ? _primaryColor : Colors.grey.shade100,
                   borderRadius: BorderRadius.circular(20),
@@ -846,9 +823,9 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
   }
 
-  // ───────────────────────────────────────────────
-  // Action buttons
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildActions() {
     return Row(
@@ -886,8 +863,7 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
                   gradient: LinearGradient(
                     colors: [
                       _primaryColor,
-                      _primaryColor
-                          .withBlue((_primaryColor.blue + 30).clamp(0, 255))
+                      _primaryColor.withBlue((_primaryColor.blue + 30).clamp(0, 255))
                     ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -895,7 +871,7 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
                   borderRadius: BorderRadius.circular(14),
                   boxShadow: [
                     BoxShadow(
-                      color: _primaryColor.withOpacity(0.35),
+                      color: _primaryColor.withValues(alpha: 0.35),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -919,8 +895,7 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
                         : Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: const [
-                              Icon(Icons.schedule_send_rounded,
-                                  color: Colors.white, size: 18),
+                              Icon(Icons.schedule_send_rounded, color: Colors.white, size: 18),
                               SizedBox(width: 8),
                               Text(
                                 'Schedule',
@@ -943,9 +918,9 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
   }
 
-  // ───────────────────────────────────────────────
-  // Shared helpers
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   Widget _sectionLabel(String text, IconData icon) {
     return Row(
@@ -966,9 +941,9 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sub-widgets
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _QuickChip extends StatefulWidget {
   final String label;
@@ -987,16 +962,14 @@ class _QuickChip extends StatefulWidget {
   State<_QuickChip> createState() => _QuickChipState();
 }
 
-class _QuickChipState extends State<_QuickChip>
-    with SingleTickerProviderStateMixin {
+class _QuickChipState extends State<_QuickChip> with SingleTickerProviderStateMixin {
   late AnimationController _c;
   late Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
-    _c = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 120));
+    _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 120));
     _scale = Tween<double>(begin: 1.0, end: 0.93)
         .animate(CurvedAnimation(parent: _c, curve: Curves.easeIn));
   }
@@ -1022,20 +995,16 @@ class _QuickChipState extends State<_QuickChip>
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(vertical: 9),
           decoration: BoxDecoration(
-            color: widget.isSelected
-                ? widget.primaryColor
-                : const Color(0xFFF8F9FF),
+            color: widget.isSelected ? widget.primaryColor : const Color(0xFFF8F9FF),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: widget.isSelected
-                  ? widget.primaryColor
-                  : const Color(0xFFE8ECF4),
+              color: widget.isSelected ? widget.primaryColor : const Color(0xFFE8ECF4),
               width: 1.5,
             ),
             boxShadow: widget.isSelected
                 ? [
                     BoxShadow(
-                      color: widget.primaryColor.withOpacity(0.25),
+                      color: widget.primaryColor.withValues(alpha: 0.25),
                       blurRadius: 8,
                       offset: const Offset(0, 3),
                     )
@@ -1057,7 +1026,7 @@ class _QuickChipState extends State<_QuickChip>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+
 
 class _AnimatedSwitch extends StatelessWidget {
   final bool value;

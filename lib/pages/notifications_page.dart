@@ -1,6 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
@@ -9,9 +10,9 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// NotificationsPage — friend request inbox
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
@@ -55,8 +56,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   Future<void> _accept(String requestId, String requesterId) async {
     HapticFeedback.lightImpact();
     setState(() => _isLoading = true);
-    final ok = await _friendProvider.acceptFriendRequest(
-        requestId, _currentUserId, requesterId);
+    final ok = await _friendProvider.acceptFriendRequest(requestId, _currentUserId, requesterId);
     setState(() => _isLoading = false);
     if (ok) {
       Fluttertoast.showToast(msg: 'Đã chấp nhận lời mời kết bạn!');
@@ -86,17 +86,14 @@ class _NotificationsPageState extends State<NotificationsPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor:
-          isDark ? ColorConstants.backgroundDark : const Color(0xFFF5F7FF),
+      backgroundColor: isDark ? ColorConstants.backgroundDark : const Color(0xFFF5F7FF),
       appBar: AppBar(
         backgroundColor: isDark ? ColorConstants.surfaceDark : Colors.white,
         elevation: 0,
-        systemOverlayStyle:
-            isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+        systemOverlayStyle: isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
         leading: IconButton(
           icon: Icon(Icons.arrow_back_ios_new_rounded,
-              color: isDark ? Colors.white70 : ColorConstants.primaryColor,
-              size: 20),
+              color: isDark ? Colors.white70 : ColorConstants.primaryColor, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -154,9 +151,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Request Card
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _RequestCard extends StatefulWidget {
   final QueryDocumentSnapshot requestDoc;
@@ -181,8 +178,7 @@ class _RequestCard extends StatefulWidget {
   State<_RequestCard> createState() => _RequestCardState();
 }
 
-class _RequestCardState extends State<_RequestCard>
-    with SingleTickerProviderStateMixin {
+class _RequestCardState extends State<_RequestCard> with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<Offset> _slide;
   late final Animation<double> _fade;
@@ -198,8 +194,8 @@ class _RequestCardState extends State<_RequestCard>
     _slide = Tween<Offset>(begin: const Offset(0, 0.18), end: Offset.zero)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
     _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
-    Future.delayed(Duration(milliseconds: widget.index * 60),
-        () => mounted ? _ctrl.forward() : null);
+    Future.delayed(
+        Duration(milliseconds: widget.index * 60), () => mounted ? _ctrl.forward() : null);
   }
 
   @override
@@ -231,18 +227,16 @@ class _RequestCardState extends State<_RequestCard>
             return Container(
               margin: const EdgeInsets.only(bottom: 12),
               decoration: BoxDecoration(
-                color:
-                    widget.isDark ? ColorConstants.surfaceDark : Colors.white,
+                color: widget.isDark ? ColorConstants.surfaceDark : Colors.white,
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(
                   color: widget.isDark
-                      ? Colors.white.withOpacity(0.07)
-                      : Colors.black.withOpacity(0.05),
+                      ? Colors.white.withValues(alpha: 0.07)
+                      : Colors.black.withValues(alpha: 0.05),
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color:
-                        Colors.black.withOpacity(widget.isDark ? 0.18 : 0.04),
+                    color: Colors.black.withValues(alpha: widget.isDark ? 0.18 : 0.04),
                     blurRadius: 12,
                     offset: const Offset(0, 3),
                   ),
@@ -253,24 +247,19 @@ class _RequestCardState extends State<_RequestCard>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── Header row ─────────────────────────────────────────
+                    
                     Row(
                       children: [
-                        _NotifAvatar(
-                            url: requester.photoUrl, name: requester.nickname),
+                        _NotifAvatar(url: requester.photoUrl, name: requester.nickname),
                         const SizedBox(width: 14),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                requester.nickname.isEmpty
-                                    ? 'Người dùng'
-                                    : requester.nickname,
+                                requester.nickname.isEmpty ? 'Người dùng' : requester.nickname,
                                 style: TextStyle(
-                                  color: widget.isDark
-                                      ? Colors.white
-                                      : const Color(0xFF1A1D2E),
+                                  color: widget.isDark ? Colors.white : const Color(0xFF1A1D2E),
                                   fontWeight: FontWeight.w700,
                                   fontSize: 15,
                                 ),
@@ -279,9 +268,7 @@ class _RequestCardState extends State<_RequestCard>
                               Text(
                                 'Muốn kết bạn với bạn',
                                 style: TextStyle(
-                                  color: widget.isDark
-                                      ? Colors.white54
-                                      : Colors.black45,
+                                  color: widget.isDark ? Colors.white54 : Colors.black45,
                                   fontSize: 13,
                                 ),
                               ),
@@ -290,13 +277,12 @@ class _RequestCardState extends State<_RequestCard>
                         ),
                         Text(
                           widget.timeFormatter(request.createdAt),
-                          style: const TextStyle(
-                              color: ColorConstants.greyColor, fontSize: 11),
+                          style: const TextStyle(color: ColorConstants.greyColor, fontSize: 11),
                         ),
                       ],
                     ),
 
-                    // ── Status / Actions ───────────────────────────────────
+                    
                     if (request.status == 'pending') ...[
                       const SizedBox(height: 14),
                       Row(
@@ -327,8 +313,7 @@ class _RequestCardState extends State<_RequestCard>
                               loading: _localLoading,
                               onTap: () async {
                                 setState(() => _localLoading = true);
-                                await widget.onAccept(
-                                    request.id, request.requesterId);
+                                await widget.onAccept(request.id, request.requesterId);
                                 if (mounted) {
                                   setState(() => _localLoading = false);
                                 }
@@ -354,9 +339,9 @@ class _RequestCardState extends State<_RequestCard>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sub-widgets
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _NotifAvatar extends StatelessWidget {
   final String url;
@@ -366,23 +351,20 @@ class _NotifAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorIndex = name.isEmpty
-        ? 0
-        : name.codeUnitAt(0) % ColorConstants.avatarColors.length;
+    final colorIndex = name.isEmpty ? 0 : name.codeUnitAt(0) % ColorConstants.avatarColors.length;
     final color = ColorConstants.avatarColors[colorIndex];
     return Container(
       width: 52,
       height: 52,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: color.withOpacity(0.12),
-        border: Border.all(color: color.withOpacity(0.3), width: 1.5),
+        color: color.withValues(alpha: 0.12),
+        border: Border.all(color: color.withValues(alpha: 0.3), width: 1.5),
       ),
       child: ClipOval(
         child: url.isNotEmpty
             ? Image.network(url,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _placeholder(color))
+                fit: BoxFit.cover, errorBuilder: (_, __, ___) => _placeholder(color))
             : _placeholder(color),
       ),
     );
@@ -390,12 +372,11 @@ class _NotifAvatar extends StatelessWidget {
 
   Widget _placeholder(Color color) {
     return Container(
-      color: color.withOpacity(0.1),
+      color: color.withValues(alpha: 0.1),
       child: Center(
         child: Text(
           name.isNotEmpty ? name[0].toUpperCase() : '?',
-          style: TextStyle(
-              color: color, fontSize: 20, fontWeight: FontWeight.w700),
+          style: TextStyle(color: color, fontSize: 20, fontWeight: FontWeight.w700),
         ),
       ),
     );
@@ -473,27 +454,25 @@ class _StatusBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, color: color, size: 15),
           const SizedBox(width: 6),
-          Text(label,
-              style: TextStyle(
-                  color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+          Text(label, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
         ],
       ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// State widgets
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _EmptyNotifState extends StatelessWidget {
   final bool isDark;
@@ -509,11 +488,11 @@ class _EmptyNotifState extends StatelessWidget {
             width: 88,
             height: 88,
             decoration: BoxDecoration(
-              color: ColorConstants.primaryColor.withOpacity(0.07),
+              color: ColorConstants.primaryColor.withValues(alpha: 0.07),
               shape: BoxShape.circle,
             ),
             child: Icon(Icons.notifications_none_rounded,
-                size: 42, color: ColorConstants.primaryColor.withOpacity(0.4)),
+                size: 42, color: ColorConstants.primaryColor.withValues(alpha: 0.4)),
           ),
           const SizedBox(height: 20),
           Text(
@@ -528,8 +507,7 @@ class _EmptyNotifState extends StatelessWidget {
           const Text(
             'Khi ai đó gửi lời mời kết bạn,\nbạn sẽ thấy ở đây',
             textAlign: TextAlign.center,
-            style: TextStyle(
-                color: ColorConstants.greyColor, fontSize: 13, height: 1.5),
+            style: TextStyle(color: ColorConstants.greyColor, fontSize: 13, height: 1.5),
           ),
         ],
       ),
@@ -544,16 +522,14 @@ class _NotifSkeleton extends StatefulWidget {
   State<_NotifSkeleton> createState() => _NotifSkeletonState();
 }
 
-class _NotifSkeletonState extends State<_NotifSkeleton>
-    with SingleTickerProviderStateMixin {
+class _NotifSkeletonState extends State<_NotifSkeleton> with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<double> _anim;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1200))
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))
       ..repeat(reverse: true);
     _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
   }
@@ -571,10 +547,8 @@ class _NotifSkeletonState extends State<_NotifSkeleton>
       animation: _anim,
       builder: (_, __) {
         final c = isDark
-            ? Color.lerp(ColorConstants.surfaceDark2, const Color(0xFF2E3448),
-                _anim.value)!
-            : Color.lerp(
-                const Color(0xFFF0F2FF), const Color(0xFFE0E4F5), _anim.value)!;
+            ? Color.lerp(ColorConstants.surfaceDark2, const Color(0xFF2E3448), _anim.value)!
+            : Color.lerp(const Color(0xFFF0F2FF), const Color(0xFFE0E4F5), _anim.value)!;
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
           child: Column(
@@ -583,14 +557,12 @@ class _NotifSkeletonState extends State<_NotifSkeleton>
               (_) => Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                    color: c, borderRadius: BorderRadius.circular(18)),
+                decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(18)),
                 child: Column(
                   children: [
                     Row(
                       children: [
-                        CircleAvatar(
-                            radius: 26, backgroundColor: c.withOpacity(0.5)),
+                        CircleAvatar(radius: 26, backgroundColor: c.withValues(alpha: 0.5)),
                         const SizedBox(width: 14),
                         Expanded(
                           child: Column(
@@ -600,14 +572,14 @@ class _NotifSkeletonState extends State<_NotifSkeleton>
                                   height: 13,
                                   width: 120,
                                   decoration: BoxDecoration(
-                                      color: c.withOpacity(0.5),
+                                      color: c.withValues(alpha: 0.5),
                                       borderRadius: BorderRadius.circular(6))),
                               const SizedBox(height: 8),
                               Container(
                                   height: 10,
                                   width: 160,
                                   decoration: BoxDecoration(
-                                      color: c.withOpacity(0.4),
+                                      color: c.withValues(alpha: 0.4),
                                       borderRadius: BorderRadius.circular(5))),
                             ],
                           ),
@@ -621,14 +593,14 @@ class _NotifSkeletonState extends State<_NotifSkeleton>
                             child: Container(
                                 height: 38,
                                 decoration: BoxDecoration(
-                                    color: c.withOpacity(0.4),
+                                    color: c.withValues(alpha: 0.4),
                                     borderRadius: BorderRadius.circular(12)))),
                         const SizedBox(width: 10),
                         Expanded(
                             child: Container(
                                 height: 38,
                                 decoration: BoxDecoration(
-                                    color: c.withOpacity(0.4),
+                                    color: c.withValues(alpha: 0.4),
                                     borderRadius: BorderRadius.circular(12)))),
                       ],
                     ),
@@ -653,18 +625,16 @@ class _CardSkeleton extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
-      decoration:
-          BoxDecoration(color: c, borderRadius: BorderRadius.circular(18)),
+      decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(18)),
       child: Row(
         children: [
-          CircleAvatar(radius: 26, backgroundColor: c.withOpacity(0.5)),
+          CircleAvatar(radius: 26, backgroundColor: c.withValues(alpha: 0.5)),
           const SizedBox(width: 14),
           Expanded(
               child: Container(
                   height: 12,
                   decoration: BoxDecoration(
-                      color: c.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(6)))),
+                      color: c.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(6)))),
         ],
       ),
     );
@@ -683,12 +653,10 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline_rounded,
-                size: 48, color: ColorConstants.greyColor),
+            const Icon(Icons.error_outline_rounded, size: 48, color: ColorConstants.greyColor),
             const SizedBox(height: 16),
             Text(error,
-                style: const TextStyle(
-                    color: ColorConstants.greyColor, fontSize: 13),
+                style: const TextStyle(color: ColorConstants.greyColor, fontSize: 13),
                 textAlign: TextAlign.center),
           ],
         ),

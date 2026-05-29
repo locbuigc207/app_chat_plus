@@ -2,36 +2,37 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:video_player/video_player.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CONSTANTS
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 const _kSeekSeconds = 10;
 const _kControlsTimeout = Duration(seconds: 3);
 const _kAnimDuration = Duration(milliseconds: 220);
 const _kLongPressSpeed = 2.0;
 
-// Design tokens
+
 const _kAccent = Color(0xFF00E5FF);
 const _kAccentDim = Color(0x4400E5FF);
 const _kSurface = Color(0xCC0A0A0F);
 const _kOverlayGrad = [Color(0xE0000000), Colors.transparent];
 
-// ─────────────────────────────────────────────────────────────────────────────
-// VideoPlayerPage
-// ─────────────────────────────────────────────────────────────────────────────
 
-/// Trang phát video toàn màn hình premium với:
-///   • Gesture: double-tap seek ±10s, swipe ngang seek, swipe dọc âm lượng (left) / sáng (right)
-///   • Khoá màn hình
-///   • Tua nhanh 2× khi nhấn giữ
-///   • Animated controls mượt mà với blur backdrop
-///   • Progress bar với buffer indicator, drag preview
-///   • Playback speed selector (0.5× → 2×)
-///   • Picture-in-Picture ready (fullscreen toggle)
-///   • Hỗ trợ "videoUrl|thumbnailUrl"
+
+
+
+
+
+
+
+
+
+
+
+
 class VideoPlayerPage extends StatefulWidget {
   const VideoPlayerPage({
     super.key,
@@ -50,18 +51,17 @@ class VideoPlayerPage extends StatefulWidget {
   State<VideoPlayerPage> createState() => _VideoPlayerPageState();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// STATE
-// ─────────────────────────────────────────────────────────────────────────────
 
-class _VideoPlayerPageState extends State<VideoPlayerPage>
-    with TickerProviderStateMixin {
-  // ── Controllers ────────────────────────────────────────────────────────────
+
+
+
+class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderStateMixin {
+  
   late VideoPlayerController _ctrl;
   Timer? _hideTimer;
   Timer? _longPressTimer;
 
-  // ── Animation controllers ──────────────────────────────────────────────────
+  
   late final AnimationController _controlsAc;
   late final Animation<double> _controlsFade;
 
@@ -70,7 +70,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   late final AnimationController _playPauseAc;
 
-  // ── State flags ────────────────────────────────────────────────────────────
+  
   bool _initialized = false;
   bool _hasError = false;
   bool _showControls = true;
@@ -82,29 +82,29 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   bool _showBrightnessBanner = false;
   bool _showVolumeBanner = false;
 
-  // ── Seek / drag state ──────────────────────────────────────────────────────
+  
   double? _dragSeekFraction;
   Duration? _dragSeekDuration;
 
-  // ── Volume / Brightness ────────────────────────────────────────────────────
+  
   double _volume = 1.0;
   double _brightness = 0.5;
   double _verticalDragStartY = 0;
   double _verticalDragStartValue = 0;
   bool _isVolumeDrag = false;
 
-  // ── Playback speed ─────────────────────────────────────────────────────────
+  
   double _playbackSpeed = 1.0;
   static const _speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
-  // ── Thumbnails ─────────────────────────────────────────────────────────────
+  
   String? _thumbnailUrl;
 
-  // ── Error retry ────────────────────────────────────────────────────────────
+  
   int _retryCount = 0;
   static const _maxRetries = 3;
 
-  // ──────────────────────────────────────────────────────────────────────────
+  
   @override
   void initState() {
     super.initState();
@@ -137,23 +137,19 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     super.dispose();
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // SETUP
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _setupAnimations() {
     _controlsAc = AnimationController(vsync: this, duration: _kAnimDuration);
-    _controlsFade =
-        CurvedAnimation(parent: _controlsAc, curve: Curves.easeInOut);
+    _controlsFade = CurvedAnimation(parent: _controlsAc, curve: Curves.easeInOut);
     _controlsAc.value = 1;
 
-    _seekLeftAc = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 500));
-    _seekRightAc = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 500));
+    _seekLeftAc = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
+    _seekRightAc = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
 
-    _playPauseAc = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 200));
+    _playPauseAc = AnimationController(vsync: this, duration: const Duration(milliseconds: 200));
   }
 
   void _parseUrl() {
@@ -191,25 +187,23 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     );
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // LISTENERS
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _videoListener() {
     if (!mounted) return;
     final v = _ctrl.value;
-    if (v.position >= v.duration &&
-        v.duration > Duration.zero &&
-        !v.isLooping) {
+    if (v.position >= v.duration && v.duration > Duration.zero && !v.isLooping) {
       _cancelHide();
       if (!_showControls) _setControls(true);
     }
     setState(() {});
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // CONTROLS VISIBILITY
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _setControls(bool visible) {
     if (!mounted) return;
@@ -252,9 +246,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     if (nowVisible) _scheduleHide();
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // PLAY / PAUSE
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<void> _togglePlayPause() async {
     _cancelHide();
@@ -263,9 +257,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       _playPauseAc.reverse();
       _setControls(true);
     } else {
-      // Nếu đang ở cuối video → replay
-      if (_ctrl.value.position >= _ctrl.value.duration &&
-          _ctrl.value.duration > Duration.zero) {
+      
+      if (_ctrl.value.position >= _ctrl.value.duration && _ctrl.value.duration > Duration.zero) {
         await _ctrl.seekTo(Duration.zero);
       }
       await _ctrl.play();
@@ -274,27 +267,25 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     }
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // SEEK
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<void> _seekRelative(int seconds) async {
     final pos = _ctrl.value.position + Duration(seconds: seconds);
-    final clamped =
-        pos.inMilliseconds.clamp(0, _ctrl.value.duration.inMilliseconds);
+    final clamped = pos.inMilliseconds.clamp(0, _ctrl.value.duration.inMilliseconds);
     await _ctrl.seekTo(Duration(milliseconds: clamped));
     _scheduleHide();
   }
 
   Future<void> _seekToFraction(double fraction) async {
     final ms = (fraction * _ctrl.value.duration.inMilliseconds).round();
-    await _ctrl.seekTo(Duration(
-        milliseconds: ms.clamp(0, _ctrl.value.duration.inMilliseconds)));
+    await _ctrl.seekTo(Duration(milliseconds: ms.clamp(0, _ctrl.value.duration.inMilliseconds)));
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // LONG PRESS FAST FORWARD
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _startFastForward() {
     _isLongPressFastForward = true;
@@ -308,9 +299,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     setState(() {});
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // LOCK
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _toggleLock() {
     setState(() => _isLocked = !_isLocked);
@@ -325,9 +316,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     }
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // FULLSCREEN
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _toggleFullscreen() {
     setState(() => _isFullscreen = !_isFullscreen);
@@ -346,9 +337,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _scheduleHide();
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // PLAYBACK SPEED
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<void> _setSpeed(double speed) async {
     setState(() {
@@ -359,17 +350,16 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _scheduleHide();
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // VERTICAL DRAG (volume / brightness)
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _onVerticalDragStart(DragStartDetails d, bool isLeft) {
     _cancelHide();
     _verticalDragStartY = d.globalPosition.dy;
     _verticalDragStartValue = isLeft ? _volume : _brightness;
     _isVolumeDrag = isLeft;
-    setState(
-        () => isLeft ? _showVolumeBanner = true : _showBrightnessBanner = true);
+    setState(() => isLeft ? _showVolumeBanner = true : _showBrightnessBanner = true);
   }
 
   void _onVerticalDragUpdate(DragUpdateDetails d, Size size) {
@@ -386,18 +376,19 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   void _onVerticalDragEnd(DragEndDetails _) {
     Future.delayed(const Duration(milliseconds: 800), () {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _showVolumeBanner = false;
           _showBrightnessBanner = false;
         });
+      }
     });
     _scheduleHide();
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // HELPERS
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   String _fmt(Duration d) {
     final h = d.inHours;
@@ -409,8 +400,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   double get _progress {
     final dur = _ctrl.value.duration.inMilliseconds;
     if (dur == 0) return 0;
-    return (_dragSeekFraction ?? _ctrl.value.position.inMilliseconds / dur)
-        .clamp(0.0, 1.0);
+    return (_dragSeekFraction ?? _ctrl.value.position.inMilliseconds / dur).clamp(0.0, 1.0);
   }
 
   double get _bufferProgress {
@@ -424,16 +414,14 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   Duration get _displayPosition {
     if (_isDragging && _dragSeekFraction != null) {
       return Duration(
-          milliseconds:
-              (_dragSeekFraction! * _ctrl.value.duration.inMilliseconds)
-                  .round());
+          milliseconds: (_dragSeekFraction! * _ctrl.value.duration.inMilliseconds).round());
     }
     return _ctrl.value.position;
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // BUILD
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   @override
   Widget build(BuildContext context) {
@@ -443,7 +431,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 0. Brightness overlay (simulated)
+          
           if (_initialized)
             IgnorePointer(
               child: AnimatedOpacity(
@@ -453,37 +441,37 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
               ),
             ),
 
-          // 1. Video / loading / error
+          
           _buildVideoOrState(),
 
-          // 2. Gesture layer
+          
           if (_initialized) _buildGestureLayer(size),
 
-          // 3. Seek / drag feedback
+          
           if (_initialized) _buildSeekFeedback(),
 
-          // 4. Volume / Brightness banners
+          
           if (_showVolumeBanner) _buildSideBanner(isVolume: true),
           if (_showBrightnessBanner) _buildSideBanner(isVolume: false),
 
-          // 5. Controls overlay
+          
           if (_initialized)
             FadeTransition(
               opacity: _controlsFade,
               child: _buildControls(size),
             ),
 
-          // 6. Lock overlay (always on top when locked)
+          
           if (_initialized && _isLocked) _buildLockOverlay(),
 
-          // 7. Fast forward indicator
+          
           if (_isLongPressFastForward) _buildFastForwardBadge(),
         ],
       ),
     );
   }
 
-  // ── 1. Video / loading / error ────────────────────────────────────────────
+  
 
   Widget _buildVideoOrState() {
     if (_hasError) {
@@ -495,18 +483,14 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
               width: 80,
               height: 80,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.06),
+                color: Colors.white.withValues(alpha: 0.06),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.videocam_off_rounded,
-                  color: Colors.white38, size: 40),
+              child: const Icon(Icons.videocam_off_rounded, color: Colors.white38, size: 40),
             ),
             const SizedBox(height: 18),
             const Text('Không thể phát video',
-                style: TextStyle(
-                    color: Colors.white60,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500)),
+                style: TextStyle(color: Colors.white60, fontSize: 15, fontWeight: FontWeight.w500)),
             const SizedBox(height: 6),
             if (_retryCount >= _maxRetries)
               const Text('Đã thử lại nhiều lần. Kiểm tra kết nối mạng.',
@@ -566,13 +550,13 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     );
   }
 
-  // ── 2. Gesture layer ──────────────────────────────────────────────────────
+  
 
   Widget _buildGestureLayer(Size size) {
     return Positioned.fill(
       child: Row(
         children: [
-          // LEFT zone: volume drag + double-tap rewind
+          
           Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
@@ -595,7 +579,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
               child: const SizedBox.expand(),
             ),
           ),
-          // RIGHT zone: brightness drag + double-tap forward
+          
           Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
@@ -627,14 +611,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     final delta = d.delta.dx / size.width;
     final cur = _ctrl.value.duration.inMilliseconds == 0
         ? 0.0
-        : _ctrl.value.position.inMilliseconds /
-            _ctrl.value.duration.inMilliseconds;
+        : _ctrl.value.position.inMilliseconds / _ctrl.value.duration.inMilliseconds;
     final newFraction = (cur + delta * 1.5).clamp(0.0, 1.0);
     setState(() {
       _dragSeekFraction = newFraction;
-      _dragSeekDuration = Duration(
-          milliseconds:
-              (newFraction * _ctrl.value.duration.inMilliseconds).round());
+      _dragSeekDuration =
+          Duration(milliseconds: (newFraction * _ctrl.value.duration.inMilliseconds).round());
     });
   }
 
@@ -650,11 +632,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     }
   }
 
-  // ── 3. Seek feedback ──────────────────────────────────────────────────────
+  
 
   Widget _buildSeekFeedback() {
     return Stack(children: [
-      // Left ripple
+      
       Positioned(
         left: 16,
         top: 0,
@@ -667,7 +649,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
           ),
         ),
       ),
-      // Right ripple
+      
       Positioned(
         right: 16,
         top: 0,
@@ -680,7 +662,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
           ),
         ),
       ),
-      // Drag seek timestamp
+      
       if (_isDragging && _dragSeekDuration != null)
         Center(
           child: _DragSeekBadge(
@@ -692,7 +674,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     ]);
   }
 
-  // ── 4. Side banner (volume / brightness) ─────────────────────────────────
+  
 
   Widget _buildSideBanner({required bool isVolume}) {
     final value = isVolume ? _volume : _brightness;
@@ -743,9 +725,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                 Text(
                   '${(value * 100).round()}%',
                   style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600),
+                      color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w600),
                 ),
               ],
             ),
@@ -755,12 +735,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     );
   }
 
-  // ── 5. Controls overlay ───────────────────────────────────────────────────
+  
 
   Widget _buildControls(Size size) {
     if (_isLocked) return const SizedBox();
     return Stack(children: [
-      // Gradient vignette
+      
       Positioned.fill(
         child: IgnorePointer(
           child: DecoratedBox(
@@ -781,18 +761,17 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         ),
       ),
 
-      // Top bar
+      
       Positioned(top: 0, left: 0, right: 0, child: _buildTopBar()),
 
-      // Center play/pause + speed badge
+      
       Center(child: _buildCenterControls()),
 
-      // Bottom bar
+      
       Positioned(bottom: 0, left: 0, right: 0, child: _buildBottomBar()),
 
-      // Speed panel
-      if (_showSpeedPanel)
-        Positioned(top: 0, right: 0, bottom: 0, child: _buildSpeedPanel()),
+      
+      if (_showSpeedPanel) Positioned(top: 0, right: 0, bottom: 0, child: _buildSpeedPanel()),
     ]);
   }
 
@@ -803,8 +782,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         child: Row(
           children: [
             IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                  color: Colors.white, size: 20),
+              icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
               onPressed: () => Navigator.pop(context),
             ),
             if (widget.title != null)
@@ -823,29 +801,26 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
               )
             else
               const Spacer(),
-            // Speed indicator button
+            
             GestureDetector(
               onTap: () {
                 _cancelHide();
                 setState(() => _showSpeedPanel = !_showSpeedPanel);
               },
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
                   color: _playbackSpeed != 1.0
-                      ? _kAccent.withOpacity(0.2)
-                      : Colors.white.withOpacity(0.12),
+                      ? _kAccent.withValues(alpha: 0.2)
+                      : Colors.white.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: _playbackSpeed != 1.0
-                        ? _kAccent.withOpacity(0.5)
-                        : Colors.white24,
+                    color: _playbackSpeed != 1.0 ? _kAccent.withValues(alpha: 0.5) : Colors.white24,
                     width: 1,
                   ),
                 ),
                 child: Text(
-                  '${_playbackSpeed}×',
+                  '$_playbackSpeed×',
                   style: TextStyle(
                     color: _playbackSpeed != 1.0 ? _kAccent : Colors.white,
                     fontSize: 12,
@@ -855,7 +830,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
               ),
             ),
             const SizedBox(width: 4),
-            // Lock button
+            
             IconButton(
               icon: Icon(
                 _isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
@@ -864,12 +839,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
               ),
               onPressed: _toggleLock,
             ),
-            // Fullscreen button
+            
             IconButton(
               icon: Icon(
-                _isFullscreen
-                    ? Icons.fullscreen_exit_rounded
-                    : Icons.fullscreen_rounded,
+                _isFullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded,
                 color: Colors.white,
                 size: 22,
               ),
@@ -889,7 +862,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         width: 66,
         height: 66,
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.5),
+          color: Colors.black.withValues(alpha: 0.5),
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white24, width: 1.5),
         ),
@@ -928,7 +901,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                   ),
                 ),
                 const Spacer(),
-                // Mute toggle
+                
                 GestureDetector(
                   onTap: () {
                     setState(() => _volume = _volume > 0 ? 0 : 1.0);
@@ -936,9 +909,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                     _scheduleHide();
                   },
                   child: Icon(
-                    _volume == 0
-                        ? Icons.volume_off_rounded
-                        : Icons.volume_up_rounded,
+                    _volume == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded,
                     color: Colors.white60,
                     size: 18,
                   ),
@@ -981,9 +952,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         onChanged: (v) {
           setState(() {
             _dragSeekFraction = v;
-            _dragSeekDuration = Duration(
-                milliseconds:
-                    (v * _ctrl.value.duration.inMilliseconds).round());
+            _dragSeekDuration =
+                Duration(milliseconds: (v * _ctrl.value.duration.inMilliseconds).round());
           });
         },
         onChangeEnd: (v) async {
@@ -1001,12 +971,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   Widget _buildSpeedPanel() {
     return GestureDetector(
-      onTap: () {}, // consume taps
+      onTap: () {}, 
       child: Container(
         width: 130,
         margin: const EdgeInsets.only(top: 60, bottom: 60, right: 8),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.85),
+          color: Colors.black.withValues(alpha: 0.85),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.white12),
         ),
@@ -1034,7 +1004,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     );
   }
 
-  // ── 6. Lock overlay ───────────────────────────────────────────────────────
+  
 
   Widget _buildLockOverlay() {
     return AnimatedOpacity(
@@ -1049,12 +1019,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.6),
+                color: Colors.black.withValues(alpha: 0.6),
                 shape: BoxShape.circle,
                 border: Border.all(color: Colors.white24, width: 1),
               ),
-              child:
-                  const Icon(Icons.lock_rounded, color: Colors.white, size: 20),
+              child: const Icon(Icons.lock_rounded, color: Colors.white, size: 20),
             ),
           ),
         ),
@@ -1062,16 +1031,16 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     );
   }
 
-  // ── 7. Fast forward badge ─────────────────────────────────────────────────
+  
 
   Widget _buildFastForwardBadge() {
     return Center(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.7),
+          color: Colors.black.withValues(alpha: 0.7),
           borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: _kAccent.withOpacity(0.4), width: 1),
+          border: Border.all(color: _kAccent.withValues(alpha: 0.4), width: 1),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1080,8 +1049,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
             const SizedBox(width: 6),
             Text(
               '${_kLongPressSpeed.toStringAsFixed(0)}×',
-              style: const TextStyle(
-                  color: _kAccent, fontWeight: FontWeight.w700, fontSize: 15),
+              style: const TextStyle(color: _kAccent, fontWeight: FontWeight.w700, fontSize: 15),
             ),
           ],
         ),
@@ -1090,17 +1058,16 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// COMPONENTS
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _GlassButton extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
 
-  const _GlassButton(
-      {required this.icon, required this.label, required this.onTap});
+  const _GlassButton({required this.icon, required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1109,7 +1076,7 @@ class _GlassButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(24),
           border: Border.all(color: Colors.white24, width: 1),
         ),
@@ -1120,9 +1087,7 @@ class _GlassButton extends StatelessWidget {
             const SizedBox(width: 8),
             Text(label,
                 style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w500,
-                    fontSize: 13)),
+                    color: Colors.white, fontWeight: FontWeight.w500, fontSize: 13)),
           ],
         ),
       ),
@@ -1139,7 +1104,7 @@ class _GlassCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.6),
+        color: Colors.black.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white12, width: 1),
       ),
@@ -1154,8 +1119,7 @@ class _PulsingLoader extends StatefulWidget {
   State<_PulsingLoader> createState() => _PulsingLoaderState();
 }
 
-class _PulsingLoaderState extends State<_PulsingLoader>
-    with SingleTickerProviderStateMixin {
+class _PulsingLoaderState extends State<_PulsingLoader> with SingleTickerProviderStateMixin {
   late final AnimationController _ac = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -1191,20 +1155,18 @@ class _DragSeekBadge extends StatelessWidget {
   final Duration current;
   final Duration total;
   final String Function(Duration) fmt;
-  const _DragSeekBadge(
-      {required this.current, required this.total, required this.fmt});
+  const _DragSeekBadge({required this.current, required this.total, required this.fmt});
 
   @override
   Widget build(BuildContext context) {
-    final fraction = total.inMilliseconds == 0
-        ? 0.0
-        : current.inMilliseconds / total.inMilliseconds;
+    final fraction =
+        total.inMilliseconds == 0 ? 0.0 : current.inMilliseconds / total.inMilliseconds;
     final isForward = fraction > 0.5;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.75),
+        color: Colors.black.withValues(alpha: 0.75),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white12),
       ),
@@ -1240,8 +1202,7 @@ class _SeekRipple extends StatelessWidget {
   final AnimationController controller;
   final bool isLeft;
   final String label;
-  const _SeekRipple(
-      {required this.controller, required this.isLeft, required this.label});
+  const _SeekRipple({required this.controller, required this.isLeft, required this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -1259,7 +1220,7 @@ class _SeekRipple extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.55),
+                color: Colors.black.withValues(alpha: 0.55),
                 borderRadius: BorderRadius.circular(48),
                 border: Border.all(color: Colors.white24, width: 1),
               ),
@@ -1267,9 +1228,7 @@ class _SeekRipple extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    isLeft
-                        ? Icons.fast_rewind_rounded
-                        : Icons.fast_forward_rounded,
+                    isLeft ? Icons.fast_rewind_rounded : Icons.fast_forward_rounded,
                     color: _kAccent,
                     size: 30,
                   ),
@@ -1296,8 +1255,7 @@ class _SpeedTile extends StatelessWidget {
   final double speed;
   final bool selected;
   final VoidCallback onTap;
-  const _SpeedTile(
-      {required this.speed, required this.selected, required this.onTap});
+  const _SpeedTile({required this.speed, required this.selected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1308,21 +1266,20 @@ class _SpeedTile extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
         padding: const EdgeInsets.symmetric(vertical: 9),
         decoration: BoxDecoration(
-          color: selected ? _kAccent.withOpacity(0.15) : Colors.transparent,
+          color: selected ? _kAccent.withValues(alpha: 0.15) : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: selected ? _kAccent.withOpacity(0.4) : Colors.transparent,
+            color: selected ? _kAccent.withValues(alpha: 0.4) : Colors.transparent,
             width: 1,
           ),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            if (selected)
-              const Icon(Icons.check_rounded, color: _kAccent, size: 14),
+            if (selected) const Icon(Icons.check_rounded, color: _kAccent, size: 14),
             if (selected) const SizedBox(width: 4),
             Text(
-              '${speed}×',
+              '$speed×',
               style: TextStyle(
                 color: selected ? _kAccent : Colors.white60,
                 fontSize: 13,
@@ -1336,9 +1293,9 @@ class _SpeedTile extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CUSTOM TRACK (buffer indicator)
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _BufferedTrackShape extends RoundedRectSliderTrackShape {
   final double bufferFraction;
@@ -1346,18 +1303,18 @@ class _BufferedTrackShape extends RoundedRectSliderTrackShape {
 
   @override
   void paint(
-      PaintingContext context,
-      Offset offset, {
-        required RenderBox parentBox,
-        required SliderThemeData sliderTheme,
-        required Animation<double> enableAnimation,
-        required Offset thumbCenter,
-        Offset? secondaryOffset,
-        bool isDiscrete = false,
-        bool isEnabled = false,
-        double additionalActiveTrackHeight = 2,   // ← add this
-        TextDirection textDirection = TextDirection.ltr, // ← non-nullable + default
-      }) {
+    PaintingContext context,
+    Offset offset, {
+    required RenderBox parentBox,
+    required SliderThemeData sliderTheme,
+    required Animation<double> enableAnimation,
+    required Offset thumbCenter,
+    Offset? secondaryOffset,
+    bool isDiscrete = false,
+    bool isEnabled = false,
+    double additionalActiveTrackHeight = 2, 
+    TextDirection textDirection = TextDirection.ltr, 
+  }) {
     final trackRect = getPreferredRect(
       parentBox: parentBox,
       offset: offset,
@@ -1366,7 +1323,7 @@ class _BufferedTrackShape extends RoundedRectSliderTrackShape {
       isDiscrete: isDiscrete,
     );
 
-    // Buffer bar
+    
     final bufferPaint = Paint()
       ..color = Colors.white30
       ..style = PaintingStyle.fill;
@@ -1379,7 +1336,7 @@ class _BufferedTrackShape extends RoundedRectSliderTrackShape {
       bufferPaint,
     );
 
-    // Active track on top
+    
     super.paint(
       context,
       offset,
@@ -1390,8 +1347,8 @@ class _BufferedTrackShape extends RoundedRectSliderTrackShape {
       secondaryOffset: secondaryOffset,
       isDiscrete: isDiscrete,
       isEnabled: isEnabled,
-      additionalActiveTrackHeight: additionalActiveTrackHeight, // ← pass through
-      textDirection: textDirection,                             // ← now non-nullable
+      additionalActiveTrackHeight: additionalActiveTrackHeight, 
+      textDirection: textDirection, 
     );
   }
 }

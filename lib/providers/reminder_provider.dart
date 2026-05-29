@@ -1,13 +1,15 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Model
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 enum ReminderRepeat { none, daily, weekly, monthly }
 
@@ -101,13 +103,11 @@ class MessageReminder {
     final data = doc.data() as Map<String, dynamic>?;
     if (data == null) throw Exception('Reminder document data is null');
 
-    DateTime _parseDateTime(dynamic value) {
+    DateTime parseDateTime(dynamic value) {
       if (value == null) return DateTime.now();
       if (value is String) {
         final ms = int.tryParse(value);
-        return ms != null
-            ? DateTime.fromMillisecondsSinceEpoch(ms)
-            : DateTime.now();
+        return ms != null ? DateTime.fromMillisecondsSinceEpoch(ms) : DateTime.now();
       }
       if (value is Timestamp) return value.toDate();
       if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
@@ -119,7 +119,7 @@ class MessageReminder {
       userId: data['userId'] ?? '',
       messageId: data['messageId'] ?? '',
       conversationId: data['conversationId'] ?? '',
-      reminderTime: _parseDateTime(data['reminderTime']),
+      reminderTime: parseDateTime(data['reminderTime']),
       message: data['message'] ?? '',
       senderName: data['senderName'] as String?,
       senderAvatar: data['senderAvatar'] as String?,
@@ -128,18 +128,16 @@ class MessageReminder {
         (r) => r.name == (data['repeat'] ?? 'none'),
         orElse: () => ReminderRepeat.none,
       ),
-      createdAt: _parseDateTime(data['createdAt']),
-      completedAt: data['completedAt'] != null
-          ? _parseDateTime(data['completedAt'])
-          : null,
+      createdAt: parseDateTime(data['createdAt']),
+      completedAt: data['completedAt'] != null ? parseDateTime(data['completedAt']) : null,
       note: data['note'] as String?,
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Provider
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class ReminderProvider {
   final FirebaseFirestore firebaseFirestore;
@@ -147,7 +145,7 @@ class ReminderProvider {
 
   static const String _collection = 'reminders';
 
-  // Notification channel IDs
+  
   static const String _channelId = 'message_reminders';
   static const String _channelName = 'Message Reminders';
   static const String _urgentChannelId = 'urgent_reminders';
@@ -158,11 +156,11 @@ class ReminderProvider {
     required this.notificationsPlugin,
   });
 
-  // ───────────────────────────────────────────────
-  // Schedule
-  // ───────────────────────────────────────────────
+  
+  
+  
 
-  /// Schedule a new reminder. Returns the created [MessageReminder] or null on failure.
+  
   Future<MessageReminder?> scheduleReminder({
     required String userId,
     required String messageId,
@@ -176,12 +174,12 @@ class ReminderProvider {
   }) async {
     try {
       if (reminderTime.isBefore(DateTime.now())) {
-        print('⚠️ Reminder time is in the past');
+        debugPrint('⚠️ Reminder time is in the past');
         return null;
       }
 
       final data = MessageReminder(
-        id: '', // will be set after Firestore write
+        id: '', 
         userId: userId,
         messageId: messageId,
         conversationId: conversationId,
@@ -195,30 +193,27 @@ class ReminderProvider {
         note: note,
       );
 
-      final docRef =
-          await firebaseFirestore.collection(_collection).add(data.toJson());
+      final docRef = await firebaseFirestore.collection(_collection).add(data.toJson());
 
       final notifId = docRef.id.hashCode.abs() % 2147483647;
       await _scheduleNotification(
         id: notifId,
-        title: senderName != null
-            ? 'Reminder from $senderName'
-            : 'Message Reminder',
+        title: senderName != null ? 'Reminder from $senderName' : 'Message Reminder',
         body: message.length > 60 ? '${message.substring(0, 60)}…' : message,
         scheduledDate: reminderTime,
-        payload: '${conversationId}|${docRef.id}',
+        payload: '$conversationId|${docRef.id}',
         isUrgent: reminderTime.difference(DateTime.now()).inMinutes <= 15,
       );
 
-      print('✅ Reminder scheduled → ${reminderTime.toIso8601String()}');
+      debugPrint('✅ Reminder scheduled → ${reminderTime.toIso8601String()}');
       return data.copyWith(id: docRef.id);
     } catch (e) {
-      print('❌ Error scheduling reminder: $e');
+      debugPrint('❌ Error scheduling reminder: $e');
       return null;
     }
   }
 
-  /// Update reminder time and reschedule notification.
+  
   Future<bool> updateReminder({
     required String reminderId,
     required DateTime newReminderTime,
@@ -226,7 +221,7 @@ class ReminderProvider {
   }) async {
     try {
       if (newReminderTime.isBefore(DateTime.now())) {
-        print('⚠️ New reminder time is in the past');
+        debugPrint('⚠️ New reminder time is in the past');
         return false;
       }
 
@@ -235,17 +230,13 @@ class ReminderProvider {
         if (newNote != null) 'note': newNote,
       };
 
-      await firebaseFirestore
-          .collection(_collection)
-          .doc(reminderId)
-          .update(updates);
+      await firebaseFirestore.collection(_collection).doc(reminderId).update(updates);
 
-      // Cancel old notification and reschedule
+      
       final oldId = reminderId.hashCode.abs() % 2147483647;
       await notificationsPlugin.cancel(oldId);
 
-      final doc =
-          await firebaseFirestore.collection(_collection).doc(reminderId).get();
+      final doc = await firebaseFirestore.collection(_collection).doc(reminderId).get();
       if (doc.exists) {
         final reminder = MessageReminder.fromDocument(doc);
         await _scheduleNotification(
@@ -262,17 +253,17 @@ class ReminderProvider {
         );
       }
 
-      print('✅ Reminder updated → ${newReminderTime.toIso8601String()}');
+      debugPrint('✅ Reminder updated → ${newReminderTime.toIso8601String()}');
       return true;
     } catch (e) {
-      print('❌ Error updating reminder: $e');
+      debugPrint('❌ Error updating reminder: $e');
       return false;
     }
   }
 
-  // ───────────────────────────────────────────────
-  // Notification scheduling (internal)
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   Future<void> _scheduleNotification({
     required int id,
@@ -283,8 +274,7 @@ class ReminderProvider {
     bool isUrgent = false,
   }) async {
     try {
-      final tz.TZDateTime scheduledTZ =
-          tz.TZDateTime.from(scheduledDate, tz.local);
+      final tz.TZDateTime scheduledTZ = tz.TZDateTime.from(scheduledDate, tz.local);
 
       final channelId = isUrgent ? _urgentChannelId : _channelId;
       final channelName = isUrgent ? _urgentChannelName : _channelName;
@@ -321,16 +311,16 @@ class ReminderProvider {
         payload: payload,
       );
 
-      print('🔔 Notification scheduled → id:$id at $scheduledTZ');
+      debugPrint('🔔 Notification scheduled → id:$id at $scheduledTZ');
     } catch (e) {
-      print('❌ Error scheduling notification: $e');
+      debugPrint('❌ Error scheduling notification: $e');
       rethrow;
     }
   }
 
-  // ───────────────────────────────────────────────
-  // Complete / Delete / Snooze
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   Future<bool> completeReminder(String reminderId) async {
     try {
@@ -341,10 +331,10 @@ class ReminderProvider {
 
       await notificationsPlugin.cancel(reminderId.hashCode.abs() % 2147483647);
 
-      print('✅ Reminder completed: $reminderId');
+      debugPrint('✅ Reminder completed: $reminderId');
       return true;
     } catch (e) {
-      print('❌ Error completing reminder: $e');
+      debugPrint('❌ Error completing reminder: $e');
       return false;
     }
   }
@@ -353,15 +343,15 @@ class ReminderProvider {
     try {
       await firebaseFirestore.collection(_collection).doc(reminderId).delete();
       await notificationsPlugin.cancel(reminderId.hashCode.abs() % 2147483647);
-      print('✅ Reminder deleted: $reminderId');
+      debugPrint('✅ Reminder deleted: $reminderId');
       return true;
     } catch (e) {
-      print('❌ Error deleting reminder: $e');
+      debugPrint('❌ Error deleting reminder: $e');
       return false;
     }
   }
 
-  /// Snooze: reschedule reminder by [snoozeDuration] from now.
+  
   Future<bool> snoozeReminder(
     String reminderId, {
     Duration snoozeDuration = const Duration(minutes: 10),
@@ -373,16 +363,16 @@ class ReminderProvider {
         newReminderTime: newTime,
       );
     } catch (e) {
-      print('❌ Error snoozing reminder: $e');
+      debugPrint('❌ Error snoozing reminder: $e');
       return false;
     }
   }
 
-  // ───────────────────────────────────────────────
-  // Queries / Streams
-  // ───────────────────────────────────────────────
+  
+  
+  
 
-  /// Stream of active (not completed) reminders for a user, ordered by time.
+  
   Stream<List<MessageReminder>> getUserRemindersStream(String userId) {
     return firebaseFirestore
         .collection(_collection)
@@ -390,11 +380,10 @@ class ReminderProvider {
         .where('isCompleted', isEqualTo: false)
         .orderBy('reminderTime')
         .snapshots()
-        .map((snapshot) =>
-            snapshot.docs.map(MessageReminder.fromDocument).toList());
+        .map((snapshot) => snapshot.docs.map(MessageReminder.fromDocument).toList());
   }
 
-  /// Stream of completed reminders for a user (history), limited to [limit].
+  
   Stream<List<MessageReminder>> getCompletedRemindersStream(
     String userId, {
     int limit = 50,
@@ -406,11 +395,10 @@ class ReminderProvider {
         .orderBy('completedAt', descending: true)
         .limit(limit)
         .snapshots()
-        .map((snapshot) =>
-            snapshot.docs.map(MessageReminder.fromDocument).toList());
+        .map((snapshot) => snapshot.docs.map(MessageReminder.fromDocument).toList());
   }
 
-  /// Get reminders due within the next [minutes] minutes.
+  
   Future<List<MessageReminder>> getUpcomingReminders(
     String userId, {
     int minutes = 60,
@@ -427,17 +415,16 @@ class ReminderProvider {
 
       return snapshot.docs
           .map(MessageReminder.fromDocument)
-          .where((r) =>
-              r.reminderTime.isAfter(now) && r.reminderTime.isBefore(cutoff))
+          .where((r) => r.reminderTime.isAfter(now) && r.reminderTime.isBefore(cutoff))
           .toList()
         ..sort((a, b) => a.reminderTime.compareTo(b.reminderTime));
     } catch (e) {
-      print('❌ Error getting upcoming reminders: $e');
+      debugPrint('❌ Error getting upcoming reminders: $e');
       return [];
     }
   }
 
-  /// Count of active reminders for a user.
+  
   Stream<int> getActiveReminderCount(String userId) {
     return firebaseFirestore
         .collection(_collection)
@@ -447,11 +434,11 @@ class ReminderProvider {
         .map((s) => s.size);
   }
 
-  // ───────────────────────────────────────────────
-  // Maintenance
-  // ───────────────────────────────────────────────
+  
+  
+  
 
-  /// Mark all past-due reminders as completed and handle repeating ones.
+  
   Future<void> checkExpiredReminders(String userId) async {
     try {
       final now = DateTime.now();
@@ -477,9 +464,9 @@ class ReminderProvider {
           await completeReminder(reminder.id);
         }
       }
-      print('✅ Expired reminders checked for user: $userId');
+      debugPrint('✅ Expired reminders checked for user: $userId');
     } catch (e) {
-      print('❌ Error checking expired reminders: $e');
+      debugPrint('❌ Error checking expired reminders: $e');
     }
   }
 
@@ -491,14 +478,13 @@ class ReminderProvider {
       case ReminderRepeat.weekly:
         return base.add(const Duration(days: 7));
       case ReminderRepeat.monthly:
-        return DateTime(
-            base.year, base.month + 1, base.day, base.hour, base.minute);
+        return DateTime(base.year, base.month + 1, base.day, base.hour, base.minute);
       case ReminderRepeat.none:
         return null;
     }
   }
 
-  /// Delete all completed reminders older than [olderThan].
+  
   Future<void> cleanupOldReminders(
     String userId, {
     Duration olderThan = const Duration(days: 30),
@@ -526,15 +512,15 @@ class ReminderProvider {
         }
       }
       await batch.commit();
-      print('✅ Cleaned up $count old reminders for user: $userId');
+      debugPrint('✅ Cleaned up $count old reminders for user: $userId');
     } catch (e) {
-      print('❌ Error cleaning up old reminders: $e');
+      debugPrint('❌ Error cleaning up old reminders: $e');
     }
   }
 
-  /// Cancel ALL pending notifications for a user (e.g. on sign-out).
+  
   Future<void> cancelAllNotifications() async {
     await notificationsPlugin.cancelAll();
-    print('✅ All notifications cancelled');
+    debugPrint('✅ All notifications cancelled');
   }
 }

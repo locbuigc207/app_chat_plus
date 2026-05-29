@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 class AppThemes {
-  
   static const double spaceXS = 4.0;
   static const double spaceSM = 8.0;
   static const double spaceMD = 16.0;
@@ -9,17 +8,15 @@ class AppThemes {
   static const double spaceXL = 32.0;
   static const double spaceXXL = 48.0;
 
-  
   static const double radiusSM = 8.0;
   static const double radiusMD = 12.0;
   static const double radiusLG = 16.0;
   static const double radiusXL = 24.0;
   static const double radiusFull = 100.0;
 
-  
   static List<BoxShadow> shadowSM(Color color) => [
         BoxShadow(
-          color: color.withOpacity(0.08),
+          color: color.withValues(alpha: 0.08),
           blurRadius: 8,
           offset: const Offset(0, 2),
         ),
@@ -27,7 +24,7 @@ class AppThemes {
 
   static List<BoxShadow> shadowMD(Color color) => [
         BoxShadow(
-          color: color.withOpacity(0.12),
+          color: color.withValues(alpha: 0.12),
           blurRadius: 16,
           offset: const Offset(0, 4),
         ),
@@ -35,29 +32,27 @@ class AppThemes {
 
   static List<BoxShadow> shadowLG(Color color) => [
         BoxShadow(
-          color: color.withOpacity(0.16),
+          color: color.withValues(alpha: 0.16),
           blurRadius: 32,
           offset: const Offset(0, 8),
         ),
       ];
 
-  
   static List<BoxShadow> get softShadow => [
         BoxShadow(
-          color: Colors.black.withOpacity(0.04),
+          color: Colors.black.withValues(alpha: 0.04),
           blurRadius: 24,
           offset: const Offset(0, 8),
           spreadRadius: 0,
         ),
         BoxShadow(
-          color: Colors.black.withOpacity(0.02),
+          color: Colors.black.withValues(alpha: 0.02),
           blurRadius: 8,
           offset: const Offset(0, 4),
           spreadRadius: 0,
         ),
       ];
 
-  
   static ThemeData lightTheme(Color primaryColor) {
     final colorScheme = ColorScheme.fromSeed(
       seedColor: primaryColor,
@@ -73,13 +68,11 @@ class AppThemes {
       primaryColor: primaryColor,
       scaffoldBackgroundColor: const Color(0xFFF0F2F8),
       fontFamily: 'Inter',
-
-      
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        shadowColor: Colors.black.withOpacity(0.06),
+        shadowColor: Colors.black.withValues(alpha: 0.06),
         scrolledUnderElevation: 1,
         centerTitle: false,
         titleTextStyle: const TextStyle(
@@ -91,8 +84,6 @@ class AppThemes {
         iconTheme: IconThemeData(color: primaryColor, size: 22),
         actionsIconTheme: IconThemeData(color: primaryColor, size: 22),
       ),
-
-      
       cardTheme: CardThemeData(
         color: Colors.white,
         surfaceTintColor: Colors.transparent,
@@ -100,26 +91,20 @@ class AppThemes {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radiusXL),
         ),
-        shadowColor: Colors.black.withOpacity(0.06),
+        shadowColor: Colors.black.withValues(alpha: 0.06),
         margin: EdgeInsets.zero,
       ),
-
-      
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
         backgroundColor: Colors.white,
         elevation: 0,
         type: BottomNavigationBarType.fixed,
       ),
-
-      
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
         ),
       ),
-
-      
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: const Color(0xFFF0F2F8),
@@ -145,27 +130,19 @@ class AppThemes {
           fontWeight: FontWeight.w400,
         ),
       ),
-
-      
       dividerTheme: DividerThemeData(
-        color: const Color(0xFF8E8E93).withOpacity(0.15),
+        color: const Color(0xFF8E8E93).withValues(alpha: 0.15),
         thickness: 1,
         space: 1,
       ),
-
-      
       listTileTheme: const ListTileThemeData(
-        contentPadding:
-            EdgeInsets.symmetric(horizontal: spaceMD, vertical: spaceXS),
+        contentPadding: EdgeInsets.symmetric(horizontal: spaceMD, vertical: spaceXS),
         minVerticalPadding: spaceXS,
       ),
-
-      
       textTheme: _buildTextTheme(const Color(0xFF1A1D2E)),
     );
   }
 
-  
   static ThemeData darkTheme(Color primaryColor) {
     final colorScheme = ColorScheme.fromSeed(
       seedColor: primaryColor,
@@ -295,13 +272,13 @@ class AppThemes {
         height: 1.5,
       ),
       bodyMedium: TextStyle(
-        color: baseColor.withOpacity(0.75),
+        color: baseColor.withValues(alpha: 0.75),
         fontSize: 14,
         fontWeight: FontWeight.w400,
         height: 1.4,
       ),
       bodySmall: TextStyle(
-        color: baseColor.withOpacity(0.55),
+        color: baseColor.withValues(alpha: 0.55),
         fontSize: 12,
         fontWeight: FontWeight.w400,
         height: 1.3,

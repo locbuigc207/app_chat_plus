@@ -1,31 +1,32 @@
 import 'dart:async';
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/call_model.dart';
 import '../pages/incoming_call_page.dart';
 import '../services/call_service.dart';
 
-// ─────────────────────────────────────────────────────────────
-// CallListener
-//
-// Wrap your app's root widget with this to automatically handle
-// incoming call notifications anywhere in the app.
-//
-// Usage:
-//   MaterialApp(
-//     home: CallListener(
-//       child: MyHomePage(),
-//     ),
-//   );
-// ─────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 class CallListener extends StatefulWidget {
   final Widget child;
 
-  /// Override user ID (useful if you manage auth outside Firebase Auth).
-  /// When null, the listener auto-resolves from [FirebaseAuth].
+  
+  
   final String? currentUserId;
 
   const CallListener({
@@ -38,8 +39,7 @@ class CallListener extends StatefulWidget {
   State<CallListener> createState() => _CallListenerState();
 }
 
-class _CallListenerState extends State<CallListener>
-    with WidgetsBindingObserver {
+class _CallListenerState extends State<CallListener> with WidgetsBindingObserver {
   final _callService = CallService.instance;
 
   StreamSubscription<CallModel?>? _incomingCallSub;
@@ -69,11 +69,11 @@ class _CallListenerState extends State<CallListener>
     _incomingCallSub = _callService.incomingCallStream.listen((call) {
       if (call == null) return;
 
-      // Deduplicate — same call can re-emit if Firestore updates
+      
       if (call.callId == _activeIncomingCallId) return;
 
-      // Don't show if we're already on a call page
-      // (guard: check the call is truly incoming / ringing)
+      
+      
       if (!call.status.isActive) return;
 
       _activeIncomingCallId = call.callId;
@@ -90,7 +90,7 @@ class _CallListenerState extends State<CallListener>
   void _showIncomingCall(CallModel call) {
     if (!mounted) return;
 
-    // Find the root navigator so the incoming call overlays everything
+    
     final navigator = Navigator.of(context, rootNavigator: true);
 
     navigator
@@ -105,8 +105,7 @@ class _CallListenerState extends State<CallListener>
             position: Tween<Offset>(
               begin: const Offset(0, 1),
               end: Offset.zero,
-            ).animate(
-                CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+            ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
             child: child,
           );
         },
@@ -114,15 +113,14 @@ class _CallListenerState extends State<CallListener>
       ),
     )
         .then((_) {
-      // After the incoming call page dismisses, allow next call
+      
       _activeIncomingCallId = null;
     });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    _isInBackground = state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached;
+    _isInBackground = state == AppLifecycleState.paused || state == AppLifecycleState.detached;
   }
 
   @override

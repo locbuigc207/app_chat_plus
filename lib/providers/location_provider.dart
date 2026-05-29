@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -39,7 +41,7 @@ class LocationData {
 class LocationProvider {
   static const _locationTimeout = Duration(seconds: 15);
 
-  // ─── Permissions ──────────────────────────────────────────────────────────
+  
 
   Future<bool> requestLocationPermission() async {
     try {
@@ -62,12 +64,12 @@ class LocationProvider {
 
       return true;
     } catch (e) {
-      print('❌ Error requesting location permission: $e');
+      debugPrint('❌ Error requesting location permission: $e');
       return false;
     }
   }
 
-  // ─── Get Location ─────────────────────────────────────────────────────────
+  
 
   Future<Position?> getCurrentLocation() async {
     try {
@@ -87,7 +89,7 @@ class LocationProvider {
         ),
       );
     } catch (e) {
-      print('❌ Error getting location: $e');
+      debugPrint('❌ Error getting location: $e');
       return null;
     }
   }
@@ -105,18 +107,17 @@ class LocationProvider {
       return LocationData(
         latitude: position.latitude,
         longitude: position.longitude,
-        address: address['full'] ??
-            _coordString(position.latitude, position.longitude),
+        address: address['full'] ?? _coordString(position.latitude, position.longitude),
         shortAddress: address['short'] ?? 'Unknown',
         mapsUrl: _buildMapsUrl(position.latitude, position.longitude),
       );
     } catch (e) {
-      print('❌ Error getting location with details: $e');
+      debugPrint('❌ Error getting location with details: $e');
       return null;
     }
   }
 
-  // ─── Geocoding ────────────────────────────────────────────────────────────
+  
 
   Future<Map<String, String>> _getAddressFromCoordinates(
     double latitude,
@@ -146,21 +147,19 @@ class LocationProvider {
       addIfNotEmpty(place.administrativeArea);
       addIfNotEmpty(place.country);
 
-      final fullAddress = fullParts.isNotEmpty
-          ? fullParts.join(', ')
-          : _coordString(latitude, longitude);
+      final fullAddress =
+          fullParts.isNotEmpty ? fullParts.join(', ') : _coordString(latitude, longitude);
 
       final shortParts = <String>[];
       addIfNotEmpty(place.name);
       addIfNotEmpty(place.locality);
 
-      final shortAddress = shortParts.isNotEmpty
-          ? shortParts.join(', ')
-          : (place.country ?? 'Unknown location');
+      final shortAddress =
+          shortParts.isNotEmpty ? shortParts.join(', ') : (place.country ?? 'Unknown location');
 
       return {'full': fullAddress, 'short': shortAddress};
     } catch (e) {
-      print('❌ Error getting address: $e');
+      debugPrint('❌ Error getting address: $e');
       return {
         'full': _coordString(latitude, longitude),
         'short': 'Unknown location',
@@ -168,7 +167,7 @@ class LocationProvider {
     }
   }
 
-  // ─── Formatting ───────────────────────────────────────────────────────────
+  
 
   String _coordString(double lat, double lng) =>
       'Lat: ${lat.toStringAsFixed(6)}, Lng: ${lng.toStringAsFixed(6)}';
@@ -191,7 +190,7 @@ class LocationProvider {
     return '${(meters / 1000).toStringAsFixed(0)} km';
   }
 
-  // ─── Parse ────────────────────────────────────────────────────────────────
+  
 
   bool isLocationMessage(String message) =>
       message.contains('📍 Location') && message.contains('🗺️ View on map:');
@@ -224,15 +223,14 @@ class LocationProvider {
         mapsUrl: urlMatch.group(0)!,
       );
     } catch (e) {
-      print('❌ Error parsing location: $e');
+      debugPrint('❌ Error parsing location: $e');
       return null;
     }
   }
 
-  // ─── Distance ─────────────────────────────────────────────────────────────
+  
 
-  double calculateDistance(Position start, Position end) =>
-      Geolocator.distanceBetween(
+  double calculateDistance(Position start, Position end) => Geolocator.distanceBetween(
         start.latitude,
         start.longitude,
         end.latitude,
@@ -247,7 +245,7 @@ class LocationProvider {
   ) =>
       Geolocator.distanceBetween(lat1, lng1, lat2, lng2);
 
-  // ─── Place Name ───────────────────────────────────────────────────────────
+  
 
   Future<String?> getNearbyPlaceName(double latitude, double longitude) async {
     try {
@@ -256,12 +254,12 @@ class LocationProvider {
       final p = placemarks.first;
       return p.name ?? p.street ?? p.locality;
     } catch (e) {
-      print('❌ Error getting nearby place: $e');
+      debugPrint('❌ Error getting nearby place: $e');
       return null;
     }
   }
 
-  // ─── Stream ───────────────────────────────────────────────────────────────
+  
 
   Stream<Position> getLocationStream({
     int distanceFilter = 10,

@@ -1,39 +1,40 @@
+import 'package:flutter/foundation.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
-import 'package:flutter/foundation.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// ─── Status Enum ──────────────────────────────────────────────────────────────
+
 
 enum PhoneAuthStatus {
-  /// Trạng thái ban đầu, chưa thực hiện thao tác nào.
+  
   uninitialized,
 
-  /// Đang xử lý (gửi OTP hoặc xác minh).
+  
   authenticating,
 
-  /// Mã OTP đã được gửi thành công đến thiết bị.
+  
   codeSent,
 
-  /// Mã OTP đã được xác minh thành công.
+  
   codeVerified,
 
-  /// Đã đăng nhập hoàn toàn.
+  
   authenticated,
 
-  /// Lỗi xác thực (sai OTP, hết hạn, v.v.).
+  
   authenticateError,
 
-  /// Ngoại lệ không mong muốn.
+  
   authenticateException,
 }
 
-// ─── PhoneAuthProvider ────────────────────────────────────────────────────────
+
 
 class PhoneAuthProvider extends ChangeNotifier {
-  // ── Dependencies ─────────────────────────────────────────────────────────────
+  
 
   final firebase_auth.FirebaseAuth firebaseAuth;
   final FirebaseFirestore firebaseFirestore;
@@ -45,7 +46,7 @@ class PhoneAuthProvider extends ChangeNotifier {
     required this.prefs,
   });
 
-  // ── State ─────────────────────────────────────────────────────────────────────
+  
 
   PhoneAuthStatus _status = PhoneAuthStatus.uninitialized;
   String? _verificationId;
@@ -53,38 +54,38 @@ class PhoneAuthProvider extends ChangeNotifier {
   String? _errorMessage;
   String? _lastPhoneNumber;
 
-  // ── Getters ───────────────────────────────────────────────────────────────────
+  
 
   PhoneAuthStatus get status => _status;
   String? get verificationId => _verificationId;
   String? get errorMessage => _errorMessage;
 
-  /// Trả về true nếu đang xử lý bất kỳ tác vụ async nào.
+  
   bool get isLoading => _status == PhoneAuthStatus.authenticating;
 
-  /// Trả về true nếu mã OTP đã được gửi (hiển thị UI nhập OTP).
+  
   bool get isCodeSent => _status == PhoneAuthStatus.codeSent;
 
-  /// Trả về true nếu đã xác thực thành công.
+  
   bool get isAuthenticated => _status == PhoneAuthStatus.authenticated;
 
-  /// Trả về true nếu có lỗi.
+  
   bool get hasError =>
       _status == PhoneAuthStatus.authenticateError ||
       _status == PhoneAuthStatus.authenticateException;
 
-  // ── QR Code Helper ────────────────────────────────────────────────────────────
+  
 
   String _generateQRCode(String userId) {
     return 'CHATAPP_${userId}_${DateTime.now().millisecondsSinceEpoch}';
   }
 
-  // ── Send OTP ──────────────────────────────────────────────────────────────────
+  
 
-  /// Gửi mã OTP qua SMS đến [phoneNumber] (đã bao gồm mã quốc gia).
-  ///
-  /// Trên Android hỗ trợ tự động xác minh (verificationCompleted).
-  /// Trên iOS/Web luôn yêu cầu nhập OTP thủ công.
+  
+  
+  
+  
   Future<void> sendOTP(String phoneNumber) async {
     _status = PhoneAuthStatus.authenticating;
     _errorMessage = null;
@@ -95,14 +96,13 @@ class PhoneAuthProvider extends ChangeNotifier {
       await firebaseAuth.verifyPhoneNumber(
         phoneNumber: phoneNumber,
 
-        // Android: tự động xác minh nếu thiết bị nhận được SMS
-        verificationCompleted:
-            (firebase_auth.PhoneAuthCredential credential) async {
+        
+        verificationCompleted: (firebase_auth.PhoneAuthCredential credential) async {
           debugPrint('📱 Auto-verified OTP on Android');
           await _signInWithCredential(credential, phoneNumber);
         },
 
-        // Xác minh thất bại (số điện thoại không hợp lệ, quota hết, v.v.)
+        
         verificationFailed: (firebase_auth.FirebaseAuthException e) {
           debugPrint('❌ Verification failed: ${e.code} – ${e.message}');
           _errorMessage = _mapFirebaseError(e.code);
@@ -110,7 +110,7 @@ class PhoneAuthProvider extends ChangeNotifier {
           notifyListeners();
         },
 
-        // SMS đã gửi thành công
+        
         codeSent: (String verificationId, int? resendToken) {
           debugPrint('✅ OTP sent. verificationId: $verificationId');
           _verificationId = verificationId;
@@ -119,14 +119,14 @@ class PhoneAuthProvider extends ChangeNotifier {
           notifyListeners();
         },
 
-        // Timeout tự động lấy lại mã (chỉ Android)
+        
         codeAutoRetrievalTimeout: (String verificationId) {
           debugPrint('⏱️ Auto-retrieval timeout');
           _verificationId = verificationId;
         },
 
         timeout: const Duration(seconds: 60),
-        forceResendingToken: _resendToken, // dùng khi gửi lại OTP
+        forceResendingToken: _resendToken, 
       );
     } catch (e) {
       debugPrint('❌ sendOTP exception: $e');
@@ -136,20 +136,20 @@ class PhoneAuthProvider extends ChangeNotifier {
     }
   }
 
-  // ── Resend OTP ────────────────────────────────────────────────────────────────
+  
 
-  /// Gửi lại OTP đến số điện thoại đã nhập trước đó.
-  /// Sử dụng [_resendToken] để tránh bị giới hạn bởi Firebase.
+  
+  
   Future<void> resendOTP() async {
     if (_lastPhoneNumber == null) return;
     await sendOTP(_lastPhoneNumber!);
   }
 
-  // ── Verify OTP ────────────────────────────────────────────────────────────────
+  
 
-  /// Xác minh mã OTP [smsCode] người dùng nhập.
-  ///
-  /// Returns `true` nếu đăng nhập thành công.
+  
+  
+  
   Future<bool> verifyOTP(String smsCode, String phoneNumber) async {
     if (_verificationId == null) {
       _errorMessage = 'Phiên xác minh hết hạn. Vui lòng gửi lại mã OTP.';
@@ -191,15 +191,14 @@ class PhoneAuthProvider extends ChangeNotifier {
     }
   }
 
-  // ── Sign In with Credential ───────────────────────────────────────────────────
+  
 
   Future<bool> _signInWithCredential(
     firebase_auth.PhoneAuthCredential credential,
     String phoneNumber,
   ) async {
     try {
-      final userCredential =
-          await firebaseAuth.signInWithCredential(credential);
+      final userCredential = await firebaseAuth.signInWithCredential(credential);
       final firebaseUser = userCredential.user;
 
       if (firebaseUser == null) {
@@ -211,7 +210,7 @@ class PhoneAuthProvider extends ChangeNotifier {
 
       debugPrint('✅ Firebase sign-in success: ${firebaseUser.uid}');
 
-      // Cập nhật/tạo hồ sơ trên Firestore
+      
       await _upsertUserProfile(firebaseUser, phoneNumber);
 
       _status = PhoneAuthStatus.authenticated;
@@ -232,21 +231,20 @@ class PhoneAuthProvider extends ChangeNotifier {
     }
   }
 
-  // ── Upsert User Profile ───────────────────────────────────────────────────────
+  
 
-  /// Tạo mới hoặc cập nhật hồ sơ người dùng trên Firestore & SharedPreferences.
+  
   Future<void> _upsertUserProfile(
     firebase_auth.User firebaseUser,
     String phoneNumber,
   ) async {
-    final userRef = firebaseFirestore
-        .collection(FirestoreConstants.pathUserCollection)
-        .doc(firebaseUser.uid);
+    final userRef =
+        firebaseFirestore.collection(FirestoreConstants.pathUserCollection).doc(firebaseUser.uid);
 
     final snapshot = await userRef.get();
 
     if (!snapshot.exists) {
-      // ── Người dùng mới ────────────────────────────────────────────────────
+      
       final qrCode = _generateQRCode(firebaseUser.uid);
 
       await userRef.set({
@@ -255,8 +253,7 @@ class PhoneAuthProvider extends ChangeNotifier {
         FirestoreConstants.id: firebaseUser.uid,
         FirestoreConstants.phoneNumber: phoneNumber,
         FirestoreConstants.qrCode: qrCode,
-        FirestoreConstants.createdAt:
-            DateTime.now().millisecondsSinceEpoch.toString(),
+        FirestoreConstants.createdAt: DateTime.now().millisecondsSinceEpoch.toString(),
         FirestoreConstants.chattingWith: null,
         FirestoreConstants.aboutMe: '',
         'is2FAEnabled': false,
@@ -274,7 +271,7 @@ class PhoneAuthProvider extends ChangeNotifier {
 
       debugPrint('🆕 New phone user created: ${firebaseUser.uid}');
     } else {
-      // ── Người dùng cũ ─────────────────────────────────────────────────────
+      
       final userChat = UserChat.fromDocument(snapshot);
 
       String qrCode = userChat.qrCode;
@@ -286,13 +283,10 @@ class PhoneAuthProvider extends ChangeNotifier {
 
       await _savePrefs(
         id: userChat.id,
-        nickname: userChat.nickname.isNotEmpty
-            ? userChat.nickname
-            : _formatPhoneAsNickname(phoneNumber),
+        nickname:
+            userChat.nickname.isNotEmpty ? userChat.nickname : _formatPhoneAsNickname(phoneNumber),
         photoUrl: userChat.photoUrl,
-        phoneNumber: userChat.phoneNumber.isNotEmpty
-            ? userChat.phoneNumber
-            : phoneNumber,
+        phoneNumber: userChat.phoneNumber.isNotEmpty ? userChat.phoneNumber : phoneNumber,
         qrCode: qrCode,
         aboutMe: userChat.aboutMe,
       );
@@ -301,7 +295,7 @@ class PhoneAuthProvider extends ChangeNotifier {
     }
   }
 
-  // ── Save SharedPreferences ────────────────────────────────────────────────────
+  
 
   Future<void> _savePrefs({
     required String id,
@@ -321,9 +315,9 @@ class PhoneAuthProvider extends ChangeNotifier {
     ]);
   }
 
-  // ── Reset Status ──────────────────────────────────────────────────────────────
+  
 
-  /// Đặt lại trạng thái về ban đầu (dùng khi người dùng muốn thay đổi số).
+  
   void resetStatus() {
     _status = PhoneAuthStatus.uninitialized;
     _errorMessage = null;
@@ -331,16 +325,16 @@ class PhoneAuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Handle Exception ──────────────────────────────────────────────────────────
+  
 
   void handleException() {
     _status = PhoneAuthStatus.authenticateException;
     notifyListeners();
   }
 
-  // ── Firebase Error Mapping ────────────────────────────────────────────────────
+  
 
-  /// Chuyển đổi mã lỗi Firebase thành thông báo tiếng Việt thân thiện.
+  
   String _mapFirebaseError(String code) {
     switch (code) {
       case 'invalid-phone-number':
@@ -368,10 +362,10 @@ class PhoneAuthProvider extends ChangeNotifier {
     }
   }
 
-  // ── Format Phone as Nickname ──────────────────────────────────────────────────
+  
 
-  /// Tạo nickname mặc định từ số điện thoại (ẩn giữa để bảo mật).
-  /// Ví dụ: +84912345678 → "Người dùng ***678"
+  
+  
   String _formatPhoneAsNickname(String phone) {
     if (phone.length < 4) return 'Người dùng';
     final last4 = phone.substring(phone.length - 4);

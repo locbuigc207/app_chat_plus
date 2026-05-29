@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Model dữ liệu cho một mention
+
 class MentionUser {
   final String id;
   final String username;
@@ -17,23 +17,23 @@ class MentionUser {
   String get label => displayName ?? username;
 }
 
-/// TextEditingController nâng cao với hỗ trợ @mention đầy đủ:
-/// - Highlight @mention với màu sắc và background
-/// - Xóa cả block mention khi backspace
-/// - Detect đang gõ @query để trigger gợi ý
-/// - Insert mention với caret đúng vị trí
-/// - Hỗ trợ unicode (tiếng Việt, emoji, v.v.)
+
+
+
+
+
+
 class MentionTextEditingController extends TextEditingController {
-  // Callback khi người dùng đang gõ @query (null khi kết thúc)
+  
   final void Function(String? query)? onMentionQuery;
 
-  // Danh sách mention đã được insert (để track)
+  
   final Map<String, MentionUser> _insertedMentions = {};
 
-  // Regex nhận diện @mention trong text
+  
   static final _mentionRegex = RegExp(r'@([\p{L}0-9_.]+)', unicode: true);
 
-  // Regex phát hiện đang gõ @ (chưa chọn từ gợi ý)
+  
   static final _queryRegex = RegExp(r'@([\p{L}0-9_.]*)$', unicode: true);
 
   MentionTextEditingController({
@@ -41,7 +41,7 @@ class MentionTextEditingController extends TextEditingController {
     this.onMentionQuery,
   });
 
-  // ─── Render ─────────────────────────────────────────────────────────────────
+  
 
   @override
   TextSpan buildTextSpan({
@@ -54,7 +54,7 @@ class MentionTextEditingController extends TextEditingController {
     int lastEnd = 0;
 
     for (final match in _mentionRegex.allMatches(fullText)) {
-      // Text bình thường trước mention
+      
       if (match.start > lastEnd) {
         spans.add(TextSpan(
           text: fullText.substring(lastEnd, match.start),
@@ -62,7 +62,7 @@ class MentionTextEditingController extends TextEditingController {
         ));
       }
 
-      // Block mention
+      
       final mentionText = match.group(0)!;
       final isSaved = _insertedMentions.containsKey(mentionText);
 
@@ -71,16 +71,15 @@ class MentionTextEditingController extends TextEditingController {
         style: style?.copyWith(
           color: const Color(0xFF007AFF),
           fontWeight: isSaved ? FontWeight.w600 : FontWeight.normal,
-          backgroundColor: isSaved
-              ? const Color(0xFF007AFF).withOpacity(0.12)
-              : Colors.transparent,
+          backgroundColor:
+              isSaved ? const Color(0xFF007AFF).withValues(alpha: 0.12) : Colors.transparent,
         ),
       ));
 
       lastEnd = match.end;
     }
 
-    // Phần text còn lại
+    
     if (lastEnd < fullText.length) {
       spans.add(TextSpan(
         text: fullText.substring(lastEnd),
@@ -91,21 +90,20 @@ class MentionTextEditingController extends TextEditingController {
     return TextSpan(children: spans, style: style);
   }
 
-  // ─── Value Setter ────────────────────────────────────────────────────────────
+  
 
   @override
   set value(TextEditingValue newValue) {
     final oldText = value.text;
     final newText = newValue.text;
 
-    // Phát hiện backspace trong block mention → xóa cả block
+    
     if (newText.length < oldText.length) {
       final cursorPos = newValue.selection.baseOffset;
       if (cursorPos >= 0 && cursorPos <= oldText.length) {
-        // Text trước con trỏ (theo old text)
+        
         final textBefore = oldText.substring(0, cursorPos + 1);
-        final match =
-            RegExp(r'@[\p{L}0-9_.]+$', unicode: true).firstMatch(textBefore);
+        final match = RegExp(r'@[\p{L}0-9_.]+$', unicode: true).firstMatch(textBefore);
 
         if (match != null) {
           final newT = oldText.replaceRange(match.start, match.end, '');
@@ -122,19 +120,19 @@ class MentionTextEditingController extends TextEditingController {
 
     super.value = newValue;
 
-    // Kiểm tra đang gõ @query
+    
     _checkMentionQuery(newText, newValue.selection.baseOffset);
   }
 
-  // ─── Public API ─────────────────────────────────────────────────────────────
+  
 
-  /// Insert một mention đã chọn từ gợi ý
+  
   void insertMention(MentionUser user) {
     final cursorPos = selection.baseOffset;
     if (cursorPos < 0) return;
 
     final currentText = text;
-    // Tìm @query trước cursor để thay thế
+    
     final textBefore = currentText.substring(0, cursorPos);
     final match = _queryRegex.firstMatch(textBefore);
 
@@ -143,7 +141,7 @@ class MentionTextEditingController extends TextEditingController {
       final newText = currentText.replaceRange(
         match.start,
         cursorPos,
-        '$mentionText ', // Thêm space sau mention
+        '$mentionText ', 
       );
 
       _insertedMentions[mentionText] = user;
@@ -155,17 +153,17 @@ class MentionTextEditingController extends TextEditingController {
         ),
       );
 
-      // Kết thúc query
+      
       onMentionQuery?.call(null);
     }
   }
 
-  /// Xóa tất cả mention đã insert
+  
   void clearMentions() {
     _insertedMentions.clear();
   }
 
-  /// Lấy danh sách MentionUser hiện có trong text
+  
   List<MentionUser> get currentMentions {
     final mentions = <MentionUser>[];
     for (final match in _mentionRegex.allMatches(text)) {
@@ -177,11 +175,10 @@ class MentionTextEditingController extends TextEditingController {
     return mentions;
   }
 
-  /// Lấy danh sách userId được mention
-  List<String> get mentionedUserIds =>
-      currentMentions.map((u) => u.id).toList();
+  
+  List<String> get mentionedUserIds => currentMentions.map((u) => u.id).toList();
 
-  /// Text thuần không có @prefix (dùng khi gửi lên server)
+  
   String get plainText {
     return text.replaceAllMapped(
       _mentionRegex,
@@ -189,7 +186,7 @@ class MentionTextEditingController extends TextEditingController {
     );
   }
 
-  // ─── Private ─────────────────────────────────────────────────────────────────
+  
 
   void _checkMentionQuery(String fullText, int cursorPos) {
     if (cursorPos < 0 || cursorPos > fullText.length) {
@@ -214,7 +211,7 @@ class MentionTextEditingController extends TextEditingController {
   }
 }
 
-/// Widget dropdown gợi ý mention (dùng kèm với MentionTextEditingController)
+
 class MentionSuggestionOverlay extends StatelessWidget {
   final List<MentionUser> suggestions;
   final void Function(MentionUser) onSelect;
@@ -238,13 +235,13 @@ class MentionSuggestionOverlay extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.12),
+            color: Colors.black.withValues(alpha: 0.12),
             blurRadius: 16,
             offset: const Offset(0, 4),
           ),
         ],
         border: Border.all(
-          color: Theme.of(context).dividerColor.withOpacity(0.5),
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.5),
         ),
       ),
       child: isLoading
@@ -264,7 +261,7 @@ class MentionSuggestionOverlay extends StatelessWidget {
               itemCount: suggestions.length,
               separatorBuilder: (_, __) => Divider(
                 height: 1,
-                color: Theme.of(context).dividerColor.withOpacity(0.3),
+                color: Theme.of(context).dividerColor.withValues(alpha: 0.3),
               ),
               itemBuilder: (context, index) {
                 final user = suggestions[index];
@@ -280,11 +277,9 @@ class MentionSuggestionOverlay extends StatelessWidget {
                       children: [
                         CircleAvatar(
                           radius: 16,
-                          backgroundColor:
-                              const Color(0xFF007AFF).withOpacity(0.15),
-                          backgroundImage: user.avatarUrl != null
-                              ? NetworkImage(user.avatarUrl!)
-                              : null,
+                          backgroundColor: const Color(0xFF007AFF).withValues(alpha: 0.15),
+                          backgroundImage:
+                              user.avatarUrl != null ? NetworkImage(user.avatarUrl!) : null,
                           child: user.avatarUrl == null
                               ? Text(
                                   user.username[0].toUpperCase(),
@@ -311,14 +306,11 @@ class MentionSuggestionOverlay extends StatelessWidget {
                               if (user.displayName != null)
                                 Text(
                                   '@${user.username}',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodySmall
-                                      ?.copyWith(
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                         color: Theme.of(context)
                                             .colorScheme
                                             .onSurface
-                                            .withOpacity(0.5),
+                                            .withValues(alpha: 0.5),
                                       ),
                                 ),
                             ],

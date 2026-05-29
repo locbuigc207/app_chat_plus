@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:collection';
+
 import 'package:flutter/material.dart';
 
-// ============================================================
-// TELEMETRY EVENTS
-// ============================================================
+
+
+
 
 enum TelemetryEvent {
   keystroke,
@@ -29,9 +30,9 @@ enum BehaviorSuggestion {
   simplifiedUI,
 }
 
-// ============================================================
-// TYPING PATTERN
-// ============================================================
+
+
+
 
 class TypingPattern {
   final double wordsPerMinute;
@@ -51,18 +52,18 @@ class TypingPattern {
   });
 
   Map<String, dynamic> toMap() => {
-    'wpm': wordsPerMinute,
-    'errorRate': errorRate,
-    'pauseFrequency': pauseFrequency,
-    'avgWordLength': avgWordLength,
-    'usesEmoji': usesEmoji,
-    'usesSlang': usesSlang,
-  };
+        'wpm': wordsPerMinute,
+        'errorRate': errorRate,
+        'pauseFrequency': pauseFrequency,
+        'avgWordLength': avgWordLength,
+        'usesEmoji': usesEmoji,
+        'usesSlang': usesSlang,
+      };
 }
 
-// ============================================================
-// SESSION STATS
-// ============================================================
+
+
+
 
 class SessionStats {
   final int totalKeystrokes;
@@ -86,25 +87,25 @@ class SessionStats {
   });
 
   Map<String, dynamic> toMap() => {
-    'keystrokes': totalKeystrokes,
-    'backspaces': totalBackspaces,
-    'messages': totalMessages,
-    'emoji': totalEmojiUsed,
-    'durationSec': sessionDuration.inSeconds,
-    'avgMsgLen': averageMessageLength,
-    'errorRate': errorRate,
-    'wpm': wordsPerMinute,
-  };
+        'keystrokes': totalKeystrokes,
+        'backspaces': totalBackspaces,
+        'messages': totalMessages,
+        'emoji': totalEmojiUsed,
+        'durationSec': sessionDuration.inSeconds,
+        'avgMsgLen': averageMessageLength,
+        'errorRate': errorRate,
+        'wpm': wordsPerMinute,
+      };
 }
 
-// ============================================================
-// TELEMETRY PROVIDER
-// ============================================================
+
+
+
 
 class TelemetryProvider with ChangeNotifier {
-  // ----------------------------------------------------------
-  // CORE COUNTERS
-  // ----------------------------------------------------------
+  
+  
+  
 
   int _keystrokeCount = 0;
   int _backspaceCount = 0;
@@ -114,54 +115,78 @@ class TelemetryProvider with ChangeNotifier {
   int _previousLength = 0;
   int _totalMessageLength = 0;
 
-  // ----------------------------------------------------------
-  // TYPING SPEED TRACKING
-  // ----------------------------------------------------------
+  
+  
+  
 
   final Queue<DateTime> _recentKeystrokes = Queue();
-  static const int _wpmWindowSize = 20; // strokes in window
+  static const int _wpmWindowSize = 20; 
   DateTime? _sessionStart;
   Timer? _sessionTimer;
 
-  // ----------------------------------------------------------
-  // PAUSE / HESITATION DETECTION
-  // ----------------------------------------------------------
+  
+  
+  
 
   DateTime? _lastKeystrokeTime;
-  int _pauseCount = 0; // pauses > 2s
+  int _pauseCount = 0; 
   static const Duration _pauseThreshold = Duration(seconds: 2);
   Timer? _pauseTimer;
 
-  // ----------------------------------------------------------
-  // BEHAVIOR ANALYSIS STATE
-  // ----------------------------------------------------------
+  
+  
+  
 
   BehaviorSuggestion _currentSuggestion = BehaviorSuggestion.none;
   bool _suggestionHandled = false;
   final Map<BehaviorSuggestion, int> _suggestionTriggerCount = {};
 
-  // ----------------------------------------------------------
-  // SLANG / EMOJI DETECTION
-  // ----------------------------------------------------------
+  
+  
+  
 
   static const Set<String> _slangWords = {
-    'okk', 'haha', 'hihi', 'uh', 'ừ', 'oke', 'ok nha', 'chịu', 'bro',
-    'tbt', 'lol', 'omg', 'ngl', 'fr', 'idk', 'brb', 'ty', 'np',
-    'thôi', 'ừa', 'á', 'nhỉ', 'nè', 'nha', 'đỉnh', 'xịn', 'slay',
+    'okk',
+    'haha',
+    'hihi',
+    'uh',
+    'ừ',
+    'oke',
+    'ok nha',
+    'chịu',
+    'bro',
+    'tbt',
+    'lol',
+    'omg',
+    'ngl',
+    'fr',
+    'idk',
+    'brb',
+    'ty',
+    'np',
+    'thôi',
+    'ừa',
+    'á',
+    'nhỉ',
+    'nè',
+    'nha',
+    'đỉnh',
+    'xịn',
+    'slay',
   };
   bool _detectedSlang = false;
   bool _detectedEmoji = false;
 
-  // ----------------------------------------------------------
-  // HISTORY FOR PATTERN ANALYSIS
-  // ----------------------------------------------------------
+  
+  
+  
 
   final List<Map<String, dynamic>> _eventHistory = [];
   static const int _maxHistorySize = 500;
 
-  // ----------------------------------------------------------
-  // THRESHOLDS
-  // ----------------------------------------------------------
+  
+  
+  
 
   static const double _elderModeErrorThreshold = 0.28;
   static const double _largerTextErrorThreshold = 0.20;
@@ -169,9 +194,9 @@ class TelemetryProvider with ChangeNotifier {
   static const double _slowWpmThreshold = 15.0;
   static const int _highPauseCountThreshold = 5;
 
-  // ============================================================
-  // CONSTRUCTOR / DISPOSE
-  // ============================================================
+  
+  
+  
 
   TelemetryProvider() {
     _startSession();
@@ -184,9 +209,9 @@ class TelemetryProvider with ChangeNotifier {
     super.dispose();
   }
 
-  // ============================================================
-  // SESSION MANAGEMENT
-  // ============================================================
+  
+  
+  
 
   void _startSession() {
     _sessionStart = DateTime.now();
@@ -198,22 +223,22 @@ class TelemetryProvider with ChangeNotifier {
     _logEvent(TelemetryEvent.sessionEnd);
   }
 
-  // ============================================================
-  // PUBLIC API — RECORD EVENTS
-  // ============================================================
+  
+  
+  
 
-  /// Called on every text field change. Central telemetry hook.
+  
   void recordTextChange(String currentText) {
     final now = DateTime.now();
 
-    // Detect backspace vs keystroke
+    
     if (currentText.length < _previousLength) {
       final deletedCount = _previousLength - currentText.length;
       _backspaceCount += deletedCount;
       _logEvent(TelemetryEvent.backspace, metadata: {'count': deletedCount});
     } else if (currentText.length > _previousLength) {
       final added = currentText.length - _previousLength;
-      // Paste detection: added >3 chars at once without a paste event
+      
       if (added > 3 && !_recentKeystrokes.isNotEmpty) {
         _pasteCount++;
         _logEvent(TelemetryEvent.paste, metadata: {'chars': added});
@@ -224,7 +249,7 @@ class TelemetryProvider with ChangeNotifier {
       }
     }
 
-    // Emoji detection
+    
     final hasEmoji = _containsEmoji(currentText);
     if (hasEmoji && !_detectedEmoji) {
       _detectedEmoji = true;
@@ -232,13 +257,13 @@ class TelemetryProvider with ChangeNotifier {
       _logEvent(TelemetryEvent.emojiUsed);
     }
 
-    // Slang detection
+    
     if (!_detectedSlang) {
       final lower = currentText.toLowerCase();
       _detectedSlang = _slangWords.any((w) => lower.contains(w));
     }
 
-    // Pause detection reset
+    
     _lastKeystrokeTime = now;
     _pauseTimer?.cancel();
     _pauseTimer = Timer(_pauseThreshold, () {
@@ -252,57 +277,53 @@ class TelemetryProvider with ChangeNotifier {
     _analyzeBehavior();
   }
 
-  /// Record when user pastes text explicitly
+  
   void recordPaste(int charCount) {
     _pasteCount++;
     _logEvent(TelemetryEvent.paste, metadata: {'chars': charCount});
   }
 
-  /// Record when a message is sent
+  
   void recordMessageSent(String messageText) {
     _messageSentCount++;
     _totalMessageLength += messageText.length;
     _detectedSlang = false;
     _detectedEmoji = false;
-    _logEvent(TelemetryEvent.messageSent,
-        metadata: {'length': messageText.length});
+    _logEvent(TelemetryEvent.messageSent, metadata: {'length': messageText.length});
     _analyzeBehavior();
   }
 
-  /// Record emoji usage explicitly
+  
   void recordEmojiUsed() {
     _emojiCount++;
     _logEvent(TelemetryEvent.emojiUsed);
   }
 
-  /// Record swipe gesture
+  
   void recordSwipe(String direction) {
     _logEvent(TelemetryEvent.swipe, metadata: {'direction': direction});
   }
 
-  /// Record long press
+  
   void recordLongPress(String target) {
     _logEvent(TelemetryEvent.longPress, metadata: {'target': target});
   }
 
-  // ============================================================
-  // GETTERS
-  // ============================================================
+  
+  
+  
 
   BehaviorSuggestion get currentSuggestion =>
       _suggestionHandled ? BehaviorSuggestion.none : _currentSuggestion;
 
   bool get shouldSuggestElderMode =>
-      !_suggestionHandled &&
-          _currentSuggestion == BehaviorSuggestion.elderMode;
+      !_suggestionHandled && _currentSuggestion == BehaviorSuggestion.elderMode;
 
   bool get shouldSuggestLargerText =>
-      !_suggestionHandled &&
-          _currentSuggestion == BehaviorSuggestion.largerText;
+      !_suggestionHandled && _currentSuggestion == BehaviorSuggestion.largerText;
 
   bool get shouldSuggestReducedMotion =>
-      !_suggestionHandled &&
-          _currentSuggestion == BehaviorSuggestion.reducedMotion;
+      !_suggestionHandled && _currentSuggestion == BehaviorSuggestion.reducedMotion;
 
   int get keystrokeCount => _keystrokeCount;
   int get backspaceCount => _backspaceCount;
@@ -319,10 +340,9 @@ class TelemetryProvider with ChangeNotifier {
     if (_recentKeystrokes.length < 2) return 0;
     final oldest = _recentKeystrokes.first;
     final newest = _recentKeystrokes.last;
-    final durationMin =
-        newest.difference(oldest).inMilliseconds / 60000;
+    final durationMin = newest.difference(oldest).inMilliseconds / 60000;
     if (durationMin <= 0) return 0;
-    // Rough approximation: 5 chars = 1 word
+    
     final words = _recentKeystrokes.length / 5;
     return words / durationMin;
   }
@@ -333,19 +353,17 @@ class TelemetryProvider with ChangeNotifier {
   }
 
   TypingPattern get currentPattern => TypingPattern(
-    wordsPerMinute: wordsPerMinute,
-    errorRate: errorRate,
-    pauseFrequency:
-    _keystrokeCount > 0 ? _pauseCount / _keystrokeCount : 0,
-    avgWordLength: averageMessageLength / 5,
-    usesEmoji: _detectedEmoji || _emojiCount > 0,
-    usesSlang: _detectedSlang,
-  );
+        wordsPerMinute: wordsPerMinute,
+        errorRate: errorRate,
+        pauseFrequency: _keystrokeCount > 0 ? _pauseCount / _keystrokeCount : 0,
+        avgWordLength: averageMessageLength / 5,
+        usesEmoji: _detectedEmoji || _emojiCount > 0,
+        usesSlang: _detectedSlang,
+      );
 
   SessionStats get sessionStats {
-    final duration = _sessionStart != null
-        ? DateTime.now().difference(_sessionStart!)
-        : Duration.zero;
+    final duration =
+        _sessionStart != null ? DateTime.now().difference(_sessionStart!) : Duration.zero;
     return SessionStats(
       totalKeystrokes: _keystrokeCount,
       totalBackspaces: _backspaceCount,
@@ -358,27 +376,26 @@ class TelemetryProvider with ChangeNotifier {
     );
   }
 
-  List<Map<String, dynamic>> get recentEvents =>
-      _eventHistory.reversed.take(50).toList();
+  List<Map<String, dynamic>> get recentEvents => _eventHistory.reversed.take(50).toList();
 
-  // ============================================================
-  // RESET / ACKNOWLEDGE
-  // ============================================================
+  
+  
+  
 
-  /// User acknowledged the suggestion — dismiss it
+  
   void markAsHandled() {
     _suggestionHandled = true;
     notifyListeners();
   }
 
-  /// Fully reset suggestion state (e.g. after mode change)
+  
   void resetSuggestion() {
     _currentSuggestion = BehaviorSuggestion.none;
     _suggestionHandled = false;
     notifyListeners();
   }
 
-  /// Reset entire telemetry state for new session
+  
   void resetAll() {
     _keystrokeCount = 0;
     _backspaceCount = 0;
@@ -399,9 +416,9 @@ class TelemetryProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // ============================================================
-  // INTERNAL: BEHAVIOR ANALYSIS ENGINE
-  // ============================================================
+  
+  
+  
 
   void _analyzeBehavior() {
     if (_keystrokeCount < _minKeystrokesForAnalysis) return;
@@ -413,27 +430,25 @@ class TelemetryProvider with ChangeNotifier {
 
     BehaviorSuggestion newSuggestion = BehaviorSuggestion.none;
 
-    // Priority 1: Elder mode — high error rate + slow typing + many pauses
+    
     if (rate > _elderModeErrorThreshold &&
         (wpm < _slowWpmThreshold || pauses > _highPauseCountThreshold)) {
       newSuggestion = BehaviorSuggestion.elderMode;
     }
-    // Priority 2: Larger text — moderate error rate
+    
     else if (rate > _largerTextErrorThreshold && wpm < _slowWpmThreshold) {
       newSuggestion = BehaviorSuggestion.largerText;
     }
-    // Priority 3: Reduced motion — high pause count (possible accessibility need)
+    
     else if (pauses > _highPauseCountThreshold * 2 && rate < 0.1) {
       newSuggestion = BehaviorSuggestion.reducedMotion;
     }
 
-    if (newSuggestion != BehaviorSuggestion.none &&
-        newSuggestion != _currentSuggestion) {
-      final count =
-          (_suggestionTriggerCount[newSuggestion] ?? 0) + 1;
+    if (newSuggestion != BehaviorSuggestion.none && newSuggestion != _currentSuggestion) {
+      final count = (_suggestionTriggerCount[newSuggestion] ?? 0) + 1;
       _suggestionTriggerCount[newSuggestion] = count;
 
-      // Only suggest after 2 consistent triggers (avoid false positives)
+      
       if (count >= 2) {
         _currentSuggestion = newSuggestion;
         _suggestionHandled = false;
@@ -442,9 +457,9 @@ class TelemetryProvider with ChangeNotifier {
     }
   }
 
-  // ============================================================
-  // INTERNAL: HELPERS
-  // ============================================================
+  
+  
+  
 
   void _trackKeystrokeTime(DateTime now) {
     _recentKeystrokes.addLast(now);
@@ -454,9 +469,9 @@ class TelemetryProvider with ChangeNotifier {
   }
 
   void _logEvent(
-      TelemetryEvent event, {
-        Map<String, dynamic>? metadata,
-      }) {
+    TelemetryEvent event, {
+    Map<String, dynamic>? metadata,
+  }) {
     if (_eventHistory.length >= _maxHistorySize) {
       _eventHistory.removeAt(0);
     }
@@ -468,7 +483,7 @@ class TelemetryProvider with ChangeNotifier {
   }
 
   bool _containsEmoji(String text) {
-    // Emoji Unicode range detection
+    
     final emojiRegex = RegExp(
       r'[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]',
       unicode: true,
@@ -476,24 +491,22 @@ class TelemetryProvider with ChangeNotifier {
     return emojiRegex.hasMatch(text);
   }
 
-  // ============================================================
-  // DEBUG / EXPORT
-  // ============================================================
+  
+  
+  
 
   Map<String, dynamic> exportDebugData() => {
-    'session': sessionStats.toMap(),
-    'pattern': currentPattern.toMap(),
-    'suggestion': _currentSuggestion.name,
-    'suggestionHandled': _suggestionHandled,
-    'triggerCounts': _suggestionTriggerCount
-        .map((k, v) => MapEntry(k.name, v)),
-    'recentEvents': recentEvents.take(20).toList(),
-  };
+        'session': sessionStats.toMap(),
+        'pattern': currentPattern.toMap(),
+        'suggestion': _currentSuggestion.name,
+        'suggestionHandled': _suggestionHandled,
+        'triggerCounts': _suggestionTriggerCount.map((k, v) => MapEntry(k.name, v)),
+        'recentEvents': recentEvents.take(20).toList(),
+      };
 
   @override
-  String toString() =>
-      'TelemetryProvider(keystrokes: $_keystrokeCount, '
-          'backspaces: $_backspaceCount, errorRate: ${errorRate.toStringAsFixed(2)}, '
-          'wpm: ${wordsPerMinute.toStringAsFixed(1)}, '
-          'suggestion: ${_currentSuggestion.name})';
+  String toString() => 'TelemetryProvider(keystrokes: $_keystrokeCount, '
+      'backspaces: $_backspaceCount, errorRate: ${errorRate.toStringAsFixed(2)}, '
+      'wpm: ${wordsPerMinute.toStringAsFixed(1)}, '
+      'suggestion: ${_currentSuggestion.name})';
 }

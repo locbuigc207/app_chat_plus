@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Enums
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 enum AppThemeMode { light, dark, system }
 
@@ -23,9 +24,9 @@ enum BubbleStyle { modern, classic, minimal, rounded }
 
 enum FontSize { small, medium, large, extraLarge }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Theme Palette — encapsulates all colors for one theme variant
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class ThemePalette {
   final Color primary;
@@ -83,9 +84,9 @@ class ThemePalette {
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Provider
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class ThemeProvider extends ChangeNotifier {
   final SharedPreferences prefs;
@@ -99,7 +100,7 @@ class ThemeProvider extends ChangeNotifier {
   late bool _compactMode;
   late double _chatWallpaperOpacity;
 
-  // Prefs keys
+  
   static const _kThemeMode = 'theme_mode';
   static const _kThemeColor = 'theme_color';
   static const _kBubbleStyle = 'bubble_style';
@@ -113,9 +114,9 @@ class ThemeProvider extends ChangeNotifier {
     _load();
   }
 
-  // ───────────────────────────────────────────────
-  // Getters
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   AppThemeMode get themeMode => _themeMode;
   ThemeColor get themeColor => _themeColor;
@@ -128,8 +129,7 @@ class ThemeProvider extends ChangeNotifier {
 
   bool get isDark {
     if (_themeMode == AppThemeMode.system) {
-      final brightness =
-          SchedulerBinding.instance.platformDispatcher.platformBrightness;
+      final brightness = SchedulerBinding.instance.platformDispatcher.platformBrightness;
       return brightness == Brightness.dark;
     }
     return _themeMode == AppThemeMode.dark;
@@ -166,16 +166,14 @@ class ThemeProvider extends ChangeNotifier {
     }
   }
 
-  BorderRadius get bubbleBorderRadiusOutgoing =>
-      _bubbleBROutgoing(_bubbleStyle);
-  BorderRadius get bubbleBorderRadiusIncoming =>
-      _bubbleBRIncoming(_bubbleStyle);
+  BorderRadius get bubbleBorderRadiusOutgoing => _bubbleBROutgoing(_bubbleStyle);
+  BorderRadius get bubbleBorderRadiusIncoming => _bubbleBRIncoming(_bubbleStyle);
   EdgeInsets get bubblePadding => _bubblePadding(_bubbleStyle);
   double get bubbleElevation => _bubbleElevation(_bubbleStyle);
 
-  // ───────────────────────────────────────────────
-  // Setters
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   Future<void> setThemeMode(AppThemeMode mode) async {
     if (_themeMode == mode) return;
@@ -245,9 +243,9 @@ class ThemeProvider extends ChangeNotifier {
     await setChatWallpaperOpacity(0.05);
   }
 
-  // ───────────────────────────────────────────────
-  // Flutter ThemeData builders
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   ThemeData get lightTheme => _buildThemeData(isLight: true);
   ThemeData get darkTheme => _buildThemeData(isLight: false);
@@ -262,7 +260,6 @@ class ThemeProvider extends ChangeNotifier {
       primary: primaryColor,
       secondary: accentColor,
       surface: p.surface,
-      background: p.background,
     );
 
     return base.copyWith(
@@ -290,8 +287,7 @@ class ThemeProvider extends ChangeNotifier {
           borderRadius: BorderRadius.circular(24),
           borderSide: BorderSide.none,
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         hintStyle: TextStyle(color: p.textHint),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -338,10 +334,10 @@ class ThemeProvider extends ChangeNotifier {
         space: 0,
       ),
       switchTheme: SwitchThemeData(
-        thumbColor: MaterialStateProperty.resolveWith((s) =>
-            s.contains(MaterialState.selected) ? primaryColor : p.textHint),
-        trackColor: MaterialStateProperty.resolveWith((s) =>
-            s.contains(MaterialState.selected) ? primaryLightColor : p.divider),
+        thumbColor: WidgetStateProperty.resolveWith(
+            (s) => s.contains(WidgetState.selected) ? primaryColor : p.textHint),
+        trackColor: WidgetStateProperty.resolveWith(
+            (s) => s.contains(WidgetState.selected) ? primaryLightColor : p.divider),
       ),
     );
   }
@@ -349,42 +345,34 @@ class ThemeProvider extends ChangeNotifier {
   TextTheme _buildTextTheme(TextTheme base, ThemePalette p) {
     final m = fontSizeMultiplier;
     return base.copyWith(
-      displayLarge:
-          base.displayLarge?.copyWith(color: p.textPrimary, fontSize: 57 * m),
-      displayMedium:
-          base.displayMedium?.copyWith(color: p.textPrimary, fontSize: 45 * m),
-      displaySmall:
-          base.displaySmall?.copyWith(color: p.textPrimary, fontSize: 36 * m),
-      headlineLarge: base.headlineLarge?.copyWith(
-          color: p.textPrimary, fontSize: 32 * m, fontWeight: FontWeight.w700),
-      headlineMedium: base.headlineMedium?.copyWith(
-          color: p.textPrimary, fontSize: 28 * m, fontWeight: FontWeight.w600),
-      headlineSmall: base.headlineSmall?.copyWith(
-          color: p.textPrimary, fontSize: 24 * m, fontWeight: FontWeight.w600),
-      titleLarge: base.titleLarge?.copyWith(
-          color: p.textPrimary, fontSize: 22 * m, fontWeight: FontWeight.w600),
-      titleMedium: base.titleMedium?.copyWith(
-          color: p.textPrimary, fontSize: 16 * m, fontWeight: FontWeight.w500),
-      titleSmall: base.titleSmall?.copyWith(
-          color: p.textPrimary, fontSize: 14 * m, fontWeight: FontWeight.w500),
-      bodyLarge:
-          base.bodyLarge?.copyWith(color: p.textPrimary, fontSize: 16 * m),
-      bodyMedium:
-          base.bodyMedium?.copyWith(color: p.textPrimary, fontSize: 14 * m),
-      bodySmall:
-          base.bodySmall?.copyWith(color: p.textSecondary, fontSize: 12 * m),
-      labelLarge: base.labelLarge?.copyWith(
-          color: p.textPrimary, fontSize: 14 * m, fontWeight: FontWeight.w600),
-      labelMedium:
-          base.labelMedium?.copyWith(color: p.textSecondary, fontSize: 12 * m),
-      labelSmall:
-          base.labelSmall?.copyWith(color: p.textHint, fontSize: 11 * m),
+      displayLarge: base.displayLarge?.copyWith(color: p.textPrimary, fontSize: 57 * m),
+      displayMedium: base.displayMedium?.copyWith(color: p.textPrimary, fontSize: 45 * m),
+      displaySmall: base.displaySmall?.copyWith(color: p.textPrimary, fontSize: 36 * m),
+      headlineLarge: base.headlineLarge
+          ?.copyWith(color: p.textPrimary, fontSize: 32 * m, fontWeight: FontWeight.w700),
+      headlineMedium: base.headlineMedium
+          ?.copyWith(color: p.textPrimary, fontSize: 28 * m, fontWeight: FontWeight.w600),
+      headlineSmall: base.headlineSmall
+          ?.copyWith(color: p.textPrimary, fontSize: 24 * m, fontWeight: FontWeight.w600),
+      titleLarge: base.titleLarge
+          ?.copyWith(color: p.textPrimary, fontSize: 22 * m, fontWeight: FontWeight.w600),
+      titleMedium: base.titleMedium
+          ?.copyWith(color: p.textPrimary, fontSize: 16 * m, fontWeight: FontWeight.w500),
+      titleSmall: base.titleSmall
+          ?.copyWith(color: p.textPrimary, fontSize: 14 * m, fontWeight: FontWeight.w500),
+      bodyLarge: base.bodyLarge?.copyWith(color: p.textPrimary, fontSize: 16 * m),
+      bodyMedium: base.bodyMedium?.copyWith(color: p.textPrimary, fontSize: 14 * m),
+      bodySmall: base.bodySmall?.copyWith(color: p.textSecondary, fontSize: 12 * m),
+      labelLarge: base.labelLarge
+          ?.copyWith(color: p.textPrimary, fontSize: 14 * m, fontWeight: FontWeight.w600),
+      labelMedium: base.labelMedium?.copyWith(color: p.textSecondary, fontSize: 12 * m),
+      labelSmall: base.labelSmall?.copyWith(color: p.textHint, fontSize: 11 * m),
     );
   }
 
-  // ───────────────────────────────────────────────
-  // Palettes
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   ThemePalette get _lightPalette => ThemePalette(
         primary: primaryColor,
@@ -408,7 +396,7 @@ class ThemeProvider extends ChangeNotifier {
         inputBackground: const Color(0xFFEEEEEE),
         navBarBackground: Colors.white,
         appBarBackground: Colors.white,
-        shadow: Colors.black.withOpacity(0.08),
+        shadow: Colors.black.withValues(alpha: 0.08),
         unreadBadge: primaryColor,
         onlineIndicator: const Color(0xFF4CAF50),
         typingIndicator: primaryColor,
@@ -436,15 +424,15 @@ class ThemeProvider extends ChangeNotifier {
         inputBackground: const Color(0xFF2A2A2A),
         navBarBackground: const Color(0xFF1A1A1A),
         appBarBackground: const Color(0xFF1A1A1A),
-        shadow: Colors.black.withOpacity(0.4),
+        shadow: Colors.black.withValues(alpha: 0.4),
         unreadBadge: primaryLightColor,
         onlineIndicator: const Color(0xFF66BB6A),
         typingIndicator: primaryLightColor,
       );
 
-  // ───────────────────────────────────────────────
-  // Color values per accent
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   Color _primaryColorFor(ThemeColor c) {
     switch (c) {
@@ -530,9 +518,9 @@ class ThemeProvider extends ChangeNotifier {
     }
   }
 
-  // ───────────────────────────────────────────────
-  // Bubble style helpers
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   BorderRadius _bubbleBROutgoing(BubbleStyle s) {
     switch (s) {
@@ -606,9 +594,9 @@ class ThemeProvider extends ChangeNotifier {
     }
   }
 
-  // ───────────────────────────────────────────────
-  // Gradient helpers
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   LinearGradient get primaryGradient => LinearGradient(
         colors: [primaryColor, primaryDarkColor],
@@ -622,9 +610,9 @@ class ThemeProvider extends ChangeNotifier {
         end: Alignment.bottomRight,
       );
 
-  // ───────────────────────────────────────────────
-  // Load / persist
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   void _load() {
     _themeMode = AppThemeMode.values.firstWhere(

@@ -1,22 +1,23 @@
 import 'package:flutter/material.dart';
+
 import 'package:intl/intl.dart';
 
-/// Tiện ích xử lý ngày giờ toàn diện cho ứng dụng chat
-class AppDateUtils {
-  AppDateUtils._(); // Ngăn khởi tạo
 
-  // ─── Hằng số ───────────────────────────────────────────────────────────────
+class AppDateUtils {
+  AppDateUtils._(); 
+
+  
   static const _secondsPerMinute = 60;
   static const _minutesPerHour = 60;
   static const _hoursPerDay = 24;
   static const _daysPerWeek = 7;
   static const _daysPerYear = 365;
 
-  // ─── Format thời gian tin nhắn ─────────────────────────────────────────────
+  
 
-  /// Format timestamp của tin nhắn theo dạng tương đối hoặc tuyệt đối
-  /// [timestamp]: Milliseconds since epoch dạng String hoặc int
-  /// [context]: BuildContext để lấy locale
+  
+  
+  
   static String formatMessageTime(dynamic timestamp, BuildContext context) {
     try {
       final ms = timestamp is int ? timestamp : int.parse(timestamp.toString());
@@ -27,7 +28,7 @@ class AppDateUtils {
     }
   }
 
-  /// Format timestamp cho header ngày trong cuộc trò chuyện
+  
   static String formatDateHeader(dynamic timestamp, BuildContext context) {
     try {
       final ms = timestamp is int ? timestamp : int.parse(timestamp.toString());
@@ -40,7 +41,7 @@ class AppDateUtils {
       } else if (_isSameDay(dateTime, now.subtract(const Duration(days: 1)))) {
         return locale == 'vi' ? 'Hôm qua' : 'Yesterday';
       } else if (now.difference(dateTime).inDays < _daysPerWeek) {
-        return DateFormat.EEEE(locale).format(dateTime); // Monday, Tuesday...
+        return DateFormat.EEEE(locale).format(dateTime); 
       } else if (dateTime.year == now.year) {
         return DateFormat('d MMM', locale).format(dateTime);
       } else {
@@ -51,12 +52,12 @@ class AppDateUtils {
     }
   }
 
-  /// Format thời gian gần đây nhất (last seen)
+  
   static String formatLastSeen(DateTime lastSeen, BuildContext context) {
     return _formatRelative(lastSeen, context, short: false);
   }
 
-  /// Format thời gian nhắc nhở
+  
   static String formatReminderTime(dynamic timestamp, BuildContext context) {
     try {
       final ms = timestamp is int ? timestamp : int.parse(timestamp.toString());
@@ -75,7 +76,7 @@ class AppDateUtils {
     }
   }
 
-  /// Format thời gian đầy đủ cho detail view
+  
   static String formatFullDateTime(dynamic timestamp, BuildContext context) {
     try {
       final ms = timestamp is int ? timestamp : int.parse(timestamp.toString());
@@ -87,7 +88,7 @@ class AppDateUtils {
     }
   }
 
-  /// Format thời gian cho call duration (giây → mm:ss hoặc hh:mm:ss)
+  
   static String formatCallDuration(int totalSeconds) {
     final h = totalSeconds ~/ 3600;
     final m = (totalSeconds % 3600) ~/ 60;
@@ -98,14 +99,14 @@ class AppDateUtils {
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
-  /// Format thời lượng ngắn gọn (cho voice message)
+  
   static String formatAudioDuration(Duration duration) {
     final m = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$m:$s';
   }
 
-  // ─── Kiểm tra ngày ─────────────────────────────────────────────────────────
+  
 
   static bool isToday(DateTime date) => _isSameDay(date, DateTime.now());
 
@@ -124,9 +125,8 @@ class AppDateUtils {
 
   static bool isSameDay(DateTime a, DateTime b) => _isSameDay(a, b);
 
-  /// Kiểm tra có cần hiển thị header ngày không (2 tin nhắn cách nhau > 1 giờ)
-  static bool shouldShowDateHeader(
-      dynamic prevTimestamp, dynamic currentTimestamp) {
+  
+  static bool shouldShowDateHeader(dynamic prevTimestamp, dynamic currentTimestamp) {
     try {
       final prev = _parseMs(prevTimestamp);
       final curr = _parseMs(currentTimestamp);
@@ -140,7 +140,7 @@ class AppDateUtils {
     }
   }
 
-  /// Kiểm tra 2 tin nhắn có cùng phút không (gom nhóm bubble)
+  
   static bool isWithinGroupingWindow(dynamic ts1, dynamic ts2,
       {Duration window = const Duration(minutes: 2)}) {
     try {
@@ -154,7 +154,7 @@ class AppDateUtils {
     }
   }
 
-  // ─── Private helpers ────────────────────────────────────────────────────────
+  
 
   static String _locale(BuildContext context) {
     try {
@@ -208,9 +208,9 @@ class AppDateUtils {
     }
   }
 
-  // ─── Parse helpers ──────────────────────────────────────────────────────────
+  
 
-  /// Parse DateTime an toàn từ milliseconds
+  
   static DateTime? parseTimestamp(dynamic timestamp) {
     try {
       final ms = _parseMs(timestamp);
@@ -221,15 +221,13 @@ class AppDateUtils {
     }
   }
 
-  /// Chuyển DateTime → milliseconds string
-  static String toTimestamp(DateTime dateTime) =>
-      dateTime.millisecondsSinceEpoch.toString();
+  
+  static String toTimestamp(DateTime dateTime) => dateTime.millisecondsSinceEpoch.toString();
 
-  /// Lấy đầu ngày (00:00:00)
-  static DateTime startOfDay(DateTime date) =>
-      DateTime(date.year, date.month, date.day);
+  
+  static DateTime startOfDay(DateTime date) => DateTime(date.year, date.month, date.day);
 
-  /// Lấy cuối ngày (23:59:59.999)
+  
   static DateTime endOfDay(DateTime date) =>
       DateTime(date.year, date.month, date.day, 23, 59, 59, 999);
 }

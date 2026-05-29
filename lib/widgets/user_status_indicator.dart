@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-/// Animated dot indicator for a user's online / offline presence.
-/// Supports text mode (shows "Online" / "3m ago") and dot-only mode.
+
+
 class UserStatusIndicator extends StatelessWidget {
   final String userId;
   final double size;
@@ -46,7 +47,7 @@ class UserStatusIndicator extends StatelessWidget {
   }
 }
 
-// ── Inner stateful widget so it can carry pulse animation ────────────────────
+
 
 class _StatusContent extends StatefulWidget {
   final bool isOnline;
@@ -69,8 +70,7 @@ class _StatusContent extends StatefulWidget {
   State<_StatusContent> createState() => _StatusContentState();
 }
 
-class _StatusContentState extends State<_StatusContent>
-    with SingleTickerProviderStateMixin {
+class _StatusContentState extends State<_StatusContent> with SingleTickerProviderStateMixin {
   late AnimationController _pulseCtrl;
   late Animation<double> _pulseAnim;
 
@@ -122,9 +122,7 @@ class _StatusContentState extends State<_StatusContent>
               fontSize: 11,
               fontWeight: widget.isOnline ? FontWeight.w600 : FontWeight.w400,
               color: widget.textColor ??
-                  (widget.isOnline
-                      ? const Color(0xFF34C759)
-                      : ColorConstants.greyColor),
+                  (widget.isOnline ? const Color(0xFF34C759) : ColorConstants.greyColor),
             ),
             overflow: TextOverflow.ellipsis,
             maxLines: 1,
@@ -138,9 +136,7 @@ class _StatusContentState extends State<_StatusContent>
     if (!widget.isOnline || !widget.animate) {
       return _Dot(
           size: widget.size,
-          color: widget.isOnline
-              ? const Color(0xFF34C759)
-              : ColorConstants.greyColor);
+          color: widget.isOnline ? const Color(0xFF34C759) : ColorConstants.greyColor);
     }
 
     return AnimatedBuilder(
@@ -148,14 +144,13 @@ class _StatusContentState extends State<_StatusContent>
       builder: (_, __) => Stack(
         alignment: Alignment.center,
         children: [
-          // Pulse ring
+          
           Container(
             width: widget.size * 2,
             height: widget.size * 2,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color:
-                  const Color(0xFF34C759).withOpacity(0.25 * _pulseAnim.value),
+              color: const Color(0xFF34C759).withValues(alpha: 0.25 * _pulseAnim.value),
             ),
           ),
           _Dot(size: widget.size, color: const Color(0xFF34C759)),
@@ -194,7 +189,7 @@ class _Dot extends StatelessWidget {
         border: Border.all(color: Colors.white, width: size * 0.18),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.5),
+            color: color.withValues(alpha: 0.5),
             blurRadius: 4,
             spreadRadius: 0,
           ),
@@ -204,9 +199,9 @@ class _Dot extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 
-/// Avatar widget with an animated online status dot overlay.
+
+
 class AvatarWithStatus extends StatelessWidget {
   final String userId;
   final String photoUrl;
@@ -235,7 +230,7 @@ class AvatarWithStatus extends StatelessWidget {
         return Stack(
           clipBehavior: Clip.none,
           children: [
-            // ── Avatar ────────────────────────────────────────────────
+            
             AnimatedContainer(
               duration: const Duration(milliseconds: 300),
               width: size,
@@ -252,7 +247,7 @@ class AvatarWithStatus extends StatelessWidget {
               child: ClipOval(child: _buildImage()),
             ),
 
-            // ── Status dot ────────────────────────────────────────────
+            
             Positioned(
               right: 0,
               bottom: 0,
@@ -297,8 +292,7 @@ class AvatarWithStatus extends StatelessWidget {
               child: CircularProgressIndicator(
                 strokeWidth: 2,
                 value: progress.expectedTotalBytes != null
-                    ? progress.cumulativeBytesLoaded /
-                        progress.expectedTotalBytes!
+                    ? progress.cumulativeBytesLoaded / progress.expectedTotalBytes!
                     : null,
                 color: ColorConstants.primaryColor,
               ),
@@ -315,8 +309,8 @@ class AvatarWithStatus extends StatelessWidget {
   }
 }
 
-/// Compact inline status badge — just text with a coloured dot.
-/// Useful in chat headers and profile screens.
+
+
 class StatusBadge extends StatelessWidget {
   final String userId;
 

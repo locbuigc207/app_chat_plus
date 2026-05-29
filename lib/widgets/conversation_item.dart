@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 
@@ -32,19 +33,18 @@ class ConversationItem extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: conversation.isPinned
-                  ? ColorConstants.primaryColor
-                      .withOpacity(isDark ? 0.12 : 0.06)
+                  ? ColorConstants.primaryColor.withValues(alpha: isDark ? 0.12 : 0.06)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(16),
             ),
             child: Row(
               children: [
-                // Avatar
+                
                 _buildAvatar(isDark),
                 const SizedBox(width: 12),
-                // Content
+                
                 Expanded(child: _buildContent(isDark, hasUnread)),
-                // Right meta
+                
                 _buildMeta(isDark, hasUnread),
               ],
             ),
@@ -63,8 +63,7 @@ class ConversationItem extends StatelessWidget {
           height: 54,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color:
-                isDark ? Colors.white.withOpacity(0.08) : Colors.grey.shade100,
+            color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.grey.shade100,
           ),
           child: ClipOval(
             child: photoUrl.isNotEmpty
@@ -76,7 +75,7 @@ class ConversationItem extends StatelessWidget {
                 : _avatarFallback(),
           ),
         ),
-        // Online indicator
+        
         if (conversation.isOnline ?? false)
           Positioned(
             right: 2,
@@ -87,13 +86,12 @@ class ConversationItem extends StatelessWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: Colors.green,
-                border: Border.all(
-                    color: isDark ? const Color(0xFF0D0D0D) : Colors.white,
-                    width: 2),
+                border:
+                    Border.all(color: isDark ? const Color(0xFF0D0D0D) : Colors.white, width: 2),
               ),
             ),
           ),
-        // Muted badge
+        
         if (conversation.isMuted && !(conversation.isOnline ?? false))
           Positioned(
             right: 2,
@@ -105,14 +103,11 @@ class ConversationItem extends StatelessWidget {
                 shape: BoxShape.circle,
                 color: isDark ? const Color(0xFF2C2C3E) : Colors.white,
                 border: Border.all(
-                    color: isDark
-                        ? Colors.white.withOpacity(0.1)
-                        : Colors.grey.shade200,
+                    color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.grey.shade200,
                     width: 1),
               ),
               child: Icon(Icons.volume_off_rounded,
-                  size: 10,
-                  color: isDark ? Colors.white38 : Colors.grey.shade400),
+                  size: 10, color: isDark ? Colors.white38 : Colors.grey.shade400),
             ),
           ),
       ],
@@ -123,14 +118,12 @@ class ConversationItem extends StatelessWidget {
     final name = conversation.peerName ?? 'U';
     final initial = name.isNotEmpty ? name.substring(0, 1).toUpperCase() : 'U';
     return Container(
-      color: ColorConstants.primaryColor.withOpacity(0.15),
+      color: ColorConstants.primaryColor.withValues(alpha: 0.15),
       child: Center(
         child: Text(
           initial,
           style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: ColorConstants.primaryColor),
+              fontSize: 20, fontWeight: FontWeight.bold, color: ColorConstants.primaryColor),
         ),
       ),
     );
@@ -140,14 +133,13 @@ class ConversationItem extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Name row
+        
         Row(
           children: [
             if (conversation.isPinned)
               Padding(
                 padding: const EdgeInsets.only(right: 5),
-                child: Icon(Icons.push_pin_rounded,
-                    size: 13, color: ColorConstants.primaryColor),
+                child: Icon(Icons.push_pin_rounded, size: 13, color: ColorConstants.primaryColor),
               ),
             Expanded(
               child: Text(
@@ -164,7 +156,7 @@ class ConversationItem extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 4),
-        // Last message
+        
         Row(
           children: [
             if (conversation.isTyping ?? false)
@@ -197,11 +189,8 @@ class ConversationItem extends StatelessWidget {
                           fontSize: 13.5,
                           color: hasUnread
                               ? (isDark ? Colors.white70 : Colors.black87)
-                              : (isDark
-                                  ? Colors.white38
-                                  : Colors.grey.shade500),
-                          fontWeight:
-                              hasUnread ? FontWeight.w500 : FontWeight.w400,
+                              : (isDark ? Colors.white38 : Colors.grey.shade500),
+                          fontWeight: hasUnread ? FontWeight.w500 : FontWeight.w400,
                         ),
                       ),
                     ),
@@ -219,7 +208,7 @@ class ConversationItem extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Timestamp
+        
         Text(
           _formatTimestamp(conversation.lastMessageTime),
           style: TextStyle(
@@ -231,26 +220,22 @@ class ConversationItem extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 6),
-        // Unread count OR archived badge
+        
         if (hasUnread)
           Container(
-            // FIXED: 'min' changed to 'constraints'
+            
             constraints: const BoxConstraints(minWidth: 20),
             height: 20,
             padding: const EdgeInsets.symmetric(horizontal: 6),
             decoration: BoxDecoration(
-              color: conversation.isMuted
-                  ? Colors.grey.shade400
-                  : ColorConstants.primaryColor,
+              color: conversation.isMuted ? Colors.grey.shade400 : ColorConstants.primaryColor,
               borderRadius: BorderRadius.circular(10),
             ),
             child: Center(
               child: Text(
                 '${conversation.unreadCount! > 99 ? '99+' : conversation.unreadCount}',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700),
+                style:
+                    const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
               ),
             ),
           )
@@ -263,7 +248,7 @@ class ConversationItem extends StatelessWidget {
     );
   }
 
-  // FIXED: Changed parameter to String to match the Model, and added parsing logic
+  
   String _formatTimestamp(String? timestampStr) {
     if (timestampStr == null || timestampStr.isEmpty || timestampStr == '0') {
       return '';
@@ -296,16 +281,13 @@ class _TypingIndicator extends StatefulWidget {
   State<_TypingIndicator> createState() => _TypingIndicatorState();
 }
 
-class _TypingIndicatorState extends State<_TypingIndicator>
-    with SingleTickerProviderStateMixin {
+class _TypingIndicatorState extends State<_TypingIndicator> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 900))
-      ..repeat();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat();
   }
 
   @override
@@ -331,7 +313,7 @@ class _TypingIndicatorState extends State<_TypingIndicator>
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: ColorConstants.primaryColor
-                    .withOpacity(0.4 + 0.6 * opacity.clamp(0.0, 1.0)),
+                    .withValues(alpha: 0.4 + 0.6 * opacity.clamp(0.0, 1.0)),
               ),
             );
           }),

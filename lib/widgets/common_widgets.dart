@@ -2,12 +2,13 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LoadingView
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class LoadingView extends StatefulWidget {
   final String? message;
@@ -18,16 +19,14 @@ class LoadingView extends StatefulWidget {
   State<LoadingView> createState() => _LoadingViewState();
 }
 
-class _LoadingViewState extends State<LoadingView>
-    with SingleTickerProviderStateMixin {
+class _LoadingViewState extends State<LoadingView> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _fade;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 300));
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
     _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
     _ctrl.forward();
   }
@@ -45,7 +44,7 @@ class _LoadingViewState extends State<LoadingView>
     return FadeTransition(
       opacity: _fade,
       child: Container(
-        color: Colors.black.withOpacity(0.3),
+        color: Colors.black.withValues(alpha: 0.3),
         child: Center(
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
@@ -54,7 +53,7 @@ class _LoadingViewState extends State<LoadingView>
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.18),
+                  color: Colors.black.withValues(alpha: 0.18),
                   blurRadius: 30,
                   offset: const Offset(0, 10),
                 ),
@@ -90,15 +89,13 @@ class _AnimatedSpinner extends StatefulWidget {
   State<_AnimatedSpinner> createState() => _AnimatedSpinnerState();
 }
 
-class _AnimatedSpinnerState extends State<_AnimatedSpinner>
-    with SingleTickerProviderStateMixin {
+class _AnimatedSpinnerState extends State<_AnimatedSpinner> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1200))
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))
       ..repeat();
   }
 
@@ -133,7 +130,7 @@ class _SpinnerPainter extends CustomPainter {
     final cy = size.height / 2;
     final r = size.width / 2 - 3;
     final trackPaint = Paint()
-      ..color = ColorConstants.primaryColor.withOpacity(0.15)
+      ..color = ColorConstants.primaryColor.withValues(alpha: 0.15)
       ..strokeWidth = 3
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
@@ -142,7 +139,7 @@ class _SpinnerPainter extends CustomPainter {
     final arcPaint = Paint()
       ..shader = SweepGradient(
         colors: [
-          ColorConstants.primaryColor.withOpacity(0.1),
+          ColorConstants.primaryColor.withValues(alpha: 0.1),
           ColorConstants.primaryColor,
         ],
         startAngle: 0,
@@ -166,9 +163,9 @@ class _SpinnerPainter extends CustomPainter {
   bool shouldRepaint(_SpinnerPainter old) => old.progress != progress;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ReactionPicker
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class ReactionPicker extends StatelessWidget {
   final Function(String emoji) onEmojiSelected;
@@ -197,13 +194,13 @@ class ReactionPicker extends StatelessWidget {
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.4 : 0.14),
+            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.14),
             blurRadius: 20,
             offset: const Offset(0, 6),
           ),
         ],
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.07) : Colors.grey.shade100,
+          color: isDark ? Colors.white.withValues(alpha: 0.07) : Colors.grey.shade100,
         ),
       ),
       child: Row(
@@ -231,8 +228,7 @@ class _EmojiBtn extends StatefulWidget {
   State<_EmojiBtn> createState() => _EmojiBtnState();
 }
 
-class _EmojiBtnState extends State<_EmojiBtn>
-    with SingleTickerProviderStateMixin {
+class _EmojiBtnState extends State<_EmojiBtn> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _scale;
   late Animation<double> _lift;
@@ -282,9 +278,9 @@ class _EmojiBtnState extends State<_EmojiBtn>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MessageReactionsDisplay
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class MessageReactionsDisplay extends StatelessWidget {
   final Map<String, int> reactions;
@@ -320,15 +316,12 @@ class MessageReactionsDisplay extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
             decoration: BoxDecoration(
               color: hasReacted
-                  ? ColorConstants.primaryColor
-                      .withOpacity(isDark ? 0.25 : 0.12)
-                  : (isDark
-                      ? Colors.white.withOpacity(0.06)
-                      : Colors.grey.shade100),
+                  ? ColorConstants.primaryColor.withValues(alpha: isDark ? 0.25 : 0.12)
+                  : (isDark ? Colors.white.withValues(alpha: 0.06) : Colors.grey.shade100),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: hasReacted
-                    ? ColorConstants.primaryColor.withOpacity(0.5)
+                    ? ColorConstants.primaryColor.withValues(alpha: 0.5)
                     : Colors.transparent,
                 width: 1.5,
               ),
@@ -357,9 +350,9 @@ class MessageReactionsDisplay extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SmartReplyWidget
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class SmartReplyWidget extends StatelessWidget {
   final List<SmartReply> replies;
@@ -388,8 +381,7 @@ class SmartReplyWidget extends StatelessWidget {
                 shaderCallback: (bounds) => const LinearGradient(
                   colors: [Color(0xFF6C63FF), Color(0xFF3B82F6)],
                 ).createShader(bounds),
-                child: const Icon(Icons.auto_awesome_rounded,
-                    size: 13, color: Colors.white),
+                child: const Icon(Icons.auto_awesome_rounded, size: 13, color: Colors.white),
               ),
               const SizedBox(width: 5),
               Text(
@@ -445,16 +437,14 @@ class _SmartReplyChip extends StatefulWidget {
   State<_SmartReplyChip> createState() => _SmartReplyChipState();
 }
 
-class _SmartReplyChipState extends State<_SmartReplyChip>
-    with SingleTickerProviderStateMixin {
+class _SmartReplyChipState extends State<_SmartReplyChip> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 130));
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 130));
     _scale = Tween<double>(begin: 1.0, end: 0.95)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeIn));
   }
@@ -476,18 +466,17 @@ class _SmartReplyChipState extends State<_SmartReplyChip>
       onTapCancel: () => _ctrl.reverse(),
       child: AnimatedBuilder(
         animation: _scale,
-        builder: (_, child) =>
-            Transform.scale(scale: _scale.value, child: child),
+        builder: (_, child) => Transform.scale(scale: _scale.value, child: child),
         child: Container(
           margin: EdgeInsets.only(right: 8, left: widget.index == 0 ? 0 : 0),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
             color: widget.isDark
-                ? ColorConstants.primaryColor.withOpacity(0.15)
-                : ColorConstants.primaryColor.withOpacity(0.07),
+                ? ColorConstants.primaryColor.withValues(alpha: 0.15)
+                : ColorConstants.primaryColor.withValues(alpha: 0.07),
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
-              color: ColorConstants.primaryColor.withOpacity(0.25),
+              color: ColorConstants.primaryColor.withValues(alpha: 0.25),
               width: 1,
             ),
           ),
@@ -505,9 +494,9 @@ class _SmartReplyChipState extends State<_SmartReplyChip>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TypingIndicator
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class TypingIndicator extends StatefulWidget {
   final String userName;
@@ -523,8 +512,7 @@ class TypingIndicator extends StatefulWidget {
   State<TypingIndicator> createState() => _TypingIndicatorState();
 }
 
-class _TypingIndicatorState extends State<TypingIndicator>
-    with SingleTickerProviderStateMixin {
+class _TypingIndicatorState extends State<TypingIndicator> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _fade;
 
@@ -561,28 +549,25 @@ class _TypingIndicatorState extends State<TypingIndicator>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            // Mini avatar
+            
             Container(
               width: 28,
               height: 28,
               margin: const EdgeInsets.only(right: 8, bottom: 2),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: ColorConstants.primaryColor.withOpacity(0.12),
-                border: Border.all(
-                    color: ColorConstants.primaryColor.withOpacity(0.2),
-                    width: 1),
+                color: ColorConstants.primaryColor.withValues(alpha: 0.12),
+                border:
+                    Border.all(color: ColorConstants.primaryColor.withValues(alpha: 0.2), width: 1),
               ),
               child: ClipOval(
                 child: widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty
                     ? Image.network(widget.avatarUrl!,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) =>
-                            _initials(widget.userName))
+                        fit: BoxFit.cover, errorBuilder: (_, __, ___) => _initials(widget.userName))
                     : _initials(widget.userName),
               ),
             ),
-            // Bubble
+            
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
@@ -595,7 +580,7 @@ class _TypingIndicatorState extends State<TypingIndicator>
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.07),
+                    color: Colors.black.withValues(alpha: 0.07),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -616,8 +601,7 @@ class _TypingIndicatorState extends State<TypingIndicator>
                           width: 7,
                           height: 7,
                           decoration: BoxDecoration(
-                            color: ColorConstants.primaryColor
-                                .withOpacity(0.25 + t * 0.75),
+                            color: ColorConstants.primaryColor.withValues(alpha: 0.25 + t * 0.75),
                             shape: BoxShape.circle,
                           ),
                         );
@@ -635,23 +619,21 @@ class _TypingIndicatorState extends State<TypingIndicator>
 
   Widget _initials(String name) {
     return Container(
-      color: ColorConstants.primaryColor.withOpacity(0.1),
+      color: ColorConstants.primaryColor.withValues(alpha: 0.1),
       child: Center(
         child: Text(
           name.isNotEmpty ? name[0].toUpperCase() : '?',
           style: const TextStyle(
-              color: ColorConstants.primaryColor,
-              fontSize: 12,
-              fontWeight: FontWeight.bold),
+              color: ColorConstants.primaryColor, fontSize: 12, fontWeight: FontWeight.bold),
         ),
       ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ReadReceiptWidget
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class ReadReceiptWidget extends StatelessWidget {
   final bool isRead;
@@ -682,9 +664,9 @@ class ReadReceiptWidget extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// UserAvatarWidget
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class UserAvatarWidget extends StatelessWidget {
   final String photoUrl;
@@ -702,9 +684,7 @@ class UserAvatarWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorIndex = name.isEmpty
-        ? 0
-        : name.codeUnitAt(0) % ColorConstants.avatarColors.length;
+    final colorIndex = name.isEmpty ? 0 : name.codeUnitAt(0) % ColorConstants.avatarColors.length;
     final avatarColor = ColorConstants.avatarColors[colorIndex];
 
     return Stack(
@@ -714,9 +694,9 @@ class UserAvatarWidget extends StatelessWidget {
           height: size,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: avatarColor.withOpacity(0.1),
+            color: avatarColor.withValues(alpha: 0.1),
             border: Border.all(
-              color: avatarColor.withOpacity(0.2),
+              color: avatarColor.withValues(alpha: 0.2),
               width: 1.5,
             ),
           ),
@@ -729,7 +709,7 @@ class UserAvatarWidget extends StatelessWidget {
                     loadingBuilder: (_, child, loadingProgress) {
                       if (loadingProgress == null) return child;
                       return Container(
-                        color: avatarColor.withOpacity(0.08),
+                        color: avatarColor.withValues(alpha: 0.08),
                         child: Center(
                           child: CircularProgressIndicator(
                             color: avatarColor,
@@ -762,7 +742,7 @@ class UserAvatarWidget extends StatelessWidget {
 
   Widget _buildInitials(Color color) {
     return Container(
-      color: color.withOpacity(0.1),
+      color: color.withValues(alpha: 0.1),
       child: Center(
         child: Text(
           name.isNotEmpty ? name[0].toUpperCase() : '?',
@@ -777,9 +757,9 @@ class UserAvatarWidget extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PulsingDot  (shared utility)
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class PulsingDot extends StatefulWidget {
   final Color color;
@@ -795,8 +775,7 @@ class PulsingDot extends StatefulWidget {
   State<PulsingDot> createState() => _PulsingDotState();
 }
 
-class _PulsingDotState extends State<PulsingDot>
-    with SingleTickerProviderStateMixin {
+class _PulsingDotState extends State<PulsingDot> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _anim;
 
@@ -825,14 +804,14 @@ class _PulsingDotState extends State<PulsingDot>
         height: widget.size,
         decoration: BoxDecoration(
           color: Color.lerp(
-            widget.color.withOpacity(0.5),
+            widget.color.withValues(alpha: 0.5),
             widget.color,
             _anim.value,
           ),
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: widget.color.withOpacity(_anim.value * 0.4),
+              color: widget.color.withValues(alpha: _anim.value * 0.4),
               blurRadius: 6,
               spreadRadius: 1,
             ),
@@ -843,9 +822,9 @@ class _PulsingDotState extends State<PulsingDot>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// EmptyStateWidget
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class EmptyStateWidget extends StatelessWidget {
   final IconData icon;
@@ -875,7 +854,7 @@ class EmptyStateWidget extends StatelessWidget {
               width: 80,
               height: 80,
               decoration: BoxDecoration(
-                color: ColorConstants.primaryColor.withOpacity(0.08),
+                color: ColorConstants.primaryColor.withValues(alpha: 0.08),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, size: 36, color: ColorConstants.primaryColor),
@@ -893,9 +872,7 @@ class EmptyStateWidget extends StatelessWidget {
             Text(
               subtitle,
               style: TextStyle(
-                  fontSize: 14,
-                  height: 1.5,
-                  color: isDark ? Colors.white38 : Colors.grey.shade500),
+                  fontSize: 14, height: 1.5, color: isDark ? Colors.white38 : Colors.grey.shade500),
               textAlign: TextAlign.center,
             ),
             if (action != null) ...[

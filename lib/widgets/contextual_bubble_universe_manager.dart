@@ -1,27 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PUBLIC INTERFACE
-// ─────────────────────────────────────────────────────────────────────────────
 
-/// Wraps your app's widget tree and manages the bubble mini-chat overlay.
-///
-/// Place this at the root of your widget tree, above [MaterialApp] or as a
-/// direct child of it:
-///
-/// ```dart
-/// ContextualBubbleUniverseManager(
-///   child: MaterialApp(...),
-/// )
-/// ```
-///
-/// To open the mini-chat programmatically, call:
-/// ```dart
-/// ContextualBubbleUniverseManager.of(context)?.showOverlay(...)
-/// ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class ContextualBubbleUniverseManager extends StatefulWidget {
   final Widget child;
 
@@ -30,31 +31,28 @@ class ContextualBubbleUniverseManager extends StatefulWidget {
     required this.child,
   });
 
-  /// Returns the nearest [ContextualBubbleUniverseManagerState] ancestor,
-  /// or null if none found.
+  
+  
   static ContextualBubbleUniverseManagerState? of(BuildContext context) {
-    return context
-        .findAncestorStateOfType<ContextualBubbleUniverseManagerState>();
+    return context.findAncestorStateOfType<ContextualBubbleUniverseManagerState>();
   }
 
   @override
-  State<ContextualBubbleUniverseManager> createState() =>
-      ContextualBubbleUniverseManagerState();
+  State<ContextualBubbleUniverseManager> createState() => ContextualBubbleUniverseManagerState();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// STATE
-// ─────────────────────────────────────────────────────────────────────────────
 
-class ContextualBubbleUniverseManagerState
-    extends State<ContextualBubbleUniverseManager> {
-  // ── Method channel (mirrors BubbleOverlayService) ─────────────────────────
+
+
+
+class ContextualBubbleUniverseManagerState extends State<ContextualBubbleUniverseManager> {
+  
   static const _channel = MethodChannel('mini_chat_channel');
 
-  // ── Services ──────────────────────────────────────────────────────────────
+  
   final _contextService = ContextualBubbleService();
 
-  // ── Overlay state ─────────────────────────────────────────────────────────
+  
   OverlayEntry? _overlayEntry;
 
   String? _currentUserId;
@@ -65,9 +63,9 @@ class ContextualBubbleUniverseManagerState
 
   bool get isOverlayVisible => _overlayEntry != null;
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // LIFECYCLE
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   @override
   void initState() {
@@ -83,9 +81,9 @@ class ContextualBubbleUniverseManagerState
     super.dispose();
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // NATIVE CHANNEL
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Future<dynamic> _handleNativeChannelCall(MethodCall call) async {
     switch (call.method) {
@@ -112,17 +110,17 @@ class ContextualBubbleUniverseManagerState
         break;
 
       case 'updateBubble':
-        // Forward to context service if needed
+        
         break;
     }
     return null;
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // PUBLIC API
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
-  /// Opens (or replaces) the mini-chat overlay for the given user.
+  
   void showOverlay({
     required String userId,
     required String userName,
@@ -137,8 +135,7 @@ class ContextualBubbleUniverseManagerState
     _currentUserName = userName;
     _currentAvatarUrl = avatarUrl;
     _myUserId = myUserId ?? '';
-    _currentConversationId =
-        conversationId ?? _buildConversationId(myUserId ?? '', userId);
+    _currentConversationId = conversationId ?? _buildConversationId(myUserId ?? '', userId);
 
     _overlayEntry = OverlayEntry(
       builder: (ctx) => _BubbleOverlayWrapper(
@@ -156,28 +153,26 @@ class ContextualBubbleUniverseManagerState
     Overlay.of(context).insert(_overlayEntry!);
   }
 
-  /// Hides the overlay without notifying native side.
+  
   void hideOverlay() => _safeRemoveOverlay();
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // CALLBACKS
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _onMinimize() {
     _safeRemoveOverlay();
-    _channel.invokeMethod(
-        'minimize', {'userId': _currentUserId}).catchError((_) {});
+    _channel.invokeMethod('minimize', {'userId': _currentUserId}).catchError((_) {});
   }
 
   void _onClose() {
     _safeRemoveOverlay();
-    _channel
-        .invokeMethod('close', {'userId': _currentUserId}).catchError((_) {});
+    _channel.invokeMethod('close', {'userId': _currentUserId}).catchError((_) {});
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // HELPERS
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _safeRemoveOverlay() {
     try {
@@ -186,17 +181,17 @@ class ContextualBubbleUniverseManagerState
     _overlayEntry = null;
   }
 
-  /// Override this to inject your actual ChatPage.
+  
   Widget _buildChatContent() {
-    // Replace with your real ChatPage:
-    // return ChatPage(
-    //   arguments: ChatPageArguments(
-    //     peerId: _currentUserId!,
-    //     peerNickname: _currentUserName!,
-    //     peerAvatar: _currentAvatarUrl!,
-    //   ),
-    //   isMiniChat: true,
-    // );
+    
+    
+    
+    
+    
+    
+    
+    
+    
     return _FallbackChatContent(
       userId: _currentUserId ?? '',
       userName: _currentUserName ?? '',
@@ -208,17 +203,17 @@ class ContextualBubbleUniverseManagerState
     return ids.join('_');
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // BUILD
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   @override
   Widget build(BuildContext context) => widget.child;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// OVERLAY WRAPPER (isolates ContextualMiniChatOverlay from Manager rebuild)
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _BubbleOverlayWrapper extends StatelessWidget {
   final String userId;
@@ -259,9 +254,9 @@ class _BubbleOverlayWrapper extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FALLBACK CONTENT (replace with your real ChatPage)
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _FallbackChatContent extends StatelessWidget {
   final String userId;
@@ -319,20 +314,20 @@ class _FallbackChatContent extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MIXIN — convenience helpers for StatefulWidgets inside a chat
-// ─────────────────────────────────────────────────────────────────────────────
 
-/// Mix into any [State] that processes chat messages so they feed the
-/// [ContextualBubbleService] automatically.
-///
-/// ```dart
-/// class _MyChatState extends State<MyChat> with ContextualBubbleMixin { ... }
-/// ```
+
+
+
+
+
+
+
+
+
 mixin ContextualBubbleMixin<T extends StatefulWidget> on State<T> {
   final _ctxSvc = ContextualBubbleService();
 
-  /// Call this whenever an outgoing or incoming message is processed.
+  
   void notifyBubbleOfMessage({
     required String content,
     required int messageType,

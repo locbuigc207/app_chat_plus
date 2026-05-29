@@ -5,9 +5,9 @@ import '../models/call_model.dart';
 import '../pages/outgoing_call_page.dart';
 import '../services/call_service.dart';
 
-// ─────────────────────────────────────────────────────────────
-// CallButtons — voice + video pair
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class CallButtons extends StatelessWidget {
   final String peerId;
@@ -47,7 +47,7 @@ class CallButtons extends StatelessWidget {
     HapticFeedback.lightImpact();
     final service = CallService.instance;
 
-    // Show loading indicator
+    
     final messenger = ScaffoldMessenger.of(context);
     final snackBar = SnackBar(
       content: Row(
@@ -55,8 +55,7 @@ class CallButtons extends StatelessWidget {
           const SizedBox(
             width: 16,
             height: 16,
-            child:
-                CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
           ),
           const SizedBox(width: 12),
           Text('Đang kết nối ${type == CallType.video ? 'video' : 'thoại'}…'),
@@ -86,8 +85,7 @@ class CallButtons extends StatelessWidget {
           content: const Text('Không thể bắt đầu cuộc gọi lúc này.'),
           backgroundColor: Colors.orange[700],
           behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
       return;
@@ -99,9 +97,9 @@ class CallButtons extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// VoiceCallIconButton
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class VoiceCallIconButton extends StatelessWidget {
   final String peerId;
@@ -155,9 +153,9 @@ class VoiceCallIconButton extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// VideoCallIconButton
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class VideoCallIconButton extends StatelessWidget {
   final String peerId;
@@ -211,9 +209,9 @@ class VideoCallIconButton extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Shared premium button
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _PremiumCallBtn extends StatefulWidget {
   final IconData icon;
@@ -232,8 +230,7 @@ class _PremiumCallBtn extends StatefulWidget {
   State<_PremiumCallBtn> createState() => _PremiumCallBtnState();
 }
 
-class _PremiumCallBtnState extends State<_PremiumCallBtn>
-    with SingleTickerProviderStateMixin {
+class _PremiumCallBtnState extends State<_PremiumCallBtn> with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<double> _scale;
 
@@ -271,10 +268,9 @@ class _PremiumCallBtnState extends State<_PremiumCallBtn>
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: widget.color.withOpacity(0.12),
+              color: widget.color.withValues(alpha: 0.12),
               shape: BoxShape.circle,
-              border:
-                  Border.all(color: widget.color.withOpacity(0.3), width: 1),
+              border: Border.all(color: widget.color.withValues(alpha: 0.3), width: 1),
             ),
             child: Icon(widget.icon, color: widget.color, size: 20),
           ),

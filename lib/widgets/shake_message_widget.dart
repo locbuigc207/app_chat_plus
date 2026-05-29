@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+
 import 'package:sensors_plus/sensors_plus.dart';
 
 class ShakeMessageWidget extends StatefulWidget {
@@ -20,8 +21,7 @@ class ShakeMessageWidget extends StatefulWidget {
   State<ShakeMessageWidget> createState() => _ShakeMessageWidgetState();
 }
 
-class _ShakeMessageWidgetState extends State<ShakeMessageWidget>
-    with TickerProviderStateMixin {
+class _ShakeMessageWidgetState extends State<ShakeMessageWidget> with TickerProviderStateMixin {
   bool _isRevealed = false;
   StreamSubscription<UserAccelerometerEvent>? _accelSubscription;
   double _shakeIntensity = 0.0;
@@ -84,21 +84,20 @@ class _ShakeMessageWidgetState extends State<ShakeMessageWidget>
   }
 
   void _startListening() {
-    _accelSubscription =
-        userAccelerometerEventStream().listen((UserAccelerometerEvent event) {
-          if (_isRevealed) return;
+    _accelSubscription = userAccelerometerEventStream().listen((UserAccelerometerEvent event) {
+      if (_isRevealed) return;
 
-          double mag = event.x.abs() + event.y.abs() + event.z.abs();
-          double intensity = (mag / _shakeThreshold).clamp(0.0, 1.0);
+      double mag = event.x.abs() + event.y.abs() + event.z.abs();
+      double intensity = (mag / _shakeThreshold).clamp(0.0, 1.0);
 
-          if (mounted) setState(() => _shakeIntensity = intensity);
+      if (mounted) setState(() => _shakeIntensity = intensity);
 
-          if (mag > _shakeThreshold) {
-            _triggerReveal();
-          } else if (mag > 8.0 && !_shakeAnim.isAnimating) {
-            _shakeAnim.forward(from: 0);
-          }
-        });
+      if (mag > _shakeThreshold) {
+        _triggerReveal();
+      } else if (mag > 8.0 && !_shakeAnim.isAnimating) {
+        _shakeAnim.forward(from: 0);
+      }
+    });
   }
 
   void _triggerReveal() {
@@ -131,8 +130,7 @@ class _ShakeMessageWidgetState extends State<ShakeMessageWidget>
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: Listenable.merge(
-          [_translateX, _scaleReveal, _glowPulse, _ribbonAnim]),
+      animation: Listenable.merge([_translateX, _scaleReveal, _glowPulse, _ribbonAnim]),
       builder: (context, _) {
         return Transform.translate(
           offset: Offset(_isRevealed ? 0 : _translateX.value, 0),
@@ -158,7 +156,7 @@ class _ShakeMessageWidgetState extends State<ShakeMessageWidget>
         ),
         boxShadow: [
           BoxShadow(
-            color: _accent.withOpacity(0.25 + _shakeIntensity * 0.35),
+            color: _accent.withValues(alpha: 0.25 + _shakeIntensity * 0.35),
             blurRadius: 14 + _shakeIntensity * 20,
             spreadRadius: 1 + _shakeIntensity * 4,
             offset: const Offset(0, 5),
@@ -178,13 +176,12 @@ class _ShakeMessageWidgetState extends State<ShakeMessageWidget>
                 height: 56,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withOpacity(0.15),
+                  color: Colors.white.withValues(alpha: 0.15),
                   border: Border.all(
-                      color: Colors.white.withOpacity(0.4 + _shakeIntensity * 0.4),
-                      width: 2),
+                      color: Colors.white.withValues(alpha: 0.4 + _shakeIntensity * 0.4), width: 2),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.white.withOpacity(_glowPulse.value * 0.25),
+                      color: Colors.white.withValues(alpha: _glowPulse.value * 0.25),
                       blurRadius: 12,
                     )
                   ],
@@ -207,7 +204,7 @@ class _ShakeMessageWidgetState extends State<ShakeMessageWidget>
             ),
           ),
           const SizedBox(height: 8),
-          // Intensity indicator dots
+          
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(5, (i) {
@@ -220,16 +217,14 @@ class _ShakeMessageWidgetState extends State<ShakeMessageWidget>
                 margin: const EdgeInsets.symmetric(horizontal: 2.5),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: active
-                      ? Colors.white
-                      : Colors.white.withOpacity(0.22),
+                  color: active ? Colors.white : Colors.white.withValues(alpha: 0.22),
                   boxShadow: active
                       ? [
-                    BoxShadow(
-                      color: Colors.white.withOpacity(0.6),
-                      blurRadius: 6,
-                    )
-                  ]
+                          BoxShadow(
+                            color: Colors.white.withValues(alpha: 0.6),
+                            blurRadius: 6,
+                          )
+                        ]
                       : [],
                 ),
               );
@@ -260,19 +255,18 @@ class _ShakeMessageWidgetState extends State<ShakeMessageWidget>
               ),
               boxShadow: [
                 BoxShadow(
-                  color: _accent.withOpacity(0.22),
+                  color: _accent.withValues(alpha: 0.22),
                   blurRadius: 20,
                   spreadRadius: 2,
                   offset: const Offset(0, 6),
                 ),
               ],
               border: Border.all(
-                color: _accent.withOpacity(0.35),
+                color: _accent.withValues(alpha: 0.35),
                 width: 1.5,
               ),
             ),
-            padding:
-            const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -306,7 +300,7 @@ class _ShakeMessageWidgetState extends State<ShakeMessageWidget>
             ),
           ),
 
-          // Confetti burst
+          
           Positioned.fill(
             child: IgnorePointer(
               child: AnimatedBuilder(
@@ -326,7 +320,7 @@ class _ShakeMessageWidgetState extends State<ShakeMessageWidget>
   }
 }
 
-// ─── Confetti model & painter ─────────────────────────────────────────────────
+
 
 class _ConfettiPiece {
   final double angle;
@@ -363,17 +357,14 @@ class _ConfettiPainter extends CustomPainter {
       final opacity = (1.0 - progress * 0.85).clamp(0.0, 1.0);
       final dx = cos(p.angle) * p.speed * progress;
       final dy = sin(p.angle) * p.speed * progress - 30 * progress;
-      final paint = Paint()..color = p.color.withOpacity(opacity);
+      final paint = Paint()..color = p.color.withValues(alpha: opacity);
       final pos = center + Offset(dx, dy);
       if (p.isRect) {
         canvas.save();
         canvas.translate(pos.dx, pos.dy);
         canvas.rotate(progress * pi * 3);
         canvas.drawRect(
-          Rect.fromCenter(
-              center: Offset.zero,
-              width: p.size,
-              height: p.size * 0.5),
+          Rect.fromCenter(center: Offset.zero, width: p.size, height: p.size * 0.5),
           paint,
         );
         canvas.restore();

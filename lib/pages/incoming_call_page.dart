@@ -8,9 +8,9 @@ import '../models/call_model.dart';
 import '../services/call_service.dart';
 import 'call_page.dart';
 
-// ─────────────────────────────────────────────────────────────
-// IncomingCallPage
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class IncomingCallPage extends StatefulWidget {
   final CallModel call;
@@ -21,8 +21,7 @@ class IncomingCallPage extends StatefulWidget {
   State<IncomingCallPage> createState() => _IncomingCallPageState();
 }
 
-class _IncomingCallPageState extends State<IncomingCallPage>
-    with TickerProviderStateMixin {
+class _IncomingCallPageState extends State<IncomingCallPage> with TickerProviderStateMixin {
   final _callService = CallService.instance;
 
   late final AnimationController _pulseController;
@@ -36,9 +35,9 @@ class _IncomingCallPageState extends State<IncomingCallPage>
   int _secondsRemaining = 30;
   bool _dismissed = false;
 
-  // Swipe-to-answer state
-  double _swipeProgress = 0.0; // 0..1
-  bool _swipeStarted = false;
+  
+  final double _swipeProgress = 0.0; 
+  final bool _swipeStarted = false;
 
   @override
   void initState() {
@@ -65,8 +64,7 @@ class _IncomingCallPageState extends State<IncomingCallPage>
     );
 
     _slideAnimation = Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
-        .animate(CurvedAnimation(
-            parent: _slideController, curve: Curves.easeOutCubic));
+        .animate(CurvedAnimation(parent: _slideController, curve: Curves.easeOutCubic));
 
     _slideController.forward();
     _watchCallStatus();
@@ -153,12 +151,11 @@ class _IncomingCallPageState extends State<IncomingCallPage>
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Background
+            
             if (avatar.isNotEmpty)
               Image.network(avatar,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) =>
-                      const ColoredBox(color: Color(0xFF0A0E1A))),
+                  errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFF0A0E1A))),
             BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 56, sigmaY: 56),
               child: Container(
@@ -180,12 +177,12 @@ class _IncomingCallPageState extends State<IncomingCallPage>
                 children: [
                   const SizedBox(height: 24),
 
-                  // Call type badge
+                  
                   _CallTypeBadge(isVideo: isVideo),
 
                   const Spacer(),
 
-                  // Ripple + avatar
+                  
                   _RippleAvatar(
                     rippleController: _rippleController,
                     pulseAnimation: _pulseAnimation,
@@ -194,7 +191,7 @@ class _IncomingCallPageState extends State<IncomingCallPage>
                   ),
                   const SizedBox(height: 36),
 
-                  // Caller name
+                  
                   Text(
                     name,
                     style: const TextStyle(
@@ -207,22 +204,19 @@ class _IncomingCallPageState extends State<IncomingCallPage>
                   ),
                   const SizedBox(height: 6),
 
-                  // Subtitle
+                  
                   Text(
-                    isVideo
-                        ? 'Đang gọi video cho bạn'
-                        : 'Đang gọi thoại cho bạn',
-                    style: TextStyle(
-                        color: Colors.white.withOpacity(0.6), fontSize: 15),
+                    isVideo ? 'Đang gọi video cho bạn' : 'Đang gọi thoại cho bạn',
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 15),
                   ),
                   const SizedBox(height: 12),
 
-                  // Countdown ring
+                  
                   _CountdownRing(seconds: _secondsRemaining, total: 30),
 
                   const Spacer(),
 
-                  // Action buttons
+                  
                   Padding(
                     padding: const EdgeInsets.fromLTRB(40, 0, 40, 56),
                     child: Row(
@@ -235,9 +229,7 @@ class _IncomingCallPageState extends State<IncomingCallPage>
                           onTap: _declineCall,
                         ),
                         _ActionButton(
-                          icon: isVideo
-                              ? Icons.videocam_rounded
-                              : Icons.phone_rounded,
+                          icon: isVideo ? Icons.videocam_rounded : Icons.phone_rounded,
                           label: 'Chấp nhận',
                           backgroundColor: const Color(0xFF43A047),
                           onTap: _acceptCall,
@@ -255,9 +247,9 @@ class _IncomingCallPageState extends State<IncomingCallPage>
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Sub-widgets
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _CallTypeBadge extends StatelessWidget {
   final bool isVideo;
@@ -272,7 +264,7 @@ class _CallTypeBadge extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.12),
+            color: Colors.white.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(24),
             border: Border.all(color: Colors.white24),
           ),
@@ -319,7 +311,7 @@ class _RippleAvatar extends StatelessWidget {
     return Stack(
       alignment: Alignment.center,
       children: [
-        // Ripples
+        
         ...List.generate(3, (i) {
           return AnimatedBuilder(
             animation: rippleController,
@@ -332,8 +324,7 @@ class _RippleAvatar extends StatelessWidget {
                   height: 130 + (progress * 160),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(
-                        color: Colors.white.withOpacity(0.6), width: 1.5),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.6), width: 1.5),
                   ),
                 ),
               );
@@ -341,11 +332,10 @@ class _RippleAvatar extends StatelessWidget {
           );
         }),
 
-        // Pulsing avatar
+        
         AnimatedBuilder(
           animation: pulseAnimation,
-          builder: (_, child) =>
-              Transform.scale(scale: pulseAnimation.value, child: child),
+          builder: (_, child) => Transform.scale(scale: pulseAnimation.value, child: child),
           child: Container(
             width: 136,
             height: 136,
@@ -353,18 +343,16 @@ class _RippleAvatar extends StatelessWidget {
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                    color: const Color(0xFF43A047).withOpacity(0.35),
+                    color: const Color(0xFF43A047).withValues(alpha: 0.35),
                     blurRadius: 40,
                     spreadRadius: 10),
               ],
-              border:
-                  Border.all(color: Colors.white.withOpacity(0.8), width: 3),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 3),
             ),
             child: ClipOval(
               child: avatarUrl.isNotEmpty
                   ? Image.network(avatarUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _defaultAvatar())
+                      fit: BoxFit.cover, errorBuilder: (_, __, ___) => _defaultAvatar())
                   : _defaultAvatar(),
             ),
           ),
@@ -376,14 +364,12 @@ class _RippleAvatar extends StatelessWidget {
   Widget _defaultAvatar() {
     return Container(
       decoration: const BoxDecoration(
-        gradient:
-            LinearGradient(colors: [Color(0xFF3949AB), Color(0xFF1E88E5)]),
+        gradient: LinearGradient(colors: [Color(0xFF3949AB), Color(0xFF1E88E5)]),
       ),
       child: Center(
         child: Text(
           name.isNotEmpty ? name[0].toUpperCase() : '?',
-          style: const TextStyle(
-              color: Colors.white, fontSize: 52, fontWeight: FontWeight.bold),
+          style: const TextStyle(color: Colors.white, fontSize: 52, fontWeight: FontWeight.bold),
         ),
       ),
     );
@@ -419,8 +405,7 @@ class _CountdownRing extends StatelessWidget {
           ),
           Text(
             '$seconds',
-            style: TextStyle(
-                color: color, fontSize: 14, fontWeight: FontWeight.w700),
+            style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w700),
           ),
         ],
       ),
@@ -445,8 +430,7 @@ class _ActionButton extends StatefulWidget {
   State<_ActionButton> createState() => _ActionButtonState();
 }
 
-class _ActionButtonState extends State<_ActionButton>
-    with SingleTickerProviderStateMixin {
+class _ActionButtonState extends State<_ActionButton> with SingleTickerProviderStateMixin {
   late final AnimationController _pressController;
   late final Animation<double> _scaleAnim;
 
@@ -491,7 +475,7 @@ class _ActionButtonState extends State<_ActionButton>
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: widget.backgroundColor.withOpacity(0.55),
+                    color: widget.backgroundColor.withValues(alpha: 0.55),
                     blurRadius: 24,
                     offset: const Offset(0, 8),
                   ),

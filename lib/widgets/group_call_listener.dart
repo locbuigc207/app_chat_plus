@@ -1,8 +1,9 @@
 import 'dart:async';
 
-import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:provider/provider.dart';
 
 import '../models/group_call_model.dart';
@@ -10,16 +11,16 @@ import '../pages/incoming_group_call_page.dart';
 import '../providers/providers.dart';
 import '../services/group_call_service.dart';
 
-// ─────────────────────────────────────────────────────────────
-// GroupCallListener
-//
-// Wrap around your app's root widget (or main navigator). It
-// listens for incoming group calls and slides in the
-// IncomingGroupCallPage automatically.
-//
-// Usage:
-//   GroupCallListener(child: MyApp())
-// ─────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
 
 class GroupCallListener extends StatefulWidget {
   final Widget child;
@@ -30,17 +31,16 @@ class GroupCallListener extends StatefulWidget {
   State<GroupCallListener> createState() => _GroupCallListenerState();
 }
 
-class _GroupCallListenerState extends State<GroupCallListener>
-    with WidgetsBindingObserver {
+class _GroupCallListenerState extends State<GroupCallListener> with WidgetsBindingObserver {
   final _service = GroupCallService.instance;
 
   StreamSubscription<User?>? _authSub;
   StreamSubscription<GroupCallModel?>? _callSub;
 
-  String? _displayedCallId; // currently displayed incoming screen
+  String? _displayedCallId; 
   bool _isShowingIncoming = false;
 
-  // Debounce: don't react to same callId twice within 5 s
+  
   final Map<String, DateTime> _seenCallIds = {};
 
   @override
@@ -58,9 +58,9 @@ class _GroupCallListenerState extends State<GroupCallListener>
     super.dispose();
   }
 
-  // ─────────────────────────────────────────────
-  // Auth-aware subscription
-  // ─────────────────────────────────────────────
+  
+  
+  
 
   void _startAuthListener() {
     _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
@@ -87,21 +87,21 @@ class _GroupCallListenerState extends State<GroupCallListener>
   void _handleIncomingCall(GroupCallModel call, String uid) {
     if (!mounted) return;
 
-    // Already displaying this call
+    
     if (_displayedCallId == call.callId) return;
 
-    // Debounce repeated events
+    
     final lastSeen = _seenCallIds[call.callId];
     if (lastSeen != null && DateTime.now().difference(lastSeen).inSeconds < 5) {
       return;
     }
     _seenCallIds[call.callId] = DateTime.now();
 
-    // Call already ended or we're already in it
+    
     if (call.status == GroupCallStatus.ended) return;
     if (call.participants.any((p) => p.userId == uid)) return;
 
-    // Already showing a different incoming call — dismiss first
+    
     if (_isShowingIncoming) {
       _dismissCurrentIncoming();
     }
@@ -115,10 +115,8 @@ class _GroupCallListenerState extends State<GroupCallListener>
 
   void _triggerHapticAlert() {
     HapticFeedback.vibrate();
-    Future.delayed(
-        const Duration(milliseconds: 350), () => HapticFeedback.vibrate());
-    Future.delayed(
-        const Duration(milliseconds: 700), () => HapticFeedback.vibrate());
+    Future.delayed(const Duration(milliseconds: 350), () => HapticFeedback.vibrate());
+    Future.delayed(const Duration(milliseconds: 700), () => HapticFeedback.vibrate());
   }
 
   void _dismissCurrentIncoming() {
@@ -162,9 +160,9 @@ class _GroupCallListenerState extends State<GroupCallListener>
   Widget build(BuildContext context) => widget.child;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Custom page route: slides up from bottom + fade
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _IncomingCallRoute<T> extends PageRouteBuilder<T> {
   final WidgetBuilder builder;
@@ -184,8 +182,7 @@ class _IncomingCallRoute<T> extends PageRouteBuilder<T> {
             ).animate(
               CurvedAnimation(parent: anim, curve: Curves.easeOutCubic),
             );
-            final fade =
-                CurvedAnimation(parent: anim, curve: const Interval(0, 0.4));
+            final fade = CurvedAnimation(parent: anim, curve: const Interval(0, 0.4));
             return SlideTransition(
               position: slide,
               child: FadeTransition(opacity: fade, child: child),
@@ -194,12 +191,12 @@ class _IncomingCallRoute<T> extends PageRouteBuilder<T> {
         );
 }
 
-// ─────────────────────────────────────────────────────────────
-// CallNotificationOverlay
-//
-// Optional lightweight heads-up banner (use when you only want
-// a notification banner instead of full-screen incoming page).
-// ─────────────────────────────────────────────────────────────
+
+
+
+
+
+
 
 class CallNotificationOverlay extends StatefulWidget {
   final GroupCallModel call;
@@ -218,8 +215,7 @@ class CallNotificationOverlay extends StatefulWidget {
   });
 
   @override
-  State<CallNotificationOverlay> createState() =>
-      _CallNotificationOverlayState();
+  State<CallNotificationOverlay> createState() => _CallNotificationOverlayState();
 }
 
 class _CallNotificationOverlayState extends State<CallNotificationOverlay>
@@ -268,11 +264,10 @@ class _CallNotificationOverlayState extends State<CallNotificationOverlay>
             decoration: BoxDecoration(
               color: const Color(0xFF0f172a),
               borderRadius: BorderRadius.circular(18),
-              border:
-                  Border.all(color: Colors.white.withOpacity(0.1), width: 1),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.5),
+                  color: Colors.black.withValues(alpha: 0.5),
                   blurRadius: 24,
                   offset: const Offset(0, 8),
                 ),
@@ -280,32 +275,28 @@ class _CallNotificationOverlayState extends State<CallNotificationOverlay>
             ),
             child: Row(
               children: [
-                // Avatar
+                
                 Container(
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                        color: isVideo
-                            ? const Color(0xFF3B82F6)
-                            : const Color(0xFF22C55E),
+                        color: isVideo ? const Color(0xFF3B82F6) : const Color(0xFF22C55E),
                         width: 2),
                   ),
                   child: ClipOval(
                     child: widget.call.groupAvatarUrl.isNotEmpty
-                        ? Image.network(widget.call.groupAvatarUrl,
-                            fit: BoxFit.cover)
+                        ? Image.network(widget.call.groupAvatarUrl, fit: BoxFit.cover)
                         : Container(
                             color: const Color(0xFF334155),
-                            child: const Icon(Icons.group,
-                                color: Colors.white, size: 20),
+                            child: const Icon(Icons.group, color: Colors.white, size: 20),
                           ),
                   ),
                 ),
                 const SizedBox(width: 12),
 
-                // Info
+                
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -322,21 +313,20 @@ class _CallNotificationOverlayState extends State<CallNotificationOverlay>
                       ),
                       Text(
                         isVideo ? 'Cuộc gọi video nhóm' : 'Cuộc gọi thoại nhóm',
-                        style: const TextStyle(
-                            color: Colors.white54, fontSize: 12),
+                        style: const TextStyle(color: Colors.white54, fontSize: 12),
                       ),
                     ],
                   ),
                 ),
 
-                // Decline
+                
                 _circleBtn(
                   icon: Icons.call_end_rounded,
                   color: const Color(0xFFEF4444),
                   onTap: widget.onDecline,
                 ),
                 const SizedBox(width: 8),
-                // Accept
+                
                 _circleBtn(
                   icon: isVideo ? Icons.videocam_rounded : Icons.call_rounded,
                   color: const Color(0xFF22C55E),
@@ -365,7 +355,7 @@ class _CallNotificationOverlayState extends State<CallNotificationOverlay>
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.4),
+              color: color.withValues(alpha: 0.4),
               blurRadius: 8,
               offset: const Offset(0, 3),
             ),

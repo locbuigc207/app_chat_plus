@@ -1,6 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/providers/auth_provider.dart';
@@ -9,9 +10,9 @@ import 'package:flutter_chat_demo/providers/home_provider.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:provider/provider.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CreateGroupPage
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class CreateGroupPage extends StatefulWidget {
   const CreateGroupPage({super.key});
@@ -20,14 +21,13 @@ class CreateGroupPage extends StatefulWidget {
   State<CreateGroupPage> createState() => _CreateGroupPageState();
 }
 
-class _CreateGroupPageState extends State<CreateGroupPage>
-    with TickerProviderStateMixin {
+class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderStateMixin {
   final _groupNameController = TextEditingController();
   final _descController = TextEditingController();
   final Set<String> _selectedMembers = {};
   bool _isLoading = false;
   String _searchQuery = '';
-  int _step = 0; // 0 = details, 1 = members
+  int _step = 0; 
 
   late AnimationController _fabAnimCtrl;
   late AnimationController _stepAnimCtrl;
@@ -38,7 +38,7 @@ class _CreateGroupPageState extends State<CreateGroupPage>
   late final FriendProvider _friendProvider;
   late final FirebaseFirestore _firebaseFirestore;
 
-  // ── colour palette ──────────────────────────────────────────────────────────
+  
   static const _bg = Color(0xFF0D0F14);
   static const _surface = Color(0xFF181B24);
   static const _surfaceHigh = Color(0xFF1E2233);
@@ -57,15 +57,12 @@ class _CreateGroupPageState extends State<CreateGroupPage>
     );
     _firebaseFirestore = context.read<HomeProvider>().firebaseFirestore;
 
-    _fabAnimCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 300));
+    _fabAnimCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
     _fabScale = CurvedAnimation(parent: _fabAnimCtrl, curve: Curves.elasticOut);
 
-    _stepAnimCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 400));
+    _stepAnimCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
     _stepSlide = Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
-        .animate(
-            CurvedAnimation(parent: _stepAnimCtrl, curve: Curves.easeOutCubic));
+        .animate(CurvedAnimation(parent: _stepAnimCtrl, curve: Curves.easeOutCubic));
     _stepAnimCtrl.forward();
 
     _groupNameController.addListener(_onNameChanged);
@@ -91,7 +88,7 @@ class _CreateGroupPageState extends State<CreateGroupPage>
     super.dispose();
   }
 
-  // ── navigation between steps ──────────────────────────────────────────────
+  
 
   void _goToStep(int step) {
     if (step == 1 && _groupNameController.text.trim().isEmpty) {
@@ -104,7 +101,7 @@ class _CreateGroupPageState extends State<CreateGroupPage>
     _stepAnimCtrl.forward();
   }
 
-  // ── create ────────────────────────────────────────────────────────────────
+  
 
   Future<void> _createGroup() async {
     if (_groupNameController.text.trim().isEmpty) {
@@ -125,15 +122,14 @@ class _CreateGroupPageState extends State<CreateGroupPage>
       final groupName = _groupNameController.text.trim();
       final systemMsg = '$groupName group created';
 
-      // Build initial roles map – creator is owner
+      
       final roles = <String, dynamic>{
         _currentUserId: 'owner',
         for (final id in _selectedMembers) id: 'member',
       };
 
-      final groupDoc = await _firebaseFirestore
-          .collection(FirestoreConstants.pathGroupCollection)
-          .add({
+      final groupDoc =
+          await _firebaseFirestore.collection(FirestoreConstants.pathGroupCollection).add({
         FirestoreConstants.groupName: groupName,
         FirestoreConstants.groupPhotoUrl: '',
         FirestoreConstants.adminId: _currentUserId,
@@ -184,13 +180,12 @@ class _CreateGroupPageState extends State<CreateGroupPage>
   void _showToast(String msg, {bool isSuccess = false}) {
     Fluttertoast.showToast(
       msg: msg,
-      backgroundColor:
-          isSuccess ? const Color(0xFF1A3A2A) : const Color(0xFF3A1A1A),
+      backgroundColor: isSuccess ? const Color(0xFF1A3A2A) : const Color(0xFF3A1A1A),
       textColor: isSuccess ? Colors.greenAccent : Colors.redAccent,
     );
   }
 
-  // ── build ─────────────────────────────────────────────────────────────────
+  
 
   @override
   Widget build(BuildContext context) {
@@ -207,8 +202,7 @@ class _CreateGroupPageState extends State<CreateGroupPage>
                 Expanded(
                   child: SlideTransition(
                     position: _stepSlide,
-                    child:
-                        _step == 0 ? _buildDetailsStep() : _buildMembersStep(),
+                    child: _step == 0 ? _buildDetailsStep() : _buildMembersStep(),
                   ),
                 ),
               ],
@@ -222,9 +216,7 @@ class _CreateGroupPageState extends State<CreateGroupPage>
                 scale: _fabScale,
                 child: FloatingActionButton.extended(
                   onPressed: _selectedMembers.isNotEmpty ? _createGroup : null,
-                  backgroundColor: _selectedMembers.isNotEmpty
-                      ? _accent
-                      : const Color(0xFF252A3A),
+                  backgroundColor: _selectedMembers.isNotEmpty ? _accent : const Color(0xFF252A3A),
                   icon: const Icon(Icons.check_rounded),
                   label: Text(
                     'Create${_selectedMembers.isNotEmpty ? ' (${_selectedMembers.length})' : ''}',
@@ -236,7 +228,7 @@ class _CreateGroupPageState extends State<CreateGroupPage>
     );
   }
 
-  // ── header ────────────────────────────────────────────────────────────────
+  
 
   Widget _buildHeader() {
     return Container(
@@ -249,14 +241,10 @@ class _CreateGroupPageState extends State<CreateGroupPage>
             children: [
               IconButton(
                 icon: Icon(
-                  _step == 0
-                      ? Icons.close_rounded
-                      : Icons.arrow_back_ios_new_rounded,
+                  _step == 0 ? Icons.close_rounded : Icons.arrow_back_ios_new_rounded,
                   color: _textPrimary,
                 ),
-                onPressed: _step == 0
-                    ? () => Navigator.pop(context)
-                    : () => _goToStep(0),
+                onPressed: _step == 0 ? () => Navigator.pop(context) : () => _goToStep(0),
               ),
               const SizedBox(width: 4),
               Column(
@@ -274,8 +262,7 @@ class _CreateGroupPageState extends State<CreateGroupPage>
                     _step == 0
                         ? 'Step 1 of 2 — Group details'
                         : 'Step 2 of 2 — Select participants',
-                    style:
-                        const TextStyle(color: _textSecondary, fontSize: 12.5),
+                    style: const TextStyle(color: _textSecondary, fontSize: 12.5),
                   ),
                 ],
               ),
@@ -314,7 +301,7 @@ class _CreateGroupPageState extends State<CreateGroupPage>
     );
   }
 
-  // ── step 0: group details ─────────────────────────────────────────────────
+  
 
   Widget _buildDetailsStep() {
     return SingleChildScrollView(
@@ -323,7 +310,7 @@ class _CreateGroupPageState extends State<CreateGroupPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Avatar placeholder
+          
           Center(
             child: Stack(
               alignment: Alignment.bottomRight,
@@ -338,14 +325,13 @@ class _CreateGroupPageState extends State<CreateGroupPage>
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: _accent.withOpacity(.35),
+                        color: _accent.withValues(alpha: .35),
                         blurRadius: 20,
                         spreadRadius: 2,
                       )
                     ],
                   ),
-                  child: const Icon(Icons.group_rounded,
-                      size: 44, color: Colors.white),
+                  child: const Icon(Icons.group_rounded, size: 44, color: Colors.white),
                 ),
                 Container(
                   padding: const EdgeInsets.all(6),
@@ -354,14 +340,13 @@ class _CreateGroupPageState extends State<CreateGroupPage>
                     shape: BoxShape.circle,
                     border: Border.all(color: _bg, width: 2),
                   ),
-                  child: const Icon(Icons.camera_alt_rounded,
-                      size: 14, color: Colors.white),
+                  child: const Icon(Icons.camera_alt_rounded, size: 14, color: Colors.white),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 28),
-          // Group name
+          
           const _FieldLabel(label: 'Group Name', required: true),
           const SizedBox(height: 8),
           _DarkInput(
@@ -379,7 +364,7 @@ class _CreateGroupPageState extends State<CreateGroupPage>
             ),
           ),
           const SizedBox(height: 20),
-          // Description
+          
           const _FieldLabel(label: 'Description', required: false),
           const SizedBox(height: 8),
           _DarkInput(
@@ -389,32 +374,30 @@ class _CreateGroupPageState extends State<CreateGroupPage>
             maxLength: 150,
           ),
           const SizedBox(height: 28),
-          // Tips card
+          
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: _accentGlow,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: _accent.withOpacity(.25), width: .8),
+              border: Border.all(color: _accent.withValues(alpha: .25), width: .8),
             ),
             child: const Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.lightbulb_rounded,
-                    color: Color(0xFFFFB84D), size: 18),
+                Icon(Icons.lightbulb_rounded, color: Color(0xFFFFB84D), size: 18),
                 SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     'Give your group a clear name and description so members know what it\'s about.',
-                    style: TextStyle(
-                        color: _textSecondary, fontSize: 13, height: 1.5),
+                    style: TextStyle(color: _textSecondary, fontSize: 13, height: 1.5),
                   ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 28),
-          // Continue button
+          
           SizedBox(
             width: double.infinity,
             child: _GradientBtn(
@@ -429,12 +412,12 @@ class _CreateGroupPageState extends State<CreateGroupPage>
     );
   }
 
-  // ── step 1: select members ────────────────────────────────────────────────
+  
 
   Widget _buildMembersStep() {
     return Column(
       children: [
-        // Search bar
+        
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: Container(
@@ -456,9 +439,9 @@ class _CreateGroupPageState extends State<CreateGroupPage>
             ),
           ),
         ),
-        // Selected chips
+        
         if (_selectedMembers.isNotEmpty) _buildSelectedChips(),
-        // Friend list
+        
         Expanded(child: _buildFriendsList()),
       ],
     );
@@ -474,10 +457,8 @@ class _CreateGroupPageState extends State<CreateGroupPage>
         itemBuilder: (_, i) {
           final uid = _selectedMembers.elementAt(i);
           return FutureBuilder<DocumentSnapshot>(
-            future: _firebaseFirestore
-                .collection(FirestoreConstants.pathUserCollection)
-                .doc(uid)
-                .get(),
+            future:
+                _firebaseFirestore.collection(FirestoreConstants.pathUserCollection).doc(uid).get(),
             builder: (_, snap) {
               if (!snap.hasData) {
                 return Container(
@@ -495,30 +476,23 @@ class _CreateGroupPageState extends State<CreateGroupPage>
                 margin: const EdgeInsets.only(right: 8),
                 child: Chip(
                   backgroundColor: _accentGlow,
-                  side: BorderSide(color: _accent.withOpacity(.4), width: .8),
+                  side: BorderSide(color: _accent.withValues(alpha: .4), width: .8),
                   labelPadding: const EdgeInsets.symmetric(horizontal: 2),
                   avatar: CircleAvatar(
-                    backgroundImage: user.photoUrl.isNotEmpty
-                        ? NetworkImage(user.photoUrl)
-                        : null,
-                    backgroundColor: _accent.withOpacity(.3),
+                    backgroundImage: user.photoUrl.isNotEmpty ? NetworkImage(user.photoUrl) : null,
+                    backgroundColor: _accent.withValues(alpha: .3),
                     child: user.photoUrl.isEmpty
                         ? Text(
                             user.nickname.substring(0, 1).toUpperCase(),
                             style: const TextStyle(
-                                color: _accent,
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold),
+                                color: _accent, fontSize: 11, fontWeight: FontWeight.bold),
                           )
                         : null,
                   ),
                   label: Text(user.nickname,
                       style: const TextStyle(
-                          color: _accent,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600)),
-                  deleteIcon:
-                      const Icon(Icons.close_rounded, size: 14, color: _accent),
+                          color: _accent, fontSize: 12, fontWeight: FontWeight.w600)),
+                  deleteIcon: const Icon(Icons.close_rounded, size: 14, color: _accent),
                   onDeleted: () => setState(() => _selectedMembers.remove(uid)),
                 ),
               );
@@ -535,10 +509,7 @@ class _CreateGroupPageState extends State<CreateGroupPage>
       builder: (_, snap1) => StreamBuilder<QuerySnapshot>(
         stream: _friendProvider.getFriendsList2(_currentUserId),
         builder: (_, snap2) {
-          final all = [
-            ...(snap1.data?.docs ?? []),
-            ...(snap2.data?.docs ?? [])
-          ];
+          final all = [...(snap1.data?.docs ?? []), ...(snap2.data?.docs ?? [])];
 
           if (all.isEmpty) {
             return Center(
@@ -551,15 +522,13 @@ class _CreateGroupPageState extends State<CreateGroupPage>
                       color: _surface,
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.people_outline_rounded,
-                        size: 44, color: _textSecondary),
+                    child:
+                        const Icon(Icons.people_outline_rounded, size: 44, color: _textSecondary),
                   ),
                   const SizedBox(height: 16),
                   const Text('No friends yet',
                       style: TextStyle(
-                          color: _textPrimary,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w600)),
+                          color: _textPrimary, fontSize: 17, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 6),
                   const Text('Add friends to start a group',
                       style: TextStyle(color: _textSecondary, fontSize: 14)),
@@ -574,9 +543,8 @@ class _CreateGroupPageState extends State<CreateGroupPage>
             itemCount: all.length,
             itemBuilder: (_, i) {
               final friendship = Friendship.fromDocument(all[i]);
-              final friendId = friendship.userId1 == _currentUserId
-                  ? friendship.userId2
-                  : friendship.userId1;
+              final friendId =
+                  friendship.userId1 == _currentUserId ? friendship.userId2 : friendship.userId1;
 
               return FutureBuilder<DocumentSnapshot>(
                 future: _firebaseFirestore
@@ -587,9 +555,7 @@ class _CreateGroupPageState extends State<CreateGroupPage>
                   if (!snap.hasData) return const SizedBox.shrink();
                   final user = UserChat.fromDocument(snap.data!);
                   if (_searchQuery.isNotEmpty &&
-                      !user.nickname
-                          .toLowerCase()
-                          .contains(_searchQuery.toLowerCase())) {
+                      !user.nickname.toLowerCase().contains(_searchQuery.toLowerCase())) {
                     return const SizedBox.shrink();
                   }
                   final isSelected = _selectedMembers.contains(friendId);
@@ -608,34 +574,29 @@ class _CreateGroupPageState extends State<CreateGroupPage>
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 180),
                       margin: const EdgeInsets.only(bottom: 6),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       decoration: BoxDecoration(
                         color: isSelected ? _accentGlow : _surface,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color:
-                              isSelected ? _accent.withOpacity(.5) : _divider,
+                          color: isSelected ? _accent.withValues(alpha: .5) : _divider,
                           width: .8,
                         ),
                       ),
                       child: Row(
                         children: [
-                          // Avatar
+                          
                           Stack(
                             clipBehavior: Clip.none,
                             children: [
                               CircleAvatar(
                                 radius: 22,
-                                backgroundImage: user.photoUrl.isNotEmpty
-                                    ? NetworkImage(user.photoUrl)
-                                    : null,
-                                backgroundColor: _accent.withOpacity(.2),
+                                backgroundImage:
+                                    user.photoUrl.isNotEmpty ? NetworkImage(user.photoUrl) : null,
+                                backgroundColor: _accent.withValues(alpha: .2),
                                 child: user.photoUrl.isEmpty
                                     ? Text(
-                                        user.nickname
-                                            .substring(0, 1)
-                                            .toUpperCase(),
+                                        user.nickname.substring(0, 1).toUpperCase(),
                                         style: const TextStyle(
                                             color: _accent,
                                             fontWeight: FontWeight.bold,
@@ -661,7 +622,7 @@ class _CreateGroupPageState extends State<CreateGroupPage>
                             ],
                           ),
                           const SizedBox(width: 14),
-                          // Info
+                          
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -679,13 +640,12 @@ class _CreateGroupPageState extends State<CreateGroupPage>
                                     user.aboutMe,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                        color: _textSecondary, fontSize: 12.5),
+                                    style: const TextStyle(color: _textSecondary, fontSize: 12.5),
                                   ),
                               ],
                             ),
                           ),
-                          // Checkbox indicator
+                          
                           AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
                             width: 24,
@@ -699,8 +659,7 @@ class _CreateGroupPageState extends State<CreateGroupPage>
                               ),
                             ),
                             child: isSelected
-                                ? const Icon(Icons.check_rounded,
-                                    color: Colors.white, size: 14)
+                                ? const Icon(Icons.check_rounded, color: Colors.white, size: 14)
                                 : null,
                           ),
                         ],
@@ -717,9 +676,9 @@ class _CreateGroupPageState extends State<CreateGroupPage>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Shared sub-widgets (local to this file)
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _FieldLabel extends StatelessWidget {
   const _FieldLabel({required this.label, required this.required});
@@ -738,10 +697,8 @@ class _FieldLabel extends StatelessWidget {
                 letterSpacing: .4)),
         if (required)
           const Text(' *',
-              style: TextStyle(
-                  color: Color(0xFFFF5A5A),
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold)),
+              style:
+                  TextStyle(color: Color(0xFFFF5A5A), fontSize: 13, fontWeight: FontWeight.bold)),
       ],
     );
   }
@@ -780,8 +737,7 @@ class _DarkInput extends StatelessWidget {
           hintText: hint,
           hintStyle: const TextStyle(color: Color(0xFF8B93B0)),
           border: InputBorder.none,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
           counterStyle: const TextStyle(color: Color(0xFF8B93B0), fontSize: 11),
         ),
       ),
@@ -810,16 +766,14 @@ class _GradientBtn extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         height: 52,
         decoration: BoxDecoration(
-          gradient: enabled
-              ? const LinearGradient(
-                  colors: [Color(0xFF4F8EF7), Color(0xFF6B4AE8)])
-              : null,
+          gradient:
+              enabled ? const LinearGradient(colors: [Color(0xFF4F8EF7), Color(0xFF6B4AE8)]) : null,
           color: enabled ? null : const Color(0xFF252A3A),
           borderRadius: BorderRadius.circular(16),
           boxShadow: enabled
               ? [
                   BoxShadow(
-                    color: const Color(0xFF4F8EF7).withOpacity(.35),
+                    color: const Color(0xFF4F8EF7).withValues(alpha: .35),
                     blurRadius: 16,
                     offset: const Offset(0, 5),
                   )
@@ -829,9 +783,7 @@ class _GradientBtn extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon,
-                color: enabled ? Colors.white : const Color(0xFF8B93B0),
-                size: 20),
+            Icon(icon, color: enabled ? Colors.white : const Color(0xFF8B93B0), size: 20),
             const SizedBox(width: 10),
             Text(
               label,
@@ -849,8 +801,7 @@ class _GradientBtn extends StatelessWidget {
 }
 
 class _PrimarySmallBtn extends StatelessWidget {
-  const _PrimarySmallBtn(
-      {required this.label, required this.onTap, this.enabled = true});
+  const _PrimarySmallBtn({required this.label, required this.onTap, this.enabled = true});
   final String label;
   final VoidCallback onTap;
   final bool enabled;
@@ -863,10 +814,8 @@ class _PrimarySmallBtn extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          gradient: enabled
-              ? const LinearGradient(
-                  colors: [Color(0xFF4F8EF7), Color(0xFF6B4AE8)])
-              : null,
+          gradient:
+              enabled ? const LinearGradient(colors: [Color(0xFF4F8EF7), Color(0xFF6B4AE8)]) : null,
           color: enabled ? null : const Color(0xFF252A3A),
           borderRadius: BorderRadius.circular(20),
         ),
@@ -901,10 +850,7 @@ class _FullScreenLoader extends StatelessWidget {
             SizedBox(height: 16),
             Text(
               'Creating group...',
-              style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500),
+              style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
             ),
           ],
         ),

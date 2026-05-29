@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'package:flutter_chat_demo/providers/theme_provider.dart';
 import 'package:provider/provider.dart';
 
@@ -12,8 +13,7 @@ class ThemeSettingsPage extends StatelessWidget {
     final primary = themeProvider.primaryColor;
 
     return Scaffold(
-      backgroundColor:
-          isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF6F6F9),
+      backgroundColor: isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF6F6F9),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -156,10 +156,7 @@ class ThemeSettingsPage extends StatelessWidget {
               Text(
                 title,
                 style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: primary,
-                    letterSpacing: 0.3),
+                    fontSize: 13, fontWeight: FontWeight.w600, color: primary, letterSpacing: 0.3),
               ),
             ],
           ),
@@ -169,9 +166,7 @@ class ThemeSettingsPage extends StatelessWidget {
             color: isDark ? const Color(0xFF1C1C2E) : Colors.white,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-                color: isDark
-                    ? Colors.white.withOpacity(0.07)
-                    : Colors.grey.shade200),
+                color: isDark ? Colors.white.withValues(alpha: 0.07) : Colors.grey.shade200),
           ),
           child: child,
         ),
@@ -215,14 +210,11 @@ class _ThemeModeOption extends StatelessWidget {
               height: 44,
               decoration: BoxDecoration(
                 color: isSelected
-                    ? primary.withOpacity(0.12)
-                    : (isDark
-                        ? Colors.white.withOpacity(0.06)
-                        : Colors.grey.shade100),
+                    ? primary.withValues(alpha: 0.12)
+                    : (isDark ? Colors.white.withValues(alpha: 0.06) : Colors.grey.shade100),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(icon,
-                  color: isSelected ? primary : Colors.grey.shade500, size: 22),
+              child: Icon(icon, color: isSelected ? primary : Colors.grey.shade500, size: 22),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -240,8 +232,7 @@ class _ThemeModeOption extends StatelessWidget {
                   Text(
                     subtitle,
                     style: TextStyle(
-                        fontSize: 12.5,
-                        color: isDark ? Colors.white38 : Colors.grey.shade500),
+                        fontSize: 12.5, color: isDark ? Colors.white38 : Colors.grey.shade500),
                   ),
                 ],
               ),
@@ -253,10 +244,8 @@ class _ThemeModeOption extends StatelessWidget {
                       key: const ValueKey('check'),
                       width: 24,
                       height: 24,
-                      decoration:
-                          BoxDecoration(shape: BoxShape.circle, color: primary),
-                      child: const Icon(Icons.check_rounded,
-                          color: Colors.white, size: 14),
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: primary),
+                      child: const Icon(Icons.check_rounded, color: Colors.white, size: 14),
                     )
                   : Container(
                       key: const ValueKey('empty'),
@@ -264,9 +253,7 @@ class _ThemeModeOption extends StatelessWidget {
                       height: 24,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        border: Border.all(
-                            color:
-                                isDark ? Colors.white24 : Colors.grey.shade300),
+                        border: Border.all(color: isDark ? Colors.white24 : Colors.grey.shade300),
                       ),
                     ),
             ),
@@ -308,9 +295,8 @@ class _ColorOption extends StatelessWidget {
             color: isSelected ? colorValue : Colors.transparent,
             width: 2,
           ),
-          color: isSelected
-              ? colorValue.withOpacity(isDark ? 0.15 : 0.08)
-              : Colors.transparent,
+          color:
+              isSelected ? colorValue.withValues(alpha: isDark ? 0.15 : 0.08) : Colors.transparent,
         ),
         child: Column(
           children: [
@@ -324,15 +310,14 @@ class _ColorOption extends StatelessWidget {
                 boxShadow: isSelected
                     ? [
                         BoxShadow(
-                            color: colorValue.withOpacity(0.4),
+                            color: colorValue.withValues(alpha: 0.4),
                             blurRadius: 10,
                             offset: const Offset(0, 4))
                       ]
                     : [],
               ),
               child: isSelected
-                  ? const Icon(Icons.check_rounded,
-                      color: Colors.white, size: 20)
+                  ? const Icon(Icons.check_rounded, color: Colors.white, size: 20)
                   : null,
             ),
             const SizedBox(height: 8),
@@ -341,9 +326,7 @@ class _ColorOption extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
-                color: isSelected
-                    ? colorValue
-                    : (isDark ? Colors.white54 : Colors.grey.shade600),
+                color: isSelected ? colorValue : (isDark ? Colors.white54 : Colors.grey.shade600),
               ),
               textAlign: TextAlign.center,
               maxLines: 2,
@@ -367,7 +350,7 @@ class _PreviewCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // Sent message
+          
           Align(
             alignment: Alignment.centerRight,
             child: Container(
@@ -389,15 +372,14 @@ class _PreviewCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          // Received message
+          
           Align(
             alignment: Alignment.centerLeft,
             child: Container(
               constraints: const BoxConstraints(maxWidth: 220),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color:
-                    isDark ? const Color(0xFF2C2C3E) : const Color(0xFFEEEEF0),
+                color: isDark ? const Color(0xFF2C2C3E) : const Color(0xFFEEEEF0),
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(4),
                   topRight: Radius.circular(16),
@@ -407,19 +389,15 @@ class _PreviewCard extends StatelessWidget {
               ),
               child: Text(
                 'Chào bạn! Đây là tin nhắn nhận.',
-                style: TextStyle(
-                    color: isDark ? Colors.white : Colors.black87,
-                    fontSize: 14),
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 14),
               ),
             ),
           ),
           const SizedBox(height: 10),
-          // Timestamp
+          
           Text(
             'Hôm nay, 10:45',
-            style: TextStyle(
-                fontSize: 11,
-                color: isDark ? Colors.white30 : Colors.grey.shade400),
+            style: TextStyle(fontSize: 11, color: isDark ? Colors.white30 : Colors.grey.shade400),
           ),
         ],
       ),
@@ -436,6 +414,6 @@ class _Divider extends StatelessWidget {
         height: 1,
         indent: 72,
         endIndent: 16,
-        color: isDark ? Colors.white.withOpacity(0.07) : Colors.grey.shade100,
+        color: isDark ? Colors.white.withValues(alpha: 0.07) : Colors.grey.shade100,
       );
 }

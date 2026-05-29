@@ -4,23 +4,24 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+
 import 'package:flutter_chat_demo/models/bubble_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Service that wraps the Android Bubble API (Android 11+ / API 30+).
-/// Uses [MethodChannel] for imperative calls and [EventChannel] for
-/// native → Dart events (bubble click, dismiss, expand, etc.).
+
+
+
 class BubbleServiceV2 {
-  // ── Channels ──────────────────────────────────────────────────────────────
+  
   static const _method = MethodChannel('chat_bubbles_v2');
   static const _event = EventChannel('chat_bubble_events_v2');
 
-  // ── Singleton ─────────────────────────────────────────────────────────────
+  
   static final BubbleServiceV2 _instance = BubbleServiceV2._internal();
   factory BubbleServiceV2() => _instance;
   BubbleServiceV2._internal();
 
-  // ── State ─────────────────────────────────────────────────────────────────
+  
   bool _isInitialized = false;
   bool _isDisposing = false;
   bool _isBubbleApiSupported = false;
@@ -30,7 +31,7 @@ class BubbleServiceV2 {
 
   final Map<String, BubbleData> _activeBubbles = {};
 
-  // ── Stream controllers ────────────────────────────────────────────────────
+  
   StreamController<BubbleClickEvent>? _clickCtrl;
   StreamController<Map<String, BubbleData>>? _bubblesCtrl;
 
@@ -56,11 +57,11 @@ class BubbleServiceV2 {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // INITIALISATION
-  // ═══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
-  /// Must be called once (e.g. from [UnifiedBubbleService]).
+  
   Future<void> initialize() async {
     if (_isInitialized || _isDisposing) return;
     try {
@@ -91,9 +92,9 @@ class BubbleServiceV2 {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // EVENT LISTENER
-  // ═══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   void _setupEventListener() {
     _eventSubscription?.cancel();
@@ -101,10 +102,9 @@ class BubbleServiceV2 {
       _eventSubscription = _event.receiveBroadcastStream().listen(
         (raw) {
           if (_isDisposing || raw is! Map) return;
-          _handleEvent(Map<String, dynamic>.from(raw as Map));
+          _handleEvent(Map<String, dynamic>.from(raw));
         },
-        onError: (Object err) =>
-            debugPrint('❌ BubbleServiceV2 event error: $err'),
+        onError: (Object err) => debugPrint('❌ BubbleServiceV2 event error: $err'),
         cancelOnError: false,
       );
       debugPrint('✅ BubbleServiceV2 event listener active');
@@ -153,9 +153,9 @@ class BubbleServiceV2 {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // BUBBLE MANAGEMENT
-  // ═══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   Future<bool> showBubble({
     required String userId,
@@ -167,7 +167,7 @@ class BubbleServiceV2 {
     if (!_isBubbleApiSupported) return false;
 
     try {
-      // If already active, just update
+      
       if (_activeBubbles.containsKey(userId)) {
         return await updateBubble(userId: userId, message: message);
       }
@@ -221,8 +221,7 @@ class BubbleServiceV2 {
         _activeBubbles[userId] = existing.copyWith(
           lastMessage: message,
           timestamp: DateTime.now(),
-          unreadCount:
-              incrementUnread ? existing.unreadCount + 1 : existing.unreadCount,
+          unreadCount: incrementUnread ? existing.unreadCount + 1 : existing.unreadCount,
         );
         _emitActiveBubbles();
         await _saveBubbles();
@@ -237,9 +236,7 @@ class BubbleServiceV2 {
   Future<bool> hideBubble(String userId) async {
     if (!_isBubbleApiSupported) return false;
     try {
-      final success =
-          await _method.invokeMethod<bool>('hideBubble', {'userId': userId}) ??
-              false;
+      final success = await _method.invokeMethod<bool>('hideBubble', {'userId': userId}) ?? false;
       if (success) {
         _activeBubbles.remove(userId);
         _emitActiveBubbles();
@@ -273,9 +270,9 @@ class BubbleServiceV2 {
     return true;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // ADVANCED NATIVE METHODS
-  // ═══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   Future<bool> sendMessage({
     required String userId,
@@ -309,9 +306,7 @@ class BubbleServiceV2 {
 
   Future<bool> verifyShortcut(String userId) async {
     try {
-      return await _method
-              .invokeMethod<bool>('verifyShortcut', {'userId': userId}) ??
-          false;
+      return await _method.invokeMethod<bool>('verifyShortcut', {'userId': userId}) ?? false;
     } catch (_) {
       return false;
     }
@@ -332,9 +327,9 @@ class BubbleServiceV2 {
     } catch (_) {}
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PERSISTENCE
-  // ═══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   static const _prefKey = 'bubbles_v2';
 
@@ -362,8 +357,7 @@ class BubbleServiceV2 {
       int restored = 0;
       for (final entry in decoded.entries) {
         try {
-          final data = BubbleData.fromJson(
-              Map<String, dynamic>.from(entry.value as Map));
+          final data = BubbleData.fromJson(Map<String, dynamic>.from(entry.value as Map));
           if (!data.isValid || data.isStale) continue;
           _activeBubbles[entry.key] = data;
           restored++;
@@ -394,9 +388,9 @@ class BubbleServiceV2 {
     _prefs ??= await SharedPreferences.getInstance();
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // HELPERS
-  // ═══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   void _emitActiveBubbles() {
     _ensureBubblesCtrl();
@@ -405,9 +399,9 @@ class BubbleServiceV2 {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // GETTERS
-  // ═══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   bool get isSupported => _isBubbleApiSupported;
   bool get isInitialized => _isInitialized;
@@ -416,9 +410,9 @@ class BubbleServiceV2 {
   int get activeBubbleCount => _activeBubbles.length;
   BubbleData? getBubble(String userId) => _activeBubbles[userId];
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // LIFECYCLE
-  // ═══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   void dispose() {
     if (_isDisposing) return;

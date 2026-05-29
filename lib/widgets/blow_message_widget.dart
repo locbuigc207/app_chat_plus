@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+
 import 'package:noise_meter/noise_meter.dart';
 
 class BlowMessageWidget extends StatefulWidget {
@@ -21,8 +22,7 @@ class BlowMessageWidget extends StatefulWidget {
   State<BlowMessageWidget> createState() => _BlowMessageWidgetState();
 }
 
-class _BlowMessageWidgetState extends State<BlowMessageWidget>
-    with TickerProviderStateMixin {
+class _BlowMessageWidgetState extends State<BlowMessageWidget> with TickerProviderStateMixin {
   bool _isRevealed = false;
   double _blowProgress = 0.0;
   NoiseMeter? _noiseMeter;
@@ -121,8 +121,7 @@ class _BlowMessageWidgetState extends State<BlowMessageWidget>
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: Listenable.merge(
-          [_pulseAnim, _revealAnim, _blurAnim, _particleController]),
+      animation: Listenable.merge([_pulseAnim, _revealAnim, _blurAnim, _particleController]),
       builder: (context, child) {
         return Transform.scale(
           scale: _isRevealed ? _revealAnim.value.clamp(0.85, 1.08) : 1.0,
@@ -132,16 +131,16 @@ class _BlowMessageWidgetState extends State<BlowMessageWidget>
               borderRadius: BorderRadius.circular(22),
               gradient: LinearGradient(
                 colors: [
-                  _accent.withOpacity(0.92),
+                  _accent.withValues(alpha: 0.92),
                   _accent.withAlpha(200),
-                  Colors.deepPurple.shade900.withOpacity(0.88),
+                  Colors.deepPurple.shade900.withValues(alpha: 0.88),
                 ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: _accent.withOpacity(0.38 + _blowProgress * 0.2),
+                  color: _accent.withValues(alpha: 0.38 + _blowProgress * 0.2),
                   blurRadius: 22 + _blowProgress * 16,
                   spreadRadius: 2 + _blowProgress * 4,
                   offset: const Offset(0, 6),
@@ -152,7 +151,7 @@ class _BlowMessageWidgetState extends State<BlowMessageWidget>
               borderRadius: BorderRadius.circular(22),
               child: Stack(
                 children: [
-                  // Frosted glass background shimmer
+                  
                   Positioned.fill(
                     child: CustomPaint(
                       painter: _ShimmerPainter(
@@ -162,10 +161,9 @@ class _BlowMessageWidgetState extends State<BlowMessageWidget>
                     ),
                   ),
 
-                  // Main content
+                  
                   Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 18, vertical: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
@@ -174,7 +172,7 @@ class _BlowMessageWidgetState extends State<BlowMessageWidget>
                           Text(
                             widget.senderName!,
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.65),
+                              color: Colors.white.withValues(alpha: 0.65),
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
                               letterSpacing: 0.8,
@@ -195,7 +193,7 @@ class _BlowMessageWidgetState extends State<BlowMessageWidget>
                     ),
                   ),
 
-                  // Blur overlay (hidden after reveal)
+                  
                   if (!_isRevealed || _blurAnim.value > 0.5)
                     Positioned.fill(
                       child: ClipRRect(
@@ -209,7 +207,7 @@ class _BlowMessageWidgetState extends State<BlowMessageWidget>
                             opacity: _isRevealed ? 0.0 : 1.0,
                             duration: const Duration(milliseconds: 400),
                             child: Container(
-                              color: _accent.withOpacity(0.55),
+                              color: _accent.withValues(alpha: 0.55),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
@@ -220,15 +218,12 @@ class _BlowMessageWidgetState extends State<BlowMessageWidget>
                                       height: 52,
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        color: Colors.white.withOpacity(0.18),
+                                        color: Colors.white.withValues(alpha: 0.18),
                                         border: Border.all(
-                                            color:
-                                                Colors.white.withOpacity(0.5),
-                                            width: 2),
+                                            color: Colors.white.withValues(alpha: 0.5), width: 2),
                                       ),
                                       child: const Center(
-                                        child: Text("🌬️",
-                                            style: TextStyle(fontSize: 26)),
+                                        child: Text("🌬️", style: TextStyle(fontSize: 26)),
                                       ),
                                     ),
                                   ),
@@ -236,14 +231,14 @@ class _BlowMessageWidgetState extends State<BlowMessageWidget>
                                   Text(
                                     "Thổi vào mic để mở",
                                     style: TextStyle(
-                                      color: Colors.white.withOpacity(0.92),
+                                      color: Colors.white.withValues(alpha: 0.92),
                                       fontWeight: FontWeight.w700,
                                       fontSize: 13,
                                       letterSpacing: 0.3,
                                     ),
                                   ),
                                   const SizedBox(height: 10),
-                                  // Progress bar
+                                  
                                   SizedBox(
                                     width: 120,
                                     child: Stack(
@@ -251,25 +246,20 @@ class _BlowMessageWidgetState extends State<BlowMessageWidget>
                                         Container(
                                           height: 5,
                                           decoration: BoxDecoration(
-                                            color:
-                                                Colors.white.withOpacity(0.22),
-                                            borderRadius:
-                                                BorderRadius.circular(10),
+                                            color: Colors.white.withValues(alpha: 0.22),
+                                            borderRadius: BorderRadius.circular(10),
                                           ),
                                         ),
                                         AnimatedContainer(
-                                          duration:
-                                              const Duration(milliseconds: 120),
+                                          duration: const Duration(milliseconds: 120),
                                           height: 5,
                                           width: 120 * _blowProgress,
                                           decoration: BoxDecoration(
                                             color: Colors.white,
-                                            borderRadius:
-                                                BorderRadius.circular(10),
+                                            borderRadius: BorderRadius.circular(10),
                                             boxShadow: [
                                               BoxShadow(
-                                                color: Colors.white
-                                                    .withOpacity(0.6),
+                                                color: Colors.white.withValues(alpha: 0.6),
                                                 blurRadius: 8,
                                               )
                                             ],
@@ -286,7 +276,7 @@ class _BlowMessageWidgetState extends State<BlowMessageWidget>
                       ),
                     ),
 
-                  // Particle burst on reveal
+                  
                   if (_isRevealed)
                     Positioned.fill(
                       child: IgnorePointer(
@@ -308,7 +298,7 @@ class _BlowMessageWidgetState extends State<BlowMessageWidget>
   }
 }
 
-// ─── Particle model ────────────────────────────────────────────────────────────
+
 
 class _Particle {
   final double angle;
@@ -342,10 +332,9 @@ class _ParticlePainter extends CustomPainter {
       final dx = cos(p.angle) * p.speed * progress;
       final dy = sin(p.angle) * p.speed * progress;
       final paint = Paint()
-        ..color = p.color.withOpacity(opacity)
+        ..color = p.color.withValues(alpha: opacity)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2);
-      canvas.drawCircle(
-          center + Offset(dx, dy), p.size * (1 - progress * 0.5), paint);
+      canvas.drawCircle(center + Offset(dx, dy), p.size * (1 - progress * 0.5), paint);
     }
   }
 
@@ -365,9 +354,9 @@ class _ShimmerPainter extends CustomPainter {
     final paint = Paint()
       ..shader = LinearGradient(
         colors: [
-          color.withOpacity(0.0),
-          color.withOpacity(0.08 * progress),
-          color.withOpacity(0.0),
+          color.withValues(alpha: 0.0),
+          color.withValues(alpha: 0.08 * progress),
+          color.withValues(alpha: 0.0),
         ],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,

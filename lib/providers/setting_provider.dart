@@ -46,9 +46,6 @@ class SettingProvider {
     String path,
     Map<String, dynamic> dataNeedUpdate,
   ) {
-    return firebaseFirestore
-        .collection(collectionPath)
-        .doc(path)
-        .update(dataNeedUpdate);
+    return firebaseFirestore.collection(collectionPath).doc(path).update(dataNeedUpdate);
   }
 }

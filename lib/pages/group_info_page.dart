@@ -1,8 +1,9 @@
 import 'dart:io';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
@@ -11,9 +12,9 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GroupInfoPage
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class GroupInfoPage extends StatefulWidget {
   const GroupInfoPage({
@@ -31,8 +32,7 @@ class GroupInfoPage extends StatefulWidget {
   State<GroupInfoPage> createState() => _GroupInfoPageState();
 }
 
-class _GroupInfoPageState extends State<GroupInfoPage>
-    with TickerProviderStateMixin {
+class _GroupInfoPageState extends State<GroupInfoPage> with TickerProviderStateMixin {
   late Group _group;
   bool _isLoading = false;
   bool _isOwner = false;
@@ -43,7 +43,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
   late Animation<double> _headerFadeAnim;
   late Animation<Offset> _headerSlideAnim;
 
-  // ── colour palette ──────────────────────────────────────────────────────────
+  
   static const _bg = Color(0xFF0D0F14);
   static const _surface = Color(0xFF181B24);
   static const _surfaceHigh = Color(0xFF1E2233);
@@ -62,14 +62,10 @@ class _GroupInfoPageState extends State<GroupInfoPage>
     _checkRoles();
     _loadMemberData();
 
-    _headerAnimCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 700));
-    _headerFadeAnim =
-        CurvedAnimation(parent: _headerAnimCtrl, curve: Curves.easeOut);
-    _headerSlideAnim =
-        Tween<Offset>(begin: const Offset(0, .15), end: Offset.zero).animate(
-            CurvedAnimation(
-                parent: _headerAnimCtrl, curve: Curves.easeOutCubic));
+    _headerAnimCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 700));
+    _headerFadeAnim = CurvedAnimation(parent: _headerAnimCtrl, curve: Curves.easeOut);
+    _headerSlideAnim = Tween<Offset>(begin: const Offset(0, .15), end: Offset.zero)
+        .animate(CurvedAnimation(parent: _headerAnimCtrl, curve: Curves.easeOutCubic));
     _headerAnimCtrl.forward();
   }
 
@@ -79,7 +75,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
     super.dispose();
   }
 
-  // ── role helpers ─────────────────────────────────────────────────────────────
+  
 
   void _checkRoles() {
     String myRole = _group.roles[widget.currentUserId] ?? 'member';
@@ -96,7 +92,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
     return role;
   }
 
-  // ── data loading ─────────────────────────────────────────────────────────────
+  
 
   Future<void> _loadMemberData() async {
     final data = <String, UserChat>{};
@@ -112,22 +108,20 @@ class _GroupInfoPageState extends State<GroupInfoPage>
     if (mounted) setState(() => _memberData = data);
   }
 
-  // ── photo & name ─────────────────────────────────────────────────────────────
+  
 
   Future<void> _changeGroupPhoto() async {
     if (!_isAdmin) return;
     HapticFeedback.lightImpact();
     final picker = ImagePicker();
-    final picked =
-        await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
     if (picked == null || !mounted) return;
 
     setState(() => _isLoading = true);
     try {
       final chatProvider = context.read<ChatProvider>();
       final file = File(picked.path);
-      final fileName =
-          'group_${_group.id}_${DateTime.now().millisecondsSinceEpoch}';
+      final fileName = 'group_${_group.id}_${DateTime.now().millisecondsSinceEpoch}';
       final task = chatProvider.uploadFile(file, fileName);
       final snapshot = await task;
       final url = await snapshot.ref.getDownloadURL();
@@ -196,7 +190,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
     );
   }
 
-  // ── members ──────────────────────────────────────────────────────────────────
+  
 
   Future<void> _addMembers() async {
     if (!_isAdmin) return;
@@ -288,8 +282,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
 
     final confirm = await _showConfirmDialog(
       title: 'Remove Member',
-      message:
-          'Remove ${_memberData[userId]?.nickname ?? 'this member'} from the group?',
+      message: 'Remove ${_memberData[userId]?.nickname ?? 'this member'} from the group?',
       confirmLabel: 'Remove',
       isDangerous: true,
     );
@@ -336,8 +329,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
         _group = _group.copyWith(roles: newRoles);
       });
       final label = newRole == 'admin' ? 'promoted to Admin' : 'set to Member';
-      _showToast('✅ ${_memberData[userId]?.nickname ?? 'User'} $label',
-          isSuccess: true);
+      _showToast('✅ ${_memberData[userId]?.nickname ?? 'User'} $label', isSuccess: true);
     } catch (_) {
       _showToast('❌ Role update failed');
     } finally {
@@ -345,7 +337,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
     }
   }
 
-  // ── utility dialogs ──────────────────────────────────────────────────────────
+  
 
   Future<bool?> _showConfirmDialog({
     required String title,
@@ -357,14 +349,11 @@ class _GroupInfoPageState extends State<GroupInfoPage>
         context: context,
         builder: (_) => _DarkDialog(
           title: title,
-          icon:
-              isDangerous ? Icons.warning_rounded : Icons.help_outline_rounded,
+          icon: isDangerous ? Icons.warning_rounded : Icons.help_outline_rounded,
           iconColor: isDangerous ? _danger : _accent,
-          content: Text(message,
-              style: const TextStyle(color: _textSecondary, fontSize: 14.5)),
+          content: Text(message, style: const TextStyle(color: _textSecondary, fontSize: 14.5)),
           actions: [
-            _DialogBtn(
-                label: 'Cancel', onTap: () => Navigator.pop(context, false)),
+            _DialogBtn(label: 'Cancel', onTap: () => Navigator.pop(context, false)),
             _DialogBtn(
               label: confirmLabel,
               isPrimary: true,
@@ -378,14 +367,13 @@ class _GroupInfoPageState extends State<GroupInfoPage>
   void _showToast(String msg, {bool isSuccess = false}) {
     Fluttertoast.showToast(
       msg: msg,
-      backgroundColor:
-          isSuccess ? const Color(0xFF1A3A2A) : const Color(0xFF3A1A1A),
+      backgroundColor: isSuccess ? const Color(0xFF1A3A2A) : const Color(0xFF3A1A1A),
       textColor: isSuccess ? Colors.greenAccent : Colors.redAccent,
       toastLength: Toast.LENGTH_SHORT,
     );
   }
 
-  // ── build ─────────────────────────────────────────────────────────────────────
+  
 
   @override
   Widget build(BuildContext context) {
@@ -409,7 +397,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
     );
   }
 
-  // ── sliver app bar ───────────────────────────────────────────────────────────
+  
 
   Widget _buildSliverAppBar() {
     return SliverAppBar(
@@ -426,8 +414,8 @@ class _GroupInfoPageState extends State<GroupInfoPage>
           TextButton.icon(
             onPressed: _editGroupName,
             icon: const Icon(Icons.edit_rounded, size: 16, color: _accent),
-            label: const Text('Edit',
-                style: TextStyle(color: _accent, fontWeight: FontWeight.w600)),
+            label:
+                const Text('Edit', style: TextStyle(color: _accent, fontWeight: FontWeight.w600)),
           ),
         const SizedBox(width: 8),
       ],
@@ -456,7 +444,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const SizedBox(height: 16),
-                // Avatar
+                
                 GestureDetector(
                   onTap: _isAdmin ? _changeGroupPhoto : null,
                   child: Stack(
@@ -472,7 +460,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: _accent.withOpacity(.45),
+                              color: _accent.withValues(alpha: .45),
                               blurRadius: 24,
                               spreadRadius: 2,
                             ),
@@ -487,8 +475,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
                                 : null,
                             backgroundColor: Colors.transparent,
                             child: _group.groupPhotoUrl.isEmpty
-                                ? const Icon(Icons.group_rounded,
-                                    size: 48, color: Colors.white)
+                                ? const Icon(Icons.group_rounded, size: 48, color: Colors.white)
                                 : null,
                           ),
                         ),
@@ -500,20 +487,17 @@ class _GroupInfoPageState extends State<GroupInfoPage>
                             color: _accent,
                             shape: BoxShape.circle,
                             boxShadow: [
-                              BoxShadow(
-                                  color: _accentGlow,
-                                  blurRadius: 8,
-                                  spreadRadius: 1)
+                              BoxShadow(color: _accentGlow, blurRadius: 8, spreadRadius: 1)
                             ],
                           ),
-                          child: const Icon(Icons.camera_alt_rounded,
-                              color: Colors.white, size: 14),
+                          child:
+                              const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 14),
                         ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 14),
-                // Name
+                
                 GestureDetector(
                   onTap: _isAdmin ? _editGroupName : null,
                   child: Row(
@@ -535,8 +519,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
                       ),
                       if (_isAdmin) ...[
                         const SizedBox(width: 6),
-                        const Icon(Icons.edit_rounded,
-                            size: 16, color: _textSecondary),
+                        const Icon(Icons.edit_rounded, size: 16, color: _textSecondary),
                       ],
                     ],
                   ),
@@ -545,18 +528,15 @@ class _GroupInfoPageState extends State<GroupInfoPage>
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.schedule_rounded,
-                        size: 13, color: _textSecondary),
+                    const Icon(Icons.schedule_rounded, size: 13, color: _textSecondary),
                     const SizedBox(width: 4),
                     Text(
                       'Created ${_formatDate(_group.createdAt)}',
-                      style:
-                          const TextStyle(color: _textSecondary, fontSize: 13),
+                      style: const TextStyle(color: _textSecondary, fontSize: 13),
                     ),
                     const SizedBox(width: 12),
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
                         color: _accentGlow,
                         borderRadius: BorderRadius.circular(20),
@@ -564,9 +544,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
                       child: Text(
                         '${_group.memberIds.length} members',
                         style: const TextStyle(
-                            color: _accent,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600),
+                            color: _accent, fontSize: 12, fontWeight: FontWeight.w600),
                       ),
                     ),
                   ],
@@ -579,7 +557,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
     );
   }
 
-  // ── body ─────────────────────────────────────────────────────────────────────
+  
 
   Widget _buildBody() {
     return Column(
@@ -660,15 +638,10 @@ class _GroupInfoPageState extends State<GroupInfoPage>
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('Members',
-                  style: TextStyle(
-                      color: _textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700)),
+                  style: TextStyle(color: _textPrimary, fontSize: 18, fontWeight: FontWeight.w700)),
               Text('${_group.memberIds.length}',
                   style: const TextStyle(
-                      color: _textSecondary,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500)),
+                      color: _textSecondary, fontSize: 15, fontWeight: FontWeight.w500)),
             ],
           ),
         ),
@@ -686,8 +659,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
               final uid = entry.value;
               return Column(
                 children: [
-                  if (i > 0)
-                    const Divider(height: 1, color: _divider, indent: 64),
+                  if (i > 0) const Divider(height: 1, color: _divider, indent: 64),
                   _buildMemberTile(uid),
                 ],
               );
@@ -711,14 +683,12 @@ class _GroupInfoPageState extends State<GroupInfoPage>
         children: [
           CircleAvatar(
             radius: 22,
-            backgroundImage:
-                photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
+            backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
             backgroundColor: _accentGlow,
             child: photoUrl.isEmpty
                 ? Text(
                     (user?.nickname ?? 'U').substring(0, 1).toUpperCase(),
-                    style: const TextStyle(
-                        color: _accent, fontWeight: FontWeight.bold),
+                    style: const TextStyle(color: _accent, fontWeight: FontWeight.bold),
                   )
                 : null,
           ),
@@ -729,10 +699,8 @@ class _GroupInfoPageState extends State<GroupInfoPage>
               child: Container(
                 width: 16,
                 height: 16,
-                decoration:
-                    const BoxDecoration(color: _gold, shape: BoxShape.circle),
-                child: const Icon(Icons.star_rounded,
-                    size: 10, color: Colors.black),
+                decoration: const BoxDecoration(color: _gold, shape: BoxShape.circle),
+                child: const Icon(Icons.star_rounded, size: 10, color: Colors.black),
               ),
             ),
           if (targetRole == 'admin')
@@ -742,10 +710,8 @@ class _GroupInfoPageState extends State<GroupInfoPage>
               child: Container(
                 width: 16,
                 height: 16,
-                decoration: BoxDecoration(
-                    color: const Color(0xFF4FD1C5), shape: BoxShape.circle),
-                child: const Icon(Icons.shield_rounded,
-                    size: 10, color: Colors.black),
+                decoration: BoxDecoration(color: const Color(0xFF4FD1C5), shape: BoxShape.circle),
+                child: const Icon(Icons.shield_rounded, size: 10, color: Colors.black),
               ),
             ),
         ],
@@ -755,10 +721,8 @@ class _GroupInfoPageState extends State<GroupInfoPage>
           Flexible(
             child: Text(
               user?.nickname ?? 'User',
-              style: const TextStyle(
-                  color: _textPrimary,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 15),
+              style:
+                  const TextStyle(color: _textPrimary, fontWeight: FontWeight.w600, fontSize: 15),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -788,15 +752,13 @@ class _GroupInfoPageState extends State<GroupInfoPage>
     );
   }
 
-  Widget? _buildTrailingMenu(
-      String uid, String targetRole, bool isMe, UserChat? user) {
+  Widget? _buildTrailingMenu(String uid, String targetRole, bool isMe, UserChat? user) {
     if (isMe) return null;
 
     final menuItems = <PopupMenuEntry<String>>[
       PopupMenuItem(
         value: 'message',
-        child:
-            _PopupItem(icon: Icons.chat_bubble_rounded, label: 'Send message'),
+        child: _PopupItem(icon: Icons.chat_bubble_rounded, label: 'Send message'),
       ),
     ];
 
@@ -804,32 +766,26 @@ class _GroupInfoPageState extends State<GroupInfoPage>
       if (targetRole == 'member') {
         menuItems.add(PopupMenuItem(
           value: 'promote',
-          child: _PopupItem(
-              icon: Icons.trending_up_rounded, label: 'Promote to Admin'),
+          child: _PopupItem(icon: Icons.trending_up_rounded, label: 'Promote to Admin'),
         ));
       } else if (targetRole == 'admin') {
         menuItems.add(PopupMenuItem(
           value: 'demote',
-          child: _PopupItem(
-              icon: Icons.trending_down_rounded, label: 'Demote to Member'),
+          child: _PopupItem(icon: Icons.trending_down_rounded, label: 'Demote to Member'),
         ));
       }
       menuItems.add(const PopupMenuDivider());
       menuItems.add(PopupMenuItem(
         value: 'remove',
         child: _PopupItem(
-            icon: Icons.person_remove_rounded,
-            label: 'Remove from group',
-            isDestructive: true),
+            icon: Icons.person_remove_rounded, label: 'Remove from group', isDestructive: true),
       ));
     } else if (_isAdmin && targetRole == 'member') {
       menuItems.add(const PopupMenuDivider());
       menuItems.add(PopupMenuItem(
         value: 'remove',
         child: _PopupItem(
-            icon: Icons.person_remove_rounded,
-            label: 'Remove from group',
-            isDestructive: true),
+            icon: Icons.person_remove_rounded, label: 'Remove from group', isDestructive: true),
       ));
     }
 
@@ -843,8 +799,7 @@ class _GroupInfoPageState extends State<GroupInfoPage>
       itemBuilder: (_) => menuItems,
       color: _surfaceHigh,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      icon:
-          const Icon(Icons.more_vert_rounded, color: _textSecondary, size: 20),
+      icon: const Icon(Icons.more_vert_rounded, color: _textSecondary, size: 20),
     );
   }
 
@@ -856,29 +811,24 @@ class _GroupInfoPageState extends State<GroupInfoPage>
         children: [
           const Text('Danger Zone',
               style: TextStyle(
-                  color: _danger,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: .5)),
+                  color: _danger, fontSize: 14, fontWeight: FontWeight.w700, letterSpacing: .5)),
           const SizedBox(height: 10),
           Container(
             decoration: BoxDecoration(
               color: _surface,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: _danger.withOpacity(.25), width: .8),
+              border: Border.all(color: _danger.withValues(alpha: .25), width: .8),
             ),
             child: ListTile(
               leading: const Icon(Icons.delete_forever_rounded, color: _danger),
               title: const Text('Disband Group',
-                  style:
-                      TextStyle(color: _danger, fontWeight: FontWeight.w600)),
+                  style: TextStyle(color: _danger, fontWeight: FontWeight.w600)),
               subtitle: const Text('This action cannot be undone',
                   style: TextStyle(color: _textSecondary, fontSize: 12)),
               onTap: () async {
                 final confirm = await _showConfirmDialog(
                   title: 'Disband Group',
-                  message:
-                      'Are you sure you want to permanently delete "${_group.groupName}"?',
+                  message: 'Are you sure you want to permanently delete "${_group.groupName}"?',
                   confirmLabel: 'Disband',
                   isDangerous: true,
                 );
@@ -916,9 +866,9 @@ class _GroupInfoPageState extends State<GroupInfoPage>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// AddMembersDialog
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _AddMembersDialog extends StatefulWidget {
   const _AddMembersDialog({required this.friends});
@@ -946,35 +896,30 @@ class _AddMembersDialogState extends State<_AddMembersDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Header
+            
             Row(
               children: [
-                const Icon(Icons.person_add_rounded,
-                    color: Color(0xFF4F8EF7), size: 22),
+                const Icon(Icons.person_add_rounded, color: Color(0xFF4F8EF7), size: 22),
                 const SizedBox(width: 10),
                 const Expanded(
                   child: Text('Add Members',
                       style: TextStyle(
-                          color: Color(0xFFEEF2FF),
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700)),
+                          color: Color(0xFFEEF2FF), fontSize: 18, fontWeight: FontWeight.w700)),
                 ),
                 if (_selected.isNotEmpty)
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF4F8EF7).withOpacity(.15),
+                      color: const Color(0xFF4F8EF7).withValues(alpha: .15),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text('${_selected.length} selected',
-                        style: const TextStyle(
-                            color: Color(0xFF4F8EF7), fontSize: 12)),
+                        style: const TextStyle(color: Color(0xFF4F8EF7), fontSize: 12)),
                   ),
               ],
             ),
             const SizedBox(height: 14),
-            // Search
+            
             Container(
               decoration: BoxDecoration(
                 color: const Color(0xFF0D0F14),
@@ -985,8 +930,7 @@ class _AddMembersDialogState extends State<_AddMembersDialog> {
                 decoration: const InputDecoration(
                   hintText: 'Search friends...',
                   hintStyle: TextStyle(color: Color(0xFF8B93B0)),
-                  prefixIcon:
-                      Icon(Icons.search_rounded, color: Color(0xFF8B93B0)),
+                  prefixIcon: Icon(Icons.search_rounded, color: Color(0xFF8B93B0)),
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.symmetric(vertical: 12),
                 ),
@@ -994,17 +938,15 @@ class _AddMembersDialogState extends State<_AddMembersDialog> {
               ),
             ),
             const SizedBox(height: 12),
-            // List
+            
             SizedBox(
               height: 280,
               child: widget.friends.isEmpty
                   ? const Center(
-                      child: Text('No friends to add',
-                          style: TextStyle(color: Color(0xFF8B93B0))))
+                      child: Text('No friends to add', style: TextStyle(color: Color(0xFF8B93B0))))
                   : filtered.isEmpty
                       ? const Center(
-                          child: Text('No results',
-                              style: TextStyle(color: Color(0xFF8B93B0))))
+                          child: Text('No results', style: TextStyle(color: Color(0xFF8B93B0))))
                       : ListView.builder(
                           itemCount: filtered.length,
                           itemBuilder: (_, i) {
@@ -1025,7 +967,7 @@ class _AddMembersDialogState extends State<_AddMembersDialog> {
                         ),
             ),
             const SizedBox(height: 16),
-            // Actions
+            
             Row(
               children: [
                 Expanded(
@@ -1051,9 +993,9 @@ class _AddMembersDialogState extends State<_AddMembersDialog> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Shared sub-widgets
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _FriendTile extends StatelessWidget {
   const _FriendTile({
@@ -1075,30 +1017,22 @@ class _FriendTile extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 4),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: isSelected
-              ? const Color(0xFF4F8EF7).withOpacity(.12)
-              : Colors.transparent,
+          color: isSelected ? const Color(0xFF4F8EF7).withValues(alpha: .12) : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected
-                ? const Color(0xFF4F8EF7).withOpacity(.4)
-                : Colors.transparent,
+            color: isSelected ? const Color(0xFF4F8EF7).withValues(alpha: .4) : Colors.transparent,
           ),
         ),
         child: Row(
           children: [
             CircleAvatar(
               radius: 20,
-              backgroundImage: friend.photoUrl.isNotEmpty
-                  ? NetworkImage(friend.photoUrl)
-                  : null,
-              backgroundColor: const Color(0xFF4F8EF7).withOpacity(.2),
+              backgroundImage: friend.photoUrl.isNotEmpty ? NetworkImage(friend.photoUrl) : null,
+              backgroundColor: const Color(0xFF4F8EF7).withValues(alpha: .2),
               child: friend.photoUrl.isEmpty
                   ? Text(
                       friend.nickname.substring(0, 1).toUpperCase(),
-                      style: const TextStyle(
-                          color: Color(0xFF4F8EF7),
-                          fontWeight: FontWeight.bold),
+                      style: const TextStyle(color: Color(0xFF4F8EF7), fontWeight: FontWeight.bold),
                     )
                   : null,
             ),
@@ -1109,15 +1043,12 @@ class _FriendTile extends StatelessWidget {
                 children: [
                   Text(friend.nickname,
                       style: const TextStyle(
-                          color: Color(0xFFEEF2FF),
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14.5)),
+                          color: Color(0xFFEEF2FF), fontWeight: FontWeight.w600, fontSize: 14.5)),
                   if (friend.aboutMe.isNotEmpty)
                     Text(friend.aboutMe,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            color: Color(0xFF8B93B0), fontSize: 12)),
+                        style: const TextStyle(color: Color(0xFF8B93B0), fontSize: 12)),
                 ],
               ),
             ),
@@ -1127,18 +1058,14 @@ class _FriendTile extends StatelessWidget {
               height: 22,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color:
-                    isSelected ? const Color(0xFF4F8EF7) : Colors.transparent,
+                color: isSelected ? const Color(0xFF4F8EF7) : Colors.transparent,
                 border: Border.all(
-                  color: isSelected
-                      ? const Color(0xFF4F8EF7)
-                      : const Color(0xFF8B93B0),
+                  color: isSelected ? const Color(0xFF4F8EF7) : const Color(0xFF8B93B0),
                   width: 2,
                 ),
               ),
               child: isSelected
-                  ? const Icon(Icons.check_rounded,
-                      color: Colors.white, size: 14)
+                  ? const Icon(Icons.check_rounded, color: Colors.white, size: 14)
                   : null,
             ),
           ],
@@ -1172,14 +1099,14 @@ class _ActionCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFF181B24),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withOpacity(.25), width: .8),
+          border: Border.all(color: color.withValues(alpha: .25), width: .8),
         ),
         child: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: color.withOpacity(.15),
+                color: color.withValues(alpha: .15),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: color, size: 22),
@@ -1190,12 +1117,8 @@ class _ActionCard extends StatelessWidget {
               children: [
                 Text(label,
                     style: const TextStyle(
-                        color: Color(0xFFEEF2FF),
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14.5)),
-                Text(sublabel,
-                    style: const TextStyle(
-                        color: Color(0xFF8B93B0), fontSize: 12)),
+                        color: Color(0xFFEEF2FF), fontWeight: FontWeight.w700, fontSize: 14.5)),
+                Text(sublabel, style: const TextStyle(color: Color(0xFF8B93B0), fontSize: 12)),
               ],
             ),
           ],
@@ -1215,31 +1138,26 @@ class _RoleBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(.15),
+        color: color.withValues(alpha: .15),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(.4)),
+        border: Border.all(color: color.withValues(alpha: .4)),
       ),
       child: Text(label,
           style: TextStyle(
-              fontSize: 10,
-              color: color,
-              fontWeight: FontWeight.w700,
-              letterSpacing: .3)),
+              fontSize: 10, color: color, fontWeight: FontWeight.w700, letterSpacing: .3)),
     );
   }
 }
 
 class _PopupItem extends StatelessWidget {
-  const _PopupItem(
-      {required this.icon, required this.label, this.isDestructive = false});
+  const _PopupItem({required this.icon, required this.label, this.isDestructive = false});
   final IconData icon;
   final String label;
   final bool isDestructive;
 
   @override
   Widget build(BuildContext context) {
-    final color =
-        isDestructive ? const Color(0xFFFF5A5A) : const Color(0xFFEEF2FF);
+    final color = isDestructive ? const Color(0xFFFF5A5A) : const Color(0xFFEEF2FF);
     return Row(
       children: [
         Icon(icon, color: color, size: 18),
@@ -1281,7 +1199,7 @@ class _DarkDialog extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: iconColor.withOpacity(.15),
+                    color: iconColor.withValues(alpha: .15),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(icon, color: iconColor, size: 20),
@@ -1290,9 +1208,7 @@ class _DarkDialog extends StatelessWidget {
                 Expanded(
                   child: Text(title,
                       style: const TextStyle(
-                          color: Color(0xFFEEF2FF),
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700)),
+                          color: Color(0xFFEEF2FF), fontSize: 18, fontWeight: FontWeight.w700)),
                 ),
               ],
             ),
@@ -1315,8 +1231,7 @@ class _DarkDialog extends StatelessWidget {
 }
 
 class _DarkTextField extends StatelessWidget {
-  const _DarkTextField(
-      {required this.controller, required this.hint, this.autofocus = false});
+  const _DarkTextField({required this.controller, required this.hint, this.autofocus = false});
   final TextEditingController controller;
   final String hint;
   final bool autofocus;
@@ -1336,8 +1251,7 @@ class _DarkTextField extends StatelessWidget {
           hintText: hint,
           hintStyle: const TextStyle(color: Color(0xFF8B93B0)),
           border: InputBorder.none,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         ),
       ),
     );
@@ -1364,19 +1278,16 @@ class _DialogBtn extends StatelessWidget {
       bg = const Color(0xFF4F8EF7);
       fg = Colors.white;
     } else if (isDanger) {
-      bg = const Color(0xFFFF5A5A).withOpacity(.15);
+      bg = const Color(0xFFFF5A5A).withValues(alpha: .15);
       fg = const Color(0xFFFF5A5A);
     }
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration:
-            BoxDecoration(color: bg, borderRadius: BorderRadius.circular(12)),
+        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(12)),
         alignment: Alignment.center,
-        child: Text(label,
-            style: TextStyle(
-                color: fg, fontWeight: FontWeight.w600, fontSize: 14)),
+        child: Text(label, style: TextStyle(color: fg, fontWeight: FontWeight.w600, fontSize: 14)),
       ),
     );
   }
@@ -1399,16 +1310,14 @@ class _OutlineBtn extends StatelessWidget {
         ),
         alignment: Alignment.center,
         child: const Text('Cancel',
-            style: TextStyle(
-                color: Color(0xFF8B93B0), fontWeight: FontWeight.w600)),
+            style: TextStyle(color: Color(0xFF8B93B0), fontWeight: FontWeight.w600)),
       ),
     );
   }
 }
 
 class _PrimaryBtn extends StatelessWidget {
-  const _PrimaryBtn(
-      {required this.label, required this.onTap, this.enabled = true});
+  const _PrimaryBtn({required this.label, required this.onTap, this.enabled = true});
   final String label;
   final VoidCallback onTap;
   final bool enabled;
@@ -1421,16 +1330,14 @@ class _PrimaryBtn extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          gradient: enabled
-              ? const LinearGradient(
-                  colors: [Color(0xFF4F8EF7), Color(0xFF6B4AE8)])
-              : null,
+          gradient:
+              enabled ? const LinearGradient(colors: [Color(0xFF4F8EF7), Color(0xFF6B4AE8)]) : null,
           color: enabled ? null : const Color(0xFF252A3A),
           borderRadius: BorderRadius.circular(12),
           boxShadow: enabled
               ? [
                   BoxShadow(
-                      color: const Color(0xFF4F8EF7).withOpacity(.35),
+                      color: const Color(0xFF4F8EF7).withValues(alpha: .35),
                       blurRadius: 12,
                       offset: const Offset(0, 4))
                 ]
@@ -1464,7 +1371,7 @@ class _FullScreenLoader extends StatelessWidget {
   }
 }
 
-// Extension helper (add to Group model if not already there)
+
 extension GroupCopy on Group {
   Group copyWith({
     String? id,

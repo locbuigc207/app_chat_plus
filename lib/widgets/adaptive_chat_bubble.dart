@@ -1,32 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:provider/provider.dart';
 
 import '../models/models.dart';
 import '../providers/providers.dart';
 import '../services/services.dart';
 
-// ─── Message Status ────────────────────────────────────────────────────────
+
 enum MessageStatus { sending, sent, delivered, read, failed }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ADAPTIVE CHAT BUBBLE
-// ═══════════════════════════════════════════════════════════════════════════
 
-/// Full-featured chat bubble:
-/// • Entry animation (fade + slide)
-/// • Gradient (me) / flat (peer) styling
-/// • Swipe-right to reply
-/// • Long-press context menu
-/// • Inline emoji reaction bar
-/// • Scam-warning expandable banner
-/// • Message status ticks (sending → read)
-/// • Peer avatar with online dot
-/// • Reply-preview card
-/// • "Study Note" context indicator
-/// • Voice message row
-/// • Link-preview card stub
-/// • Full AppMode support (student / work / elder)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class AdaptiveChatBubble extends StatefulWidget {
   final MessageChat message;
   final String currentUserId;
@@ -78,7 +79,7 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
   bool _showReactionBar = false;
   bool _isWarningExpanded = false;
 
-  // Swipe-to-reply
+  
   double _dragOffset = 0;
   bool _replyTriggered = false;
 
@@ -124,7 +125,7 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
     );
   }
 
-  // ─── Build ──────────────────────────────────────────────────────────────
+  
 
   @override
   Widget build(BuildContext context) {
@@ -138,8 +139,7 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
           child: Column(
-            crossAxisAlignment:
-                _isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            crossAxisAlignment: _isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
               _buildRow(context, provider, t),
               if (widget.reactions.isNotEmpty)
@@ -180,8 +180,7 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
           child: child,
         ),
         child: Row(
-          mainAxisAlignment:
-              _isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+          mainAxisAlignment: _isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             if (!_isMe) ...[
@@ -207,7 +206,7 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
                 size: provider.currentMode == AppMode.elder ? 20 : 14,
               ),
             ],
-            // Swipe reply indicator
+            
             if (_dragOffset > 0)
               Padding(
                 padding: const EdgeInsets.only(left: 6, right: 6),
@@ -240,8 +239,7 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
         appMode: provider.currentMode,
         replyToMessage: widget.replyToMessage,
         isWarningExpanded: _isWarningExpanded,
-        onToggleWarning: () =>
-            setState(() => _isWarningExpanded = !_isWarningExpanded),
+        onToggleWarning: () => setState(() => _isWarningExpanded = !_isWarningExpanded),
       );
     }
     if (widget.message.type == TypeMessage.voice) {
@@ -259,15 +257,14 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
     );
   }
 
-  // ─── Swipe-to-Reply ──────────────────────────────────────────────────────
+  
 
   void _onDragUpdate(DragUpdateDetails d) {
-    // Only swipe in the "outward" direction per side
+    
     final delta = _isMe ? -d.delta.dx : d.delta.dx;
     if (delta < 0 && _dragOffset == 0) return;
     setState(() {
-      _dragOffset =
-          (_dragOffset + delta.clamp(0.0, double.infinity)).clamp(0.0, 80.0);
+      _dragOffset = (_dragOffset + delta.clamp(0.0, double.infinity)).clamp(0.0, 80.0);
     });
     if (_dragOffset >= 60 && !_replyTriggered) {
       _replyTriggered = true;
@@ -283,7 +280,7 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
     setState(() => _dragOffset = 0);
   }
 
-  // ─── Context Menu ────────────────────────────────────────────────────────
+  
 
   void _showContextMenu(
     BuildContext ctx,
@@ -305,16 +302,13 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
               content: const Text('Đã sao chép tin nhắn'),
               duration: const Duration(seconds: 1),
               behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
           );
         },
         onReply: () => widget.onReply?.call(widget.message),
         onReact: () => setState(() => _showReactionBar = !_showReactionBar),
-        onForward: widget.onForward != null
-            ? () => widget.onForward!.call(widget.message)
-            : null,
+        onForward: widget.onForward != null ? () => widget.onForward!.call(widget.message) : null,
         onDelete: _isMe ? () => widget.onDelete?.call(widget.message) : null,
       ),
     );
@@ -327,9 +321,9 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
       };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// TEXT BUBBLE
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 class _TextBubble extends StatelessWidget {
   final MessageChat message;
@@ -371,29 +365,22 @@ class _TextBubble extends StatelessWidget {
                 ],
               )
             : null,
-        color: isScam
-            ? const Color(0xFFFFF3E0)
-            : (!isMe ? tokens.peerBubbleColor : null),
+        color: isScam ? const Color(0xFFFFF3E0) : (!isMe ? tokens.peerBubbleColor : null),
         borderRadius: _radius(),
         boxShadow: tokens.bubbleShadow,
-        border: isScam
-            ? Border.all(color: const Color(0xFFFFA726), width: 1.2)
-            : null,
+        border: isScam ? Border.all(color: const Color(0xFFFFA726), width: 1.2) : null,
       ),
       child: ClipRRect(
         borderRadius: _radius(),
         child: Column(
-          crossAxisAlignment:
-              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (replyToMessage != null)
-              _ReplyPreview(replyTo: replyToMessage!, isMe: isMe),
+            if (replyToMessage != null) _ReplyPreview(replyTo: replyToMessage!, isMe: isMe),
             Padding(
               padding: EdgeInsets.all(tokens.bubblePadding),
               child: Column(
-                crossAxisAlignment:
-                    isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (contextType == 'study' && appMode == AppMode.student)
@@ -403,9 +390,7 @@ class _TextBubble extends StatelessWidget {
                     style: TextStyle(
                       color: isScam
                           ? const Color(0xFF7B3F00)
-                          : (isMe
-                              ? tokens.myBubbleTextColor
-                              : tokens.peerBubbleTextColor),
+                          : (isMe ? tokens.myBubbleTextColor : tokens.peerBubbleTextColor),
                       fontSize: tokens.bubbleFontSize,
                       fontWeight: tokens.bubbleFontWeight,
                       height: 1.5,
@@ -460,9 +445,9 @@ class _TextBubble extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// VOICE BUBBLE
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 class _VoiceBubble extends StatefulWidget {
   final MessageChat message;
@@ -490,10 +475,8 @@ class _VoiceBubbleState extends State<_VoiceBubble> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         gradient: widget.isMe
-            ? LinearGradient(colors: [
-                widget.tokens.myBubbleGradientStart,
-                widget.tokens.myBubbleGradientEnd
-              ])
+            ? LinearGradient(
+                colors: [widget.tokens.myBubbleGradientStart, widget.tokens.myBubbleGradientEnd])
             : null,
         color: widget.isMe ? null : widget.tokens.peerBubbleColor,
         borderRadius: BorderRadius.circular(widget.tokens.bubbleRadius),
@@ -508,7 +491,7 @@ class _VoiceBubbleState extends State<_VoiceBubble> {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: accent.withOpacity(0.18),
+                color: accent.withValues(alpha: 0.18),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -528,7 +511,7 @@ class _VoiceBubbleState extends State<_VoiceBubble> {
                 Text(
                   '0:12',
                   style: TextStyle(
-                    color: accent.withOpacity(0.7),
+                    color: accent.withValues(alpha: 0.7),
                     fontSize: 11,
                   ),
                 ),
@@ -576,12 +559,10 @@ class _WaveformBar extends StatelessWidget {
               child: FractionallySizedBox(
                 heightFactor: _heights[i],
                 child: AnimatedContainer(
-                  duration:
-                      Duration(milliseconds: playing ? 400 + i * 60 : 200),
+                  duration: Duration(milliseconds: playing ? 400 + i * 60 : 200),
                   curve: Curves.easeInOut,
                   decoration: BoxDecoration(
-                    color: color.withOpacity(
-                        playing ? 0.8 + (_heights[i] * 0.2) : 0.45),
+                    color: color.withValues(alpha: playing ? 0.8 + (_heights[i] * 0.2) : 0.45),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -594,9 +575,9 @@ class _WaveformBar extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// MEDIA BUBBLE
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 class _MediaBubble extends StatelessWidget {
   final MessageChat message;
@@ -616,8 +597,7 @@ class _MediaBubble extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        constraints:
-            BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.65),
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.65),
         decoration: BoxDecoration(
           color: isMe ? tokens.myBubbleGradientStart : tokens.peerBubbleColor,
           borderRadius: BorderRadius.circular(tokens.bubbleRadius),
@@ -628,9 +608,7 @@ class _MediaBubble extends StatelessWidget {
             ? _ImagePreview(url: message.content)
             : _FileTile(
                 content: message.content,
-                textColor: isMe
-                    ? tokens.myBubbleTextColor
-                    : tokens.peerBubbleTextColor,
+                textColor: isMe ? tokens.myBubbleTextColor : tokens.peerBubbleTextColor,
                 fontSize: tokens.bubbleFontSize,
               ),
       ),
@@ -667,9 +645,7 @@ class _ImagePreview extends StatelessWidget {
               ),
         errorBuilder: (_, __, ___) => const SizedBox(
           height: 80,
-          child: Center(
-              child: Icon(Icons.broken_image_rounded,
-                  size: 32, color: Colors.grey)),
+          child: Center(child: Icon(Icons.broken_image_rounded, size: 32, color: Colors.grey)),
         ),
       ),
     );
@@ -680,8 +656,7 @@ class _FileTile extends StatelessWidget {
   final String content;
   final Color textColor;
   final double fontSize;
-  const _FileTile(
-      {required this.content, required this.textColor, required this.fontSize});
+  const _FileTile({required this.content, required this.textColor, required this.fontSize});
 
   @override
   Widget build(BuildContext context) {
@@ -704,9 +679,9 @@ class _FileTile extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// REPLY PREVIEW
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 class _ReplyPreview extends StatelessWidget {
   final MessageChat replyTo;
@@ -720,7 +695,7 @@ class _ReplyPreview extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(10, 8, 10, 0),
       padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.12),
+        color: Colors.black.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(8),
         border: Border(
           left: BorderSide(
@@ -743,9 +718,9 @@ class _ReplyPreview extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// STUDY INDICATOR
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 class _StudyIndicator extends StatelessWidget {
   final bool isMe;
@@ -758,8 +733,7 @@ class _StudyIndicator extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.menu_book_rounded,
-              size: 11, color: isMe ? Colors.white70 : Colors.black45),
+          Icon(Icons.menu_book_rounded, size: 11, color: isMe ? Colors.white70 : Colors.black45),
           const SizedBox(width: 4),
           Text(
             'Study Note',
@@ -776,9 +750,9 @@ class _StudyIndicator extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// SCAM WARNING BANNER
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 class _ScamWarningBanner extends StatelessWidget {
   final bool isExpanded;
@@ -799,22 +773,17 @@ class _ScamWarningBanner extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.warning_amber_rounded,
-                    size: 15, color: Color(0xFFF57C00)),
+                const Icon(Icons.warning_amber_rounded, size: 15, color: Color(0xFFF57C00)),
                 const SizedBox(width: 6),
                 const Expanded(
                   child: Text(
                     'Tin nhắn có dấu hiệu đáng ngờ',
                     style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF7B3F00)),
+                        fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF7B3F00)),
                   ),
                 ),
                 Icon(
-                  isExpanded
-                      ? Icons.keyboard_arrow_up
-                      : Icons.keyboard_arrow_down,
+                  isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
                   size: 15,
                   color: const Color(0xFF7B3F00),
                 ),
@@ -825,8 +794,7 @@ class _ScamWarningBanner extends StatelessWidget {
               const Text(
                 'Hệ thống AI phát hiện tin nhắn này có thể là lừa đảo hoặc spam. '
                 'Không chia sẻ thông tin cá nhân hay chuyển tiền.',
-                style: TextStyle(
-                    fontSize: 11, color: Color(0xFF7B3F00), height: 1.4),
+                style: TextStyle(fontSize: 11, color: Color(0xFF7B3F00), height: 1.4),
               ),
             ],
           ],
@@ -836,16 +804,15 @@ class _ScamWarningBanner extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// STATUS TICK
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 class _StatusTick extends StatelessWidget {
   final MessageStatus status;
   final Color color;
   final double size;
-  const _StatusTick(
-      {required this.status, required this.color, required this.size});
+  const _StatusTick({required this.status, required this.color, required this.size});
 
   @override
   Widget build(BuildContext context) {
@@ -854,8 +821,7 @@ class _StatusTick extends StatelessWidget {
         return SizedBox(
           width: size,
           height: size,
-          child: CircularProgressIndicator(
-              strokeWidth: 1.5, color: color.withOpacity(0.5)),
+          child: CircularProgressIndicator(strokeWidth: 1.5, color: color.withValues(alpha: 0.5)),
         );
       case MessageStatus.sent:
         return Icon(Icons.check_rounded, size: size, color: Colors.grey);
@@ -893,9 +859,9 @@ class _DoubleCheck extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// PEER AVATAR
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 class _PeerAvatar extends StatelessWidget {
   final String? url;
@@ -903,10 +869,7 @@ class _PeerAvatar extends StatelessWidget {
   final double radius;
   final bool isOnline;
   const _PeerAvatar(
-      {this.url,
-      required this.primaryColor,
-      required this.radius,
-      this.isOnline = false});
+      {this.url, required this.primaryColor, required this.radius, this.isOnline = false});
 
   @override
   Widget build(BuildContext context) {
@@ -914,12 +877,10 @@ class _PeerAvatar extends StatelessWidget {
       children: [
         CircleAvatar(
           radius: radius,
-          backgroundColor: primaryColor.withOpacity(0.15),
-          backgroundImage:
-              (url != null && url!.isNotEmpty) ? NetworkImage(url!) : null,
+          backgroundColor: primaryColor.withValues(alpha: 0.15),
+          backgroundImage: (url != null && url!.isNotEmpty) ? NetworkImage(url!) : null,
           child: (url == null || url!.isEmpty)
-              ? Icon(Icons.person_rounded,
-                  size: radius, color: primaryColor.withOpacity(0.7))
+              ? Icon(Icons.person_rounded, size: radius, color: primaryColor.withValues(alpha: 0.7))
               : null,
         ),
         if (isOnline)
@@ -941,9 +902,9 @@ class _PeerAvatar extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// REACTION ROW
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 class _ReactionRow extends StatelessWidget {
   final List<BubbleReaction> reactions;
@@ -977,9 +938,9 @@ class _ReactionRow extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
               decoration: BoxDecoration(
-                color: primaryColor.withOpacity(0.1),
+                color: primaryColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: primaryColor.withOpacity(0.3)),
+                border: Border.all(color: primaryColor.withValues(alpha: 0.3)),
               ),
               child: Text(
                 '${r.emoji} ${r.count}',
@@ -993,9 +954,9 @@ class _ReactionRow extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// EMOJI PICKER BAR
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 class _EmojiPickerBar extends StatelessWidget {
   final bool isMe;
@@ -1007,8 +968,7 @@ class _EmojiPickerBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding:
-          EdgeInsets.only(top: 4, left: isMe ? 0 : 44, right: isMe ? 18 : 0),
+      padding: EdgeInsets.only(top: 4, left: isMe ? 0 : 44, right: isMe ? 18 : 0),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
@@ -1016,7 +976,7 @@ class _EmojiPickerBar extends StatelessWidget {
           borderRadius: BorderRadius.circular(28),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withOpacity(0.12),
+                color: Colors.black.withValues(alpha: 0.12),
                 blurRadius: 14,
                 offset: const Offset(0, 4)),
           ],
@@ -1038,9 +998,9 @@ class _EmojiPickerBar extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// CONTEXT MENU (Bottom Sheet)
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 class _ContextMenu extends StatelessWidget {
   final bool isMe;
@@ -1065,12 +1025,8 @@ class _ContextMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final iconSize = appMode == AppMode.elder
-        ? 26.0
-        : (appMode == AppMode.work ? 20.0 : 22.0);
-    final fontSize = appMode == AppMode.elder
-        ? 17.0
-        : (appMode == AppMode.work ? 14.0 : 15.0);
+    final iconSize = appMode == AppMode.elder ? 26.0 : (appMode == AppMode.work ? 20.0 : 22.0);
+    final fontSize = appMode == AppMode.elder ? 17.0 : (appMode == AppMode.work ? 14.0 : 15.0);
 
     return Container(
       margin: const EdgeInsets.all(12),
@@ -1079,7 +1035,7 @@ class _ContextMenu extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.12),
+              color: Colors.black.withValues(alpha: 0.12),
               blurRadius: 20,
               offset: const Offset(0, -4)),
         ],
@@ -1195,9 +1151,7 @@ class _Item extends StatelessWidget {
           children: [
             Icon(icon, size: iconSize, color: color),
             const SizedBox(width: 14),
-            Text(label,
-                style:
-                    TextStyle(fontSize: fontSize, fontWeight: FontWeight.w500)),
+            Text(label, style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w500)),
           ],
         ),
       ),
@@ -1208,10 +1162,6 @@ class _Item extends StatelessWidget {
 class _Div extends StatelessWidget {
   const _Div();
   @override
-  Widget build(BuildContext context) => Divider(
-      height: 0,
-      thickness: 0.5,
-      indent: 20,
-      endIndent: 20,
-      color: Colors.black12);
+  Widget build(BuildContext context) =>
+      Divider(height: 0, thickness: 0.5, indent: 20, endIndent: 20, color: Colors.black12);
 }

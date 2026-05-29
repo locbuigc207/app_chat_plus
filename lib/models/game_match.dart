@@ -2,22 +2,22 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/message_chat.dart';
 
-// =========================================================
-// ENUMS
-// =========================================================
 
-/// Trạng thái của trận đấu trong Firestore.
+
+
+
+
 enum GameMatchStatus {
-  /// Đã tạo, đang chờ đối thủ chấp nhận.
+  
   waiting,
 
-  /// Đang diễn ra.
+  
   playing,
 
-  /// Đã kết thúc bình thường.
+  
   finished,
 
-  /// Bị huỷ (timeout chờ, không ai chấp nhận, v.v.).
+  
   aborted;
 
   static GameMatchStatus fromString(String value) {
@@ -48,7 +48,7 @@ enum GameMatchStatus {
   }
 }
 
-/// Kết quả trận đấu.
+
 enum GameResult {
   player1Win,
   player2Win,
@@ -79,7 +79,7 @@ enum GameResult {
   }
 }
 
-/// Phe chơi trong cờ vua.
+
 enum ChessSide {
   white,
   black,
@@ -109,27 +109,27 @@ enum ChessSide {
   }
 }
 
-// =========================================================
-// GAME MOVE MODEL
-// =========================================================
 
-/// Một nước đi trong trận đấu — lưu vào sub-collection để Replay.
+
+
+
+
 class GameMove {
-  /// Thứ tự nước đi (0-based).
+  
   final int moveIndex;
 
-  /// ID người thực hiện nước đi.
+  
   final String movedBy;
 
-  /// Dữ liệu nước đi:
-  /// - Caro: {'row': 5, 'col': 3, 'symbol': 'X'}
-  /// - Chess: {'from': 'e2', 'to': 'e4', 'san': 'e4', 'fen': '...', 'promotion': null}
+  
+  
+  
   final Map<String, dynamic> moveData;
 
-  /// Thời điểm đi (milliseconds since epoch dạng String để nhất quán với app).
+  
   final String movedAt;
 
-  /// Thời gian còn lại của người đi (ms) — dùng để Replay đồng hồ Chess.
+  
   final int remainingTimeMs;
 
   const GameMove({
@@ -171,61 +171,61 @@ class GameMove {
   }
 }
 
-// =========================================================
-// GAME MATCH MODEL
-// =========================================================
 
-/// Model đầy đủ của một trận đấu — document trong `game_matches/{matchId}`.
+
+
+
+
 class GameMatch {
-  // ── Định danh ────────────────────────────────────────────────────────────
+  
   final String matchId;
   final GameType gameType;
   final GameMatchStatus status;
 
-  // ── Người chơi ───────────────────────────────────────────────────────────
+  
   final String player1Id;
   final String player1Name;
   final String player1Avatar;
 
-  /// Null khi chưa có đối thủ chấp nhận (Open Challenge).
+  
   final String? player2Id;
   final String? player2Name;
   final String? player2Avatar;
 
-  // ── Cài đặt trận ─────────────────────────────────────────────────────────
-  /// Phe của player1 trong cờ vua.
+  
+  
   final ChessSide player1Side;
 
-  /// Thời gian mỗi người (giây). 0 = không giới hạn.
+  
   final int timeControlSeconds;
 
-  /// Giới hạn mỗi nước đi trong Caro (giây). 0 = không giới hạn.
+  
   final int turnTimerSeconds;
 
-  /// Kích thước bàn Caro. 3 = 3x3, 0 = vô hạn (Gomoku).
+  
   final int boardSize;
 
-  // ── Kết quả ──────────────────────────────────────────────────────────────
+  
   final GameResult? result;
   final String? endReason;
 
-  // ── Nguồn & Liên kết ─────────────────────────────────────────────────────
-  /// ID nhóm chat hoặc conversation tạo ra trận đấu.
+  
+  
   final String sourceGroupId;
 
-  /// ID tin nhắn thách đấu trong nhóm — dùng để UPDATE trạng thái (live/finished).
+  
   final String? inviteMessageId;
 
-  // ── Khán giả ─────────────────────────────────────────────────────────────
-  /// Danh sách userId đang xem live.
+  
+  
   final List<String> spectatorIds;
 
-  // ── Lịch sử nước đi ──────────────────────────────────────────────────────
-  /// Được load lazy từ sub-collection — không lưu inline vào document.
-  /// Dùng cho Replay và tính toán lại state nếu cần.
+  
+  
+  
   final List<GameMove> moveHistory;
 
-  // ── Thời gian ────────────────────────────────────────────────────────────
+  
   final String createdAt;
   final String? startedAt;
   final String? endedAt;
@@ -255,9 +255,9 @@ class GameMatch {
     this.endedAt,
   });
 
-  // =========================================================
-  // COMPUTED GETTERS
-  // =========================================================
+  
+  
+  
 
   bool get isWaiting => status == GameMatchStatus.waiting;
   bool get isPlaying => status == GameMatchStatus.playing;
@@ -268,17 +268,17 @@ class GameMatch {
   int get spectatorCount => spectatorIds.length;
   int get totalMoves => moveHistory.length;
 
-  /// Trả về ID của người thắng, null nếu chưa có kết quả hoặc hòa.
+  
   String? get winnerId {
     if (result == GameResult.player1Win) return player1Id;
     if (result == GameResult.player2Win) return player2Id;
     return null;
   }
 
-  /// Tên hiển thị đầy đủ của trận (dùng trên card kết quả).
+  
   String get matchTitle => '$player1Name vs ${player2Name ?? "???"}';
 
-  /// Thời gian diễn ra trận (giây). Null nếu chưa bắt đầu hoặc chưa kết thúc.
+  
   int? get durationSeconds {
     if (startedAt == null || endedAt == null) return null;
     final start = int.tryParse(startedAt!) ?? 0;
@@ -287,9 +287,9 @@ class GameMatch {
     return ((end - start) / 1000).round();
   }
 
-  // =========================================================
-  // SERIALIZATION
-  // =========================================================
+  
+  
+  
 
   Map<String, dynamic> toJson() => {
         FirestoreConstants.matchId: matchId,
@@ -300,8 +300,7 @@ class GameMatch {
         FirestoreConstants.player1Avatar: player1Avatar,
         if (player2Id != null) FirestoreConstants.player2Id: player2Id,
         if (player2Name != null) FirestoreConstants.player2Name: player2Name,
-        if (player2Avatar != null)
-          FirestoreConstants.player2Avatar: player2Avatar,
+        if (player2Avatar != null) FirestoreConstants.player2Avatar: player2Avatar,
         FirestoreConstants.player1Side: player1Side.name,
         FirestoreConstants.timeControlSeconds: timeControlSeconds,
         FirestoreConstants.turnTimerSeconds: turnTimerSeconds,
@@ -309,10 +308,9 @@ class GameMatch {
         if (result != null) FirestoreConstants.gameResult: result!.value,
         if (endReason != null) FirestoreConstants.gameEndReason: endReason,
         FirestoreConstants.sourceGroupId: sourceGroupId,
-        if (inviteMessageId != null)
-          FirestoreConstants.inviteMessageId: inviteMessageId,
+        if (inviteMessageId != null) FirestoreConstants.inviteMessageId: inviteMessageId,
         FirestoreConstants.spectatorIds: spectatorIds,
-        // moveHistory KHÔNG serialize inline — lưu trong sub-collection
+        
         FirestoreConstants.createdAt: createdAt,
         if (startedAt != null) FirestoreConstants.startedAt: startedAt,
         if (endedAt != null) FirestoreConstants.endedAt: endedAt,
@@ -340,10 +338,8 @@ class GameMatch {
         player1Side: ChessSide.fromString(
           data[FirestoreConstants.player1Side] as String?,
         ),
-        timeControlSeconds:
-            data[FirestoreConstants.timeControlSeconds] as int? ?? 0,
-        turnTimerSeconds:
-            data[FirestoreConstants.turnTimerSeconds] as int? ?? 0,
+        timeControlSeconds: data[FirestoreConstants.timeControlSeconds] as int? ?? 0,
+        turnTimerSeconds: data[FirestoreConstants.turnTimerSeconds] as int? ?? 0,
         boardSize: data[FirestoreConstants.boardSize] as int? ?? 0,
         result: GameResult.fromString(
           data[FirestoreConstants.gameResult] as String?,
@@ -354,16 +350,16 @@ class GameMatch {
         spectatorIds: List<String>.from(
           data[FirestoreConstants.spectatorIds] as List? ?? [],
         ),
-        // moveHistory load riêng từ sub-collection
+        
         moveHistory: const [],
         createdAt: _parseTs(data[FirestoreConstants.createdAt]),
         startedAt: _parseTsNullable(data[FirestoreConstants.startedAt]),
         endedAt: _parseTsNullable(data[FirestoreConstants.endedAt]),
       );
 
-  // =========================================================
-  // COPY WITH
-  // =========================================================
+  
+  
+  
 
   GameMatch copyWith({
     GameMatchStatus? status,
@@ -406,19 +402,17 @@ class GameMatch {
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is GameMatch && other.matchId == matchId);
+      identical(this, other) || (other is GameMatch && other.matchId == matchId);
 
   @override
   int get hashCode => matchId.hashCode;
 
   @override
-  String toString() =>
-      'GameMatch(id: $matchId, type: ${gameType.name}, status: ${status.name})';
+  String toString() => 'GameMatch(id: $matchId, type: ${gameType.name}, status: ${status.name})';
 
-  // =========================================================
-  // PRIVATE HELPERS
-  // =========================================================
+  
+  
+  
 
   static String _parseTs(dynamic v) {
     if (v is String) return v;

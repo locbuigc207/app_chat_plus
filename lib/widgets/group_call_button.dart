@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
 import 'package:provider/provider.dart';
 
 import '../constants/constants.dart';
@@ -9,9 +10,9 @@ import '../pages/pages.dart';
 import '../providers/providers.dart';
 import '../services/services.dart';
 
-// ─────────────────────────────────────────────────────────────
-// GroupVideoCallButton — popup to choose video / voice
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class GroupVideoCallButton extends StatelessWidget {
   final String groupId;
@@ -70,17 +71,13 @@ class GroupVideoCallButton extends StatelessWidget {
 
   Future<GroupCallModel?> _getActiveCall(GroupCallService service) async {
     try {
-      return await service
-          .activeCallForGroup(groupId)
-          .first
-          .timeout(const Duration(seconds: 3));
+      return await service.activeCallForGroup(groupId).first.timeout(const Duration(seconds: 3));
     } catch (_) {
       return null;
     }
   }
 
-  Future<bool?> _showJoinExistingDialog(
-      BuildContext context, GroupCallModel call) {
+  Future<bool?> _showJoinExistingDialog(BuildContext context, GroupCallModel call) {
     return showDialog<bool>(
       context: context,
       builder: (_) => _JoinCallDialog(call: call),
@@ -109,8 +106,7 @@ class GroupVideoCallButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PopupMenuButton<String>(
-      icon: const Icon(Icons.videocam_rounded,
-          color: ColorConstants.primaryColor),
+      icon: const Icon(Icons.videocam_rounded, color: ColorConstants.primaryColor),
       tooltip: 'Gọi nhóm',
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       offset: const Offset(0, 48),
@@ -151,7 +147,7 @@ class GroupVideoCallButton extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.15),
+              color: iconColor.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon, color: iconColor, size: 18),
@@ -159,8 +155,7 @@ class GroupVideoCallButton extends StatelessWidget {
           const SizedBox(width: 12),
           Text(
             label,
-            style: const TextStyle(
-                color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
           ),
         ],
       ),
@@ -168,9 +163,9 @@ class GroupVideoCallButton extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// GroupCallIconButton — single-type icon button
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class GroupCallIconButton extends StatefulWidget {
   final String groupId;
@@ -298,8 +293,7 @@ class _GroupCallIconButtonState extends State<GroupCallIconButton>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _bounceAnim,
-      builder: (_, child) =>
-          Transform.scale(scale: _bounceAnim.value, child: child),
+      builder: (_, child) => Transform.scale(scale: _bounceAnim.value, child: child),
       child: IconButton(
         icon: _loading
             ? const SizedBox(
@@ -316,18 +310,16 @@ class _GroupCallIconButtonState extends State<GroupCallIconButton>
                     : Icons.phone_rounded,
                 color: ColorConstants.primaryColor,
               ),
-        tooltip: widget.callType == GroupCallType.video
-            ? 'Gọi video nhóm'
-            : 'Gọi thoại nhóm',
+        tooltip: widget.callType == GroupCallType.video ? 'Gọi video nhóm' : 'Gọi thoại nhóm',
         onPressed: _loading ? null : _tap,
       ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// ActiveGroupCallBanner — shown inside chat when call is live
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class ActiveGroupCallBanner extends StatelessWidget {
   final String groupId;
@@ -354,8 +346,7 @@ class ActiveGroupCallBanner extends StatelessWidget {
         final call = snap.data;
         if (call == null) return const SizedBox.shrink();
 
-        final alreadyIn =
-            call.participants.any((p) => p.userId == currentUserId);
+        final alreadyIn = call.participants.any((p) => p.userId == currentUserId);
 
         return _BannerContent(
           call: call,
@@ -388,8 +379,7 @@ class _BannerContent extends StatefulWidget {
   State<_BannerContent> createState() => _BannerContentState();
 }
 
-class _BannerContentState extends State<_BannerContent>
-    with SingleTickerProviderStateMixin {
+class _BannerContentState extends State<_BannerContent> with SingleTickerProviderStateMixin {
   late AnimationController _pulseCtrl;
   late Animation<double> _pulse;
   bool _joining = false;
@@ -451,7 +441,7 @@ class _BannerContentState extends State<_BannerContent>
             borderRadius: BorderRadius.circular(14),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF22C55E).withOpacity(0.35),
+                color: const Color(0xFF22C55E).withValues(alpha: 0.35),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               ),
@@ -459,7 +449,7 @@ class _BannerContentState extends State<_BannerContent>
           ),
           child: Row(
             children: [
-              // Pulsing dot
+              
               _buildLiveDot(),
               const SizedBox(width: 10),
               Expanded(
@@ -477,8 +467,7 @@ class _BannerContentState extends State<_BannerContent>
                     ),
                     Text(
                       '${widget.call.participants.length} người đang trong cuộc gọi',
-                      style:
-                          const TextStyle(color: Colors.white70, fontSize: 11),
+                      style: const TextStyle(color: Colors.white70, fontSize: 11),
                     ),
                   ],
                 ),
@@ -488,8 +477,7 @@ class _BannerContentState extends State<_BannerContent>
               else
                 const Padding(
                   padding: EdgeInsets.only(left: 4),
-                  child: Icon(Icons.check_circle_rounded,
-                      color: Colors.white70, size: 18),
+                  child: Icon(Icons.check_circle_rounded, color: Colors.white70, size: 18),
                 ),
             ],
           ),
@@ -509,7 +497,7 @@ class _BannerContentState extends State<_BannerContent>
             height: 20 + (_pulse.value - 0.97) * 100,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
             ),
           ),
         ),
@@ -542,10 +530,9 @@ class _BannerContentState extends State<_BannerContent>
               key: const ValueKey('join'),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.25),
+                color: Colors.white.withValues(alpha: 0.25),
                 borderRadius: BorderRadius.circular(20),
-                border:
-                    Border.all(color: Colors.white.withOpacity(0.4), width: 1),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.4), width: 1),
               ),
               child: const Text(
                 'Tham gia',
@@ -560,9 +547,9 @@ class _BannerContentState extends State<_BannerContent>
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// _JoinCallDialog — shared dialog
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _JoinCallDialog extends StatelessWidget {
   final GroupCallModel call;
@@ -576,8 +563,7 @@ class _JoinCallDialog extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       title: const Text(
         'Cuộc gọi đang diễn ra',
-        style: TextStyle(
-            color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700),
+        style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700),
       ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -607,12 +593,10 @@ class _JoinCallDialog extends StatelessWidget {
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF22C55E),
             foregroundColor: Colors.white,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
           ),
-          child: const Text('Tham gia',
-              style: TextStyle(fontWeight: FontWeight.w700)),
+          child: const Text('Tham gia', style: TextStyle(fontWeight: FontWeight.w700)),
         ),
       ],
     );

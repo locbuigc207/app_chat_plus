@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MyQRCodePage
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class MyQRCodePage extends StatefulWidget {
   const MyQRCodePage({super.key});
@@ -15,8 +16,7 @@ class MyQRCodePage extends StatefulWidget {
   State<MyQRCodePage> createState() => _MyQRCodePageState();
 }
 
-class _MyQRCodePageState extends State<MyQRCodePage>
-    with SingleTickerProviderStateMixin {
+class _MyQRCodePageState extends State<MyQRCodePage> with SingleTickerProviderStateMixin {
   String _qrCode = '';
   String _nickname = '';
   String _phoneNumber = '';
@@ -73,13 +73,11 @@ class _MyQRCodePageState extends State<MyQRCodePage>
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor:
-          isDark ? ColorConstants.backgroundDark : const Color(0xFFF5F7FF),
+      backgroundColor: isDark ? ColorConstants.backgroundDark : const Color(0xFFF5F7FF),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        systemOverlayStyle:
-            isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+        systemOverlayStyle: isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
         leading: IconButton(
           icon: Icon(
             Icons.arrow_back_ios_new_rounded,
@@ -102,7 +100,7 @@ class _MyQRCodePageState extends State<MyQRCodePage>
             icon: Icon(Icons.share_rounded,
                 color: isDark ? Colors.white70 : ColorConstants.primaryColor),
             onPressed: () {
-              // Share.share('Quét mã QR để kết bạn với tôi trên chat!\n$_qrCode');
+              
               HapticFeedback.lightImpact();
             },
             tooltip: 'Chia sẻ',
@@ -111,13 +109,12 @@ class _MyQRCodePageState extends State<MyQRCodePage>
       ),
       body: _isLoading
           ? const Center(
-              child: CircularProgressIndicator(
-                  color: ColorConstants.primaryColor, strokeWidth: 2))
+              child: CircularProgressIndicator(color: ColorConstants.primaryColor, strokeWidth: 2))
           : SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(24, 8, 24, 40),
               child: Column(
                 children: [
-                  // ── Header ─────────────────────────────────────────────────
+                  
                   Text(
                     'Quét để kết bạn',
                     style: TextStyle(
@@ -130,29 +127,25 @@ class _MyQRCodePageState extends State<MyQRCodePage>
                   const SizedBox(height: 8),
                   Text(
                     'Cho bạn bè quét mã này để thêm bạn',
-                    style: TextStyle(
-                        color: ColorConstants.greyColor, fontSize: 14),
+                    style: TextStyle(color: ColorConstants.greyColor, fontSize: 14),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 32),
 
-                  // ── QR Card ─────────────────────────────────────────────────
+                  
                   ScaleTransition(
                     scale: _scaleFade,
                     child: FadeTransition(
-                      opacity: CurvedAnimation(
-                          parent: _entryCtrl, curve: Curves.easeOut),
+                      opacity: CurvedAnimation(parent: _entryCtrl, curve: Curves.easeOut),
                       child: Container(
                         padding: const EdgeInsets.all(28),
                         decoration: BoxDecoration(
-                          color: isDark
-                              ? ColorConstants.surfaceDark
-                              : Colors.white,
+                          color: isDark ? ColorConstants.surfaceDark : Colors.white,
                           borderRadius: BorderRadius.circular(28),
                           boxShadow: [
                             BoxShadow(
                               color: ColorConstants.primaryColor
-                                  .withOpacity(isDark ? 0.15 : 0.1),
+                                  .withValues(alpha: isDark ? 0.15 : 0.1),
                               blurRadius: 40,
                               spreadRadius: 4,
                               offset: const Offset(0, 8),
@@ -160,19 +153,17 @@ class _MyQRCodePageState extends State<MyQRCodePage>
                           ],
                           border: Border.all(
                             color: isDark
-                                ? Colors.white.withOpacity(0.08)
-                                : ColorConstants.primaryColor.withOpacity(0.1),
+                                ? Colors.white.withValues(alpha: 0.08)
+                                : ColorConstants.primaryColor.withValues(alpha: 0.1),
                           ),
                         ),
                         child: Column(
                           children: [
-                            // Avatar chip
+                            
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 10),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                               decoration: BoxDecoration(
-                                color: ColorConstants.primaryColor
-                                    .withOpacity(0.08),
+                                color: ColorConstants.primaryColor.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(24),
                               ),
                               child: Row(
@@ -180,12 +171,10 @@ class _MyQRCodePageState extends State<MyQRCodePage>
                                 children: [
                                   CircleAvatar(
                                     radius: 16,
-                                    backgroundColor: ColorConstants.primaryColor
-                                        .withOpacity(0.12),
+                                    backgroundColor:
+                                        ColorConstants.primaryColor.withValues(alpha: 0.12),
                                     child: Text(
-                                      _nickname.isNotEmpty
-                                          ? _nickname[0].toUpperCase()
-                                          : '?',
+                                      _nickname.isNotEmpty ? _nickname[0].toUpperCase() : '?',
                                       style: TextStyle(
                                         color: ColorConstants.primaryColor,
                                         fontWeight: FontWeight.w700,
@@ -195,9 +184,7 @@ class _MyQRCodePageState extends State<MyQRCodePage>
                                   ),
                                   const SizedBox(width: 10),
                                   Text(
-                                    _nickname.isEmpty
-                                        ? 'Người dùng'
-                                        : _nickname,
+                                    _nickname.isEmpty ? 'Người dùng' : _nickname,
                                     style: TextStyle(
                                       color: ColorConstants.primaryColor,
                                       fontWeight: FontWeight.w600,
@@ -209,14 +196,13 @@ class _MyQRCodePageState extends State<MyQRCodePage>
                             ),
                             const SizedBox(height: 24),
 
-                            // QR code
+                            
                             _qrCode.isNotEmpty
                                 ? Container(
                                     decoration: BoxDecoration(
                                       borderRadius: BorderRadius.circular(16),
                                       border: Border.all(
-                                        color: ColorConstants.primaryColor
-                                            .withOpacity(0.15),
+                                        color: ColorConstants.primaryColor.withValues(alpha: 0.15),
                                         width: 2,
                                       ),
                                     ),
@@ -232,8 +218,7 @@ class _MyQRCodePageState extends State<MyQRCodePage>
                                           color: ColorConstants.primaryColor,
                                         ),
                                         dataModuleStyle: QrDataModuleStyle(
-                                          dataModuleShape:
-                                              QrDataModuleShape.square,
+                                          dataModuleShape: QrDataModuleShape.square,
                                           color: const Color(0xFF1A1D2E),
                                         ),
                                       ),
@@ -247,18 +232,15 @@ class _MyQRCodePageState extends State<MyQRCodePage>
                                       borderRadius: BorderRadius.circular(16),
                                     ),
                                     child: Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
+                                      mainAxisAlignment: MainAxisAlignment.center,
                                       children: [
                                         Icon(Icons.qr_code_2_rounded,
                                             size: 64,
-                                            color: ColorConstants.greyColor
-                                                .withOpacity(0.5)),
+                                            color: ColorConstants.greyColor.withValues(alpha: 0.5)),
                                         const SizedBox(height: 8),
                                         const Text('Mã QR chưa sẵn sàng',
                                             style: TextStyle(
-                                                color: ColorConstants.greyColor,
-                                                fontSize: 13)),
+                                                color: ColorConstants.greyColor, fontSize: 13)),
                                       ],
                                     ),
                                   ),
@@ -270,7 +252,7 @@ class _MyQRCodePageState extends State<MyQRCodePage>
 
                   const SizedBox(height: 28),
 
-                  // ── Info card ───────────────────────────────────────────────
+                  
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -278,8 +260,8 @@ class _MyQRCodePageState extends State<MyQRCodePage>
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
                         color: isDark
-                            ? Colors.white.withOpacity(0.07)
-                            : Colors.black.withOpacity(0.05),
+                            ? Colors.white.withValues(alpha: 0.07)
+                            : Colors.black.withValues(alpha: 0.05),
                       ),
                     ),
                     child: Column(
@@ -293,9 +275,8 @@ class _MyQRCodePageState extends State<MyQRCodePage>
                         if (_phoneNumber.isNotEmpty) ...[
                           Divider(
                               height: 20,
-                              color: isDark
-                                  ? Colors.white12
-                                  : Colors.black.withOpacity(0.07)),
+                              color:
+                                  isDark ? Colors.white12 : Colors.black.withValues(alpha: 0.07)),
                           _InfoRow(
                             icon: Icons.phone_outlined,
                             label: 'Số điện thoại',
@@ -306,15 +287,12 @@ class _MyQRCodePageState extends State<MyQRCodePage>
                         if (_qrCode.isNotEmpty) ...[
                           Divider(
                               height: 20,
-                              color: isDark
-                                  ? Colors.white12
-                                  : Colors.black.withOpacity(0.07)),
+                              color:
+                                  isDark ? Colors.white12 : Colors.black.withValues(alpha: 0.07)),
                           _InfoRow(
                             icon: Icons.tag_rounded,
                             label: 'Mã QR ID',
-                            value: _qrCode.length > 22
-                                ? '${_qrCode.substring(0, 22)}…'
-                                : _qrCode,
+                            value: _qrCode.length > 22 ? '${_qrCode.substring(0, 22)}…' : _qrCode,
                             isDark: isDark,
                             trailing: GestureDetector(
                               onTap: _copyQrCode,
@@ -329,7 +307,7 @@ class _MyQRCodePageState extends State<MyQRCodePage>
 
                   const SizedBox(height: 24),
 
-                  // ── Copy button ─────────────────────────────────────────────
+                  
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
@@ -340,11 +318,9 @@ class _MyQRCodePageState extends State<MyQRCodePage>
                         backgroundColor: ColorConstants.primaryColor,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         elevation: 0,
-                        textStyle: const TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w600),
+                        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                       ),
                     ),
                   ),
@@ -355,9 +331,9 @@ class _MyQRCodePageState extends State<MyQRCodePage>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sub-widgets
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _InfoRow extends StatelessWidget {
   final IconData icon;
@@ -382,7 +358,7 @@ class _InfoRow extends StatelessWidget {
           width: 36,
           height: 36,
           decoration: BoxDecoration(
-            color: ColorConstants.primaryColor.withOpacity(0.08),
+            color: ColorConstants.primaryColor.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(icon, color: ColorConstants.primaryColor, size: 18),
@@ -395,9 +371,7 @@ class _InfoRow extends StatelessWidget {
               Text(
                 label,
                 style: const TextStyle(
-                    color: ColorConstants.greyColor,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600),
+                    color: ColorConstants.greyColor, fontSize: 11, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 2),
               Text(

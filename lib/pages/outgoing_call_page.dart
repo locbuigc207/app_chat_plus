@@ -8,9 +8,9 @@ import '../models/call_model.dart';
 import '../services/call_service.dart';
 import 'call_page.dart';
 
-// ─────────────────────────────────────────────────────────────
-// OutgoingCallPage
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class OutgoingCallPage extends StatefulWidget {
   final CallModel call;
@@ -21,8 +21,7 @@ class OutgoingCallPage extends StatefulWidget {
   State<OutgoingCallPage> createState() => _OutgoingCallPageState();
 }
 
-class _OutgoingCallPageState extends State<OutgoingCallPage>
-    with TickerProviderStateMixin {
+class _OutgoingCallPageState extends State<OutgoingCallPage> with TickerProviderStateMixin {
   final _callService = CallService.instance;
   StreamSubscription? _callStatusSub;
   bool _dismissed = false;
@@ -50,8 +49,7 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
     _fadeIn = CurvedAnimation(parent: _entryController, curve: Curves.easeOut);
 
     _slideUp = Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero)
-        .animate(CurvedAnimation(
-            parent: _entryController, curve: Curves.easeOutCubic));
+        .animate(CurvedAnimation(parent: _entryController, curve: Curves.easeOutCubic));
 
     _entryController.forward();
     _watchCallStatus();
@@ -103,8 +101,7 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
     });
   }
 
-  void _showEndDialog(
-      String title, String message, IconData icon, Color color) {
+  void _showEndDialog(String title, String message, IconData icon, Color color) {
     if (!mounted || _dismissed) return;
     _dismissed = true;
 
@@ -120,13 +117,10 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
             const SizedBox(width: 10),
             Text(title,
                 style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600)),
+                    color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600)),
           ],
         ),
-        content: Text(message,
-            style: const TextStyle(color: Colors.white70, fontSize: 14)),
+        content: Text(message, style: const TextStyle(color: Colors.white70, fontSize: 14)),
         actions: [
           TextButton(
             onPressed: () {
@@ -180,12 +174,11 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
         body: Stack(
           fit: StackFit.expand,
           children: [
-            // Background
+            
             if (avatar.isNotEmpty)
               Image.network(avatar,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) =>
-                      const ColoredBox(color: Color(0xFF0A0E1A))),
+                  errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFF0A0E1A))),
             BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
               child: Container(
@@ -210,12 +203,12 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
                     children: [
                       const SizedBox(height: 20),
 
-                      // Call type chip
+                      
                       _OutgoingBadge(isVideo: isVideo),
 
                       const Spacer(flex: 2),
 
-                      // Animated avatar
+                      
                       _AnimatedWaveAvatar(
                         controller: _waveController,
                         avatarUrl: avatar,
@@ -223,7 +216,7 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
                       ),
                       const SizedBox(height: 36),
 
-                      // Name
+                      
                       Text(
                         name,
                         style: const TextStyle(
@@ -236,13 +229,12 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
                       ),
                       const SizedBox(height: 10),
 
-                      // Ringing dots
-                      _RingingDotsText(
-                          label: isVideo ? 'Đang gọi video' : 'Đang đổ chuông'),
+                      
+                      _RingingDotsText(label: isVideo ? 'Đang gọi video' : 'Đang đổ chuông'),
 
                       const Spacer(flex: 2),
 
-                      // Cancel button
+                      
                       Padding(
                         padding: const EdgeInsets.only(bottom: 60),
                         child: _CancelButton(onTap: _cancelCall),
@@ -259,9 +251,9 @@ class _OutgoingCallPageState extends State<OutgoingCallPage>
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Sub-widgets
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _OutgoingBadge extends StatelessWidget {
   final bool isVideo;
@@ -272,7 +264,7 @@ class _OutgoingBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white24),
       ),
@@ -287,10 +279,8 @@ class _OutgoingBadge extends StatelessWidget {
           const SizedBox(width: 8),
           Text(
             isVideo ? 'Đang gọi video…' : 'Đang gọi thoại…',
-            style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 13,
-                fontWeight: FontWeight.w500),
+            style:
+                const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500),
           ),
         ],
       ),
@@ -326,8 +316,7 @@ class _AnimatedWaveAvatar extends StatelessWidget {
                   height: 116 + (progress * 100),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(
-                        color: Colors.white.withOpacity(0.5), width: 1.5),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.5), width: 1.5),
                   ),
                 ),
               );
@@ -339,10 +328,10 @@ class _AnimatedWaveAvatar extends StatelessWidget {
           height: 114,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withOpacity(0.8), width: 3),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 3),
             boxShadow: [
               BoxShadow(
-                  color: const Color(0xFF1E88E5).withOpacity(0.3),
+                  color: const Color(0xFF1E88E5).withValues(alpha: 0.3),
                   blurRadius: 40,
                   spreadRadius: 8),
             ],
@@ -350,8 +339,7 @@ class _AnimatedWaveAvatar extends StatelessWidget {
           child: ClipOval(
             child: avatarUrl.isNotEmpty
                 ? Image.network(avatarUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _defaultAvatar())
+                    fit: BoxFit.cover, errorBuilder: (_, __, ___) => _defaultAvatar())
                 : _defaultAvatar(),
           ),
         ),
@@ -362,14 +350,12 @@ class _AnimatedWaveAvatar extends StatelessWidget {
   Widget _defaultAvatar() {
     return Container(
       decoration: const BoxDecoration(
-        gradient:
-            LinearGradient(colors: [Color(0xFF3949AB), Color(0xFF1E88E5)]),
+        gradient: LinearGradient(colors: [Color(0xFF3949AB), Color(0xFF1E88E5)]),
       ),
       child: Center(
         child: Text(
           name.isNotEmpty ? name[0].toUpperCase() : '?',
-          style: const TextStyle(
-              color: Colors.white, fontSize: 42, fontWeight: FontWeight.bold),
+          style: const TextStyle(color: Colors.white, fontSize: 42, fontWeight: FontWeight.bold),
         ),
       ),
     );
@@ -384,16 +370,14 @@ class _CancelButton extends StatefulWidget {
   State<_CancelButton> createState() => _CancelButtonState();
 }
 
-class _CancelButtonState extends State<_CancelButton>
-    with SingleTickerProviderStateMixin {
+class _CancelButtonState extends State<_CancelButton> with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 100));
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 100));
     _scale = Tween<double>(begin: 1.0, end: 0.88)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
   }
@@ -426,23 +410,19 @@ class _CancelButtonState extends State<_CancelButton>
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFFE53935).withOpacity(0.45),
+                    color: const Color(0xFFE53935).withValues(alpha: 0.45),
                     blurRadius: 20,
                     offset: const Offset(0, 6),
                   ),
                 ],
               ),
-              child: const Icon(Icons.call_end_rounded,
-                  color: Colors.white, size: 32),
+              child: const Icon(Icons.call_end_rounded, color: Colors.white, size: 32),
             ),
           ),
           const SizedBox(height: 12),
           const Text(
             'Huỷ',
-            style: TextStyle(
-                color: Colors.white70,
-                fontSize: 14,
-                fontWeight: FontWeight.w500),
+            style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
           ),
         ],
       ),
@@ -480,10 +460,8 @@ class _RingingDotsTextState extends State<_RingingDotsText> {
   Widget build(BuildContext context) {
     return Text(
       '${widget.label}${'.' * _dots}',
-      style: TextStyle(
-          color: Colors.white.withOpacity(0.65),
-          fontSize: 16,
-          letterSpacing: 0.3),
+      style:
+          TextStyle(color: Colors.white.withValues(alpha: 0.65), fontSize: 16, letterSpacing: 0.3),
     );
   }
 }

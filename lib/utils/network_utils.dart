@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 
-/// Loại kết nối mạng
+import 'package:connectivity_plus/connectivity_plus.dart';
+
+
 enum NetworkType {
   wifi,
   mobile,
@@ -13,11 +14,11 @@ enum NetworkType {
   unknown,
 }
 
-/// Trạng thái mạng
+
 class NetworkStatus {
   final bool isConnected;
   final NetworkType type;
-  final bool isMetered; // Kết nối tính phí (mobile data)
+  final bool isMetered; 
 
   const NetworkStatus({
     required this.isConnected,
@@ -37,7 +38,7 @@ class NetworkStatus {
   String toString() => 'NetworkStatus(connected: $isConnected, type: $type)';
 }
 
-/// Công cụ kiểm tra và quản lý kết nối mạng
+
 class NetworkUtils {
   NetworkUtils._();
 
@@ -48,9 +49,9 @@ class NetworkUtils {
   static NetworkStatus _currentStatus = NetworkStatus.offline;
   static StreamSubscription? _subscription;
 
-  // ─── Khởi tạo ──────────────────────────────────────────────────────────────
+  
 
-  /// Bắt đầu lắng nghe thay đổi kết nối
+  
   static void startMonitoring() {
     _subscription?.cancel();
     _subscription = _connectivity.onConnectivityChanged.listen(
@@ -67,21 +68,21 @@ class NetworkUtils {
     _subscription = null;
   }
 
-  // ─── Kiểm tra kết nối ──────────────────────────────────────────────────────
+  
 
-  /// Kiểm tra có kết nối Internet thực sự không (DNS lookup)
+  
   static Future<bool> hasConnection({
     String testHost = 'google.com',
     Duration timeout = const Duration(seconds: 5),
   }) async {
-    // Web platform không cần check (always connected in browser)
+    
     if (kIsWeb) return true;
 
     try {
       final results = await _connectivity.checkConnectivity();
       if (results.contains(ConnectivityResult.none)) return false;
 
-      // Verify thực sự có internet (không chỉ connected to wifi)
+      
       final lookup = await InternetAddress.lookup(testHost).timeout(timeout);
       return lookup.isNotEmpty && lookup.first.rawAddress.isNotEmpty;
     } on SocketException {
@@ -93,7 +94,7 @@ class NetworkUtils {
     }
   }
 
-  /// Lấy trạng thái hiện tại
+  
   static Future<NetworkStatus> getStatus() async {
     try {
       final results = await _connectivity.checkConnectivity();
@@ -106,20 +107,19 @@ class NetworkUtils {
 
   static NetworkStatus get currentStatus => _currentStatus;
 
-  /// Stream theo dõi thay đổi trạng thái mạng
+  
   static Stream<NetworkStatus> get statusStream => _statusController.stream;
 
-  /// Stream bool đơn giản (true = online, false = offline)
-  static Stream<bool> get connectivityStream =>
-      statusStream.map((s) => s.isConnected).distinct();
+  
+  static Stream<bool> get connectivityStream => statusStream.map((s) => s.isConnected).distinct();
 
-  // ─── Retry Logic ────────────────────────────────────────────────────────────
+  
 
-  /// Retry với exponential backoff
-  /// [operation]: Function trả về Future
-  /// [maxRetries]: Số lần thử tối đa
-  /// [initialDelay]: Độ trễ ban đầu
-  /// [shouldRetry]: Kiểm tra có nên retry lỗi này không
+  
+  
+  
+  
+  
   static Future<T> retryOperation<T>(
     Future<T> Function() operation, {
     int maxRetries = 3,
@@ -136,23 +136,20 @@ class NetworkUtils {
       } catch (e) {
         lastError = e;
 
-        // Kiểm tra có nên retry không
+        
         if (shouldRetry != null && !shouldRetry(e)) {
           rethrow;
         }
 
         if (attempt == maxRetries - 1) break;
 
-        // Exponential backoff với jitter
+        
         final baseDelay = initialDelay * (1 << attempt);
         final delay = baseDelay > maxDelay ? maxDelay : baseDelay;
-        // Thêm jitter ngẫu nhiên ±10%
+        
         final jitter = Duration(
-          milliseconds: (delay.inMilliseconds *
-                  0.1 *
-                  (DateTime.now().millisecond % 10) /
-                  10)
-              .round(),
+          milliseconds:
+              (delay.inMilliseconds * 0.1 * (DateTime.now().millisecond % 10) / 10).round(),
         );
 
         debugPrint(
@@ -167,7 +164,7 @@ class NetworkUtils {
     throw lastError;
   }
 
-  /// Thực hiện operation khi có kết nối, queue nếu offline
+  
   static Future<T?> executeWhenOnline<T>(
     Future<T> Function() operation, {
     Duration checkInterval = const Duration(seconds: 3),
@@ -176,7 +173,7 @@ class NetworkUtils {
     final hasConn = await hasConnection();
     if (hasConn) return operation();
 
-    // Chờ kết nối
+    
     final completer = Completer<T?>();
     Timer? timeout;
     StreamSubscription? sub;
@@ -200,9 +197,9 @@ class NetworkUtils {
     return completer.future;
   }
 
-  // ─── Tốc độ / Chất lượng ───────────────────────────────────────────────────
+  
 
-  /// Ước tính chất lượng kết nối bằng cách đo RTT
+  
   static Future<Duration?> measureLatency({
     String host = 'google.com',
     Duration timeout = const Duration(seconds: 5),
@@ -217,10 +214,9 @@ class NetworkUtils {
     }
   }
 
-  // ─── Private helpers ────────────────────────────────────────────────────────
+  
 
-  static Future<NetworkStatus> _buildStatus(
-      List<ConnectivityResult> results) async {
+  static Future<NetworkStatus> _buildStatus(List<ConnectivityResult> results) async {
     if (results.contains(ConnectivityResult.none)) {
       return NetworkStatus.offline;
     }
@@ -237,7 +233,7 @@ class NetworkUtils {
       type = NetworkType.ethernet;
     }
 
-    // Kiểm tra thực tế có internet không
+    
     final isConnected = await hasConnection();
 
     return NetworkStatus(
@@ -248,7 +244,7 @@ class NetworkUtils {
   }
 }
 
-/// Extension tiện ích cho Future với timeout an toàn
+
 extension SafeTimeout<T> on Future<T> {
   Future<T?> withTimeout(
     Duration duration, {

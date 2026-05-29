@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:flutter_chat_demo/constants/constants.dart';
 
-/// A lightweight, clean message options sheet. For the full-featured version
-/// with emoji reactions and animations, use [EnhancedMessageOptionsDialog].
+
+
 class MessageOptionsDialog extends StatelessWidget {
   final bool isOwnMessage;
   final bool isPinned;
@@ -39,7 +40,7 @@ class MessageOptionsDialog extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 30,
             spreadRadius: 0,
             offset: const Offset(0, 6),
@@ -49,7 +50,7 @@ class MessageOptionsDialog extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ── Handle ────────────────────────────────────────────────────
+          
           Padding(
             padding: const EdgeInsets.only(top: 10, bottom: 6),
             child: Container(
@@ -62,7 +63,7 @@ class MessageOptionsDialog extends StatelessWidget {
             ),
           ),
 
-          // ── Own-message actions ──────────────────────────────────────
+          
           if (isOwnMessage && !isDeleted) ...[
             _buildOption(
               context,
@@ -87,7 +88,7 @@ class MessageOptionsDialog extends StatelessWidget {
             _divider(),
           ],
 
-          // ── Shared actions ───────────────────────────────────────────
+          
           if (!isDeleted) ...[
             _buildOption(
               context,
@@ -168,7 +169,7 @@ class MessageOptionsDialog extends StatelessWidget {
         HapticFeedback.selectionClick();
         onTap();
       },
-      highlightColor: c.withOpacity(0.05),
+      highlightColor: c.withValues(alpha: 0.05),
       splashColor: Colors.transparent,
       borderRadius: BorderRadius.circular(12),
       child: Padding(
@@ -179,7 +180,7 @@ class MessageOptionsDialog extends StatelessWidget {
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                color: c.withOpacity(0.1),
+                color: c.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(icon, color: c, size: 20),

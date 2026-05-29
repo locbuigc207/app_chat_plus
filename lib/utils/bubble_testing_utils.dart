@@ -1,19 +1,9 @@
-
-
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-
 class BubbleTestingUtils {
-  static const MethodChannel _bubbleChannel =
-      MethodChannel('bubble_chat_channel');
+  static const MethodChannel _bubbleChannel = MethodChannel('bubble_chat_channel');
 
-  
-  
-  
-
-  
   static Future<bool> isRunningInBubble() async {
     try {
       final result = await _bubbleChannel.invokeMethod<bool>('getBubbleMode');
@@ -24,7 +14,6 @@ class BubbleTestingUtils {
     }
   }
 
-  
   static Future<Map<String, dynamic>?> getBubbleUserInfo() async {
     try {
       final result = await _bubbleChannel.invokeMethod<Map>('getUserInfo');
@@ -35,11 +24,6 @@ class BubbleTestingUtils {
     }
   }
 
-  
-  
-  
-
-  
   static Future<bool> testMinimize() async {
     try {
       debugPrint('🧪 Testing minimize...');
@@ -52,7 +36,6 @@ class BubbleTestingUtils {
     }
   }
 
-  
   static Future<bool> testClose() async {
     try {
       debugPrint('🧪 Testing close...');
@@ -65,11 +48,6 @@ class BubbleTestingUtils {
     }
   }
 
-  
-  
-  
-
-  
   static Widget buildDebugOverlay(BuildContext context) {
     return Positioned(
       top: 60,
@@ -117,7 +95,6 @@ class BubbleTestingUtils {
     );
   }
 
-  
   static Widget buildTestButtonsOverlay() {
     return Positioned(
       bottom: 80,
@@ -157,35 +134,6 @@ class BubbleTestingUtils {
   }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class BubbleLogger {
   static const String _prefix = '🎈 BUBBLE';
 
@@ -219,11 +167,6 @@ class BubbleLogger {
     }
   }
 }
-
-
-
-
-
 
 class BubbleModeAware extends StatefulWidget {
   final Widget Function(BuildContext context, bool isBubble) builder;
@@ -260,32 +203,6 @@ class _BubbleModeAwareState extends State<BubbleModeAware> {
     return widget.builder(context, _isBubbleMode);
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 class BubblePerformanceMonitor {
   static final Stopwatch _stopwatch = Stopwatch();

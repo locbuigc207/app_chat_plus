@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'package:flutter_chat_demo/constants/constants.dart';
 
 enum SearchFilter { all, messages, images, files }
@@ -17,8 +18,7 @@ class AdvancedSearchBar extends StatefulWidget {
   State<AdvancedSearchBar> createState() => _AdvancedSearchBarState();
 }
 
-class _AdvancedSearchBarState extends State<AdvancedSearchBar>
-    with SingleTickerProviderStateMixin {
+class _AdvancedSearchBarState extends State<AdvancedSearchBar> with SingleTickerProviderStateMixin {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   SearchFilter _selectedFilter = SearchFilter.all;
@@ -30,8 +30,7 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar>
   @override
   void initState() {
     super.initState();
-    _filterCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 250));
+    _filterCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 250));
     _filterAnim = CurvedAnimation(parent: _filterCtrl, curve: Curves.easeOut);
     _focusNode.addListener(() {
       setState(() => _isFocused = _focusNode.hasFocus);
@@ -81,16 +80,14 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar>
         border: Border(
           bottom: BorderSide(
             color: _isFocused
-                ? ColorConstants.primaryColor.withOpacity(0.3)
-                : (isDark
-                    ? Colors.white.withOpacity(0.08)
-                    : Colors.grey.shade200),
+                ? ColorConstants.primaryColor.withValues(alpha: 0.3)
+                : (isDark ? Colors.white.withValues(alpha: 0.08) : Colors.grey.shade200),
           ),
         ),
         boxShadow: _isFocused
             ? [
                 BoxShadow(
-                    color: ColorConstants.primaryColor.withOpacity(0.06),
+                    color: ColorConstants.primaryColor.withValues(alpha: 0.06),
                     blurRadius: 12,
                     offset: const Offset(0, 4))
               ]
@@ -99,22 +96,20 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Search row
+          
           Row(
             children: [
-              // Search field
+              
               Expanded(
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   height: 44,
                   decoration: BoxDecoration(
-                    color: isDark
-                        ? Colors.white.withOpacity(0.07)
-                        : Colors.grey.shade100,
+                    color: isDark ? Colors.white.withValues(alpha: 0.07) : Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                       color: _isFocused
-                          ? ColorConstants.primaryColor.withOpacity(0.4)
+                          ? ColorConstants.primaryColor.withValues(alpha: 0.4)
                           : Colors.transparent,
                       width: 1.5,
                     ),
@@ -125,13 +120,9 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar>
                       AnimatedSwitcher(
                         duration: const Duration(milliseconds: 200),
                         child: Icon(
-                          _isFocused
-                              ? Icons.search_rounded
-                              : Icons.search_rounded,
+                          _isFocused ? Icons.search_rounded : Icons.search_rounded,
                           key: ValueKey(_isFocused),
-                          color: _isFocused
-                              ? ColorConstants.primaryColor
-                              : Colors.grey.shade400,
+                          color: _isFocused ? ColorConstants.primaryColor : Colors.grey.shade400,
                           size: 20,
                         ),
                       ),
@@ -141,12 +132,10 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar>
                           controller: _controller,
                           focusNode: _focusNode,
                           style: TextStyle(
-                              fontSize: 15,
-                              color: isDark ? Colors.white : Colors.black87),
+                              fontSize: 15, color: isDark ? Colors.white : Colors.black87),
                           decoration: InputDecoration(
                             hintText: widget.hintText,
-                            hintStyle: TextStyle(
-                                color: Colors.grey.shade400, fontSize: 15),
+                            hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 15),
                             border: InputBorder.none,
                             contentPadding: EdgeInsets.zero,
                             isDense: true,
@@ -169,8 +158,7 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar>
                                 shape: BoxShape.circle,
                                 color: Colors.grey.shade400,
                               ),
-                              child: const Icon(Icons.close_rounded,
-                                  size: 13, color: Colors.white),
+                              child: const Icon(Icons.close_rounded, size: 13, color: Colors.white),
                             ),
                           ),
                         )
@@ -181,7 +169,7 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar>
                 ),
               ),
               const SizedBox(width: 8),
-              // Filter toggle
+              
               GestureDetector(
                 onTap: _toggleFilters,
                 child: AnimatedContainer(
@@ -191,9 +179,7 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar>
                   decoration: BoxDecoration(
                     color: _showFilters
                         ? ColorConstants.primaryColor
-                        : (isDark
-                            ? Colors.white.withOpacity(0.07)
-                            : Colors.grey.shade100),
+                        : (isDark ? Colors.white.withValues(alpha: 0.07) : Colors.grey.shade100),
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Stack(
@@ -201,8 +187,7 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar>
                     children: [
                       Icon(
                         Icons.tune_rounded,
-                        color:
-                            _showFilters ? Colors.white : Colors.grey.shade500,
+                        color: _showFilters ? Colors.white : Colors.grey.shade500,
                         size: 20,
                       ),
                       if (_selectedFilter != SearchFilter.all && !_showFilters)
@@ -225,7 +210,7 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar>
             ],
           ),
 
-          // Filter chips
+          
           SizeTransition(
             sizeFactor: _filterAnim,
             child: Padding(
@@ -248,28 +233,21 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar>
                           color: isSelected
                               ? ColorConstants.primaryColor
                               : (isDark
-                                  ? Colors.white.withOpacity(0.06)
+                                  ? Colors.white.withValues(alpha: 0.06)
                                   : Colors.grey.shade100),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Column(
                           children: [
                             Icon(icon,
-                                size: 18,
-                                color: isSelected
-                                    ? Colors.white
-                                    : Colors.grey.shade500),
+                                size: 18, color: isSelected ? Colors.white : Colors.grey.shade500),
                             const SizedBox(height: 4),
                             Text(
                               label,
                               style: TextStyle(
                                 fontSize: 10.5,
-                                fontWeight: isSelected
-                                    ? FontWeight.w600
-                                    : FontWeight.w400,
-                                color: isSelected
-                                    ? Colors.white
-                                    : Colors.grey.shade500,
+                                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                                color: isSelected ? Colors.white : Colors.grey.shade500,
                               ),
                             ),
                           ],

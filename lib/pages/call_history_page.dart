@@ -2,15 +2,16 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:intl/intl.dart';
 
 import '../models/call_model.dart';
 import '../pages/outgoing_call_page.dart';
 import '../services/call_service.dart';
 
-// ─────────────────────────────────────────────────────────────
-// Call History Page
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class CallHistoryPage extends StatefulWidget {
   final String currentUserId;
@@ -21,8 +22,7 @@ class CallHistoryPage extends StatefulWidget {
   State<CallHistoryPage> createState() => _CallHistoryPageState();
 }
 
-class _CallHistoryPageState extends State<CallHistoryPage>
-    with SingleTickerProviderStateMixin {
+class _CallHistoryPageState extends State<CallHistoryPage> with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   final _callService = CallService.instance;
 
@@ -72,12 +72,8 @@ class _CallHistoryPageState extends State<CallHistoryPage>
             }
 
             final all = snapshot.data ?? [];
-            final outgoing = all
-                .where((c) => c.callerId == widget.currentUserId)
-                .toList();
-            final incoming = all
-                .where((c) => c.calleeId == widget.currentUserId)
-                .toList();
+            final outgoing = all.where((c) => c.callerId == widget.currentUserId).toList();
+            final incoming = all.where((c) => c.calleeId == widget.currentUserId).toList();
 
             return TabBarView(
               controller: _tabController,
@@ -119,8 +115,7 @@ class _CallHistoryPageState extends State<CallHistoryPage>
             children: [
               IconButton(
                 onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                    color: Colors.white70, size: 20),
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white70, size: 20),
                 padding: EdgeInsets.zero,
               ),
               const SizedBox(width: 8),
@@ -150,10 +145,8 @@ class _CallHistoryPageState extends State<CallHistoryPage>
         indicatorSize: TabBarIndicatorSize.label,
         labelColor: Colors.white,
         unselectedLabelColor: Colors.white38,
-        labelStyle: const TextStyle(
-            fontWeight: FontWeight.w600, fontSize: 13),
-        unselectedLabelStyle: const TextStyle(
-            fontWeight: FontWeight.w400, fontSize: 13),
+        labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+        unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w400, fontSize: 13),
         tabs: const [
           Tab(text: 'Tất cả'),
           Tab(text: 'Đã gọi'),
@@ -164,9 +157,9 @@ class _CallHistoryPageState extends State<CallHistoryPage>
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Call List
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _CallList extends StatelessWidget {
   final List<CallModel> calls;
@@ -178,7 +171,7 @@ class _CallList extends StatelessWidget {
   Widget build(BuildContext context) {
     if (calls.isEmpty) return const _EmptyState();
 
-    // Group by date
+    
     final grouped = <String, List<CallModel>>{};
     for (final c in calls) {
       final key = _dateKey(c.createdAt);
@@ -234,9 +227,9 @@ class _CallList extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Call Tile
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _CallTile extends StatelessWidget {
   final CallModel call;
@@ -258,8 +251,8 @@ class _CallTile extends StatelessWidget {
 
     return InkWell(
       onTap: () => _showOptions(context, peerName, peerAvatar, peerId),
-      splashColor: Colors.white.withOpacity(0.04),
-      highlightColor: Colors.white.withOpacity(0.02),
+      splashColor: Colors.white.withValues(alpha: 0.04),
+      highlightColor: Colors.white.withValues(alpha: 0.02),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         child: Row(
@@ -287,17 +280,13 @@ class _CallTile extends StatelessWidget {
                       const SizedBox(width: 5),
                       Text(
                         info.label,
-                        style: TextStyle(
-                            color: info.color,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500),
+                        style:
+                            TextStyle(color: info.color, fontSize: 12, fontWeight: FontWeight.w500),
                       ),
-                      if (call.durationSeconds != null &&
-                          call.durationSeconds! > 0) ...[
+                      if (call.durationSeconds != null && call.durationSeconds! > 0) ...[
                         Text(
                           '  ·  ${call.formattedDuration}',
-                          style: const TextStyle(
-                              color: Colors.white38, fontSize: 12),
+                          style: const TextStyle(color: Colors.white38, fontSize: 12),
                         ),
                       ],
                     ],
@@ -310,21 +299,17 @@ class _CallTile extends StatelessWidget {
               children: [
                 Text(
                   _timeLabel(),
-                  style: const TextStyle(
-                      color: Colors.white38, fontSize: 11),
+                  style: const TextStyle(color: Colors.white38, fontSize: 11),
                 ),
                 const SizedBox(height: 6),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.07),
+                    color: Colors.white.withValues(alpha: 0.07),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Icon(
-                    call.isVideoCall
-                        ? Icons.videocam_rounded
-                        : Icons.phone_rounded,
+                    call.isVideoCall ? Icons.videocam_rounded : Icons.phone_rounded,
                     size: 13,
                     color: Colors.white54,
                   ),
@@ -341,22 +326,17 @@ class _CallTile extends StatelessWidget {
     switch (call.status) {
       case CallStatus.ended:
         return isOutgoing
-            ? _StatusInfo(
-            Icons.call_made_rounded, const Color(0xFF4FC3F7), 'Đã gọi đi')
-            : _StatusInfo(Icons.call_received_rounded,
-            const Color(0xFF81C784), 'Cuộc gọi đến');
+            ? _StatusInfo(Icons.call_made_rounded, const Color(0xFF4FC3F7), 'Đã gọi đi')
+            : _StatusInfo(Icons.call_received_rounded, const Color(0xFF81C784), 'Cuộc gọi đến');
       case CallStatus.missed:
-        return _StatusInfo(
-            Icons.call_missed_rounded, const Color(0xFFEF5350), 'Cuộc gọi nhỡ');
+        return _StatusInfo(Icons.call_missed_rounded, const Color(0xFFEF5350), 'Cuộc gọi nhỡ');
       case CallStatus.declined:
-        return _StatusInfo(Icons.call_missed_outgoing_rounded,
-            const Color(0xFFFF8A65), 'Đã bị từ chối');
-      case CallStatus.rejected:
         return _StatusInfo(
-            Icons.do_not_disturb_on_rounded, const Color(0xFFFF7043), 'Đã từ chối');
+            Icons.call_missed_outgoing_rounded, const Color(0xFFFF8A65), 'Đã bị từ chối');
+      case CallStatus.rejected:
+        return _StatusInfo(Icons.do_not_disturb_on_rounded, const Color(0xFFFF7043), 'Đã từ chối');
       case CallStatus.failed:
-        return _StatusInfo(Icons.error_outline_rounded,
-            const Color(0xFFBDBDBD), 'Thất bại');
+        return _StatusInfo(Icons.error_outline_rounded, const Color(0xFFBDBDBD), 'Thất bại');
       default:
         return _StatusInfo(Icons.phone_rounded, Colors.white38, 'Không rõ');
     }
@@ -375,8 +355,7 @@ class _CallTile extends StatelessWidget {
     return DateFormat('dd/MM').format(call.createdAt);
   }
 
-  void _showOptions(
-      BuildContext context, String name, String avatar, String peerId) {
+  void _showOptions(BuildContext context, String name, String avatar, String peerId) {
     HapticFeedback.selectionClick();
     showModalBottomSheet(
       context: context,
@@ -392,9 +371,9 @@ class _CallTile extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Callback Bottom Sheet
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _CallbackSheet extends StatelessWidget {
   final String peerName;
@@ -417,10 +396,9 @@ class _CallbackSheet extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
         child: Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF1A1F36).withOpacity(0.95),
-            borderRadius:
-            const BorderRadius.vertical(top: Radius.circular(28)),
-            border: Border.all(color: Colors.white.withOpacity(0.1)),
+            color: const Color(0xFF1A1F36).withValues(alpha: 0.95),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
           ),
           child: SafeArea(
             top: false,
@@ -447,13 +425,10 @@ class _CallbackSheet extends StatelessWidget {
                         children: [
                           Text(peerName,
                               style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w700)),
+                                  color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
                           const SizedBox(height: 2),
                           const Text('Gọi lại',
-                              style: TextStyle(
-                                  color: Colors.white54, fontSize: 13)),
+                              style: TextStyle(color: Colors.white54, fontSize: 13)),
                         ],
                       ),
                     ],
@@ -526,20 +501,16 @@ class _SheetCallBtn extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 16),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.15),
+          color: color.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.3)),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, color: color, size: 28),
             const SizedBox(height: 8),
-            Text(label,
-                style: TextStyle(
-                    color: color,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600)),
+            Text(label, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600)),
           ],
         ),
       ),
@@ -547,17 +518,16 @@ class _SheetCallBtn extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Shared avatar widget
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _Avatar extends StatelessWidget {
   final String url;
   final String name;
   final double size;
 
-  const _Avatar(
-      {required this.url, required this.name, required this.size});
+  const _Avatar({required this.url, required this.name, required this.size});
 
   @override
   Widget build(BuildContext context) {
@@ -572,9 +542,7 @@ class _Avatar extends StatelessWidget {
       ),
       child: ClipOval(
         child: url.isNotEmpty
-            ? Image.network(url,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _initials())
+            ? Image.network(url, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _initials())
             : _initials(),
       ),
     );
@@ -594,9 +562,9 @@ class _Avatar extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// States
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _LoadingState extends StatelessWidget {
   const _LoadingState();
@@ -625,18 +593,14 @@ class _EmptyState extends StatelessWidget {
             width: 80,
             height: 80,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.05),
+              color: Colors.white.withValues(alpha: 0.05),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.phone_missed_rounded,
-                size: 36, color: Colors.white24),
+            child: const Icon(Icons.phone_missed_rounded, size: 36, color: Colors.white24),
           ),
           const SizedBox(height: 20),
           const Text('Chưa có cuộc gọi nào',
-              style: TextStyle(
-                  color: Colors.white54,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500)),
+              style: TextStyle(color: Colors.white54, fontSize: 16, fontWeight: FontWeight.w500)),
           const SizedBox(height: 8),
           const Text('Lịch sử sẽ hiển thị ở đây',
               style: TextStyle(color: Colors.white24, fontSize: 13)),
@@ -658,15 +622,13 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.cloud_off_rounded,
-                size: 48, color: Colors.white24),
+            const Icon(Icons.cloud_off_rounded, size: 48, color: Colors.white24),
             const SizedBox(height: 16),
             const Text('Không thể tải dữ liệu',
                 style: TextStyle(color: Colors.white54, fontSize: 15)),
             const SizedBox(height: 8),
             Text(error,
-                style:
-                const TextStyle(color: Colors.white24, fontSize: 12),
+                style: const TextStyle(color: Colors.white24, fontSize: 12),
                 textAlign: TextAlign.center),
           ],
         ),
@@ -675,9 +637,9 @@ class _ErrorState extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Data class
-// ─────────────────────────────────────────────────────────────
+
+
+
 
 class _StatusInfo {
   final IconData icon;

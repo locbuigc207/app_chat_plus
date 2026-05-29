@@ -2,33 +2,34 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+
 import 'package:flutter_chat_demo/models/game_match.dart';
 import 'package:flutter_chat_demo/models/message_chat.dart';
 import 'package:flutter_chat_demo/services/game_firebase_service.dart';
 import 'package:uuid/uuid.dart';
 
-// =========================================================
-// ENUMS & SUPPORTING TYPES
-// =========================================================
 
-/// Vai trò của user hiện tại trong phòng đấu.
+
+
+
+
 enum PlayerRole {
-  player1, // Người tạo thách đấu
-  player2, // Người chấp nhận
-  spectator, // Khán giả
+  player1, 
+  player2, 
+  spectator, 
 }
 
-/// Lý do kết thúc trận.
+
 enum EndReason {
-  fiveInRow, // Caro: 5 quân liên tiếp
-  checkmate, // Chess: chiếu bí
-  timeout, // Hết giờ cờ vua
-  turnTimeout, // Hết giờ mỗi nước Caro
-  resign, // Đầu hàng
-  drawAgreed, // Xin hòa được chấp nhận
-  disconnect, // Mất kết nối > 60s
-  stalemate, // Chess: hết nước đi (hòa)
-  insufficientMaterial, // Chess: thiếu quân (hòa)
+  fiveInRow, 
+  checkmate, 
+  timeout, 
+  turnTimeout, 
+  resign, 
+  drawAgreed, 
+  disconnect, 
+  stalemate, 
+  insufficientMaterial, 
   ;
 
   String get label {
@@ -78,7 +79,7 @@ enum EndReason {
   }
 }
 
-/// Yêu cầu xin hòa.
+
 class DrawRequest {
   final String requesterId;
   final DateTime sentAt;
@@ -91,164 +92,162 @@ class DrawRequest {
   });
 }
 
-/// Snapshot trạng thái một ô trong bàn Caro (dùng cho UI và logic).
+
 class CaroCell {
   final int row;
   final int col;
 
-  /// '' = trống, 'X' = player1, 'O' = player2
+  
   final String symbol;
 
   const CaroCell(this.row, this.col, this.symbol);
 }
 
-// =========================================================
-// GAME STATE PROVIDER
-// =========================================================
 
-/// State controller trung tâm cho một trận đấu đang diễn ra.
-///
-/// Quản lý:
-///   • Bàn cờ Caro (ma trận symbol) + thuật toán 5 liên tiếp
-///   • Đồng hồ Chess (player1Clock / player2Clock)
-///   • Turn Timer Caro (đếm ngược mỗi nước đi)
-///   • Xin hòa / Đầu hàng
-///   • Disconnect handling (60s timeout → xử thua)
-///   • Replay (load moveHistory, bước từng nước)
-///   • Spectator (role detection, join/leave)
-///
-/// KHÔNG chứa: Firebase I/O (→ GameFirebaseService), UI widget (→ match_room_page)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class GameStateProvider extends ChangeNotifier {
-  // ── Dependencies ──────────────────────────────────────────────────────────
+  
   final GameFirebaseService _firebase = GameFirebaseService();
   final _uuid = const Uuid();
 
-  // ── Match Info ────────────────────────────────────────────────────────────
+  
   GameMatch? _match;
   String _currentUserId = '';
   PlayerRole _role = PlayerRole.spectator;
 
-  // ── Subscriptions ─────────────────────────────────────────────────────────
+  
   StreamSubscription<GameMatch?>? _matchSub;
   StreamSubscription<GameMove?>? _moveSub;
   StreamSubscription<Map<String, dynamic>?>? _disconnectSub;
 
-  // ── Caro Board State ──────────────────────────────────────────────────────
-  /// Map<'row,col', symbol>  — sparse map, chỉ lưu ô đã đánh.
+  
+  
   final Map<String, String> _caroBoard = {};
 
-  /// Ô vừa đánh (để highlight trên UI).
+  
   CaroCell? _lastMove;
 
-  /// Danh sách 5 ô tạo thành đường thắng (để vẽ line).
+  
   List<CaroCell> _winLine = [];
 
-  // ── Turn Tracking ─────────────────────────────────────────────────────────
-  /// userId của người được đi nước.
+  
+  
   String _currentTurnUserId = '';
 
-  /// Index nước đi tiếp theo (bắt đầu từ 0).
+  
   int _nextMoveIndex = 0;
 
-  // ── Chess Clock ───────────────────────────────────────────────────────────
-  /// Thời gian còn lại của player1 (ms).
+  
+  
   int _player1RemainingMs = 0;
 
-  /// Thời gian còn lại của player2 (ms).
+  
   int _player2RemainingMs = 0;
 
   Timer? _chessClockTimer;
 
-  // ── Turn Timer (Caro) ─────────────────────────────────────────────────────
-  /// Thời gian còn lại của nước đi hiện tại (giây).
+  
+  
   int _turnTimerSeconds = 0;
 
   Timer? _turnTimer;
 
-  // ── Draw / Resign State ───────────────────────────────────────────────────
+  
   DrawRequest? _pendingDrawRequest;
 
-  // ── Disconnect Handling ───────────────────────────────────────────────────
+  
   Timer? _disconnectTimer;
 
-  /// userId của player đang bị disconnect.
+  
   String? _disconnectedPlayerId;
 
-  /// Số giây countdown trước khi xử thua.
+  
   int _disconnectCountdown = 60;
 
-  // ── Match State ───────────────────────────────────────────────────────────
+  
   bool _isGameOver = false;
   GameResult? _finalResult;
   EndReason? _endReason;
   String? _winnerUserId;
 
-  // ── Replay State ──────────────────────────────────────────────────────────
+  
   bool _isReplayMode = false;
   List<GameMove> _replayMoves = [];
-  int _replayIndex = -1; // -1 = belum mulai, 0..n = nước đang xem
+  int _replayIndex = -1; 
   Timer? _replayTimer;
 
-  // ── Loading ───────────────────────────────────────────────────────────────
+  
   bool _isLoading = false;
   String? _errorMessage;
 
-  // =========================================================
-  // GETTERS
-  // =========================================================
+  
+  
+  
 
   GameMatch? get match => _match;
   PlayerRole get role => _role;
-  bool get isPlayer =>
-      _role == PlayerRole.player1 || _role == PlayerRole.player2;
+  bool get isPlayer => _role == PlayerRole.player1 || _role == PlayerRole.player2;
   bool get isSpectator => _role == PlayerRole.spectator;
-  bool get isMyTurn =>
-      _currentTurnUserId == _currentUserId && !_isGameOver && !_isReplayMode;
+  bool get isMyTurn => _currentTurnUserId == _currentUserId && !_isGameOver && !_isReplayMode;
   bool get isGameOver => _isGameOver;
   GameResult? get finalResult => _finalResult;
   EndReason? get endReason => _endReason;
   String? get winnerUserId => _winnerUserId;
 
-  // Caro
+  
   Map<String, String> get caroBoard => Map.unmodifiable(_caroBoard);
   CaroCell? get lastMove => _lastMove;
   List<CaroCell> get winLine => List.unmodifiable(_winLine);
   String getCaroCell(int row, int col) => _caroBoard['$row,$col'] ?? '';
 
-  // Clocks
+  
   int get player1RemainingMs => _player1RemainingMs;
   int get player2RemainingMs => _player2RemainingMs;
   int get turnTimerSeconds => _turnTimerSeconds;
   bool get isPlayer1Turn => _currentTurnUserId == _match?.player1Id;
 
-  // Draw / Resign
+  
   DrawRequest? get pendingDrawRequest => _pendingDrawRequest;
   bool get hasIncomingDrawRequest =>
       _pendingDrawRequest != null &&
       !_pendingDrawRequest!.isAnswered &&
       _pendingDrawRequest!.requesterId != _currentUserId;
 
-  // Disconnect
+  
   String? get disconnectedPlayerId => _disconnectedPlayerId;
   int get disconnectCountdown => _disconnectCountdown;
 
-  // Replay
+  
   bool get isReplayMode => _isReplayMode;
   int get replayIndex => _replayIndex;
   int get replayTotal => _replayMoves.length;
   bool get canReplayBack => _replayIndex > 0;
   bool get canReplayForward => _replayIndex < _replayMoves.length - 1;
 
-  // Loading
+  
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  // =========================================================
-  // INITIALIZATION
-  // =========================================================
+  
+  
+  
 
-  /// Khởi tạo provider với một trận đấu cụ thể.
-  /// Gọi từ match_room_page sau khi navigation.
+  
+  
   Future<void> initialize({
     required String matchId,
     required String currentUserId,
@@ -259,7 +258,7 @@ class GameStateProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Load match document
+      
       final match = await _firebase.fetchMatch(matchId);
       if (match == null) {
         _errorMessage = 'Không tìm thấy trận đấu';
@@ -270,23 +269,23 @@ class GameStateProvider extends ChangeNotifier {
 
       _applyMatchData(match);
 
-      // Determine role
+      
       _role = _detectRole(match, currentUserId);
 
-      // Spectator: join spectator list
+      
       if (_role == PlayerRole.spectator) {
         await _firebase.joinAsSpectator(matchId, currentUserId);
       }
 
-      // Init clocks
+      
       _initClocks(match);
 
-      // Subscribe realtime
+      
       _subscribeMatch(matchId);
       _subscribeLatestMove(matchId);
       _subscribeDisconnect(matchId);
 
-      // If playing, start appropriate timer
+      
       if (match.isPlaying) {
         _startActiveTimer();
       }
@@ -301,12 +300,12 @@ class GameStateProvider extends ChangeNotifier {
     }
   }
 
-  // ── Apply match data ──────────────────────────────────────────────────────
+  
 
   void _applyMatchData(GameMatch match) {
     _match = match;
     if (match.moveHistory.isNotEmpty) {
-      // Rebuild board từ move history nếu có
+      
       _rebuildBoardFromHistory(match.moveHistory);
       _nextMoveIndex = match.moveHistory.length;
     }
@@ -325,13 +324,11 @@ class GameStateProvider extends ChangeNotifier {
 
   String _computeCurrentTurn(GameMatch match) {
     if (_nextMoveIndex == 0) return match.player1Id;
-    // Caro & Chess: luân phiên player1 → player2 → player1...
-    return _nextMoveIndex.isEven
-        ? match.player1Id
-        : (match.player2Id ?? match.player1Id);
+    
+    return _nextMoveIndex.isEven ? match.player1Id : (match.player2Id ?? match.player1Id);
   }
 
-  // ── Clocks initialization ─────────────────────────────────────────────────
+  
 
   void _initClocks(GameMatch match) {
     if (match.timeControlSeconds > 0) {
@@ -344,7 +341,7 @@ class GameStateProvider extends ChangeNotifier {
     }
   }
 
-  // ── Subscriptions ─────────────────────────────────────────────────────────
+  
 
   void _subscribeMatch(String matchId) {
     _matchSub?.cancel();
@@ -353,10 +350,10 @@ class GameStateProvider extends ChangeNotifier {
       final wasPlaying = _match?.isPlaying ?? false;
       _match = match;
 
-      // Detect spectator count change
+      
       notifyListeners();
 
-      // Detect game over from Firestore (e.g., server-side trigger)
+      
       if (match.isFinished && !_isGameOver) {
         _handleGameOverFromFirestore(match);
       }
@@ -367,7 +364,7 @@ class GameStateProvider extends ChangeNotifier {
     _moveSub?.cancel();
     _moveSub = _firebase.watchLatestMove(matchId).listen((move) {
       if (move == null) return;
-      // Chỉ apply nước đi của đối thủ (nước của mình đã apply local)
+      
       if (move.movedBy != _currentUserId && move.moveIndex >= _nextMoveIndex) {
         _applyMoveToBoard(move);
       }
@@ -378,7 +375,7 @@ class GameStateProvider extends ChangeNotifier {
     _disconnectSub?.cancel();
     _disconnectSub = _firebase.watchDisconnectStatus(matchId).listen((info) {
       if (info == null) {
-        // Reconnected
+        
         _cancelDisconnectTimer();
       } else {
         final userId = info['userId'] as String?;
@@ -389,39 +386,39 @@ class GameStateProvider extends ChangeNotifier {
     });
   }
 
-  // =========================================================
-  // CARO LOGIC
-  // =========================================================
+  
+  
+  
 
-  /// Người chơi đánh vào ô (row, col).
-  /// Trả về true nếu nước đi hợp lệ và được xử lý.
+  
+  
   Future<bool> playCaroMove(int row, int col) async {
     if (!isMyTurn) return false;
     if (_match == null || _isGameOver) return false;
-    if (getCaroCell(row, col).isNotEmpty) return false; // Ô đã có quân
+    if (getCaroCell(row, col).isNotEmpty) return false; 
 
     final symbol = _myCaroSymbol;
     final key = '$row,$col';
 
-    // 1. Apply local ngay để UI phản hồi tức thì
+    
     _caroBoard[key] = symbol;
     _lastMove = CaroCell(row, col, symbol);
 
-    // Đổi lượt
+    
     _advanceTurn();
 
-    // 2. Kiểm tra thắng
+    
     final winCells = _checkCaroWin(row, col, symbol);
     if (winCells != null) {
       _winLine = winCells;
       _handleCaroWin();
     } else if (_checkCaroDraw()) {
-      _handleDraw(EndReason.drawAgreed); // Hết bàn = hòa
+      _handleDraw(EndReason.drawAgreed); 
     }
 
     notifyListeners();
 
-    // 3. Ghi lên Firebase
+    
     final move = GameMove(
       moveIndex: _nextMoveIndex - 1,
       movedBy: _currentUserId,
@@ -436,7 +433,7 @@ class GameStateProvider extends ChangeNotifier {
       debugPrint('[GameStateProvider] playCaroMove firebase error: $e');
     }
 
-    // 4. Nếu game over, thông báo Firebase
+    
     if (_isGameOver) {
       await _notifyGameOver();
     } else {
@@ -446,24 +443,24 @@ class GameStateProvider extends ChangeNotifier {
     return true;
   }
 
-  // ── Caro: Symbol assignment ───────────────────────────────────────────────
+  
 
   String get _myCaroSymbol {
     if (_match == null) return 'X';
     return _currentUserId == _match!.player1Id ? 'X' : 'O';
   }
 
-  // ── Caro: Win detection (5 liên tiếp) ────────────────────────────────────
+  
 
-  /// Kiểm tra 5 quân liên tiếp sau nước đi tại (row, col).
-  /// Trả về danh sách 5 CaroCell tạo thành đường thắng, hoặc null nếu chưa thắng.
+  
+  
   List<CaroCell>? _checkCaroWin(int row, int col, String symbol) {
-    // 4 hướng: ngang, dọc, chéo /, chéo \
+    
     const directions = [
-      [0, 1], // →
-      [1, 0], // ↓
-      [1, 1], // ↘
-      [1, -1], // ↙
+      [0, 1], 
+      [1, 0], 
+      [1, 1], 
+      [1, -1], 
     ];
 
     for (final dir in directions) {
@@ -471,7 +468,7 @@ class GameStateProvider extends ChangeNotifier {
       final dc = dir[1];
       final line = <CaroCell>[];
 
-      // Đếm về phía âm
+      
       for (int i = 4; i >= 1; i--) {
         final r = row - dr * i;
         final c = col - dc * i;
@@ -482,17 +479,17 @@ class GameStateProvider extends ChangeNotifier {
         }
       }
 
-      // Thêm ô hiện tại
+      
       line.add(CaroCell(row, col, symbol));
 
-      // Đếm về phía dương
+      
       for (int i = 1; i <= 4; i++) {
         final r = row + dr * i;
         final c = col + dc * i;
         if (_caroBoard['$r,$c'] == symbol) {
           line.add(CaroCell(r, c, symbol));
           if (line.length >= 5) {
-            // Kiểm tra "overline" rule nếu cần — hiện tại bỏ qua (cho phép > 5)
+            
             return line.take(5).toList();
           }
         } else {
@@ -500,7 +497,7 @@ class GameStateProvider extends ChangeNotifier {
         }
       }
 
-      // Kiểm tra tổng đủ 5 chưa
+      
       if (line.length >= 5) {
         return line.take(5).toList();
       }
@@ -509,11 +506,11 @@ class GameStateProvider extends ChangeNotifier {
     return null;
   }
 
-  /// Kiểm tra hòa cho bàn 3x3 (Tic-tac-toe): tất cả ô đã có quân.
+  
   bool _checkCaroDraw() {
     final boardSize = _match?.boardSize ?? 0;
-    if (boardSize == 0) return false; // Bàn vô hạn không bao giờ hòa kiểu này
-    // 3x3
+    if (boardSize == 0) return false; 
+    
     if (boardSize == 3) {
       for (int r = 0; r < 3; r++) {
         for (int c = 0; c < 3; c++) {
@@ -527,39 +524,36 @@ class GameStateProvider extends ChangeNotifier {
     return false;
   }
 
-  /// Thuật toán thắng Tic-tac-toe 3x3 (cũng dùng cho legacy TicTacToeMessageWidget).
-  /// Trả về symbol người thắng hoặc '' nếu chưa có.
+  
+  
   static String checkTicTacToeWinner(List<String> board) {
     const lines = [
-      [0, 1, 2], [3, 4, 5], [6, 7, 8], // hàng ngang
-      [0, 3, 6], [1, 4, 7], [2, 5, 8], // hàng dọc
-      [0, 4, 8], [2, 4, 6], // đường chéo
+      [0, 1, 2], [3, 4, 5], [6, 7, 8], 
+      [0, 3, 6], [1, 4, 7], [2, 5, 8], 
+      [0, 4, 8], [2, 4, 6], 
     ];
     for (final l in lines) {
-      if (board[l[0]].isNotEmpty &&
-          board[l[0]] == board[l[1]] &&
-          board[l[1]] == board[l[2]]) {
+      if (board[l[0]].isNotEmpty && board[l[0]] == board[l[1]] && board[l[1]] == board[l[2]]) {
         return board[l[0]];
       }
     }
     return '';
   }
 
-  // ── Caro: Handle win/lose ─────────────────────────────────────────────────
+  
 
   void _handleCaroWin() {
     _isGameOver = true;
-    _winnerUserId = _currentUserId; // Người vừa đánh là người thắng
-    _finalResult = (_currentUserId == _match!.player1Id)
-        ? GameResult.player1Win
-        : GameResult.player2Win;
+    _winnerUserId = _currentUserId; 
+    _finalResult =
+        (_currentUserId == _match!.player1Id) ? GameResult.player1Win : GameResult.player2Win;
     _endReason = EndReason.fiveInRow;
     _stopAllTimers();
   }
 
-  // =========================================================
-  // CHESS CLOCK
-  // =========================================================
+  
+  
+  
 
   void _startActiveTimer() {
     _chessClockTimer?.cancel();
@@ -568,7 +562,7 @@ class GameStateProvider extends ChangeNotifier {
     final match = _match;
     if (match == null || _isGameOver) return;
 
-    // Chess clock (nếu có time control)
+    
     if (match.timeControlSeconds > 0) {
       _chessClockTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
         if (_isGameOver) {
@@ -592,7 +586,7 @@ class GameStateProvider extends ChangeNotifier {
       });
     }
 
-    // Turn timer Caro
+    
     if (match.gameType == GameType.caro && match.turnTimerSeconds > 0) {
       _turnTimerSeconds = match.turnTimerSeconds;
       _turnTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -614,32 +608,26 @@ class GameStateProvider extends ChangeNotifier {
     _chessClockTimer?.cancel();
     _isGameOver = true;
     _endReason = EndReason.timeout;
-    _winnerUserId = (timedOutUserId == _match?.player1Id)
-        ? _match?.player2Id
-        : _match?.player1Id;
-    _finalResult = (timedOutUserId == _match?.player1Id)
-        ? GameResult.player2Win
-        : GameResult.player1Win;
+    _winnerUserId = (timedOutUserId == _match?.player1Id) ? _match?.player2Id : _match?.player1Id;
+    _finalResult =
+        (timedOutUserId == _match?.player1Id) ? GameResult.player2Win : GameResult.player1Win;
     notifyListeners();
     _notifyGameOver();
   }
 
   void _handleTurnTimeout() {
     _turnTimer?.cancel();
-    if (!isMyTurn) return; // Chỉ xử lý nếu đang là lượt mình
+    if (!isMyTurn) return; 
     _isGameOver = true;
     _endReason = EndReason.turnTimeout;
-    _winnerUserId = (_currentUserId == _match?.player1Id)
-        ? _match?.player2Id
-        : _match?.player1Id;
-    _finalResult = (_currentUserId == _match?.player1Id)
-        ? GameResult.player2Win
-        : GameResult.player1Win;
+    _winnerUserId = (_currentUserId == _match?.player1Id) ? _match?.player2Id : _match?.player1Id;
+    _finalResult =
+        (_currentUserId == _match?.player1Id) ? GameResult.player2Win : GameResult.player1Win;
     notifyListeners();
     _notifyGameOver();
   }
 
-  // ── Reset turn timer sau mỗi nước đi ─────────────────────────────────────
+  
 
   void _resetTurnTimer() {
     _turnTimer?.cancel();
@@ -649,40 +637,37 @@ class GameStateProvider extends ChangeNotifier {
     _startActiveTimer();
   }
 
-  // ── Remaining time helper ─────────────────────────────────────────────────
+  
 
   int get _myRemainingMs {
     if (_currentUserId == _match?.player1Id) return _player1RemainingMs;
     return _player2RemainingMs;
   }
 
-  // =========================================================
-  // RESIGN (ĐẦU HÀNG)
-  // =========================================================
+  
+  
+  
 
-  /// Người chơi đầu hàng — kết thúc trận ngay lập tức.
+  
   Future<void> resign() async {
     if (!isPlayer || _isGameOver) return;
 
     _isGameOver = true;
     _endReason = EndReason.resign;
-    _winnerUserId = (_currentUserId == _match?.player1Id)
-        ? _match?.player2Id
-        : _match?.player1Id;
-    _finalResult = (_currentUserId == _match?.player1Id)
-        ? GameResult.player2Win
-        : GameResult.player1Win;
+    _winnerUserId = (_currentUserId == _match?.player1Id) ? _match?.player2Id : _match?.player1Id;
+    _finalResult =
+        (_currentUserId == _match?.player1Id) ? GameResult.player2Win : GameResult.player1Win;
     _stopAllTimers();
     notifyListeners();
 
     await _notifyGameOver();
   }
 
-  // =========================================================
-  // DRAW REQUEST (XIN HÒA)
-  // =========================================================
+  
+  
+  
 
-  /// Gửi đề nghị hòa.
+  
   Future<void> requestDraw() async {
     if (!isPlayer || _isGameOver) return;
     if (_pendingDrawRequest != null && !_pendingDrawRequest!.isAnswered) return;
@@ -693,7 +678,7 @@ class GameStateProvider extends ChangeNotifier {
     );
     notifyListeners();
 
-    // Lưu vào Firebase để đối thủ nhận được
+    
     try {
       await _firebase.updateMatch(_match!.matchId, {
         'drawRequest': {
@@ -706,7 +691,7 @@ class GameStateProvider extends ChangeNotifier {
     }
   }
 
-  /// Chấp nhận đề nghị hòa.
+  
   Future<void> acceptDraw() async {
     if (!hasIncomingDrawRequest || _isGameOver) return;
 
@@ -716,7 +701,7 @@ class GameStateProvider extends ChangeNotifier {
     await _notifyGameOver();
   }
 
-  /// Từ chối đề nghị hòa.
+  
   Future<void> declineDraw() async {
     if (!hasIncomingDrawRequest) return;
     _pendingDrawRequest?.isAnswered = true;
@@ -739,17 +724,17 @@ class GameStateProvider extends ChangeNotifier {
     _stopAllTimers();
   }
 
-  // =========================================================
-  // DISCONNECT HANDLING (60s timeout → xử thua)
-  // =========================================================
+  
+  
+  
 
-  /// Gọi từ match_room_page khi detect mình bị mất kết nối.
+  
   Future<void> onDisconnected() async {
     if (_match == null || _isGameOver) return;
     await _firebase.markPlayerDisconnected(_match!.matchId, _currentUserId);
   }
 
-  /// Gọi từ match_room_page khi kết nối lại.
+  
   Future<void> onReconnected() async {
     if (_match == null) return;
     await _firebase.markPlayerReconnected(_match!.matchId);
@@ -768,7 +753,7 @@ class GameStateProvider extends ChangeNotifier {
 
       if (_disconnectCountdown <= 0) {
         _disconnectTimer?.cancel();
-        // Xử thua người bị disconnect
+        
         _handleDisconnectLoss(disconnectedUserId);
       }
     });
@@ -778,12 +763,9 @@ class GameStateProvider extends ChangeNotifier {
     if (_isGameOver) return;
     _isGameOver = true;
     _endReason = EndReason.disconnect;
-    _winnerUserId = (loserUserId == _match?.player1Id)
-        ? _match?.player2Id
-        : _match?.player1Id;
-    _finalResult = (loserUserId == _match?.player1Id)
-        ? GameResult.player2Win
-        : GameResult.player1Win;
+    _winnerUserId = (loserUserId == _match?.player1Id) ? _match?.player2Id : _match?.player1Id;
+    _finalResult =
+        (loserUserId == _match?.player1Id) ? GameResult.player2Win : GameResult.player1Win;
     _disconnectedPlayerId = null;
     _stopAllTimers();
     notifyListeners();
@@ -797,9 +779,9 @@ class GameStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // =========================================================
-  // GAME OVER → NOTIFY FIREBASE
-  // =========================================================
+  
+  
+  
 
   Future<void> _notifyGameOver() async {
     final match = _match;
@@ -825,9 +807,9 @@ class GameStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // =========================================================
-  // TURN & MOVE HELPERS
-  // =========================================================
+  
+  
+  
 
   void _advanceTurn() {
     _nextMoveIndex++;
@@ -848,22 +830,21 @@ class GameStateProvider extends ChangeNotifier {
         _caroBoard['$row,$col'] = symbol;
         _lastMove = CaroCell(row, col, symbol);
 
-        // Kiểm tra thắng từ nước đi của đối thủ
+        
         final winCells = _checkCaroWin(row, col, symbol);
         if (winCells != null) {
           _winLine = winCells;
           _isGameOver = true;
           _winnerUserId = move.movedBy;
-          _finalResult = (move.movedBy == match.player1Id)
-              ? GameResult.player1Win
-              : GameResult.player2Win;
+          _finalResult =
+              (move.movedBy == match.player1Id) ? GameResult.player1Win : GameResult.player2Win;
           _endReason = EndReason.fiveInRow;
           _stopAllTimers();
         }
       }
     }
 
-    // Cập nhật đồng hồ từ move
+    
     if (move.remainingTimeMs > 0) {
       if (move.movedBy == match.player1Id) {
         _player1RemainingMs = move.remainingTimeMs;
@@ -902,11 +883,11 @@ class GameStateProvider extends ChangeNotifier {
     }
   }
 
-  // =========================================================
-  // REPLAY MODE
-  // =========================================================
+  
+  
+  
 
-  /// Bật chế độ Replay — load toàn bộ lịch sử nước đi.
+  
   Future<void> startReplay() async {
     if (_match == null) return;
 
@@ -930,31 +911,31 @@ class GameStateProvider extends ChangeNotifier {
     }
   }
 
-  /// Thoát Replay — quay lại board state hiện tại.
+  
   void stopReplay() {
     _isReplayMode = false;
     _replayIndex = -1;
     _replayTimer?.cancel();
-    // Rebuild board từ toàn bộ moves
+    
     _rebuildBoardFromHistory(_replayMoves);
     notifyListeners();
   }
 
-  /// Tua tới 1 nước.
+  
   void replayForward() {
     if (!canReplayForward) return;
     _replayIndex++;
     _applyReplayState(_replayIndex);
   }
 
-  /// Tua lùi 1 nước.
+  
   void replayBack() {
     if (!canReplayBack) return;
     _replayIndex--;
     _applyReplayState(_replayIndex);
   }
 
-  /// Phát tự động toàn bộ replay.
+  
   void replayPlay({int intervalMs = 800}) {
     _replayTimer?.cancel();
     _replayTimer = Timer.periodic(
@@ -969,7 +950,7 @@ class GameStateProvider extends ChangeNotifier {
     );
   }
 
-  /// Tạm dừng auto-play.
+  
   void replayPause() {
     _replayTimer?.cancel();
   }
@@ -993,7 +974,7 @@ class GameStateProvider extends ChangeNotifier {
       }
     }
 
-    // Kiểm tra nếu trạng thái hiện tại là winning move
+    
     if (_replayIndex >= 0 && _replayIndex < _replayMoves.length) {
       final move = _replayMoves[_replayIndex];
       final data = move.moveData;
@@ -1011,9 +992,9 @@ class GameStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // =========================================================
-  // TIMER UTILITIES
-  // =========================================================
+  
+  
+  
 
   void _stopAllTimers() {
     _chessClockTimer?.cancel();
@@ -1022,22 +1003,22 @@ class GameStateProvider extends ChangeNotifier {
     _replayTimer?.cancel();
   }
 
-  // =========================================================
-  // SPECTATOR: JOIN / LEAVE
-  // =========================================================
+  
+  
+  
 
-  /// Gọi khi spectator rời phòng.
+  
   Future<void> leaveAsSpectator() async {
     if (_match == null || !isSpectator) return;
     await _firebase.leaveAsSpectator(_match!.matchId, _currentUserId);
   }
 
-  // =========================================================
-  // MATCH CREATION HELPER
-  // =========================================================
+  
+  
+  
 
-  /// Tạo GameMatch mới từ các tham số cài đặt trận.
-  /// Dùng trong game_setup_page trước khi gọi GameFirebaseService.createMatch().
+  
+  
   static GameMatch buildNewMatch({
     required String matchId,
     required GameType gameType,
@@ -1052,11 +1033,10 @@ class GameStateProvider extends ChangeNotifier {
     String? targetUserId,
     String? targetUserName,
   }) {
-    // Resolve random side
+    
     ChessSide resolvedSide = player1Side;
     if (player1Side == ChessSide.random) {
-      resolvedSide =
-          math.Random().nextBool() ? ChessSide.white : ChessSide.black;
+      resolvedSide = math.Random().nextBool() ? ChessSide.white : ChessSide.black;
     }
 
     return GameMatch(
@@ -1075,11 +1055,11 @@ class GameStateProvider extends ChangeNotifier {
     );
   }
 
-  // =========================================================
-  // CLOCK DISPLAY HELPER
-  // =========================================================
+  
+  
+  
 
-  /// Format milliseconds → "MM:SS" hoặc "M:SS.t" nếu < 10s.
+  
   static String formatClock(int ms) {
     if (ms <= 0) return '0:00';
     final totalSeconds = (ms / 1000).ceil();
@@ -1088,7 +1068,7 @@ class GameStateProvider extends ChangeNotifier {
     return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 
-  /// Format milliseconds với tenths (cho hiển thị khi < 10 giây).
+  
   static String formatClockPrecise(int ms) {
     if (ms <= 0) return '0:00.0';
     if (ms >= 10000) return formatClock(ms);
@@ -1097,9 +1077,9 @@ class GameStateProvider extends ChangeNotifier {
     return '0:0$seconds.$tenths';
   }
 
-  // =========================================================
-  // DISPOSE
-  // =========================================================
+  
+  
+  
 
   @override
   void dispose() {
@@ -1107,7 +1087,7 @@ class GameStateProvider extends ChangeNotifier {
     _matchSub?.cancel();
     _moveSub?.cancel();
     _disconnectSub?.cancel();
-    // Spectator leave khi rời trang
+    
     if (isSpectator && _match != null) {
       _firebase.leaveAsSpectator(_match!.matchId, _currentUserId);
     }

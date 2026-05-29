@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
@@ -7,9 +8,9 @@ import 'package:flutter_chat_demo/widgets/widgets.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ImprovedMessageBubble
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class ImprovedMessageBubble extends StatefulWidget {
   final String content;
@@ -65,8 +66,8 @@ class _ImprovedMessageBubbleState extends State<ImprovedMessageBubble>
       vsync: this,
       duration: const Duration(milliseconds: 280),
     );
-    _entryScale = Tween<double>(begin: 0.85, end: 1.0).animate(
-        CurvedAnimation(parent: _entryCtrl, curve: Curves.easeOutBack));
+    _entryScale = Tween<double>(begin: 0.85, end: 1.0)
+        .animate(CurvedAnimation(parent: _entryCtrl, curve: Curves.easeOutBack));
     _entryFade = Tween<double>(begin: 0.0, end: 1.0)
         .animate(CurvedAnimation(parent: _entryCtrl, curve: Curves.easeOut));
     _entryCtrl.forward();
@@ -85,8 +86,7 @@ class _ImprovedMessageBubbleState extends State<ImprovedMessageBubble>
       _dragOffset = _dragOffset.clamp(-60.0, 60.0);
     });
     if (!_replyTriggered &&
-        ((widget.isMe && _dragOffset < -48) ||
-            (!widget.isMe && _dragOffset > 48))) {
+        ((widget.isMe && _dragOffset < -48) || (!widget.isMe && _dragOffset > 48))) {
       _replyTriggered = true;
       HapticFeedback.mediumImpact();
       widget.onSwipeReply?.call();
@@ -116,18 +116,16 @@ class _ImprovedMessageBubbleState extends State<ImprovedMessageBubble>
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 12),
               child: Align(
-                alignment:
-                    widget.isMe ? Alignment.centerRight : Alignment.centerLeft,
+                alignment: widget.isMe ? Alignment.centerRight : Alignment.centerLeft,
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
                     maxWidth: MediaQuery.of(context).size.width * 0.74,
                   ),
                   child: Column(
-                    crossAxisAlignment: widget.isMe
-                        ? CrossAxisAlignment.end
-                        : CrossAxisAlignment.start,
+                    crossAxisAlignment:
+                        widget.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                     children: [
-                      // Swipe reply icon
+                      
                       if (_dragOffset.abs() > 12)
                         _SwipeReplyHint(
                           isMe: widget.isMe,
@@ -183,10 +181,9 @@ class _SwipeReplyHint extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 4),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: ColorConstants.primaryColor.withOpacity(0.15),
+            color: ColorConstants.primaryColor.withValues(alpha: 0.15),
           ),
-          child: Icon(Icons.reply_rounded,
-              size: 18, color: ColorConstants.primaryColor),
+          child: Icon(Icons.reply_rounded, size: 18, color: ColorConstants.primaryColor),
         ),
       ),
     );
@@ -230,12 +227,12 @@ class _BubbleBody extends StatelessWidget {
     return isDark ? const Color(0xFFF0F2F8) : const Color(0xFF1A1D2E);
   }
 
-  /// Render text với các URL được highlight và bấm được.
+  
   Widget _buildRichText(String text, Color baseColor) {
     final RegExp urlExp = RegExp(
       r'(?:(?:https?|ftp):\/\/|www\.)'
       r'[\w\-]+(\.[\w\-]+)+'
-      r"(?:[\/\w\-._~:/?#\[\]@!$&'()*+,;=%]*)?", // Dùng ngoặc kép r"..." ở đây
+      r"(?:[\/\w\-._~:/?#\[\]@!$&'()*+,;=%]*)?", 
       caseSensitive: false,
     );
 
@@ -243,7 +240,7 @@ class _BubbleBody extends StatelessWidget {
     int lastEnd = 0;
 
     for (final match in urlExp.allMatches(text)) {
-      // Text trước URL
+      
       if (match.start > lastEnd) {
         spans.add(TextSpan(
           text: text.substring(lastEnd, match.start),
@@ -251,7 +248,7 @@ class _BubbleBody extends StatelessWidget {
         ));
       }
 
-      // URL span — bấm được
+      
       var rawUrl = text.substring(match.start, match.end);
       final linkUrl = rawUrl.startsWith('http') ? rawUrl : 'https://$rawUrl';
 
@@ -263,8 +260,7 @@ class _BubbleBody extends StatelessWidget {
               HapticFeedback.lightImpact();
               final uri = Uri.parse(linkUrl);
               try {
-                final ok =
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
                 if (!ok) {
                   await launchUrl(uri, mode: LaunchMode.inAppWebView);
                 }
@@ -277,8 +273,7 @@ class _BubbleBody extends StatelessWidget {
                 fontSize: 14.5,
                 height: 1.45,
                 decoration: TextDecoration.underline,
-                decorationColor:
-                    isMe ? const Color(0xFFBDD7FF) : const Color(0xFF4F46E5),
+                decorationColor: isMe ? const Color(0xFFBDD7FF) : const Color(0xFF4F46E5),
               ),
             ),
           ),
@@ -288,7 +283,7 @@ class _BubbleBody extends StatelessWidget {
       lastEnd = match.end;
     }
 
-    // Phần text còn lại sau URL cuối
+    
     if (lastEnd < text.length) {
       spans.add(TextSpan(
         text: text.substring(lastEnd),
@@ -296,7 +291,7 @@ class _BubbleBody extends StatelessWidget {
       ));
     }
 
-    // Nếu không có URL nào, render Text thường
+    
     if (spans.isEmpty) {
       return Text(
         text,
@@ -309,13 +304,11 @@ class _BubbleBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // URL detection
-    final RegExp urlExp =
-        RegExp(r'(?:(?:https?|ftp):\/\/)?[\w/\-?=%.]+\.[\w/\-?=%.]+');
+    
+    final RegExp urlExp = RegExp(r'(?:(?:https?|ftp):\/\/)?[\w/\-?=%.]+\.[\w/\-?=%.]+');
     final matches = urlExp.allMatches(content);
-    String? firstUrl = matches.isNotEmpty
-        ? content.substring(matches.first.start, matches.first.end)
-        : null;
+    String? firstUrl =
+        matches.isNotEmpty ? content.substring(matches.first.start, matches.first.end) : null;
     if (firstUrl != null && !firstUrl.startsWith('http')) {
       firstUrl = 'https://$firstUrl';
     }
@@ -333,8 +326,8 @@ class _BubbleBody extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: isMe
-                ? ColorConstants.primaryColor.withOpacity(0.2)
-                : Colors.black.withOpacity(isDark ? 0.15 : 0.06),
+                ? ColorConstants.primaryColor.withValues(alpha: 0.2)
+                : Colors.black.withValues(alpha: isDark ? 0.15 : 0.06),
             blurRadius: 8,
             offset: const Offset(0, 3),
           ),
@@ -344,15 +337,15 @@ class _BubbleBody extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Pinned badge
+          
           if (isPinned) ...[
             Container(
               margin: const EdgeInsets.only(bottom: 6),
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
               decoration: BoxDecoration(
                 color: isMe
-                    ? Colors.white.withOpacity(0.15)
-                    : ColorConstants.primaryColor.withOpacity(0.1),
+                    ? Colors.white.withValues(alpha: 0.15)
+                    : ColorConstants.primaryColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Row(
@@ -369,8 +362,7 @@ class _BubbleBody extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
-                      color:
-                          isMe ? Colors.white70 : ColorConstants.primaryColor,
+                      color: isMe ? Colors.white70 : ColorConstants.primaryColor,
                     ),
                   ),
                 ],
@@ -378,21 +370,19 @@ class _BubbleBody extends StatelessWidget {
             ),
           ],
 
-          // Reply preview
+          
           if (replyToContent != null) ...[
             Container(
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
               decoration: BoxDecoration(
                 color: isMe
-                    ? Colors.white.withOpacity(0.12)
-                    : ColorConstants.primaryColor.withOpacity(0.07),
+                    ? Colors.white.withValues(alpha: 0.12)
+                    : ColorConstants.primaryColor.withValues(alpha: 0.07),
                 borderRadius: BorderRadius.circular(10),
                 border: Border(
                   left: BorderSide(
-                    color: isMe
-                        ? Colors.white.withOpacity(0.6)
-                        : ColorConstants.primaryColor,
+                    color: isMe ? Colors.white.withValues(alpha: 0.6) : ColorConstants.primaryColor,
                     width: 3,
                   ),
                 ),
@@ -407,8 +397,7 @@ class _BubbleBody extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w700,
-                        color:
-                            isMe ? Colors.white70 : ColorConstants.primaryColor,
+                        color: isMe ? Colors.white70 : ColorConstants.primaryColor,
                       ),
                     ),
                   const SizedBox(height: 2),
@@ -426,7 +415,7 @@ class _BubbleBody extends StatelessWidget {
             ),
           ],
 
-          // Deleted
+          
           if (isDeleted)
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -448,7 +437,7 @@ class _BubbleBody extends StatelessWidget {
               ],
             )
           else ...[
-            // Content
+            
             _buildRichText(content, _textColor),
             if (firstUrl != null)
               Padding(
@@ -459,7 +448,7 @@ class _BubbleBody extends StatelessWidget {
 
           const SizedBox(height: 5),
 
-          // Footer: time + edited + read receipt
+          
           Row(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.end,
@@ -469,9 +458,7 @@ class _BubbleBody extends StatelessWidget {
                   'đã sửa · ',
                   style: TextStyle(
                     fontSize: 10,
-                    color: isMe
-                        ? Colors.white.withOpacity(0.5)
-                        : Colors.grey.shade400,
+                    color: isMe ? Colors.white.withValues(alpha: 0.5) : Colors.grey.shade400,
                     fontStyle: FontStyle.italic,
                   ),
                 ),
@@ -492,9 +479,7 @@ class _BubbleBody extends StatelessWidget {
                     key: ValueKey(isRead),
                     isRead ? Icons.done_all_rounded : Icons.done_rounded,
                     size: 14,
-                    color: isRead
-                        ? const Color(0xFF80DEEA)
-                        : Colors.white.withOpacity(0.5),
+                    color: isRead ? const Color(0xFF80DEEA) : Colors.white.withValues(alpha: 0.5),
                   ),
                 ),
               ],
@@ -515,9 +500,9 @@ class _BubbleBody extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DateSeparator
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class DateSeparator extends StatelessWidget {
   final String label;
@@ -540,13 +525,13 @@ class DateSeparator extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
             decoration: BoxDecoration(
               color: isDark
-                  ? Colors.white.withOpacity(0.07)
-                  : ColorConstants.primaryColor.withOpacity(0.07),
+                  ? Colors.white.withValues(alpha: 0.07)
+                  : ColorConstants.primaryColor.withValues(alpha: 0.07),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: isDark
-                    ? Colors.white.withOpacity(0.1)
-                    : ColorConstants.primaryColor.withOpacity(0.15),
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : ColorConstants.primaryColor.withValues(alpha: 0.15),
               ),
             ),
             child: Text(
@@ -556,8 +541,8 @@ class DateSeparator extends StatelessWidget {
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0.3,
                 color: isDark
-                    ? Colors.white.withOpacity(0.5)
-                    : ColorConstants.primaryColor.withOpacity(0.7),
+                    ? Colors.white.withValues(alpha: 0.5)
+                    : ColorConstants.primaryColor.withValues(alpha: 0.7),
               ),
             ),
           ),
@@ -568,19 +553,15 @@ class DateSeparator extends StatelessWidget {
   }
 
   Widget _gradientLine(bool isDark, {required bool toRight}) {
-    final baseColor = isDark
-        ? Colors.white.withOpacity(0.08)
-        : Colors.black.withOpacity(0.07);
+    final baseColor =
+        isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.07);
     return Expanded(
       child: Container(
         height: 1,
-        margin:
-            EdgeInsets.only(left: toRight ? 0 : 12, right: toRight ? 12 : 0),
+        margin: EdgeInsets.only(left: toRight ? 0 : 12, right: toRight ? 12 : 0),
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: toRight
-                ? [Colors.transparent, baseColor]
-                : [baseColor, Colors.transparent],
+            colors: toRight ? [Colors.transparent, baseColor] : [baseColor, Colors.transparent],
           ),
         ),
       ),
@@ -588,9 +569,9 @@ class DateSeparator extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ImprovedChatInput
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class ImprovedChatInput extends StatefulWidget {
   final TextEditingController controller;
@@ -642,8 +623,7 @@ class ImprovedChatInput extends StatefulWidget {
   State<ImprovedChatInput> createState() => _ImprovedChatInputState();
 }
 
-class _ImprovedChatInputState extends State<ImprovedChatInput>
-    with SingleTickerProviderStateMixin {
+class _ImprovedChatInputState extends State<ImprovedChatInput> with SingleTickerProviderStateMixin {
   late AnimationController _featureCtrl;
   late Animation<double> _featureAnim;
   bool _hasText = false;
@@ -651,8 +631,7 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
   @override
   void initState() {
     super.initState();
-    _featureCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 220));
+    _featureCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 220));
     _featureAnim = CurvedAnimation(parent: _featureCtrl, curve: Curves.easeOut);
     widget.controller.addListener(_onTextChange);
   }
@@ -677,15 +656,13 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
         color: widget.isDark ? ColorConstants.surfaceDark : Colors.white,
         border: Border(
           top: BorderSide(
-            color: widget.isDark
-                ? Colors.white.withOpacity(0.07)
-                : Colors.grey.shade200,
+            color: widget.isDark ? Colors.white.withValues(alpha: 0.07) : Colors.grey.shade200,
             width: 0.8,
           ),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(widget.isDark ? 0.25 : 0.08),
+            color: Colors.black.withValues(alpha: widget.isDark ? 0.25 : 0.08),
             blurRadius: 16,
             offset: const Offset(0, -4),
           ),
@@ -696,33 +673,31 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Reply preview
+            
             AnimatedSize(
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeOut,
-              child: widget.replyingTo != null
-                  ? _buildReplyPreview()
-                  : const SizedBox.shrink(),
+              child: widget.replyingTo != null ? _buildReplyPreview() : const SizedBox.shrink(),
             ),
 
-            // Feature tray
+            
             if (_showFull)
               SizeTransition(
                 sizeFactor: _featureAnim,
                 child: _buildFeatureTray(),
               ),
 
-            // Recording bar
+            
             if (widget.isRecording) _buildRecordingBar(),
 
-            // Input row
+            
             if (!widget.isRecording)
               Padding(
                 padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    // Toggle features
+                    
                     if (_showFull)
                       _InputIconBtn(
                         icon: widget.showFeatures
@@ -742,14 +717,14 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
 
                     const SizedBox(width: 4),
 
-                    // Text field
+                    
                     Expanded(
                       child: _buildTextField(),
                     ),
 
                     const SizedBox(width: 6),
 
-                    // Send / media
+                    
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 220),
                       transitionBuilder: (child, anim) => ScaleTransition(
@@ -778,12 +753,11 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
       duration: const Duration(milliseconds: 200),
       constraints: const BoxConstraints(minHeight: 46, maxHeight: 130),
       decoration: BoxDecoration(
-        color:
-            widget.isDark ? ColorConstants.surfaceDark2 : Colors.grey.shade100,
+        color: widget.isDark ? ColorConstants.surfaceDark2 : Colors.grey.shade100,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
           color: widget.focusNode.hasFocus
-              ? ColorConstants.primaryColor.withOpacity(0.4)
+              ? ColorConstants.primaryColor.withValues(alpha: 0.4)
               : Colors.transparent,
           width: 1.5,
         ),
@@ -806,9 +780,8 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
                 height: 1.4,
               ),
               decoration: InputDecoration(
-                hintText: widget.isMiniChat || widget.isBubbleMode
-                    ? 'Nhắn tin...'
-                    : 'Nhập tin nhắn...',
+                hintText:
+                    widget.isMiniChat || widget.isBubbleMode ? 'Nhắn tin...' : 'Nhập tin nhắn...',
                 hintStyle: TextStyle(
                   color: widget.isDark ? Colors.white30 : Colors.grey.shade400,
                   fontSize: 15,
@@ -821,7 +794,7 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
               keyboardType: TextInputType.multiline,
             ),
           ),
-          // Emoji
+          
           if (_showFull)
             Padding(
               padding: const EdgeInsets.only(right: 8, bottom: 10),
@@ -847,8 +820,8 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
       padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
       decoration: BoxDecoration(
         color: widget.isDark
-            ? ColorConstants.primaryColor.withOpacity(0.12)
-            : ColorConstants.primaryColor.withOpacity(0.07),
+            ? ColorConstants.primaryColor.withValues(alpha: 0.12)
+            : ColorConstants.primaryColor.withValues(alpha: 0.07),
         borderRadius: BorderRadius.circular(14),
         border: Border(
           left: BorderSide(color: ColorConstants.primaryColor, width: 3),
@@ -889,10 +862,9 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
               height: 24,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.grey.withOpacity(0.15),
+                color: Colors.grey.withValues(alpha: 0.15),
               ),
-              child: Icon(Icons.close_rounded,
-                  size: 14, color: Colors.grey.shade500),
+              child: Icon(Icons.close_rounded, size: 14, color: Colors.grey.shade500),
             ),
           ),
         ],
@@ -914,8 +886,7 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: features.map((f) {
           final (icon, label, fn) = f;
-          return _FeatureTrayBtn(
-              icon: icon, label: label, isDark: widget.isDark, onTap: fn);
+          return _FeatureTrayBtn(icon: icon, label: label, isDark: widget.isDark, onTap: fn);
         }).toList(),
       ),
     );
@@ -939,12 +910,10 @@ class _ImprovedChatInputState extends State<ImprovedChatInput>
           const Spacer(),
           TextButton.icon(
             onPressed: widget.onCancelRecord,
-            icon: const Icon(Icons.delete_outline_rounded,
-                size: 16, color: ColorConstants.accentRed),
+            icon:
+                const Icon(Icons.delete_outline_rounded, size: 16, color: ColorConstants.accentRed),
             label: const Text('Huỷ',
-                style: TextStyle(
-                    color: ColorConstants.accentRed,
-                    fontWeight: FontWeight.w500)),
+                style: TextStyle(color: ColorConstants.accentRed, fontWeight: FontWeight.w500)),
             style: TextButton.styleFrom(padding: EdgeInsets.zero),
           ),
           const SizedBox(width: 8),
@@ -1005,14 +974,10 @@ class _FeatureTrayBtn extends StatelessWidget {
             width: 52,
             height: 52,
             decoration: BoxDecoration(
-              color: isDark
-                  ? Colors.white.withOpacity(0.07)
-                  : Colors.grey.shade100,
+              color: isDark ? Colors.white.withValues(alpha: 0.07) : Colors.grey.shade100,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: isDark
-                    ? Colors.white.withOpacity(0.08)
-                    : Colors.grey.shade200,
+                color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.grey.shade200,
               ),
             ),
             child: Icon(icon, size: 24, color: ColorConstants.primaryColor),
@@ -1044,8 +1009,7 @@ class _InputIconBtn extends StatelessWidget {
     required this.isDark,
     required this.onTap,
     this.filled = false,
-    this.iconColor,
-  });
+  }) : iconColor = null;
 
   @override
   Widget build(BuildContext context) {
@@ -1056,16 +1020,13 @@ class _InputIconBtn extends StatelessWidget {
         width: 42,
         height: 42,
         decoration: BoxDecoration(
-          color: filled
-              ? ColorConstants.primaryColor.withOpacity(0.12)
-              : Colors.transparent,
+          color: filled ? ColorConstants.primaryColor.withValues(alpha: 0.12) : Colors.transparent,
           borderRadius: BorderRadius.circular(13),
         ),
         child: Icon(
           icon,
           size: 23,
-          color: iconColor ??
-              (isDark ? Colors.white54 : ColorConstants.primaryColor),
+          color: iconColor ?? (isDark ? Colors.white54 : ColorConstants.primaryColor),
         ),
       ),
     );
@@ -1082,16 +1043,14 @@ class _SendButton extends StatefulWidget {
   State<_SendButton> createState() => _SendButtonState();
 }
 
-class _SendButtonState extends State<_SendButton>
-    with SingleTickerProviderStateMixin {
+class _SendButtonState extends State<_SendButton> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 120));
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 120));
     _scale = Tween<double>(begin: 1.0, end: 0.9)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeIn));
   }
@@ -1114,8 +1073,7 @@ class _SendButtonState extends State<_SendButton>
       onTapCancel: () => _ctrl.reverse(),
       child: AnimatedBuilder(
         animation: _scale,
-        builder: (_, child) =>
-            Transform.scale(scale: _scale.value, child: child),
+        builder: (_, child) => Transform.scale(scale: _scale.value, child: child),
         child: Container(
           width: 46,
           height: 46,
@@ -1128,7 +1086,7 @@ class _SendButtonState extends State<_SendButton>
             borderRadius: BorderRadius.circular(14),
             boxShadow: [
               BoxShadow(
-                color: ColorConstants.primaryColor.withOpacity(0.35),
+                color: ColorConstants.primaryColor.withValues(alpha: 0.35),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -1141,9 +1099,9 @@ class _SendButtonState extends State<_SendButton>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ChatAppBar
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String peerName;
@@ -1177,14 +1135,13 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
         color: isDark ? ColorConstants.surfaceDark : Colors.white,
         border: Border(
           bottom: BorderSide(
-            color:
-                isDark ? Colors.white.withOpacity(0.07) : Colors.grey.shade200,
+            color: isDark ? Colors.white.withValues(alpha: 0.07) : Colors.grey.shade200,
             width: 0.8,
           ),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.2 : 0.05),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -1194,15 +1151,14 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
         padding: const EdgeInsets.symmetric(horizontal: 4),
         child: Row(
           children: [
-            // Back
+            
             IconButton(
               icon: Icon(Icons.arrow_back_ios_new_rounded,
-                  size: 20,
-                  color: isDark ? Colors.white70 : ColorConstants.primaryColor),
+                  size: 20, color: isDark ? Colors.white70 : ColorConstants.primaryColor),
               onPressed: onBackPressed ?? () => Navigator.pop(context),
             ),
 
-            // Avatar
+            
             GestureDetector(
               onTap: onAvatarTap,
               child: _buildAvatar(),
@@ -1210,7 +1166,7 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
 
             const SizedBox(width: 10),
 
-            // Name + status
+            
             Expanded(
               child: GestureDetector(
                 onTap: onAvatarTap,
@@ -1236,7 +1192,7 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
               ),
             ),
 
-            // Actions
+            
             ...actions,
           ],
         ),
@@ -1245,9 +1201,8 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 
   Widget _buildAvatar() {
-    final colorIndex = peerName.isEmpty
-        ? 0
-        : peerName.codeUnitAt(0) % ColorConstants.avatarColors.length;
+    final colorIndex =
+        peerName.isEmpty ? 0 : peerName.codeUnitAt(0) % ColorConstants.avatarColors.length;
     final avatarColor = ColorConstants.avatarColors[colorIndex];
 
     return Container(
@@ -1255,8 +1210,8 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
       height: 42,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: avatarColor.withOpacity(0.12),
-        border: Border.all(color: avatarColor.withOpacity(0.2), width: 1.5),
+        color: avatarColor.withValues(alpha: 0.12),
+        border: Border.all(color: avatarColor.withValues(alpha: 0.2), width: 1.5),
       ),
       child: ClipOval(
         child: peerAvatar.isNotEmpty
@@ -1272,7 +1227,7 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   Widget _avatarInitials(Color color) {
     return Container(
-      color: color.withOpacity(0.1),
+      color: color.withValues(alpha: 0.1),
       child: Center(
         child: Text(
           peerName.isNotEmpty ? peerName[0].toUpperCase() : '?',
@@ -1314,18 +1269,14 @@ class _OnlineStatus extends StatelessWidget {
                 height: 7,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isOnline
-                      ? ColorConstants.accentGreen
-                      : Colors.grey.shade400,
+                  color: isOnline ? ColorConstants.accentGreen : Colors.grey.shade400,
                 ),
               ),
               const SizedBox(width: 5),
               Text(
                 isOnline
                     ? 'Đang hoạt động'
-                    : (lastSeen != null
-                        ? _formatLastSeen(lastSeen)
-                        : 'Offline'),
+                    : (lastSeen != null ? _formatLastSeen(lastSeen) : 'Offline'),
                 style: TextStyle(
                   fontSize: 12,
                   color: isOnline
@@ -1351,9 +1302,9 @@ class _OnlineStatus extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ScrollToBottomButton
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class ScrollToBottomButton extends StatelessWidget {
   final VoidCallback onTap;
@@ -1382,15 +1333,13 @@ class ScrollToBottomButton extends StatelessWidget {
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.15),
+                  color: Colors.black.withValues(alpha: 0.15),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
               ],
               border: Border.all(
-                color: isDark
-                    ? Colors.white.withOpacity(0.08)
-                    : Colors.grey.shade200,
+                color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.grey.shade200,
                 width: 0.8,
               ),
             ),

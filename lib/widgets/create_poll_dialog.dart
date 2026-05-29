@@ -1,31 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// =============================================================================
-// CreatePollDialog
-// =============================================================================
-//
-// Dialog tạo bình chọn với đầy đủ tính năng:
-//   • Câu hỏi (max 200 ký tự)
-//   • Lựa chọn (min 2, max 10, drag-to-reorder)
-//   • Chọn nhiều đáp án (multiple choice)
-//   • Bình chọn ẩn danh
-//   • Đặt thời hạn (date + time picker)
-//
-// Usage:
-//   showDialog(
-//     context: context,
-//     builder: (_) => CreatePollDialog(
-//       onCreate: (question, options, {isMultipleChoice, isAnonymous, expiresAt}) {
-//         chatProvider.sendPollMessage(
-//           question: question,
-//           optionTexts: options,
-//           ...
-//         );
-//       },
-//     ),
-//   );
-// =============================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 class CreatePollDialog extends StatefulWidget {
   final void Function(
@@ -42,9 +42,8 @@ class CreatePollDialog extends StatefulWidget {
   State<CreatePollDialog> createState() => _CreatePollDialogState();
 }
 
-class _CreatePollDialogState extends State<CreatePollDialog>
-    with SingleTickerProviderStateMixin {
-  // ── Controllers ─────────────────────────────────────────────────────────────
+class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerProviderStateMixin {
+  
 
   final _questionController = TextEditingController();
   final List<TextEditingController> _optionControllers = [
@@ -54,7 +53,7 @@ class _CreatePollDialogState extends State<CreatePollDialog>
   final List<FocusNode> _optionFocusNodes = [FocusNode(), FocusNode()];
   final _scrollController = ScrollController();
 
-  // ── State ───────────────────────────────────────────────────────────────────
+  
 
   bool _isMultipleChoice = false;
   bool _isAnonymous = false;
@@ -63,13 +62,13 @@ class _CreatePollDialogState extends State<CreatePollDialog>
   bool _questionHasError = false;
   bool _optionHasError = false;
 
-  // ── Animation ───────────────────────────────────────────────────────────────
+  
 
   late AnimationController _animController;
   late Animation<double> _scaleAnim;
   late Animation<double> _fadeAnim;
 
-  // ── Constants ───────────────────────────────────────────────────────────────
+  
 
   static const int _maxOptions = 10;
   static const _primary = Color(0xFF6C63FF);
@@ -79,7 +78,7 @@ class _CreatePollDialogState extends State<CreatePollDialog>
   static const _border = Color(0xFFE5E7EB);
   static const _surface = Color(0xFFF9FAFB);
 
-  // ── Lifecycle ────────────────────────────────────────────────────────────────
+  
 
   @override
   void initState() {
@@ -109,7 +108,7 @@ class _CreatePollDialogState extends State<CreatePollDialog>
     super.dispose();
   }
 
-  // ── Actions ──────────────────────────────────────────────────────────────────
+  
 
   void _addOption() {
     if (_optionControllers.length >= _maxOptions) {
@@ -120,7 +119,7 @@ class _CreatePollDialogState extends State<CreatePollDialog>
       _optionControllers.add(TextEditingController());
       _optionFocusNodes.add(FocusNode());
     });
-    // Scroll đến cuối & focus vào ô mới
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent + 80,
@@ -165,9 +164,7 @@ class _CreatePollDialogState extends State<CreatePollDialog>
           content: Row(
             children: [
               Icon(
-                isError
-                    ? Icons.error_outline_rounded
-                    : Icons.check_circle_outline_rounded,
+                isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
                 color: Colors.white,
                 size: 18,
               ),
@@ -177,8 +174,7 @@ class _CreatePollDialogState extends State<CreatePollDialog>
           ),
           backgroundColor: isError ? const Color(0xFFEF4444) : _primary,
           behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           margin: const EdgeInsets.all(16),
           duration: const Duration(seconds: 2),
         ),
@@ -235,12 +231,10 @@ class _CreatePollDialogState extends State<CreatePollDialog>
 
   void _handleCreate() {
     final question = _questionController.text.trim();
-    final options = _optionControllers
-        .map((c) => c.text.trim())
-        .where((t) => t.isNotEmpty)
-        .toList();
+    final options =
+        _optionControllers.map((c) => c.text.trim()).where((t) => t.isNotEmpty).toList();
 
-    // Validation
+    
     bool hasError = false;
     if (question.isEmpty) {
       setState(() => _questionHasError = true);
@@ -271,7 +265,7 @@ class _CreatePollDialogState extends State<CreatePollDialog>
     if (mounted) Navigator.of(context).pop();
   }
 
-  // ── Build ────────────────────────────────────────────────────────────────────
+  
 
   @override
   Widget build(BuildContext context) {
@@ -298,7 +292,7 @@ class _CreatePollDialogState extends State<CreatePollDialog>
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: _primary.withOpacity(0.12),
+                    color: _primary.withValues(alpha: 0.12),
                     blurRadius: 40,
                     offset: const Offset(0, 16),
                   ),
@@ -350,7 +344,7 @@ class _CreatePollDialogState extends State<CreatePollDialog>
     );
   }
 
-  // ── Header ───────────────────────────────────────────────────────────────────
+  
 
   Widget _buildHeader() {
     return Container(
@@ -368,7 +362,7 @@ class _CreatePollDialogState extends State<CreatePollDialog>
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.18),
+              color: Colors.white.withValues(alpha: 0.18),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(
@@ -404,8 +398,7 @@ class _CreatePollDialogState extends State<CreatePollDialog>
           ),
           IconButton(
             onPressed: _dismissDialog,
-            icon:
-                const Icon(Icons.close_rounded, color: Colors.white, size: 22),
+            icon: const Icon(Icons.close_rounded, color: Colors.white, size: 22),
             splashRadius: 20,
             tooltip: 'Đóng',
           ),
@@ -414,7 +407,7 @@ class _CreatePollDialogState extends State<CreatePollDialog>
     );
   }
 
-  // ── Section label ────────────────────────────────────────────────────────────
+  
 
   Widget _buildSectionLabel({required IconData icon, required String label}) {
     return Row(
@@ -434,7 +427,7 @@ class _CreatePollDialogState extends State<CreatePollDialog>
     );
   }
 
-  // ── Question field ───────────────────────────────────────────────────────────
+  
 
   Widget _buildQuestionField() {
     return TextField(
@@ -455,9 +448,8 @@ class _CreatePollDialogState extends State<CreatePollDialog>
         hintText: 'Nhập câu hỏi bình chọn…',
         hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
         filled: true,
-        fillColor: _questionHasError
-            ? const Color(0xFFFEF2F2)
-            : _primaryLight.withOpacity(0.6),
+        fillColor:
+            _questionHasError ? const Color(0xFFFEF2F2) : _primaryLight.withValues(alpha: 0.6),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
@@ -465,9 +457,7 @@ class _CreatePollDialogState extends State<CreatePollDialog>
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide(
-            color: _questionHasError
-                ? const Color(0xFFEF4444)
-                : Colors.transparent,
+            color: _questionHasError ? const Color(0xFFEF4444) : Colors.transparent,
             width: 1.5,
           ),
         ),
@@ -479,20 +469,18 @@ class _CreatePollDialogState extends State<CreatePollDialog>
           ),
         ),
         counterStyle: const TextStyle(fontSize: 11, color: _textMuted),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       ),
     );
   }
 
-  // ── Options section header ────────────────────────────────────────────────────
+  
 
   Widget _buildOptionsSectionHeader() {
     final count = _optionControllers.length;
     return Row(
       children: [
-        const Icon(Icons.format_list_bulleted_rounded,
-            size: 16, color: _primary),
+        const Icon(Icons.format_list_bulleted_rounded, size: 16, color: _primary),
         const SizedBox(width: 6),
         const Text(
           'Lựa chọn',
@@ -507,8 +495,7 @@ class _CreatePollDialogState extends State<CreatePollDialog>
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
-            color:
-                count >= _maxOptions ? const Color(0xFFFEF3C7) : _primaryLight,
+            color: count >= _maxOptions ? const Color(0xFFFEF3C7) : _primaryLight,
             borderRadius: BorderRadius.circular(20),
           ),
           child: Text(
@@ -529,7 +516,7 @@ class _CreatePollDialogState extends State<CreatePollDialog>
     );
   }
 
-  // ── Options list (reorderable) ────────────────────────────────────────────────
+  
 
   Widget _buildOptionsList() {
     return ReorderableListView.builder(
@@ -541,7 +528,7 @@ class _CreatePollDialogState extends State<CreatePollDialog>
           animation: animation,
           builder: (_, child) => Material(
             elevation: 6 * animation.value,
-            shadowColor: _primary.withOpacity(0.3),
+            shadowColor: _primary.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(12),
             child: child,
           ),
@@ -573,11 +560,12 @@ class _CreatePollDialogState extends State<CreatePollDialog>
     );
   }
 
-  // ── Add option button ─────────────────────────────────────────────────────────
+  
 
   Widget _buildAddOptionButton() {
-    if (_optionControllers.length >= _maxOptions)
+    if (_optionControllers.length >= _maxOptions) {
       return const SizedBox.shrink();
+    }
 
     return GestureDetector(
       onTap: _addOption,
@@ -586,11 +574,11 @@ class _CreatePollDialogState extends State<CreatePollDialog>
         padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 14),
         decoration: BoxDecoration(
           border: Border.all(
-            color: _primary.withOpacity(0.35),
+            color: _primary.withValues(alpha: 0.35),
             width: 1.5,
           ),
           borderRadius: BorderRadius.circular(12),
-          color: _primaryLight.withOpacity(0.4),
+          color: _primaryLight.withValues(alpha: 0.4),
         ),
         child: const Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -611,7 +599,7 @@ class _CreatePollDialogState extends State<CreatePollDialog>
     );
   }
 
-  // ── Settings card ─────────────────────────────────────────────────────────────
+  
 
   Widget _buildSettingsCard() {
     return Container(
@@ -662,7 +650,7 @@ class _CreatePollDialogState extends State<CreatePollDialog>
               setState(() => _hasExpiry = v);
               if (v) {
                 await _pickExpiryDate();
-                // Nếu user không chọn ngày → tắt lại toggle
+                
                 if (_expiresAt == null && mounted) {
                   setState(() => _hasExpiry = false);
                 }
@@ -683,7 +671,7 @@ class _CreatePollDialogState extends State<CreatePollDialog>
         color: _border,
       );
 
-  // ── Footer ────────────────────────────────────────────────────────────────────
+  
 
   Widget _buildFooter() {
     return Container(
@@ -723,7 +711,7 @@ class _CreatePollDialogState extends State<CreatePollDialog>
     );
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────────
+  
 
   String _formatExpiry(DateTime dt) {
     final weekdays = ['', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
@@ -735,9 +723,9 @@ class _CreatePollDialogState extends State<CreatePollDialog>
   }
 }
 
-// =============================================================================
-// _OptionTile
-// =============================================================================
+
+
+
 
 class _OptionTile extends StatefulWidget {
   final int index;
@@ -769,18 +757,18 @@ class _OptionTileState extends State<_OptionTile> {
   static const _primary = Color(0xFF6C63FF);
   static const _primaryLight = Color(0xFFEEEDFE);
 
-  // Màu gradient cho từng lựa chọn
+  
   static const _indexColors = [
-    Color(0xFF6C63FF), // 1
-    Color(0xFF0EA5E9), // 2
-    Color(0xFF10B981), // 3
-    Color(0xFFF59E0B), // 4
-    Color(0xFFEF4444), // 5
-    Color(0xFF8B5CF6), // 6
-    Color(0xFF06B6D4), // 7
-    Color(0xFF84CC16), // 8
-    Color(0xFFEC4899), // 9
-    Color(0xFFFF7849), // 10
+    Color(0xFF6C63FF), 
+    Color(0xFF0EA5E9), 
+    Color(0xFF10B981), 
+    Color(0xFFF59E0B), 
+    Color(0xFFEF4444), 
+    Color(0xFF8B5CF6), 
+    Color(0xFF06B6D4), 
+    Color(0xFF84CC16), 
+    Color(0xFFEC4899), 
+    Color(0xFFFF7849), 
   ];
 
   Color get _indexColor => _indexColors[widget.index % _indexColors.length];
@@ -791,7 +779,7 @@ class _OptionTileState extends State<_OptionTile> {
       margin: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          // Drag handle
+          
           ReorderableDragStartListener(
             index: widget.index,
             child: Padding(
@@ -804,13 +792,13 @@ class _OptionTileState extends State<_OptionTile> {
             ),
           ),
 
-          // Index badge
+          
           Container(
             width: 28,
             height: 28,
             margin: const EdgeInsets.only(right: 8),
             decoration: BoxDecoration(
-              color: _indexColor.withOpacity(0.12),
+              color: _indexColor.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
             alignment: Alignment.center,
@@ -824,7 +812,7 @@ class _OptionTileState extends State<_OptionTile> {
             ),
           ),
 
-          // Text field
+          
           Expanded(
             child: TextField(
               controller: widget.controller,
@@ -847,7 +835,7 @@ class _OptionTileState extends State<_OptionTile> {
                 filled: true,
                 fillColor: widget.hasError && widget.controller.text.isEmpty
                     ? const Color(0xFFFEF2F2)
-                    : _primaryLight.withOpacity(0.5),
+                    : _primaryLight.withValues(alpha: 0.5),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -885,7 +873,7 @@ class _OptionTileState extends State<_OptionTile> {
             ),
           ),
 
-          // Remove button
+          
           if (widget.totalOptions > 2) ...[
             const SizedBox(width: 4),
             IconButton(
@@ -906,9 +894,9 @@ class _OptionTileState extends State<_OptionTile> {
   }
 }
 
-// =============================================================================
-// _SettingTile
-// =============================================================================
+
+
+
 
 class _SettingTile extends StatelessWidget {
   final IconData icon;
@@ -988,9 +976,9 @@ class _SettingTile extends StatelessWidget {
   }
 }
 
-// =============================================================================
-// _CreateButton – animated gradient submit button
-// =============================================================================
+
+
+
 
 class _CreateButton extends StatefulWidget {
   final VoidCallback onTap;
@@ -1001,8 +989,7 @@ class _CreateButton extends StatefulWidget {
   State<_CreateButton> createState() => _CreateButtonState();
 }
 
-class _CreateButtonState extends State<_CreateButton>
-    with SingleTickerProviderStateMixin {
+class _CreateButtonState extends State<_CreateButton> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnim;
 
@@ -1040,7 +1027,7 @@ class _CreateButtonState extends State<_CreateButton>
             borderRadius: BorderRadius.circular(14),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF6C63FF).withOpacity(0.35),
+                color: const Color(0xFF6C63FF).withValues(alpha: 0.35),
                 blurRadius: 14,
                 offset: const Offset(0, 4),
               ),

@@ -3,9 +3,9 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DESIGN TOKENS  (dark-on-dark palette for the secure overlay)
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 abstract class _SC {
   static const bg0 = Color(0xFF060A14);
   static const bg1 = Color(0xFF0D1528);
@@ -19,46 +19,46 @@ abstract class _SC {
   static const white10 = Color(0x1AFFFFFF);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SECURE STATE
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 enum SecureState {
-  /// Secure mode is off — content shown normally.
+  
   disabled,
 
-  /// Front-camera active, no threat detected.
+  
   monitoring,
 
-  /// Threat frame count is rising — showing a subtle warning shimmer.
+  
   warning,
 
-  /// Content fully blurred — secondary viewer confirmed.
+  
   blurred,
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SECURE OVERLAY MANAGER
-// ─────────────────────────────────────────────────────────────────────────────
 
-/// Wraps any widget with an anti-shoulder-surf overlay.
-///
-/// ### Production usage
-/// Call [SecureOverlayManager.reportDetection] from your ML / camera pipeline:
-/// ```dart
-/// SecureOverlayManager.reportDetection(isSuspicious: faces.length > 1);
-/// ```
-///
-/// ### Simulation / demo
-/// When [isActive] becomes true the widget runs a safe internal simulation
-/// loop that never triggers blur automatically — useful for demos.
-/// Toggle blur manually via [debugTriggerBlur] / [debugClearBlur].
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class SecureOverlayManager extends StatefulWidget {
   final Widget child;
   final bool isActive;
   final VoidCallback? onSecureStateChanged;
 
-  /// Called with the new [SecureState] whenever it changes.
+  
   final void Function(SecureState state)? onStateChanged;
 
   const SecureOverlayManager({
@@ -73,52 +73,45 @@ class SecureOverlayManager extends StatefulWidget {
   State<SecureOverlayManager> createState() => SecureOverlayManagerState();
 }
 
-class SecureOverlayManagerState extends State<SecureOverlayManager>
-    with TickerProviderStateMixin {
+class SecureOverlayManagerState extends State<SecureOverlayManager> with TickerProviderStateMixin {
   SecureState _state = SecureState.disabled;
   SecureState get currentState => _state;
 
-  // ── Detection counters ────────────────────────────────────────────────────
+  
   int _suspiciousFrames = 0;
-  static const _blurThreshold = 4; // consecutive suspicious frames → blur
-  static const _clearThreshold = 6; // consecutive safe frames → clear
+  static const _blurThreshold = 4; 
+  static const _clearThreshold = 6; 
 
   bool _revealRequested = false;
 
-  // ── Animations ────────────────────────────────────────────────────────────
-  late AnimationController _blurCtrl; // 0→1 : none→full blur
-  late AnimationController _shieldCtrl; // repeating pulse on shield icon
-  late AnimationController _warningCtrl; // 0→1 : slide-in warning card
-  late AnimationController _scanCtrl; // repeating scanline sweep
-  late AnimationController _warningShimCtrl; // border shimmer in warning state
+  
+  late AnimationController _blurCtrl; 
+  late AnimationController _shieldCtrl; 
+  late AnimationController _warningCtrl; 
+  late AnimationController _scanCtrl; 
+  late AnimationController _warningShimCtrl; 
 
   late Animation<double> _blurCurve;
   late Animation<double> _warningSlide;
 
-  // ─────────────────────────────────────────────────────────────────────────
+  
   @override
   void initState() {
     super.initState();
 
-    _blurCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 650));
+    _blurCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 650));
     _blurCurve = CurvedAnimation(parent: _blurCtrl, curve: Curves.easeInOut);
 
-    _shieldCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1600))
+    _shieldCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))
       ..repeat(reverse: true);
 
-    _warningCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 400));
-    _warningSlide =
-        CurvedAnimation(parent: _warningCtrl, curve: Curves.easeOutBack);
+    _warningCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
+    _warningSlide = CurvedAnimation(parent: _warningCtrl, curve: Curves.easeOutBack);
 
-    _scanCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 2600))
+    _scanCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 2600))
       ..repeat();
 
-    _warningShimCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 900))
+    _warningShimCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))
       ..repeat(reverse: true);
 
     if (widget.isActive) _activate();
@@ -144,9 +137,9 @@ class SecureOverlayManagerState extends State<SecureOverlayManager>
     super.dispose();
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // ACTIVATION
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _activate() {
     if (!mounted) return;
@@ -170,18 +163,17 @@ class SecureOverlayManagerState extends State<SecureOverlayManager>
     widget.onStateChanged?.call(next);
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // PUBLIC: DETECTION FEED-IN
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
-  /// Feed a detection result from your ML pipeline.
-  /// Safe to call from any isolate / callback.
+  
+  
   void reportDetection({required bool isSuspicious}) {
     if (!mounted || !widget.isActive) return;
     if (isSuspicious) {
       _suspiciousFrames++;
-      if (_suspiciousFrames >= _blurThreshold &&
-          _state != SecureState.blurred) {
+      if (_suspiciousFrames >= _blurThreshold && _state != SecureState.blurred) {
         _triggerBlur();
       } else if (_suspiciousFrames >= 2 && _state == SecureState.monitoring) {
         _transitionTo(SecureState.warning);
@@ -191,27 +183,25 @@ class SecureOverlayManagerState extends State<SecureOverlayManager>
       if (_state == SecureState.warning && _suspiciousFrames < 2) {
         _transitionTo(SecureState.monitoring);
       }
-      if (_state == SecureState.blurred &&
-          _suspiciousFrames == 0 &&
-          _revealRequested) {
+      if (_state == SecureState.blurred && _suspiciousFrames == 0 && _revealRequested) {
         _clearBlur();
       }
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // DEBUG / TEST
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
-  /// Force blur (useful in tests / demo buttons).
+  
   void debugTriggerBlur() => _triggerBlur();
 
-  /// Force clear (useful in tests / demo buttons).
+  
   void debugClearBlur() => _clearBlur();
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // BLUR TRANSITIONS
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _triggerBlur() {
     if (!mounted) return;
@@ -239,9 +229,9 @@ class SecureOverlayManagerState extends State<SecureOverlayManager>
     HapticFeedback.mediumImpact();
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // BUILD
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   @override
   Widget build(BuildContext context) {
@@ -265,7 +255,7 @@ class SecureOverlayManagerState extends State<SecureOverlayManager>
         final bp = _blurCurve.value;
         return Stack(
           children: [
-            // 1. Blur + dim
+            
             if (bp > 0.01)
               Positioned.fill(
                 child: ClipRect(
@@ -275,30 +265,27 @@ class SecureOverlayManagerState extends State<SecureOverlayManager>
                       sigmaY: bp * 24,
                     ),
                     child: Container(
-                      color: _SC.bg0.withOpacity(bp * 0.6),
+                      color: _SC.bg0.withValues(alpha: bp * 0.6),
                     ),
                   ),
                 ),
               ),
 
-            // 2. Scanline sweep (monitoring + warning)
-            if (_state == SecureState.monitoring ||
-                _state == SecureState.warning)
+            
+            if (_state == SecureState.monitoring || _state == SecureState.warning)
               Positioned.fill(
                 child: IgnorePointer(
                   child: CustomPaint(
                     painter: _ScanlinePainter(
                       progress: _scanCtrl.value,
                       opacity: _state == SecureState.warning ? 0.07 : 0.03,
-                      color: _state == SecureState.warning
-                          ? _SC.danger
-                          : _SC.accentL,
+                      color: _state == SecureState.warning ? _SC.danger : _SC.accentL,
                     ),
                   ),
                 ),
               ),
 
-            // 3. Warning border shimmer
+            
             if (_state == SecureState.warning)
               Positioned.fill(
                 child: IgnorePointer(
@@ -311,12 +298,11 @@ class SecureOverlayManagerState extends State<SecureOverlayManager>
                 ),
               ),
 
-            // 4. Warning card (slides in when blurred)
+            
             if (bp > 0.35)
               Positioned.fill(
                 child: ScaleTransition(
-                  scale: Tween<double>(begin: 0.86, end: 1.0)
-                      .animate(_warningSlide),
+                  scale: Tween<double>(begin: 0.86, end: 1.0).animate(_warningSlide),
                   child: FadeTransition(
                     opacity: _warningSlide,
                     child: _WarningCard(
@@ -327,7 +313,7 @@ class SecureOverlayManagerState extends State<SecureOverlayManager>
                 ),
               ),
 
-            // 5. Status badge (always when active)
+            
             if (_state != SecureState.disabled)
               Positioned(
                 top: 10,
@@ -344,9 +330,9 @@ class SecureOverlayManagerState extends State<SecureOverlayManager>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// WARNING CARD
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _WarningCard extends StatelessWidget {
   final AnimationController shieldAnim;
@@ -379,17 +365,17 @@ class _WarningCard extends StatelessWidget {
                 ),
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(
-                  color: _SC.accent.withOpacity(0.22 + t * 0.28),
+                  color: _SC.accent.withValues(alpha: 0.22 + t * 0.28),
                   width: 1.5,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: _SC.accent.withOpacity(0.15 + t * 0.12),
+                    color: _SC.accent.withValues(alpha: 0.15 + t * 0.12),
                     blurRadius: 40,
                     spreadRadius: 2,
                   ),
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.65),
+                    color: Colors.black.withValues(alpha: 0.65),
                     blurRadius: 24,
                   ),
                 ],
@@ -413,7 +399,7 @@ class _WarningCard extends StatelessWidget {
                   Text(
                     'Nội dung đã được ẩn để\nbảo vệ quyền riêng tư của bạn.',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.58),
+                      color: Colors.white.withValues(alpha: 0.58),
                       fontSize: 13,
                       height: 1.6,
                     ),
@@ -425,7 +411,7 @@ class _WarningCard extends StatelessWidget {
                   Text(
                     'Hoặc di chuyển ra xa · màn hình tự mở khi an toàn',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.28),
+                      color: Colors.white.withValues(alpha: 0.28),
                       fontSize: 10,
                     ),
                     textAlign: TextAlign.center,
@@ -440,9 +426,9 @@ class _WarningCard extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PULSING EYE ICON
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _PulsingEyeIcon extends StatelessWidget {
   final AnimationController shieldAnim;
@@ -457,33 +443,33 @@ class _PulsingEyeIcon extends StatelessWidget {
         return Stack(
           alignment: Alignment.center,
           children: [
-            // Outer ripple
+            
             Container(
               width: 90 + t * 10,
               height: 90 + t * 10,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: _SC.accent.withOpacity(0.08 + t * 0.10),
+                  color: _SC.accent.withValues(alpha: 0.08 + t * 0.10),
                   width: 1,
                 ),
               ),
             ),
-            // Middle ring
+            
             Container(
               width: 72,
               height: 72,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: _SC.accent.withOpacity(0.07 + t * 0.09),
+                color: _SC.accent.withValues(alpha: 0.07 + t * 0.09),
                 border: Border.all(
-                  color: _SC.accent.withOpacity(0.18 + t * 0.26),
+                  color: _SC.accent.withValues(alpha: 0.18 + t * 0.26),
                   width: 1.5,
                 ),
               ),
               child: Icon(
                 Icons.remove_red_eye_outlined,
-                color: Color.lerp(_SC.accentL.withOpacity(0.7), _SC.accentL, t),
+                color: Color.lerp(_SC.accentL.withValues(alpha: 0.7), _SC.accentL, t),
                 size: 32,
               ),
             ),
@@ -494,9 +480,9 @@ class _PulsingEyeIcon extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// REVEAL BUTTON
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _RevealButton extends StatefulWidget {
   final VoidCallback onTap;
@@ -506,16 +492,14 @@ class _RevealButton extends StatefulWidget {
   State<_RevealButton> createState() => _RevealButtonState();
 }
 
-class _RevealButtonState extends State<_RevealButton>
-    with SingleTickerProviderStateMixin {
+class _RevealButtonState extends State<_RevealButton> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 120));
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 120));
     _scale = Tween<double>(begin: 1.0, end: 0.93)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeIn));
   }
@@ -549,7 +533,7 @@ class _RevealButtonState extends State<_RevealButton>
             borderRadius: BorderRadius.circular(14),
             boxShadow: [
               BoxShadow(
-                color: _SC.accent.withOpacity(0.45),
+                color: _SC.accent.withValues(alpha: 0.45),
                 blurRadius: 18,
                 offset: const Offset(0, 4),
               ),
@@ -577,9 +561,9 @@ class _RevealButtonState extends State<_RevealButton>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SECURE STATUS BADGE
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _SecureStatusBadge extends StatelessWidget {
   final SecureState state;
@@ -600,15 +584,15 @@ class _SecureStatusBadge extends StatelessWidget {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: _SC.bg0.withOpacity(0.88),
+            color: _SC.bg0.withValues(alpha: 0.88),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: color.withOpacity(0.2 + t * 0.25),
+              color: color.withValues(alpha: 0.2 + t * 0.25),
               width: 1,
             ),
             boxShadow: [
               BoxShadow(
-                color: color.withOpacity(0.12 + t * 0.08),
+                color: color.withValues(alpha: 0.12 + t * 0.08),
                 blurRadius: 8,
               ),
             ],
@@ -646,9 +630,9 @@ class _SecureStatusBadge extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SCANLINE PAINTER
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _ScanlinePainter extends CustomPainter {
   final double progress;
@@ -669,9 +653,9 @@ class _ScanlinePainter extends CustomPainter {
       end: Alignment.bottomCenter,
       colors: [
         Colors.transparent,
-        color.withOpacity(opacity),
-        color.withOpacity(opacity * 1.6),
-        color.withOpacity(opacity),
+        color.withValues(alpha: opacity),
+        color.withValues(alpha: opacity * 1.6),
+        color.withValues(alpha: opacity),
         Colors.transparent,
       ],
       stops: const [0, 0.25, 0.5, 0.75, 1],
@@ -683,13 +667,12 @@ class _ScanlinePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_ScanlinePainter o) =>
-      o.progress != progress || o.opacity != opacity;
+  bool shouldRepaint(_ScanlinePainter o) => o.progress != progress || o.opacity != opacity;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// BORDER GLOW PAINTER  (warning state)
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _BorderGlowPainter extends CustomPainter {
   final double opacity;
@@ -700,7 +683,7 @@ class _BorderGlowPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = color.withOpacity(opacity)
+      ..color = color.withValues(alpha: opacity)
       ..strokeWidth = 2.5
       ..style = PaintingStyle.stroke
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
@@ -708,13 +691,12 @@ class _BorderGlowPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_BorderGlowPainter o) =>
-      o.opacity != opacity || o.color != color;
+  bool shouldRepaint(_BorderGlowPainter o) => o.opacity != opacity || o.color != color;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SECURE MODE TOGGLE  (used by ContextualMiniChatOverlay)
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class SecureModeToggle extends StatefulWidget {
   final bool isActive;
@@ -730,16 +712,14 @@ class SecureModeToggle extends StatefulWidget {
   State<SecureModeToggle> createState() => _SecureModeToggleState();
 }
 
-class _SecureModeToggleState extends State<SecureModeToggle>
-    with SingleTickerProviderStateMixin {
+class _SecureModeToggleState extends State<SecureModeToggle> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 140));
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 140));
     _scale = Tween<double>(begin: 1.0, end: 0.90)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeIn));
   }
@@ -768,21 +748,18 @@ class _SecureModeToggleState extends State<SecureModeToggle>
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
             gradient: widget.isActive
-                ? const LinearGradient(
-                    colors: [Color(0xFF0D1B3E), Color(0xFF162B5A)])
+                ? const LinearGradient(colors: [Color(0xFF0D1B3E), Color(0xFF162B5A)])
                 : null,
             color: widget.isActive ? null : const Color(0xFFEEF1F8),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: widget.isActive
-                  ? _SC.accent.withOpacity(0.5)
-                  : const Color(0xFFDDE3EE),
+              color: widget.isActive ? _SC.accent.withValues(alpha: 0.5) : const Color(0xFFDDE3EE),
               width: 1,
             ),
             boxShadow: widget.isActive
                 ? [
                     BoxShadow(
-                      color: _SC.accent.withOpacity(0.28),
+                      color: _SC.accent.withValues(alpha: 0.28),
                       blurRadius: 12,
                       offset: const Offset(0, 2),
                     )
@@ -795,13 +772,10 @@ class _SecureModeToggleState extends State<SecureModeToggle>
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 200),
                 child: Icon(
-                  widget.isActive
-                      ? Icons.shield_rounded
-                      : Icons.shield_outlined,
+                  widget.isActive ? Icons.shield_rounded : Icons.shield_outlined,
                   key: ValueKey(widget.isActive),
                   size: 14,
-                  color:
-                      widget.isActive ? _SC.accentL : const Color(0xFF9AA5B8),
+                  color: widget.isActive ? _SC.accentL : const Color(0xFF9AA5B8),
                 ),
               ),
               const SizedBox(width: 5),
@@ -810,8 +784,7 @@ class _SecureModeToggleState extends State<SecureModeToggle>
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color:
-                      widget.isActive ? _SC.accentL : const Color(0xFF9AA5B8),
+                  color: widget.isActive ? _SC.accentL : const Color(0xFF9AA5B8),
                 ),
                 child: Text(widget.isActive ? 'Bảo mật ON' : 'Bảo mật'),
               ),

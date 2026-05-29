@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Models
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class UserPresence {
   final String userId;
@@ -20,7 +22,7 @@ class UserPresence {
     this.currentConversationId,
   });
 
-  /// "Just now" / "X minutes ago" / "X hours ago" etc.
+  
   String get lastSeenText {
     if (isOnline) return 'Online';
     if (lastSeen == null) return 'Last seen: unknown';
@@ -44,14 +46,12 @@ class TypingInfo {
     required this.timestamp,
   });
 
-  bool get isStillActive =>
-      isTyping &&
-          DateTime.now().difference(timestamp).inSeconds < 6;
+  bool get isStillActive => isTyping && DateTime.now().difference(timestamp).inSeconds < 6;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Provider
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class UserPresenceProvider {
   final FirebaseFirestore firebaseFirestore;
@@ -59,10 +59,10 @@ class UserPresenceProvider {
   Timer? _heartbeatTimer;
   String? _currentUserId;
 
-  /// One debounce timer per conversation for typing events.
+  
   final Map<String, Timer> _typingTimers = {};
 
-  /// Track which conversations this user is currently marked as typing in.
+  
   final Set<String> _activeTypingConversations = {};
 
   static const Duration _heartbeatInterval = Duration(seconds: 30);
@@ -72,36 +72,29 @@ class UserPresenceProvider {
 
   UserPresenceProvider({required this.firebaseFirestore});
 
-  // ───────────────────────────────────────────────
-  // Online / Offline
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   Future<void> setUserOnline(String userId, {String? currentConversationId}) async {
     _currentUserId = userId;
     try {
-      await firebaseFirestore
-          .collection(FirestoreConstants.pathUserCollection)
-          .doc(userId)
-          .update({
+      await firebaseFirestore.collection(FirestoreConstants.pathUserCollection).doc(userId).update({
         'isOnline': true,
         'lastSeen': FieldValue.serverTimestamp(),
-        if (currentConversationId != null)
-          'currentConversationId': currentConversationId,
+        if (currentConversationId != null) 'currentConversationId': currentConversationId,
       });
       _startHeartbeat(userId);
-      print('✅ User online: $userId');
+      debugPrint('✅ User online: $userId');
     } catch (e) {
-      print('❌ setUserOnline error: $e');
+      debugPrint('❌ setUserOnline error: $e');
     }
   }
 
   Future<void> setUserOffline(String userId) async {
     _currentUserId = null;
     try {
-      await firebaseFirestore
-          .collection(FirestoreConstants.pathUserCollection)
-          .doc(userId)
-          .update({
+      await firebaseFirestore.collection(FirestoreConstants.pathUserCollection).doc(userId).update({
         'isOnline': false,
         'lastSeen': FieldValue.serverTimestamp(),
         'currentConversationId': FieldValue.delete(),
@@ -110,29 +103,23 @@ class UserPresenceProvider {
       _heartbeatTimer?.cancel();
       _heartbeatTimer = null;
 
-      // Clear any typing statuses this user left behind
+      
       await _clearAllTypingStatuses(userId);
 
-      print('✅ User offline: $userId');
+      debugPrint('✅ User offline: $userId');
     } catch (e) {
-      print('❌ setUserOffline error: $e');
+      debugPrint('❌ setUserOffline error: $e');
     }
   }
 
-  /// Update the conversation the user is currently viewing (for read-receipt UX).
-  Future<void> setCurrentConversation(
-      String userId, String? conversationId) async {
+  
+  Future<void> setCurrentConversation(String userId, String? conversationId) async {
     try {
-      await firebaseFirestore
-          .collection(FirestoreConstants.pathUserCollection)
-          .doc(userId)
-          .update({
-        'currentConversationId': conversationId != null
-            ? conversationId
-            : FieldValue.delete(),
+      await firebaseFirestore.collection(FirestoreConstants.pathUserCollection).doc(userId).update({
+        'currentConversationId': conversationId ?? FieldValue.delete(),
       });
     } catch (e) {
-      print('❌ setCurrentConversation error: $e');
+      debugPrint('❌ setCurrentConversation error: $e');
     }
   }
 
@@ -145,14 +132,14 @@ class UserPresenceProvider {
             .doc(userId)
             .update({'lastSeen': FieldValue.serverTimestamp()});
       } catch (e) {
-        print('❌ Heartbeat error: $e');
+        debugPrint('❌ Heartbeat error: $e');
       }
     });
   }
 
-  // ───────────────────────────────────────────────
-  // Typing status
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   Future<void> setTypingStatus({
     required String conversationId,
@@ -176,7 +163,7 @@ class UserPresenceProvider {
 
       if (isTyping) {
         _activeTypingConversations.add(conversationId);
-        // Auto-clear after timeout
+        
         _typingTimers[conversationId] = Timer(_typingTimeout, () {
           setTypingStatus(
             conversationId: conversationId,
@@ -189,12 +176,11 @@ class UserPresenceProvider {
         _typingTimers.remove(conversationId);
       }
     } catch (e) {
-      print('❌ setTypingStatus error: $e');
+      debugPrint('❌ setTypingStatus error: $e');
     }
   }
 
-  Stream<Map<String, TypingInfo>> getTypingStatusStream(
-      String conversationId) {
+  Stream<Map<String, TypingInfo>> getTypingStatusStream(String conversationId) {
     return firebaseFirestore
         .collection(_typingCollection)
         .doc(conversationId)
@@ -225,31 +211,28 @@ class UserPresenceProvider {
     });
   }
 
-  /// Simple stream returning a set of typing user IDs for a conversation.
+  
   Stream<Set<String>> getTypingUsersStream(String conversationId) {
-    return getTypingStatusStream(conversationId)
-        .map((map) => map.keys.toSet());
+    return getTypingStatusStream(conversationId).map((map) => map.keys.toSet());
   }
 
   Future<void> _clearAllTypingStatuses(String userId) async {
     try {
       final batch = firebaseFirestore.batch();
       for (final convId in _activeTypingConversations) {
-        final ref = firebaseFirestore
-            .collection(_typingCollection)
-            .doc(convId);
+        final ref = firebaseFirestore.collection(_typingCollection).doc(convId);
         batch.update(ref, {userId: FieldValue.delete()});
       }
       await batch.commit();
       _activeTypingConversations.clear();
     } catch (e) {
-      print('❌ _clearAllTypingStatuses error: $e');
+      debugPrint('❌ _clearAllTypingStatuses error: $e');
     }
   }
 
-  // ───────────────────────────────────────────────
-  // Read receipts
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   Future<void> markMessagesAsRead({
     required String conversationId,
@@ -274,13 +257,13 @@ class UserPresenceProvider {
         });
       }
       await batch.commit();
-      print('✅ Marked ${messages.docs.length} messages as read');
+      debugPrint('✅ Marked ${messages.docs.length} messages as read');
     } catch (e) {
-      print('❌ markMessagesAsRead error: $e');
+      debugPrint('❌ markMessagesAsRead error: $e');
     }
   }
 
-  /// Mark a single message as delivered.
+  
   Future<void> markMessageDelivered({
     required String conversationId,
     required String messageId,
@@ -296,12 +279,11 @@ class UserPresenceProvider {
         'deliveredAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      print('❌ markMessageDelivered error: $e');
+      debugPrint('❌ markMessageDelivered error: $e');
     }
   }
 
-  Stream<int> getUnreadCountStream(
-      String conversationId, String userId) {
+  Stream<int> getUnreadCountStream(String conversationId, String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathMessageCollection)
         .doc(conversationId)
@@ -312,11 +294,11 @@ class UserPresenceProvider {
         .map((s) => s.size);
   }
 
-  /// Total unread count across all conversations for a user.
+  
   Future<int> getTotalUnreadCount(String userId) async {
     try {
-      // This requires a denormalized 'unread_counts' collection for efficiency.
-      // Fallback: sum from user doc if maintained.
+      
+      
       final doc = await firebaseFirestore
           .collection(FirestoreConstants.pathUserCollection)
           .doc(userId)
@@ -327,14 +309,14 @@ class UserPresenceProvider {
       }
       return 0;
     } catch (e) {
-      print('❌ getTotalUnreadCount error: $e');
+      debugPrint('❌ getTotalUnreadCount error: $e');
       return 0;
     }
   }
 
-  // ───────────────────────────────────────────────
-  // User online status
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   Stream<UserPresence> getUserPresenceStream(String userId) {
     return firebaseFirestore
@@ -350,7 +332,7 @@ class UserPresenceProvider {
       final lastSeenTs = data['lastSeen'] as Timestamp?;
       final lastSeen = lastSeenTs?.toDate();
 
-      // Grace-period check: if lastSeen > gracePeriod ago, treat as offline
+      
       bool effectiveOnline = isOnline;
       if (isOnline && lastSeen != null) {
         if (DateTime.now().difference(lastSeen) > _onlineGracePeriod) {
@@ -362,8 +344,7 @@ class UserPresenceProvider {
         userId: userId,
         isOnline: effectiveOnline,
         lastSeen: lastSeen,
-        currentConversationId:
-        data['currentConversationId'] as String?,
+        currentConversationId: data['currentConversationId'] as String?,
       );
     });
   }
@@ -384,53 +365,48 @@ class UserPresenceProvider {
         userId: userId,
         isOnline: isOnline,
         lastSeen: lastSeenTs?.toDate(),
-        currentConversationId:
-        data['currentConversationId'] as String?,
+        currentConversationId: data['currentConversationId'] as String?,
       );
     } catch (e) {
-      print('❌ getUserPresence error: $e');
+      debugPrint('❌ getUserPresence error: $e');
       return UserPresence(userId: userId, isOnline: false);
     }
   }
 
-  // ───────────────────────────────────────────────
-  // Online friends
-  // ───────────────────────────────────────────────
+  
+  
+  
 
-  Stream<List<Map<String, dynamic>>> getOnlineFriendsStream(
-      String userId) {
+  Stream<List<Map<String, dynamic>>> getOnlineFriendsStream(String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathUserCollection)
         .where('isOnline', isEqualTo: true)
         .snapshots()
         .map((snapshot) => snapshot.docs
-        .where((d) => d.id != userId) // exclude self
-        .map((doc) {
-      final data = doc.data();
-      return {
-        'id': doc.id,
-        'nickname': data['nickname'] ?? '',
-        'photoUrl': data['photoUrl'] ?? '',
-        'isOnline': data['isOnline'] ?? false,
-        'lastSeen': (data['lastSeen'] as Timestamp?)?.toDate(),
-      };
-    })
-        .toList());
+                .where((d) => d.id != userId) 
+                .map((doc) {
+              final data = doc.data();
+              return {
+                'id': doc.id,
+                'nickname': data['nickname'] ?? '',
+                'photoUrl': data['photoUrl'] ?? '',
+                'isOnline': data['isOnline'] ?? false,
+                'lastSeen': (data['lastSeen'] as Timestamp?)?.toDate(),
+              };
+            }).toList());
   }
 
-  // ───────────────────────────────────────────────
-  // Batch presence fetch (for conversation list)
-  // ───────────────────────────────────────────────
+  
+  
+  
 
-  Future<Map<String, UserPresence>> getMultipleUserPresences(
-      List<String> userIds) async {
+  Future<Map<String, UserPresence>> getMultipleUserPresences(List<String> userIds) async {
     if (userIds.isEmpty) return {};
     try {
-      // Firestore whereIn limit = 30
+      
       final results = <String, UserPresence>{};
       for (int i = 0; i < userIds.length; i += 30) {
-        final chunk = userIds.sublist(
-            i, (i + 30).clamp(0, userIds.length));
+        final chunk = userIds.sublist(i, (i + 30).clamp(0, userIds.length));
         final snapshot = await firebaseFirestore
             .collection(FirestoreConstants.pathUserCollection)
             .where(FieldPath.documentId, whereIn: chunk)
@@ -448,14 +424,14 @@ class UserPresenceProvider {
       }
       return results;
     } catch (e) {
-      print('❌ getMultipleUserPresences error: $e');
+      debugPrint('❌ getMultipleUserPresences error: $e');
       return {};
     }
   }
 
-  // ───────────────────────────────────────────────
-  // Dispose
-  // ───────────────────────────────────────────────
+  
+  
+  
 
   void dispose() {
     _heartbeatTimer?.cancel();
@@ -465,6 +441,6 @@ class UserPresenceProvider {
     }
     _typingTimers.clear();
     _activeTypingConversations.clear();
-    print('✅ UserPresenceProvider disposed');
+    debugPrint('✅ UserPresenceProvider disposed');
   }
 }

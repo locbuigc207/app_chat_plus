@@ -4,23 +4,22 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// Tập hợp các tiện ích tổng quát cho ứng dụng chat
+
 class Utilities {
   Utilities._();
 
-  // ─── Keyboard ───────────────────────────────────────────────────────────────
+  
 
   static bool isKeyboardShowing(BuildContext context) =>
       MediaQuery.of(context).viewInsets.bottom > 0;
 
   static void closeKeyboard() => FocusManager.instance.primaryFocus?.unfocus();
 
-  static void closeKeyboardForContext(BuildContext context) =>
-      FocusScope.of(context).unfocus();
+  static void closeKeyboardForContext(BuildContext context) => FocusScope.of(context).unfocus();
 
-  // ─── Text / String ──────────────────────────────────────────────────────────
+  
 
-  /// Lấy chữ cái đầu của tên (dùng cho avatar)
+  
   static String getInitials(String name, {int maxLength = 2}) {
     if (name.trim().isEmpty) return '?';
     final parts = name.trim().split(RegExp(r'\s+'));
@@ -30,13 +29,13 @@ class Utilities {
     return parts.take(maxLength).map((p) => p[0].toUpperCase()).join();
   }
 
-  /// Rút gọn text nếu quá dài
+  
   static String truncate(String text, int maxLength, {String ellipsis = '…'}) {
     if (text.length <= maxLength) return text;
     return '${text.substring(0, maxLength)}$ellipsis';
   }
 
-  /// Highlight query trong text (trả về list TextSpan)
+  
   static List<TextSpan> highlightText(
     String text,
     String query, {
@@ -75,11 +74,11 @@ class Utilities {
     return spans;
   }
 
-  /// Đếm số từ trong chuỗi
+  
   static int wordCount(String text) =>
       text.trim().isEmpty ? 0 : text.trim().split(RegExp(r'\s+')).length;
 
-  /// Kiểm tra chuỗi có chứa emoji không
+  
   static bool containsEmoji(String text) {
     final emojiRegex = RegExp(
       r'[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]',
@@ -88,7 +87,7 @@ class Utilities {
     return emojiRegex.hasMatch(text);
   }
 
-  /// Kiểm tra text chỉ gồm emoji (dùng để hiển thị emoji lớn)
+  
   static bool isEmojiOnly(String text) {
     final stripped = text.replaceAll(
       RegExp(
@@ -101,7 +100,7 @@ class Utilities {
     return stripped.isEmpty && text.trim().isNotEmpty;
   }
 
-  /// Format số theo kiểu K, M (1500 → 1.5K)
+  
   static String formatNumber(int number) {
     if (number >= 1000000) {
       return '${(number / 1000000).toStringAsFixed(1)}M';
@@ -111,7 +110,7 @@ class Utilities {
     return number.toString();
   }
 
-  /// Format kích thước file
+  
   static String formatFileSize(int bytes) {
     if (bytes <= 0) return '0 B';
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -120,20 +119,18 @@ class Utilities {
     return '${size.toStringAsFixed(i == 0 ? 0 : 1)} ${units[i]}';
   }
 
-  // ─── UI / Layout ─────────────────────────────────────────────────────────────
+  
 
-  /// Lấy screen size
+  
   static Size screenSize(BuildContext context) => MediaQuery.sizeOf(context);
 
-  /// Kiểm tra thiết bị có phải tablet không
-  static bool isTablet(BuildContext context) =>
-      MediaQuery.sizeOf(context).shortestSide >= 600;
+  
+  static bool isTablet(BuildContext context) => MediaQuery.sizeOf(context).shortestSide >= 600;
 
-  /// Tính padding an toàn (bottom bar, notch)
-  static EdgeInsets safePadding(BuildContext context) =>
-      MediaQuery.paddingOf(context);
+  
+  static EdgeInsets safePadding(BuildContext context) => MediaQuery.paddingOf(context);
 
-  /// Màu avatar ngẫu nhiên từ tên (consistent)
+  
   static Color colorFromName(String name) {
     const colors = [
       Color(0xFF5B8DEF),
@@ -157,7 +154,7 @@ class Utilities {
     return colors[hash % colors.length];
   }
 
-  // ─── Clipboard ───────────────────────────────────────────────────────────────
+  
 
   static Future<void> copyToClipboard(
     String text,
@@ -181,7 +178,7 @@ class Utilities {
     return data?.text;
   }
 
-  // ─── Validation ──────────────────────────────────────────────────────────────
+  
 
   static bool isValidEmail(String email) {
     return RegExp(
@@ -190,8 +187,7 @@ class Utilities {
   }
 
   static bool isValidPhone(String phone) {
-    return RegExp(r'^[+]?[(]?[0-9]{1,4}[)]?[-\s./0-9]{7,14}$')
-        .hasMatch(phone.trim());
+    return RegExp(r'^[+]?[(]?[0-9]{1,4}[)]?[-\s./0-9]{7,14}$').hasMatch(phone.trim());
   }
 
   static bool isValidUrl(String url) {
@@ -201,7 +197,7 @@ class Utilities {
     ).hasMatch(url.trim());
   }
 
-  // ─── Haptic Feedback ─────────────────────────────────────────────────────────
+  
 
   static Future<void> lightHaptic() => HapticFeedback.lightImpact();
 
@@ -211,7 +207,7 @@ class Utilities {
 
   static Future<void> selectionHaptic() => HapticFeedback.selectionClick();
 
-  // ─── Snackbar / Toast ─────────────────────────────────────────────────────────
+  
 
   static void showSnackbar(
     BuildContext context,
@@ -230,11 +226,8 @@ class Utilities {
           duration: duration,
           action: action,
           backgroundColor: backgroundColor,
-          behavior:
-              floating ? SnackBarBehavior.floating : SnackBarBehavior.fixed,
-          shape: floating
-              ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
-              : null,
+          behavior: floating ? SnackBarBehavior.floating : SnackBarBehavior.fixed,
+          shape: floating ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)) : null,
         ),
       );
   }
@@ -255,9 +248,9 @@ class Utilities {
     );
   }
 
-  // ─── Dialog helpers ──────────────────────────────────────────────────────────
+  
 
-  /// Hiện dialog xác nhận đơn giản
+  
   static Future<bool> showConfirmDialog(
     BuildContext context, {
     required String title,
@@ -289,7 +282,7 @@ class Utilities {
     return result ?? false;
   }
 
-  // ─── Platform ────────────────────────────────────────────────────────────────
+  
 
   static bool get isAndroid => defaultTargetPlatform == TargetPlatform.android;
 
@@ -303,7 +296,7 @@ class Utilities {
       defaultTargetPlatform == TargetPlatform.linux;
 }
 
-// ─── Extensions ──────────────────────────────────────────────────────────────
+
 
 extension StringUtilsExtension on String {
   String get initials => Utilities.getInitials(this);
@@ -326,6 +319,5 @@ extension BuildContextUtilsExtension on BuildContext {
 
   void showErrorSnackbar(String msg) => Utilities.showErrorSnackbar(this, msg);
 
-  void showSuccessSnackbar(String msg) =>
-      Utilities.showSuccessSnackbar(this, msg);
+  void showSuccessSnackbar(String msg) => Utilities.showSuccessSnackbar(this, msg);
 }

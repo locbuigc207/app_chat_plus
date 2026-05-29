@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
 
 import 'package:flutter_chat_demo/pages/story_creator_page.dart';
 import 'package:flutter_chat_demo/pages/story_viewer_page.dart';
 import 'package:flutter_chat_demo/providers/story_provider.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MyStoriesPage
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class MyStoriesPage extends StatefulWidget {
   final String userId;
@@ -32,9 +32,9 @@ class _MyStoriesPageState extends State<MyStoriesPage> {
   final Set<String> _selected = {};
   bool _selecting = false;
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Navigation helpers
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _openCreator() {
     Navigator.push(
@@ -72,9 +72,9 @@ class _MyStoriesPageState extends State<MyStoriesPage> {
     );
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Selection / delete
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _toggleSelect(String id) {
     setState(() {
@@ -101,8 +101,7 @@ class _MyStoriesPageState extends State<MyStoriesPage> {
 
     final count = _selected.length;
     final ok = await _confirmDelete(
-        'Delete $count status${count > 1 ? 'es' : ''}?',
-        'This cannot be undone.');
+        'Delete $count status${count > 1 ? 'es' : ''}?', 'This cannot be undone.');
     if (!ok || !mounted) return;
 
     final ids = {..._selected};
@@ -118,8 +117,7 @@ class _MyStoriesPageState extends State<MyStoriesPage> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content:
-          Text('🗑️ Deleted $count status${count > 1 ? 'es' : ''}'),
+          content: Text('🗑️ Deleted $count status${count > 1 ? 'es' : ''}'),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -130,8 +128,7 @@ class _MyStoriesPageState extends State<MyStoriesPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        shape:
-        RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         title: Text(title),
         content: Text(body),
         actions: [
@@ -150,9 +147,9 @@ class _MyStoriesPageState extends State<MyStoriesPage> {
     return ok == true;
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Build
-  // ──────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   @override
   Widget build(BuildContext context) {
@@ -160,8 +157,7 @@ class _MyStoriesPageState extends State<MyStoriesPage> {
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: _buildAppBar(),
       body: StreamBuilder<List<Story>>(
-        stream:
-        context.read<StoryProvider>().getMyStoriesStream(widget.userId),
+        stream: context.read<StoryProvider>().getMyStoriesStream(widget.userId),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -173,15 +169,13 @@ class _MyStoriesPageState extends State<MyStoriesPage> {
             return _EmptyState(onAdd: _openCreator);
           }
 
-          // Stats header
-          final totalViews =
-          stories.fold<int>(0, (sum, s) => sum + s.viewCount);
-          final totalReactions =
-          stories.fold<int>(0, (sum, s) => sum + s.reactions.length);
+          
+          final totalViews = stories.fold<int>(0, (sum, s) => sum + s.viewCount);
+          final totalReactions = stories.fold<int>(0, (sum, s) => sum + s.reactions.length);
 
           return CustomScrollView(
             slivers: [
-              // Analytics summary
+              
               SliverToBoxAdapter(
                 child: _StatsRow(
                   storyCount: stories.length,
@@ -190,36 +184,32 @@ class _MyStoriesPageState extends State<MyStoriesPage> {
                 ),
               ),
 
-              // Stories
+              
               if (_gridView)
                 SliverPadding(
                   padding: const EdgeInsets.all(12),
                   sliver: SliverGrid(
                     delegate: SliverChildBuilderDelegate(
-                          (_, i) => _StoryGridCard(
+                      (_, i) => _StoryGridCard(
                         story: stories[i],
                         isSelected: _selected.contains(stories[i].id),
                         selecting: _selecting,
-                        onTap: () => _selecting
-                            ? _toggleSelect(stories[i].id)
-                            : _openViewer(stories, i),
+                        onTap: () =>
+                            _selecting ? _toggleSelect(stories[i].id) : _openViewer(stories, i),
                         onLongPress: () => _selecting
                             ? _toggleSelect(stories[i].id)
                             : _startSelecting(stories[i].id),
                         onDelete: () async {
-                          final ok = await _confirmDelete(
-                              'Delete status?', 'This cannot be undone.');
+                          final ok =
+                              await _confirmDelete('Delete status?', 'This cannot be undone.');
                           if (ok && mounted) {
-                            await context
-                                .read<StoryProvider>()
-                                .deleteStory(stories[i].id);
+                            await context.read<StoryProvider>().deleteStory(stories[i].id);
                           }
                         },
                       ),
                       childCount: stories.length,
                     ),
-                    gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
                       mainAxisSpacing: 10,
                       crossAxisSpacing: 10,
@@ -232,25 +222,22 @@ class _MyStoriesPageState extends State<MyStoriesPage> {
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
-                          (_, i) => Padding(
+                      (_, i) => Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: _StoryListCard(
                           story: stories[i],
                           isSelected: _selected.contains(stories[i].id),
                           selecting: _selecting,
-                          onTap: () => _selecting
-                              ? _toggleSelect(stories[i].id)
-                              : _openViewer(stories, i),
+                          onTap: () =>
+                              _selecting ? _toggleSelect(stories[i].id) : _openViewer(stories, i),
                           onLongPress: () => _selecting
                               ? _toggleSelect(stories[i].id)
                               : _startSelecting(stories[i].id),
                           onDelete: () async {
-                            final ok = await _confirmDelete(
-                                'Delete status?', 'This cannot be undone.');
+                            final ok =
+                                await _confirmDelete('Delete status?', 'This cannot be undone.');
                             if (ok && mounted) {
-                              await context
-                                  .read<StoryProvider>()
-                                  .deleteStory(stories[i].id);
+                              await context.read<StoryProvider>().deleteStory(stories[i].id);
                             }
                           },
                         ),
@@ -266,20 +253,20 @@ class _MyStoriesPageState extends State<MyStoriesPage> {
       floatingActionButton: _selecting
           ? null
           : FloatingActionButton.extended(
-        onPressed: _openCreator,
-        icon: const Icon(Icons.add),
-        label: const Text('Add Status'),
-        elevation: 4,
-      ),
+              onPressed: _openCreator,
+              icon: const Icon(Icons.add),
+              label: const Text('Add Status'),
+              elevation: 4,
+            ),
       bottomNavigationBar: _selecting && _selected.isNotEmpty
           ? _SelectionBar(
-        count: _selected.length,
-        onDelete: _deleteSelected,
-        onCancel: () => setState(() {
-          _selected.clear();
-          _selecting = false;
-        }),
-      )
+              count: _selected.length,
+              onDelete: _deleteSelected,
+              onCancel: () => setState(() {
+                _selected.clear();
+                _selecting = false;
+              }),
+            )
           : null,
     );
   }
@@ -289,9 +276,8 @@ class _MyStoriesPageState extends State<MyStoriesPage> {
       elevation: 0,
       title: _selecting
           ? Text('${_selected.length} selected',
-          style: const TextStyle(fontWeight: FontWeight.w700))
-          : const Text('My Status',
-          style: TextStyle(fontWeight: FontWeight.w800)),
+              style: const TextStyle(fontWeight: FontWeight.w700))
+          : const Text('My Status', style: TextStyle(fontWeight: FontWeight.w800)),
       actions: [
         if (!_selecting) ...[
           IconButton(
@@ -318,9 +304,9 @@ class _MyStoriesPageState extends State<MyStoriesPage> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Stats row
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _StatsRow extends StatelessWidget {
   final int storyCount;
@@ -343,12 +329,12 @@ class _StatsRow extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            scheme.primary.withOpacity(0.12),
-            scheme.secondary.withOpacity(0.08),
+            scheme.primary.withValues(alpha: 0.12),
+            scheme.secondary.withValues(alpha: 0.08),
           ],
         ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: scheme.primary.withOpacity(0.15)),
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.15)),
       ),
       child: Row(
         children: [
@@ -378,11 +364,11 @@ class _StatsRow extends StatelessWidget {
   }
 
   Widget _divider() => Container(
-    width: 1,
-    height: 40,
-    color: Colors.grey.withOpacity(0.2),
-    margin: const EdgeInsets.symmetric(horizontal: 8),
-  );
+        width: 1,
+        height: 40,
+        color: Colors.grey.withValues(alpha: 0.2),
+        margin: const EdgeInsets.symmetric(horizontal: 8),
+      );
 }
 
 class _StatItem extends StatelessWidget {
@@ -405,21 +391,17 @@ class _StatItem extends StatelessWidget {
         children: [
           Icon(icon, color: color, size: 22),
           const SizedBox(height: 4),
-          Text(value,
-              style: TextStyle(
-                  fontSize: 20, fontWeight: FontWeight.w800, color: color)),
-          Text(label,
-              style: TextStyle(
-                  fontSize: 11, color: Colors.grey.shade500)),
+          Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: color)),
+          Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
         ],
       ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// List card
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _StoryListCard extends StatelessWidget {
   final Story story;
@@ -451,14 +433,10 @@ class _StoryListCard extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: isSelected
-              ? scheme.primary
-              : Theme.of(context).dividerColor,
+          color: isSelected ? scheme.primary : Theme.of(context).dividerColor,
           width: isSelected ? 2 : 0.5,
         ),
-        color: isSelected
-            ? scheme.primary.withOpacity(0.08)
-            : Theme.of(context).cardColor,
+        color: isSelected ? scheme.primary.withValues(alpha: 0.08) : Theme.of(context).cardColor,
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
@@ -468,7 +446,7 @@ class _StoryListCard extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              // Selection indicator / thumbnail
+              
               Stack(
                 children: [
                   ClipRRect(
@@ -485,18 +463,14 @@ class _StoryListCard extends StatelessWidget {
                         height: 22,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color:
-                          isSelected ? scheme.primary : Colors.white70,
+                          color: isSelected ? scheme.primary : Colors.white70,
                           border: Border.all(
-                            color: isSelected
-                                ? scheme.primary
-                                : Colors.grey,
+                            color: isSelected ? scheme.primary : Colors.grey,
                             width: 2,
                           ),
                         ),
                         child: isSelected
-                            ? const Icon(Icons.check,
-                            color: Colors.white, size: 14)
+                            ? const Icon(Icons.check, color: Colors.white, size: 14)
                             : null,
                       ),
                     ),
@@ -505,7 +479,7 @@ class _StoryListCard extends StatelessWidget {
 
               const SizedBox(width: 14),
 
-              // Info
+              
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -514,21 +488,14 @@ class _StoryListCard extends StatelessWidget {
                       children: [
                         _TypeBadge(type: story.type),
                         const Spacer(),
-                        Icon(Icons.access_time,
-                            size: 12, color: Colors.grey.shade500),
+                        Icon(Icons.access_time, size: 12, color: Colors.grey.shade500),
                         const SizedBox(width: 3),
                         Text(
-                          hours > 0
-                              ? '${hours}h ${minutes}m'
-                              : '${minutes}m',
+                          hours > 0 ? '${hours}h ${minutes}m' : '${minutes}m',
                           style: TextStyle(
                             fontSize: 11,
-                            color: expiringSoon
-                                ? Colors.orange
-                                : Colors.grey.shade500,
-                            fontWeight: expiringSoon
-                                ? FontWeight.w700
-                                : FontWeight.normal,
+                            color: expiringSoon ? Colors.orange : Colors.grey.shade500,
+                            fontWeight: expiringSoon ? FontWeight.w700 : FontWeight.normal,
                           ),
                         ),
                       ],
@@ -538,10 +505,10 @@ class _StoryListCard extends StatelessWidget {
                       story.type == StoryType.text
                           ? (story.textContent ?? '')
                           : (story.caption?.isNotEmpty == true
-                          ? story.caption!
-                          : story.type == StoryType.video
-                          ? '🎥 Video'
-                          : '📸 Photo'),
+                              ? story.caption!
+                              : story.type == StoryType.video
+                                  ? '🎥 Video'
+                                  : '📸 Photo'),
                       style: Theme.of(context).textTheme.bodyMedium,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -563,8 +530,7 @@ class _StoryListCard extends StatelessWidget {
                         const Spacer(),
                         Text(
                           DateFormat('HH:mm').format(story.createdAt),
-                          style: TextStyle(
-                              fontSize: 11, color: Colors.grey.shade400),
+                          style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
                         ),
                       ],
                     ),
@@ -572,11 +538,10 @@ class _StoryListCard extends StatelessWidget {
                 ),
               ),
 
-              // Delete
+              
               if (!selecting)
                 IconButton(
-                  icon: const Icon(Icons.delete_outline,
-                      color: Colors.redAccent, size: 20),
+                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
                   onPressed: onDelete,
                   tooltip: 'Delete',
                 ),
@@ -588,9 +553,9 @@ class _StoryListCard extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Grid card
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _StoryGridCard extends StatelessWidget {
   final Story story;
@@ -630,13 +595,13 @@ class _StoryGridCard extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Thumbnail
+            
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: _Thumbnail(story: story, fillParent: true),
             ),
 
-            // Gradient overlay
+            
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: Container(
@@ -646,7 +611,7 @@ class _StoryGridCard extends StatelessWidget {
                     end: Alignment.bottomCenter,
                     colors: [
                       Colors.transparent,
-                      Colors.black.withOpacity(0.65),
+                      Colors.black.withValues(alpha: 0.65),
                     ],
                     stops: const [0.5, 1.0],
                   ),
@@ -654,14 +619,14 @@ class _StoryGridCard extends StatelessWidget {
               ),
             ),
 
-            // Top badges
+            
             Positioned(
               top: 10,
               left: 10,
               child: _TypeBadge(type: story.type),
             ),
 
-            // Selection check
+            
             if (selecting)
               Positioned(
                 top: 8,
@@ -673,17 +638,13 @@ class _StoryGridCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: isSelected ? scheme.primary : Colors.white60,
-                    border: Border.all(
-                        color: isSelected ? scheme.primary : Colors.grey,
-                        width: 2),
+                    border: Border.all(color: isSelected ? scheme.primary : Colors.grey, width: 2),
                   ),
-                  child: isSelected
-                      ? const Icon(Icons.check, color: Colors.white, size: 16)
-                      : null,
+                  child: isSelected ? const Icon(Icons.check, color: Colors.white, size: 16) : null,
                 ),
               ),
 
-            // Delete (non-selecting)
+            
             if (!selecting)
               Positioned(
                 top: 6,
@@ -698,13 +659,12 @@ class _StoryGridCard extends StatelessWidget {
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.white24),
                     ),
-                    child: const Icon(Icons.close,
-                        color: Colors.white, size: 14),
+                    child: const Icon(Icons.close, color: Colors.white, size: 14),
                   ),
                 ),
               ),
 
-            // Bottom info
+            
             Positioned(
               bottom: 10,
               left: 10,
@@ -715,36 +675,28 @@ class _StoryGridCard extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.remove_red_eye_outlined,
-                          color: Colors.white70, size: 12),
+                      Icon(Icons.remove_red_eye_outlined, color: Colors.white70, size: 12),
                       const SizedBox(width: 3),
                       Text(
                         '${story.viewCount}',
-                        style: const TextStyle(
-                            color: Colors.white70, fontSize: 11),
+                        style: const TextStyle(color: Colors.white70, fontSize: 11),
                       ),
                       const SizedBox(width: 8),
                       if (story.reactions.isNotEmpty) ...[
-                        const Text('😊',
-                            style: TextStyle(fontSize: 11)),
+                        const Text('😊', style: TextStyle(fontSize: 11)),
                         const SizedBox(width: 2),
                         Text(
                           '${story.reactions.length}',
-                          style: const TextStyle(
-                              color: Colors.white70, fontSize: 11),
+                          style: const TextStyle(color: Colors.white70, fontSize: 11),
                         ),
                       ],
                       const Spacer(),
                       Text(
-                        expiringSoon
-                            ? '${remaining.inMinutes}m'
-                            : '${remaining.inHours}h',
+                        expiringSoon ? '${remaining.inMinutes}m' : '${remaining.inHours}h',
                         style: TextStyle(
                           color: expiringSoon ? Colors.orange : Colors.white54,
                           fontSize: 10,
-                          fontWeight: expiringSoon
-                              ? FontWeight.w700
-                              : FontWeight.normal,
+                          fontWeight: expiringSoon ? FontWeight.w700 : FontWeight.normal,
                         ),
                       ),
                     ],
@@ -759,9 +711,9 @@ class _StoryGridCard extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Selection bar (multi-delete)
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _SelectionBar extends StatelessWidget {
   final int count;
@@ -782,8 +734,7 @@ class _SelectionBar extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
-          border: Border(
-              top: BorderSide(color: Theme.of(context).dividerColor)),
+          border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
         ),
         child: Row(
           children: [
@@ -796,13 +747,11 @@ class _SelectionBar extends StatelessWidget {
             ElevatedButton.icon(
               onPressed: onDelete,
               icon: const Icon(Icons.delete, size: 18),
-              label:
-              Text('Delete $count item${count > 1 ? 's' : ''}'),
+              label: Text('Delete $count item${count > 1 ? 's' : ''}'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               ),
             ),
           ],
@@ -812,9 +761,9 @@ class _SelectionBar extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Empty state
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _EmptyState extends StatelessWidget {
   final VoidCallback onAdd;
@@ -834,8 +783,8 @@ class _EmptyState extends StatelessWidget {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    Theme.of(context).colorScheme.primary.withOpacity(0.2),
-                    Theme.of(context).colorScheme.secondary.withOpacity(0.15),
+                    Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                    Theme.of(context).colorScheme.secondary.withValues(alpha: 0.15),
                   ],
                 ),
                 shape: BoxShape.circle,
@@ -854,10 +803,7 @@ class _EmptyState extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               'Share a photo, text, or video — it disappears after 24 hours.',
-              style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade500,
-                  height: 1.6),
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade500, height: 1.6),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 36),
@@ -866,10 +812,8 @@ class _EmptyState extends StatelessWidget {
               icon: const Icon(Icons.add),
               label: const Text('Create Status'),
               style: ElevatedButton.styleFrom(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(28)),
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
                 elevation: 4,
               ),
             ),
@@ -880,9 +824,9 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Thumbnail widget
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _Thumbnail extends StatelessWidget {
   final Story story;
@@ -944,16 +888,16 @@ class _Thumbnail extends StatelessWidget {
   }
 
   Widget _fallback(double sz) => Container(
-    width: sz,
-    height: sz,
-    color: Colors.grey.shade200,
-    child: const Icon(Icons.image, color: Colors.grey),
-  );
+        width: sz,
+        height: sz,
+        color: Colors.grey.shade200,
+        child: const Icon(Icons.image, color: Colors.grey),
+      );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Type badge
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _TypeBadge extends StatelessWidget {
   final StoryType type;
@@ -970,7 +914,7 @@ class _TypeBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.18),
+        color: color.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -978,20 +922,16 @@ class _TypeBadge extends StatelessWidget {
         children: [
           Icon(icon, size: 11, color: color),
           const SizedBox(width: 4),
-          Text(label,
-              style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: color)),
+          Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: color)),
         ],
       ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Mini stat
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _MiniStat extends StatelessWidget {
   final IconData icon;

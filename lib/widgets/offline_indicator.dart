@@ -1,11 +1,12 @@
 import 'dart:async';
 
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 
-/// Animated connectivity banner.
-/// Shows a dismissible "Không có kết nối" bar when offline,
-/// and a brief "Đã kết nối lại" confirmation when coming back online.
+import 'package:connectivity_plus/connectivity_plus.dart';
+
+
+
+
 class OfflineIndicator extends StatefulWidget {
   const OfflineIndicator({super.key});
 
@@ -13,8 +14,7 @@ class OfflineIndicator extends StatefulWidget {
   State<OfflineIndicator> createState() => _OfflineIndicatorState();
 }
 
-class _OfflineIndicatorState extends State<OfflineIndicator>
-    with SingleTickerProviderStateMixin {
+class _OfflineIndicatorState extends State<OfflineIndicator> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _heightAnim;
   late Animation<double> _fadeAnim;
@@ -35,10 +35,9 @@ class _OfflineIndicatorState extends State<OfflineIndicator>
     _heightAnim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic);
     _fadeAnim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
 
-    _sub =
-        Connectivity().onConnectivityChanged.listen(_handleConnectivityChange);
+    _sub = Connectivity().onConnectivityChanged.listen(_handleConnectivityChange);
 
-    // Initial check
+    
     Connectivity().checkConnectivity().then((results) {
       if (mounted) _applyConnectivity(results);
     });
@@ -69,7 +68,7 @@ class _OfflineIndicatorState extends State<OfflineIndicator>
         if (mounted) _hide();
       });
     }
-    // If was already online / hidden — do nothing
+    
   }
 
   void _show(_BannerState state) {
@@ -100,9 +99,9 @@ class _OfflineIndicatorState extends State<OfflineIndicator>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Banner content
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _BannerContent extends StatelessWidget {
   final bool isOffline;
@@ -124,9 +123,8 @@ class _BannerContent extends StatelessWidget {
               ),
         boxShadow: [
           BoxShadow(
-            color:
-                (isOffline ? const Color(0xFFEF4444) : const Color(0xFF10B981))
-                    .withOpacity(0.3),
+            color: (isOffline ? const Color(0xFFEF4444) : const Color(0xFF10B981))
+                .withValues(alpha: 0.3),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -156,9 +154,9 @@ class _BannerContent extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Animated wifi / check icon
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _AnimatedStatusIcon extends StatefulWidget {
   final bool isOffline;
@@ -176,8 +174,7 @@ class _AnimatedStatusIconState extends State<_AnimatedStatusIcon>
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 400));
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
     _scaleAnim = Tween<double>(begin: 0.5, end: 1.0)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut));
     _ctrl.forward();
@@ -208,9 +205,9 @@ class _AnimatedStatusIconState extends State<_AnimatedStatusIcon>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Retry dots (offline loading indicator)
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _RetryDots extends StatefulWidget {
   @override
@@ -225,8 +222,7 @@ class _RetryDotsState extends State<_RetryDots> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     for (int i = 0; i < 3; i++) {
-      final ctrl = AnimationController(
-          vsync: this, duration: const Duration(milliseconds: 600))
+      final ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600))
         ..repeat(reverse: true, period: const Duration(milliseconds: 900));
 
       Future.delayed(Duration(milliseconds: i * 160), () {
@@ -260,7 +256,7 @@ class _RetryDotsState extends State<_RetryDots> with TickerProviderStateMixin {
             height: 4,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.white.withOpacity(_anims[i].value),
+              color: Colors.white.withValues(alpha: _anims[i].value),
             ),
           ),
         );
@@ -269,8 +265,8 @@ class _RetryDotsState extends State<_RetryDots> with TickerProviderStateMixin {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Internal state enum
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 enum _BannerState { hidden, offline, recovering }

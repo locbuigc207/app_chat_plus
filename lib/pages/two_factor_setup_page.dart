@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:flutter_chat_demo/constants/color_constants.dart';
 import 'package:flutter_chat_demo/constants/firestore_constants.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
@@ -18,24 +19,22 @@ class TwoFactorSetupPage extends StatefulWidget {
   State<TwoFactorSetupPage> createState() => _TwoFactorSetupPageState();
 }
 
-class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
-    with TickerProviderStateMixin {
+class _TwoFactorSetupPageState extends State<TwoFactorSetupPage> with TickerProviderStateMixin {
   late String _secret;
   late String _qrUri;
   late String _nickname;
 
-  final List<TextEditingController> _controllers =
-      List.generate(6, (_) => TextEditingController());
+  final List<TextEditingController> _controllers = List.generate(6, (_) => TextEditingController());
   final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
 
   bool _isLoading = false;
   bool _isVerifying = false;
-  int _currentStep = 0; // 0 = scan QR, 1 = enter code
+  int _currentStep = 0; 
 
   late AnimationController _fadeCtrl;
   late Animation<double> _fadeAnim;
 
-  // TOTP countdown
+  
   late Timer _timer;
   int _secondsLeft = 30;
 
@@ -43,8 +42,7 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
   void initState() {
     super.initState();
     _generateSecret();
-    _fadeCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 350));
+    _fadeCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 350));
     _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeInOut);
     _fadeCtrl.forward();
     _startTimer();
@@ -80,11 +78,8 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
     final rnd = Random.secure();
     _secret = List.generate(16, (_) => chars[rnd.nextInt(chars.length)]).join();
 
-    _nickname =
-        context.read<SettingProvider>().getPref(FirestoreConstants.nickname) ??
-            'User';
-    _qrUri =
-        'otpauth://totp/AppChatPlus:$_nickname?secret=$_secret&issuer=AppChatPlus';
+    _nickname = context.read<SettingProvider>().getPref(FirestoreConstants.nickname) ?? 'User';
+    _qrUri = 'otpauth://totp/AppChatPlus:$_nickname?secret=$_secret&issuer=AppChatPlus';
   }
 
   String get _enteredCode => _controllers.map((c) => c.text.trim()).join();
@@ -129,9 +124,8 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
 
     await Future.delayed(const Duration(milliseconds: 400));
 
-    final isValid = OTP.generateTOTPCodeString(
-            _secret, DateTime.now().millisecondsSinceEpoch) ==
-        code;
+    final isValid =
+        OTP.generateTOTPCodeString(_secret, DateTime.now().millisecondsSinceEpoch) == code;
 
     if (!mounted) return;
 
@@ -195,7 +189,7 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
     );
   }
 
-  // ── Build ──────────────────────────────────────────────────────────────
+  
 
   @override
   Widget build(BuildContext context) {
@@ -203,8 +197,7 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor:
-          isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF8F8FC),
+      backgroundColor: isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF8F8FC),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -230,9 +223,7 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
                 Expanded(
                   child: FadeTransition(
                     opacity: _fadeAnim,
-                    child: _currentStep == 0
-                        ? _buildScanStep()
-                        : _buildVerifyStep(),
+                    child: _currentStep == 0 ? _buildScanStep() : _buildVerifyStep(),
                   ),
                 ),
               ],
@@ -252,9 +243,7 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
               margin: const EdgeInsets.symmetric(horizontal: 8),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(2),
-                color: _currentStep >= 1
-                    ? ColorConstants.primaryColor
-                    : Colors.grey.shade300,
+                color: _currentStep >= 1 ? ColorConstants.primaryColor : Colors.grey.shade300,
               ),
             ),
           ),
@@ -282,28 +271,23 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
                     ? const Icon(Icons.check, color: Colors.white, size: 16)
                     : Text('${step + 1}',
                         style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14)))
+                            color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)))
                 : Text('${step + 1}',
                     style: TextStyle(
-                        color: Colors.grey.shade500,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14)),
+                        color: Colors.grey.shade500, fontWeight: FontWeight.bold, fontSize: 14)),
           ),
         ),
         const SizedBox(height: 4),
         Text(label,
             style: TextStyle(
                 fontSize: 11,
-                color:
-                    active ? ColorConstants.primaryColor : Colors.grey.shade400,
+                color: active ? ColorConstants.primaryColor : Colors.grey.shade400,
                 fontWeight: active ? FontWeight.w600 : FontWeight.w400)),
       ],
     );
   }
 
-  // ── Step 1: Scan QR ──────────────────────────────────────────────────
+  
 
   Widget _buildScanStep() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -320,21 +304,19 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
               color: isDark ? const Color(0xFF1C1C2E) : Colors.white,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                  color: isDark
-                      ? Colors.white.withOpacity(0.08)
-                      : Colors.grey.shade100),
+                  color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.grey.shade100),
               boxShadow: isDark
                   ? []
                   : [
                       BoxShadow(
-                          color: Colors.black.withOpacity(0.06),
+                          color: Colors.black.withValues(alpha: 0.06),
                           blurRadius: 20,
                           offset: const Offset(0, 4))
                     ],
             ),
             child: Column(
               children: [
-                // QR Container
+                
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -351,22 +333,17 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
                 const SizedBox(height: 20),
                 Text(
                   'Khóa bí mật thủ công',
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade500,
-                      letterSpacing: 0.5),
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500, letterSpacing: 0.5),
                 ),
                 const SizedBox(height: 8),
                 GestureDetector(
                   onTap: _copySecret,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     decoration: BoxDecoration(
-                      color: ColorConstants.primaryColor.withOpacity(0.08),
+                      color: ColorConstants.primaryColor.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: ColorConstants.primaryColor.withOpacity(0.2)),
+                      border: Border.all(color: ColorConstants.primaryColor.withValues(alpha: 0.2)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -381,8 +358,7 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
                               color: ColorConstants.primaryColor),
                         ),
                         const SizedBox(width: 10),
-                        Icon(Icons.copy_rounded,
-                            size: 16, color: ColorConstants.primaryColor),
+                        Icon(Icons.copy_rounded, size: 16, color: ColorConstants.primaryColor),
                       ],
                     ),
                   ),
@@ -402,15 +378,12 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
                 backgroundColor: ColorConstants.primaryColor,
                 foregroundColor: Colors.white,
                 elevation: 0,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text('Đã quét xong',
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  Text('Đã quét xong', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                   SizedBox(width: 8),
                   Icon(Icons.arrow_forward_rounded, size: 20),
                 ],
@@ -429,10 +402,7 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
   Widget _buildInstructionCard() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final steps = [
-      (
-        Icons.download_rounded,
-        'Tải Google Authenticator hoặc ứng dụng tương tự'
-      ),
+      (Icons.download_rounded, 'Tải Google Authenticator hoặc ứng dụng tương tự'),
       (Icons.qr_code_scanner_rounded, 'Nhấn nút "+" rồi quét mã QR phía trên'),
       (Icons.check_circle_rounded, 'Nhập mã 6 số hiển thị vào bước tiếp theo'),
     ];
@@ -442,9 +412,8 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1C1C2E) : Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-            color:
-                isDark ? Colors.white.withOpacity(0.06) : Colors.grey.shade100),
+        border:
+            Border.all(color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.grey.shade100),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -467,11 +436,10 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
                     width: 32,
                     height: 32,
                     decoration: BoxDecoration(
-                      color: ColorConstants.primaryColor.withOpacity(0.1),
+                      color: ColorConstants.primaryColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Icon(icon,
-                        size: 17, color: ColorConstants.primaryColor),
+                    child: Icon(icon, size: 17, color: ColorConstants.primaryColor),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -481,9 +449,7 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
                           style: TextStyle(
                               fontSize: 13.5,
                               height: 1.4,
-                              color: isDark
-                                  ? Colors.white70
-                                  : Colors.grey.shade700)),
+                              color: isDark ? Colors.white70 : Colors.grey.shade700)),
                     ),
                   ),
                 ],
@@ -495,7 +461,7 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
     );
   }
 
-  // ── Step 2: Verify Code ───────────────────────────────────────────────
+  
 
   Widget _buildVerifyStep() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -507,7 +473,7 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
       child: Column(
         children: [
           const SizedBox(height: 16),
-          // Icon with countdown ring
+          
           Stack(
             alignment: Alignment.center,
             children: [
@@ -527,7 +493,7 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
                 height: 70,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: ColorConstants.primaryColor.withOpacity(0.1),
+                  color: ColorConstants.primaryColor.withValues(alpha: 0.1),
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -537,13 +503,9 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
                       style: TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.bold,
-                          color: isExpiring
-                              ? Colors.red
-                              : ColorConstants.primaryColor),
+                          color: isExpiring ? Colors.red : ColorConstants.primaryColor),
                     ),
-                    Text('giây',
-                        style: TextStyle(
-                            fontSize: 10, color: Colors.grey.shade500)),
+                    Text('giây', style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
                   ],
                 ),
               ),
@@ -564,7 +526,7 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
             style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
           ),
           const SizedBox(height: 32),
-          // OTP boxes
+          
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(6, (i) => _buildOtpBox(i)),
@@ -579,20 +541,16 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
                 backgroundColor: ColorConstants.primaryColor,
                 foregroundColor: Colors.white,
                 elevation: 0,
-                disabledBackgroundColor:
-                    ColorConstants.primaryColor.withOpacity(0.5),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
+                disabledBackgroundColor: ColorConstants.primaryColor.withValues(alpha: 0.5),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
               child: _isVerifying
                   ? const SizedBox(
                       width: 22,
                       height: 22,
-                      child: CircularProgressIndicator(
-                          color: Colors.white, strokeWidth: 2.5))
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
                   : const Text('Xác nhận & Kích hoạt',
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             ),
           ),
           const SizedBox(height: 14),
@@ -616,22 +574,20 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
       height: 58,
       margin: const EdgeInsets.symmetric(horizontal: 4),
       decoration: BoxDecoration(
-        color: isFilled
-            ? ColorConstants.primaryColor.withOpacity(0.08)
-            : Colors.white,
+        color: isFilled ? ColorConstants.primaryColor.withValues(alpha: 0.08) : Colors.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           width: isFocused ? 2.0 : 1.5,
           color: isFocused
               ? ColorConstants.primaryColor
               : isFilled
-                  ? ColorConstants.primaryColor.withOpacity(0.4)
+                  ? ColorConstants.primaryColor.withValues(alpha: 0.4)
                   : Colors.grey.shade300,
         ),
         boxShadow: isFocused
             ? [
                 BoxShadow(
-                    color: ColorConstants.primaryColor.withOpacity(0.15),
+                    color: ColorConstants.primaryColor.withValues(alpha: 0.15),
                     blurRadius: 8,
                     offset: const Offset(0, 2))
               ]
@@ -647,9 +603,7 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage>
               textAlign: TextAlign.center,
               maxLength: 1,
               style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: ColorConstants.primaryColor),
+                  fontSize: 24, fontWeight: FontWeight.bold, color: ColorConstants.primaryColor),
               decoration: const InputDecoration(
                 counterText: '',
                 border: InputBorder.none,

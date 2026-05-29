@@ -9,9 +9,9 @@ import 'bubble_adaptive_ui.dart';
 import 'secure_view_once_widget.dart';
 import 'shared_space_widget.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CONSTANTS
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 const _kOverlayWidth = 348.0;
 const _kCollapsedHeight = 56.0;
 const _kExpandedHeight = 540.0;
@@ -21,14 +21,14 @@ const _kShadowBlur = 32.0;
 const _kDefaultTopOffset = 90.0;
 const _kDefaultLeftOffset = 18.0;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// OVERLAY WIDGET
-// ─────────────────────────────────────────────────────────────────────────────
 
-/// Floating, draggable, animated mini-chat overlay.
-///
-/// Renders on top of everything else using [Positioned].
-/// Passes [chatContent] through as the main body — no routing required.
+
+
+
+
+
+
+
 class ContextualMiniChatOverlay extends StatefulWidget {
   final String userId;
   final String userName;
@@ -36,7 +36,7 @@ class ContextualMiniChatOverlay extends StatefulWidget {
   final String conversationId;
   final String currentUserId;
 
-  /// The actual chat view (e.g. `ChatPage(isMiniChat: true)`).
+  
   final Widget chatContent;
 
   final VoidCallback onMinimize;
@@ -55,29 +55,27 @@ class ContextualMiniChatOverlay extends StatefulWidget {
   });
 
   @override
-  State<ContextualMiniChatOverlay> createState() =>
-      _ContextualMiniChatOverlayState();
+  State<ContextualMiniChatOverlay> createState() => _ContextualMiniChatOverlayState();
 }
 
 class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     with TickerProviderStateMixin {
-  // ── Services ──────────────────────────────────────────────────────────────
+  
   final _ctxSvc = ContextualBubbleService();
-  BubbleContext _ctx =
-      BubbleContext(mode: BubbleMode.normal, updatedAt: DateTime.now());
+  BubbleContext _ctx = BubbleContext(mode: BubbleMode.normal, updatedAt: DateTime.now());
   StreamSubscription<BubbleContext>? _ctxSub;
 
-  // ── Position ──────────────────────────────────────────────────────────────
+  
   Offset _pos = const Offset(_kDefaultLeftOffset, _kDefaultTopOffset);
   bool _dragging = false;
 
-  // ── UI state ──────────────────────────────────────────────────────────────
+  
   bool _isExpanded = true;
   bool _isSharedOpen = false;
   bool _isSecureOn = false;
-  int _activeTab = 0; // 0 = chat, 1 = shared
+  int _activeTab = 0; 
 
-  // ── Animations ────────────────────────────────────────────────────────────
+  
   late AnimationController _slideIn;
   late AnimationController _expandAnim;
   late AnimationController _sharedAnim;
@@ -85,16 +83,15 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
   late Animation<double> _expandCurve;
   late Animation<double> _dragScaleCurve;
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // LIFECYCLE
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   @override
   void initState() {
     super.initState();
 
-    _slideIn = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 420))
+    _slideIn = AnimationController(vsync: this, duration: const Duration(milliseconds: 420))
       ..forward();
 
     _expandAnim = AnimationController(
@@ -102,14 +99,11 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
       duration: const Duration(milliseconds: 340),
       value: 1.0,
     );
-    _expandCurve =
-        CurvedAnimation(parent: _expandAnim, curve: Curves.easeInOutCubic);
+    _expandCurve = CurvedAnimation(parent: _expandAnim, curve: Curves.easeInOutCubic);
 
-    _sharedAnim = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 380));
+    _sharedAnim = AnimationController(vsync: this, duration: const Duration(milliseconds: 380));
 
-    _dragScale = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 120));
+    _dragScale = AnimationController(vsync: this, duration: const Duration(milliseconds: 120));
     _dragScaleCurve = Tween<double>(begin: 1.0, end: 0.97)
         .animate(CurvedAnimation(parent: _dragScale, curve: Curves.easeIn));
 
@@ -128,9 +122,9 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     super.dispose();
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // HELPERS
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   double get _targetHeight {
     if (!_isExpanded) return _kCollapsedHeight;
@@ -181,9 +175,9 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     HapticFeedback.selectionClick();
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // DRAG
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   void _onPanStart(DragStartDetails _) {
     setState(() => _dragging = true);
@@ -205,7 +199,7 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     _snapIfNeeded();
   }
 
-  /// Snap to nearest horizontal edge if close to it.
+  
   void _snapIfNeeded() {
     final screenWidth = _lastScreenWidth;
     if (screenWidth <= 0) return;
@@ -219,9 +213,9 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
 
   double _lastScreenWidth = 0;
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // BUILD
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   @override
   Widget build(BuildContext context) {
@@ -229,8 +223,7 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     _lastScreenWidth = screen.width;
 
     final clampedX = _pos.dx.clamp(0.0, screen.width - _kOverlayWidth);
-    final clampedY = _pos.dy
-        .clamp(0.0, screen.height - _targetHeight.clamp(0, screen.height));
+    final clampedY = _pos.dy.clamp(0.0, screen.height - _targetHeight.clamp(0, screen.height));
 
     return Positioned(
       left: clampedX,
@@ -269,7 +262,7 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
       child: Material(
         elevation: _dragging ? 28 : 16,
         borderRadius: BorderRadius.circular(_kBorderRadius),
-        shadowColor: Colors.black.withOpacity(0.4),
+        shadowColor: Colors.black.withValues(alpha: 0.4),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(_kBorderRadius),
           child: _buildCardContent(),
@@ -283,32 +276,32 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
       decoration: const BoxDecoration(color: Color(0xFFF5F7FD)),
       child: Column(
         children: [
-          // ── Adaptive header ─────────────────────────────────────────────
+          
           BubbleAdaptiveHeader(
-            bubbleCtx: _ctx, // Changed from 'context' to 'bubbleCtx'
+            bubbleCtx: _ctx, 
             peerName: widget.userName,
             peerAvatar: widget.avatarUrl,
-            // Removed 'conversationId' and 'currentUserId' as they aren't defined in the constructor
+            
             onMinimize: widget.onMinimize,
             onClose: widget.onClose,
           ),
 
-          // ── Feature bar (only when expanded) ────────────────────────────
+          
           if (_isExpanded) _buildFeatureBar(),
 
-          // ── Content ──────────────────────────────────────────────────────
+          
           Expanded(child: _buildContent()),
 
-          // ── Bottom bar (only when expanded) ─────────────────────────────
+          
           if (_isExpanded) _buildBottomBar(),
         ],
       ),
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // FEATURE BAR
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildFeatureBar() {
     return Container(
@@ -346,9 +339,9 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // CONTENT
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildContent() {
     if (!_isExpanded) {
@@ -360,7 +353,7 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
           child: Text(
             '↑ Chạm để mở rộng',
             style: TextStyle(
-              color: const Color(0xFF9AA5B8).withOpacity(0.8),
+              color: const Color(0xFF9AA5B8).withValues(alpha: 0.8),
               fontSize: 11,
             ),
           ),
@@ -370,8 +363,7 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 280),
-      transitionBuilder: (child, anim) =>
-          FadeTransition(opacity: anim, child: child),
+      transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
       child: _activeTab == 1
           ? SharedSpaceWidget(
               key: const ValueKey('shared'),
@@ -388,9 +380,9 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // BOTTOM BAR
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   Widget _buildBottomBar() {
     return Container(
@@ -402,16 +394,14 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         children: [
-          // Collapse/Expand toggle
+          
           _BottomBarBtn(
-            icon: _isExpanded
-                ? Icons.keyboard_arrow_down_rounded
-                : Icons.keyboard_arrow_up_rounded,
+            icon: _isExpanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_up_rounded,
             label: _isExpanded ? 'Thu gọn' : 'Mở rộng',
             onTap: _toggleExpand,
           ),
           const Spacer(),
-          // Quick-mode buttons
+          
           _QuickModeBtn(
             icon: Icons.work_outline_rounded,
             mode: BubbleMode.work,
@@ -436,9 +426,9 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SMALL WIDGETS
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _FeatureTab extends StatelessWidget {
   final IconData icon;
@@ -500,7 +490,7 @@ class _ModePill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
@@ -564,8 +554,7 @@ class _BottomBarBtn extends StatelessWidget {
           children: [
             Icon(icon, size: 14, color: const Color(0xFF9AA5B8)),
             const SizedBox(width: 3),
-            Text(label,
-                style: const TextStyle(color: Color(0xFF9AA5B8), fontSize: 10)),
+            Text(label, style: const TextStyle(color: Color(0xFF9AA5B8), fontSize: 10)),
           ],
         ),
       ),
@@ -599,9 +588,7 @@ class _QuickModeBtn extends StatelessWidget {
           height: 30,
           margin: const EdgeInsets.only(right: 3),
           decoration: BoxDecoration(
-            color: isActive
-                ? const Color(0xFF1E88E5).withOpacity(0.12)
-                : Colors.transparent,
+            color: isActive ? const Color(0xFF1E88E5).withValues(alpha: 0.12) : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(

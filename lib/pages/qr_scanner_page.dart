@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
@@ -12,8 +13,7 @@ class QRScannerPage extends StatefulWidget {
   State<QRScannerPage> createState() => _QRScannerPageState();
 }
 
-class _QRScannerPageState extends State<QRScannerPage>
-    with SingleTickerProviderStateMixin {
+class _QRScannerPageState extends State<QRScannerPage> with SingleTickerProviderStateMixin {
   final MobileScannerController _controller = MobileScannerController(
     detectionSpeed: DetectionSpeed.noDuplicates,
     facing: CameraFacing.back,
@@ -24,7 +24,7 @@ class _QRScannerPageState extends State<QRScannerPage>
   bool _torchOn = false;
   bool _isFrontCamera = false;
 
-  // Animated scan line
+  
   late AnimationController _scanLineCtrl;
   late Animation<double> _scanLineAnim;
 
@@ -89,8 +89,7 @@ class _QRScannerPageState extends State<QRScannerPage>
         ),
         title: const Text(
           'Quét mã QR',
-          style: TextStyle(
-              color: Colors.white, fontWeight: FontWeight.w600, fontSize: 18),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 18),
         ),
         centerTitle: true,
         actions: [
@@ -105,9 +104,7 @@ class _QRScannerPageState extends State<QRScannerPage>
           ),
           IconButton(
             icon: Icon(
-              _isFrontCamera
-                  ? Icons.camera_front_rounded
-                  : Icons.camera_rear_rounded,
+              _isFrontCamera ? Icons.camera_front_rounded : Icons.camera_rear_rounded,
               color: Colors.white,
               size: 24,
             ),
@@ -118,14 +115,14 @@ class _QRScannerPageState extends State<QRScannerPage>
       ),
       body: Stack(
         children: [
-          // Camera
+          
           MobileScanner(
             controller: _controller,
             onDetect: _onDetect,
             errorBuilder: (context, error) => _buildError(error),
           ),
 
-          // Dark overlay with cutout
+          
           AnimatedBuilder(
             animation: _scanLineAnim,
             builder: (context, child) {
@@ -140,7 +137,7 @@ class _QRScannerPageState extends State<QRScannerPage>
             },
           ),
 
-          // Top hint text
+          
           Positioned(
             top: kToolbarHeight + MediaQuery.of(context).padding.top + 16,
             left: 0,
@@ -160,7 +157,7 @@ class _QRScannerPageState extends State<QRScannerPage>
             ),
           ),
 
-          // Success overlay
+          
           if (_isScanned)
             Positioned.fill(
               child: AnimatedOpacity(
@@ -179,16 +176,13 @@ class _QRScannerPageState extends State<QRScannerPage>
                             shape: BoxShape.circle,
                             color: Colors.green.shade400,
                           ),
-                          child: const Icon(Icons.check_rounded,
-                              color: Colors.white, size: 40),
+                          child: const Icon(Icons.check_rounded, color: Colors.white, size: 40),
                         ),
                         const SizedBox(height: 16),
                         const Text(
                           'Quét thành công!',
                           style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600),
+                              color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
                         ),
                       ],
                     ),
@@ -197,7 +191,7 @@ class _QRScannerPageState extends State<QRScannerPage>
               ),
             ),
 
-          // Bottom info card
+          
           Positioned(
             bottom: 0,
             left: 0,
@@ -208,13 +202,11 @@ class _QRScannerPageState extends State<QRScannerPage>
                 duration: const Duration(milliseconds: 300),
                 child: Container(
                   margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.12),
+                    color: Colors.white.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                        color: Colors.white.withOpacity(0.18), width: 0.8),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.18), width: 0.8),
                   ),
                   child: Row(
                     children: [
@@ -222,7 +214,7 @@ class _QRScannerPageState extends State<QRScannerPage>
                         width: 44,
                         height: 44,
                         decoration: BoxDecoration(
-                          color: ColorConstants.primaryColor.withOpacity(0.3),
+                          color: ColorConstants.primaryColor.withValues(alpha: 0.3),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(Icons.qr_code_scanner_rounded,
@@ -236,15 +228,12 @@ class _QRScannerPageState extends State<QRScannerPage>
                             Text(
                               'Tự động nhận diện',
                               style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14),
+                                  color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
                             ),
                             SizedBox(height: 3),
                             Text(
                               'Hướng camera vào mã QR để quét ngay lập tức',
-                              style: TextStyle(
-                                  color: Colors.white60, fontSize: 12.5),
+                              style: TextStyle(color: Colors.white60, fontSize: 12.5),
                             ),
                           ],
                         ),
@@ -273,18 +262,14 @@ class _QRScannerPageState extends State<QRScannerPage>
                 width: 80,
                 height: 80,
                 decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.15),
+                  color: Colors.red.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.camera_alt_outlined,
-                    size: 40, color: Colors.red),
+                child: const Icon(Icons.camera_alt_outlined, size: 40, color: Colors.red),
               ),
               const SizedBox(height: 20),
               const Text('Không thể truy cập camera',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600)),
+                  style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
               const SizedBox(height: 10),
               Text(
                 error.errorDetails?.message ?? 'Lỗi không xác định',
@@ -295,14 +280,11 @@ class _QRScannerPageState extends State<QRScannerPage>
               OutlinedButton.icon(
                 onPressed: () => Navigator.pop(context),
                 icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-                label: const Text('Quay lại',
-                    style: TextStyle(color: Colors.white)),
+                label: const Text('Quay lại', style: TextStyle(color: Colors.white)),
                 style: OutlinedButton.styleFrom(
                   side: const BorderSide(color: Colors.white30),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
               ),
             ],
@@ -333,16 +315,16 @@ class _ScannerOverlayPainter extends CustomPainter {
     final scanRect = Rect.fromLTWH(left, top, scanAreaSize, scanAreaSize);
     const r = Radius.circular(20);
 
-    // Dark overlay with cutout
+    
     canvas.drawPath(
       Path()
         ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
         ..addRRect(RRect.fromRectAndRadius(scanRect, r))
         ..fillType = PathFillType.evenOdd,
-      Paint()..color = Colors.black.withOpacity(0.65),
+      Paint()..color = Colors.black.withValues(alpha: 0.65),
     );
 
-    // Corner brackets
+    
     final cornerPaint = Paint()
       ..color = isScanned ? Colors.green : Colors.white
       ..strokeWidth = 3.5
@@ -368,14 +350,14 @@ class _ScannerOverlayPainter extends CustomPainter {
     drawCorner(left, top + scanAreaSize, 1, -1);
     drawCorner(left + scanAreaSize, top + scanAreaSize, -1, -1);
 
-    // Scan line
+    
     if (!isScanned) {
       final lineY = top + scanAreaSize * scanLineProgress;
       final linePaint = Paint()
         ..shader = LinearGradient(
           colors: [
             Colors.transparent,
-            ColorConstants.primaryColor.withOpacity(0.8),
+            ColorConstants.primaryColor.withValues(alpha: 0.8),
             Colors.transparent,
           ],
         ).createShader(Rect.fromLTWH(left, lineY, scanAreaSize, 2));

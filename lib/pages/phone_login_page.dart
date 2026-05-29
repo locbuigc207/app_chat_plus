@@ -2,7 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_chat_demo/constants/constants.dart';
+
 import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:flutter_chat_demo/providers/phone_auth_provider.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -15,14 +15,12 @@ class PhoneLoginPage extends StatefulWidget {
   State<PhoneLoginPage> createState() => _PhoneLoginPageState();
 }
 
-class _PhoneLoginPageState extends State<PhoneLoginPage>
-    with TickerProviderStateMixin {
+class _PhoneLoginPageState extends State<PhoneLoginPage> with TickerProviderStateMixin {
   final _phoneController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   final List<TextEditingController> _otpControllers =
-  List.generate(6, (_) => TextEditingController());
-  final List<FocusNode> _otpFocusNodes =
-  List.generate(6, (_) => FocusNode());
+      List.generate(6, (_) => TextEditingController());
+  final List<FocusNode> _otpFocusNodes = List.generate(6, (_) => FocusNode());
 
   String _selectedCountryCode = '+84';
   String _selectedFlag = '🇻🇳';
@@ -67,13 +65,11 @@ class _PhoneLoginPageState extends State<PhoneLoginPage>
       duration: const Duration(milliseconds: 600),
     );
 
-    _entryFade = CurvedAnimation(
-        parent: _entryController, curve: Curves.easeOut);
+    _entryFade = CurvedAnimation(parent: _entryController, curve: Curves.easeOut);
     _entrySlide = Tween<Offset>(
       begin: const Offset(0, 0.1),
       end: Offset.zero,
-    ).animate(CurvedAnimation(
-        parent: _entryController, curve: Curves.easeOutCubic));
+    ).animate(CurvedAnimation(parent: _entryController, curve: Curves.easeOutCubic));
 
     _shakeAnim = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _shakeController, curve: Curves.elasticIn),
@@ -104,8 +100,7 @@ class _PhoneLoginPageState extends State<PhoneLoginPage>
   void _sendOTP() {
     if (_formKey.currentState!.validate()) {
       HapticFeedback.lightImpact();
-      final phoneNumber =
-          _selectedCountryCode + _phoneController.text.trim();
+      final phoneNumber = _selectedCountryCode + _phoneController.text.trim();
       context.read<PhoneAuthProvider>().sendOTP(phoneNumber);
       _startResendCountdown();
     }
@@ -121,8 +116,7 @@ class _PhoneLoginPageState extends State<PhoneLoginPage>
     });
   }
 
-  String get _fullOtp =>
-      _otpControllers.map((c) => c.text).join();
+  String get _fullOtp => _otpControllers.map((c) => c.text).join();
 
   void _verifyOTP() async {
     if (_fullOtp.length < 6) {
@@ -132,12 +126,10 @@ class _PhoneLoginPageState extends State<PhoneLoginPage>
     }
 
     HapticFeedback.lightImpact();
-    final phoneNumber =
-        _selectedCountryCode + _phoneController.text.trim();
+    final phoneNumber = _selectedCountryCode + _phoneController.text.trim();
     final phoneAuthProvider = context.read<PhoneAuthProvider>();
 
-    final isSuccess =
-    await phoneAuthProvider.verifyOTP(_fullOtp, phoneNumber);
+    final isSuccess = await phoneAuthProvider.verifyOTP(_fullOtp, phoneNumber);
 
     if (!mounted) return;
 
@@ -155,8 +147,7 @@ class _PhoneLoginPageState extends State<PhoneLoginPage>
         context,
         PageRouteBuilder(
           pageBuilder: (_, __, ___) => HomePage(),
-          transitionsBuilder: (_, anim, __, child) =>
-              FadeTransition(opacity: anim, child: child),
+          transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
           transitionDuration: const Duration(milliseconds: 400),
         ),
       );
@@ -203,16 +194,14 @@ class _PhoneLoginPageState extends State<PhoneLoginPage>
   @override
   Widget build(BuildContext context) {
     final phoneAuthProvider = context.watch<PhoneAuthProvider>();
-    final isCodeSent =
-        phoneAuthProvider.status == PhoneAuthStatus.codeSent;
-    final isLoading =
-        phoneAuthProvider.status == PhoneAuthStatus.authenticating;
+    final isCodeSent = phoneAuthProvider.status == PhoneAuthStatus.codeSent;
+    final isLoading = phoneAuthProvider.status == PhoneAuthStatus.authenticating;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0E1A),
       body: Stack(
         children: [
-          // Background
+          
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
@@ -227,7 +216,7 @@ class _PhoneLoginPageState extends State<PhoneLoginPage>
             ),
           ),
 
-          // Subtle orb
+          
           Positioned(
             top: -100,
             right: -80,
@@ -238,8 +227,8 @@ class _PhoneLoginPageState extends State<PhoneLoginPage>
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    const Color(0xFF4F8DFF).withOpacity(0.12),
-                    const Color(0xFF4F8DFF).withOpacity(0),
+                    const Color(0xFF4F8DFF).withValues(alpha: 0.12),
+                    const Color(0xFF4F8DFF).withValues(alpha: 0),
                   ],
                 ),
               ),
@@ -249,10 +238,9 @@ class _PhoneLoginPageState extends State<PhoneLoginPage>
           SafeArea(
             child: Column(
               children: [
-                // App bar
+                
                 Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Row(
                     children: [
                       _GlassIconButton(
@@ -263,7 +251,7 @@ class _PhoneLoginPageState extends State<PhoneLoginPage>
                       Text(
                         'Đăng nhập',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.9),
+                          color: Colors.white.withValues(alpha: 0.9),
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
@@ -280,49 +268,42 @@ class _PhoneLoginPageState extends State<PhoneLoginPage>
                     child: FadeTransition(
                       opacity: _entryFade,
                       child: SingleChildScrollView(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 24, vertical: 16),
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                         child: Form(
                           key: _formKey,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Phone icon & title
+                              
                               Center(
                                 child: AnimatedSwitcher(
-                                  duration:
-                                  const Duration(milliseconds: 400),
+                                  duration: const Duration(milliseconds: 400),
                                   transitionBuilder: (child, anim) =>
-                                      ScaleTransition(
-                                          scale: anim, child: child),
+                                      ScaleTransition(scale: anim, child: child),
                                   child: isCodeSent
                                       ? ScaleTransition(
-                                    key: const ValueKey('otp'),
-                                    scale: _successScale,
-                                    child: _PhoneIllustration(
-                                        isOtp: true),
-                                  )
+                                          key: const ValueKey('otp'),
+                                          scale: _successScale,
+                                          child: _PhoneIllustration(isOtp: true),
+                                        )
                                       : const _PhoneIllustration(
-                                    key: ValueKey('phone'),
-                                    isOtp: false,
-                                  ),
+                                          key: ValueKey('phone'),
+                                          isOtp: false,
+                                        ),
                                 ),
                               ),
 
                               const SizedBox(height: 32),
 
-                              // Animated title
+                              
                               AnimatedSwitcher(
                                 duration: const Duration(milliseconds: 300),
                                 child: Column(
                                   key: ValueKey(isCodeSent),
-                                  crossAxisAlignment:
-                                  CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      isCodeSent
-                                          ? 'Nhập mã xác minh'
-                                          : 'Nhập số điện thoại',
+                                      isCodeSent ? 'Nhập mã xác minh' : 'Nhập số điện thoại',
                                       style: const TextStyle(
                                         color: Colors.white,
                                         fontSize: 26,
@@ -336,7 +317,7 @@ class _PhoneLoginPageState extends State<PhoneLoginPage>
                                           ? 'Chúng tôi đã gửi mã 6 chữ số đến\n$_selectedCountryCode ${_phoneController.text}'
                                           : 'Chúng tôi sẽ gửi mã xác minh\nqua SMS đến số của bạn',
                                       style: TextStyle(
-                                        color: Colors.white.withOpacity(0.45),
+                                        color: Colors.white.withValues(alpha: 0.45),
                                         fontSize: 14,
                                         height: 1.5,
                                       ),
@@ -347,7 +328,7 @@ class _PhoneLoginPageState extends State<PhoneLoginPage>
 
                               const SizedBox(height: 32),
 
-                              // Phone input or OTP
+                              
                               if (!isCodeSent) ...[
                                 _PhoneInputField(
                                   controller: _phoneController,
@@ -355,8 +336,7 @@ class _PhoneLoginPageState extends State<PhoneLoginPage>
                                   flag: _selectedFlag,
                                   isFocused: _phoneFieldFocused,
                                   onCountryTap: _showCountryPicker,
-                                  onFocusChange: (v) => setState(
-                                          () => _phoneFieldFocused = v),
+                                  onFocusChange: (v) => setState(() => _phoneFieldFocused = v),
                                 ),
                                 const SizedBox(height: 28),
                                 _PrimaryButton(
@@ -365,12 +345,11 @@ class _PhoneLoginPageState extends State<PhoneLoginPage>
                                   isLoading: isLoading,
                                 ),
                               ] else ...[
-                                // OTP boxes
+                                
                                 AnimatedBuilder(
                                   animation: _shakeAnim,
                                   builder: (_, child) {
-                                    final shake = (_shakeAnim.value * 8 *
-                                        (1 - _shakeAnim.value))
+                                    final shake = (_shakeAnim.value * 8 * (1 - _shakeAnim.value))
                                         .clamp(-8.0, 8.0);
                                     return Transform.translate(
                                       offset: Offset(shake, 0),
@@ -393,36 +372,31 @@ class _PhoneLoginPageState extends State<PhoneLoginPage>
                                 Center(
                                   child: _resendSeconds > 0
                                       ? Text(
-                                    'Gửi lại sau $_resendSeconds giây',
-                                    style: TextStyle(
-                                      color: Colors.white
-                                          .withOpacity(0.4),
-                                      fontSize: 13,
-                                    ),
-                                  )
+                                          'Gửi lại sau $_resendSeconds giây',
+                                          style: TextStyle(
+                                            color: Colors.white.withValues(alpha: 0.4),
+                                            fontSize: 13,
+                                          ),
+                                        )
                                       : GestureDetector(
-                                    onTap: _sendOTP,
-                                    child: const Text(
-                                      'Gửi lại mã OTP',
-                                      style: TextStyle(
-                                        color: Color(0xFF4F8DFF),
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        decoration:
-                                        TextDecoration.underline,
-                                        decorationColor:
-                                        Color(0xFF4F8DFF),
-                                      ),
-                                    ),
-                                  ),
+                                          onTap: _sendOTP,
+                                          child: const Text(
+                                            'Gửi lại mã OTP',
+                                            style: TextStyle(
+                                              color: Color(0xFF4F8DFF),
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              decoration: TextDecoration.underline,
+                                              decorationColor: Color(0xFF4F8DFF),
+                                            ),
+                                          ),
+                                        ),
                                 ),
                                 const SizedBox(height: 16),
                                 Center(
                                   child: GestureDetector(
                                     onTap: () {
-                                      context
-                                          .read<PhoneAuthProvider>()
-                                          .resetStatus();
+                                      context.read<PhoneAuthProvider>().resetStatus();
                                       for (var c in _otpControllers) {
                                         c.clear();
                                       }
@@ -430,13 +404,10 @@ class _PhoneLoginPageState extends State<PhoneLoginPage>
                                     child: Text(
                                       'Thay đổi số điện thoại',
                                       style: TextStyle(
-                                        color:
-                                        Colors.white.withOpacity(0.35),
+                                        color: Colors.white.withValues(alpha: 0.35),
                                         fontSize: 13,
-                                        decoration:
-                                        TextDecoration.underline,
-                                        decorationColor:
-                                        Colors.white.withOpacity(0.35),
+                                        decoration: TextDecoration.underline,
+                                        decorationColor: Colors.white.withValues(alpha: 0.35),
                                       ),
                                     ),
                                   ),
@@ -453,13 +424,13 @@ class _PhoneLoginPageState extends State<PhoneLoginPage>
             ),
           ),
 
-          // Loading overlay
+          
           if (isLoading)
             Positioned.fill(
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
                 child: Container(
-                  color: Colors.black.withOpacity(0.3),
+                  color: Colors.black.withValues(alpha: 0.3),
                   child: const Center(
                     child: SizedBox(
                       width: 40,
@@ -479,7 +450,7 @@ class _PhoneLoginPageState extends State<PhoneLoginPage>
   }
 }
 
-// ─── Phone Illustration ───────────────────────────────────────────────────────
+
 
 class _PhoneIllustration extends StatelessWidget {
   final bool isOtp;
@@ -501,8 +472,8 @@ class _PhoneIllustration extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: (isOtp ? const Color(0xFF00C896) : const Color(0xFF4F8DFF))
-                .withOpacity(0.35),
+            color:
+                (isOtp ? const Color(0xFF00C896) : const Color(0xFF4F8DFF)).withValues(alpha: 0.35),
             blurRadius: 28,
             offset: const Offset(0, 10),
           ),
@@ -517,7 +488,7 @@ class _PhoneIllustration extends StatelessWidget {
   }
 }
 
-// ─── Phone Input Field ────────────────────────────────────────────────────────
+
 
 class _PhoneInputField extends StatelessWidget {
   final TextEditingController controller;
@@ -544,7 +515,7 @@ class _PhoneInputField extends StatelessWidget {
         Text(
           'Số điện thoại',
           style: TextStyle(
-            color: Colors.white.withOpacity(0.6),
+            color: Colors.white.withValues(alpha: 0.6),
             fontSize: 12,
             fontWeight: FontWeight.w500,
             letterSpacing: 0.5,
@@ -557,24 +528,23 @@ class _PhoneInputField extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: isFocused
-                  ? const Color(0xFF4F8DFF).withOpacity(0.6)
-                  : Colors.white.withOpacity(0.1),
+                  ? const Color(0xFF4F8DFF).withValues(alpha: 0.6)
+                  : Colors.white.withValues(alpha: 0.1),
               width: isFocused ? 1.5 : 1.0,
             ),
-            color: Colors.white.withOpacity(0.05),
+            color: Colors.white.withValues(alpha: 0.05),
           ),
           child: Row(
             children: [
-              // Country picker
+              
               GestureDetector(
                 onTap: onCountryTap,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 18),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
                   decoration: BoxDecoration(
                     border: Border(
                       right: BorderSide(
-                        color: Colors.white.withOpacity(0.08),
+                        color: Colors.white.withValues(alpha: 0.08),
                       ),
                     ),
                   ),
@@ -585,7 +555,7 @@ class _PhoneInputField extends StatelessWidget {
                       Text(
                         countryCode,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.8),
+                          color: Colors.white.withValues(alpha: 0.8),
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
                         ),
@@ -593,7 +563,7 @@ class _PhoneInputField extends StatelessWidget {
                       const SizedBox(width: 4),
                       Icon(
                         Icons.keyboard_arrow_down_rounded,
-                        color: Colors.white.withOpacity(0.4),
+                        color: Colors.white.withValues(alpha: 0.4),
                         size: 18,
                       ),
                     ],
@@ -601,7 +571,7 @@ class _PhoneInputField extends StatelessWidget {
                 ),
               ),
 
-              // Phone number field
+              
               Expanded(
                 child: Focus(
                   onFocusChange: onFocusChange,
@@ -609,19 +579,18 @@ class _PhoneInputField extends StatelessWidget {
                     controller: controller,
                     keyboardType: TextInputType.phone,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withValues(alpha: 0.9),
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
                     ),
                     decoration: InputDecoration(
                       hintText: '0XX XXX XXXX',
                       hintStyle: TextStyle(
-                        color: Colors.white.withOpacity(0.25),
+                        color: Colors.white.withValues(alpha: 0.25),
                         fontSize: 15,
                       ),
                       border: InputBorder.none,
-                      contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                     ),
                     validator: (v) {
                       if (v == null || v.isEmpty) {
@@ -643,7 +612,7 @@ class _PhoneInputField extends StatelessWidget {
   }
 }
 
-// ─── OTP Input Row ────────────────────────────────────────────────────────────
+
 
 class _OtpInputRow extends StatelessWidget {
   final List<TextEditingController> controllers;
@@ -662,7 +631,7 @@ class _OtpInputRow extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: List.generate(
         6,
-            (i) => _OtpBox(
+        (i) => _OtpBox(
           controller: controllers[i],
           focusNode: focusNodes[i],
           onChanged: (v) => onChanged(i, v),
@@ -711,21 +680,21 @@ class _OtpBoxState extends State<_OtpBox> {
           color: _focused
               ? const Color(0xFF4F8DFF)
               : hasValue
-              ? const Color(0xFF4F8DFF).withOpacity(0.4)
-              : Colors.white.withOpacity(0.1),
+                  ? const Color(0xFF4F8DFF).withValues(alpha: 0.4)
+                  : Colors.white.withValues(alpha: 0.1),
           width: _focused ? 2.0 : 1.0,
         ),
         color: hasValue
-            ? const Color(0xFF4F8DFF).withOpacity(0.08)
-            : Colors.white.withOpacity(0.04),
+            ? const Color(0xFF4F8DFF).withValues(alpha: 0.08)
+            : Colors.white.withValues(alpha: 0.04),
         boxShadow: _focused
             ? [
-          BoxShadow(
-            color: const Color(0xFF4F8DFF).withOpacity(0.2),
-            blurRadius: 12,
-            spreadRadius: -2,
-          )
-        ]
+                BoxShadow(
+                  color: const Color(0xFF4F8DFF).withValues(alpha: 0.2),
+                  blurRadius: 12,
+                  spreadRadius: -2,
+                )
+              ]
             : null,
       ),
       child: TextField(
@@ -750,7 +719,7 @@ class _OtpBoxState extends State<_OtpBox> {
   }
 }
 
-// ─── Primary Button ───────────────────────────────────────────────────────────
+
 
 class _PrimaryButton extends StatefulWidget {
   final String label;
@@ -767,8 +736,7 @@ class _PrimaryButton extends StatefulWidget {
   State<_PrimaryButton> createState() => _PrimaryButtonState();
 }
 
-class _PrimaryButtonState extends State<_PrimaryButton>
-    with SingleTickerProviderStateMixin {
+class _PrimaryButtonState extends State<_PrimaryButton> with SingleTickerProviderStateMixin {
   late AnimationController _pressCtrl;
   late Animation<double> _scale;
 
@@ -793,14 +761,12 @@ class _PrimaryButtonState extends State<_PrimaryButton>
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTapDown: widget.onTap != null
-          ? (_) => _pressCtrl.forward()
-          : null,
+      onTapDown: widget.onTap != null ? (_) => _pressCtrl.forward() : null,
       onTapUp: widget.onTap != null
           ? (_) {
-        _pressCtrl.reverse();
-        widget.onTap?.call();
-      }
+              _pressCtrl.reverse();
+              widget.onTap?.call();
+            }
           : null,
       onTapCancel: () => _pressCtrl.reverse(),
       child: ScaleTransition(
@@ -817,7 +783,7 @@ class _PrimaryButtonState extends State<_PrimaryButton>
             ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF4F8DFF).withOpacity(0.35),
+                color: const Color(0xFF4F8DFF).withValues(alpha: 0.35),
                 blurRadius: 20,
                 offset: const Offset(0, 8),
               ),
@@ -826,22 +792,22 @@ class _PrimaryButtonState extends State<_PrimaryButton>
           child: Center(
             child: widget.isLoading
                 ? const SizedBox(
-              width: 22,
-              height: 22,
-              child: CircularProgressIndicator(
-                color: Colors.white,
-                strokeWidth: 2.5,
-              ),
-            )
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2.5,
+                    ),
+                  )
                 : Text(
-              widget.label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.2,
-              ),
-            ),
+                    widget.label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
           ),
         ),
       ),
@@ -849,7 +815,7 @@ class _PrimaryButtonState extends State<_PrimaryButton>
   }
 }
 
-// ─── Glass Icon Button ────────────────────────────────────────────────────────
+
 
 class _GlassIconButton extends StatelessWidget {
   final IconData icon;
@@ -870,12 +836,12 @@ class _GlassIconButton extends StatelessWidget {
             height: 40,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              color: Colors.white.withOpacity(0.08),
+              color: Colors.white.withValues(alpha: 0.08),
               border: Border.all(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha: 0.1),
               ),
             ),
-            child: Icon(icon, color: Colors.white.withOpacity(0.8), size: 20),
+            child: Icon(icon, color: Colors.white.withValues(alpha: 0.8), size: 20),
           ),
         ),
       ),
@@ -883,7 +849,7 @@ class _GlassIconButton extends StatelessWidget {
   }
 }
 
-// ─── Country Picker Sheet ─────────────────────────────────────────────────────
+
 
 typedef _Country = ({String code, String flag, String name});
 
@@ -908,18 +874,16 @@ class _CountryPickerSheetState extends State<_CountryPickerSheet> {
   @override
   Widget build(BuildContext context) {
     final filtered = widget.countries
-        .where((c) =>
-    c.name.toLowerCase().contains(_search.toLowerCase()) ||
-        c.code.contains(_search))
+        .where(
+            (c) => c.name.toLowerCase().contains(_search.toLowerCase()) || c.code.contains(_search))
         .toList();
 
     return ClipRRect(
-      borderRadius:
-      const BorderRadius.vertical(top: Radius.circular(28)),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: Container(
-          color: const Color(0xFF0D1B3E).withOpacity(0.95),
+          color: const Color(0xFF0D1B3E).withValues(alpha: 0.95),
           padding: const EdgeInsets.only(top: 16),
           child: Column(
             children: [
@@ -927,7 +891,7 @@ class _CountryPickerSheetState extends State<_CountryPickerSheet> {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -937,23 +901,19 @@ class _CountryPickerSheetState extends State<_CountryPickerSheet> {
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
-                    color: Colors.white.withOpacity(0.07),
-                    border: Border.all(
-                        color: Colors.white.withOpacity(0.1)),
+                    color: Colors.white.withValues(alpha: 0.07),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
                   ),
                   child: TextField(
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       hintText: 'Tìm kiếm quốc gia...',
-                      hintStyle: TextStyle(
-                          color: Colors.white.withOpacity(0.35),
-                          fontSize: 14),
-                      prefixIcon: Icon(Icons.search,
-                          color: Colors.white.withOpacity(0.4),
-                          size: 20),
+                      hintStyle:
+                          TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 14),
+                      prefixIcon:
+                          Icon(Icons.search, color: Colors.white.withValues(alpha: 0.4), size: 20),
                       border: InputBorder.none,
-                      contentPadding:
-                      const EdgeInsets.symmetric(vertical: 14),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                     onChanged: (v) => setState(() => _search = v),
                   ),
@@ -967,15 +927,12 @@ class _CountryPickerSheetState extends State<_CountryPickerSheet> {
                     final c = filtered[i];
                     final isSelected = c.code == widget.selected;
                     return ListTile(
-                      leading: Text(c.flag,
-                          style: const TextStyle(fontSize: 22)),
+                      leading: Text(c.flag, style: const TextStyle(fontSize: 22)),
                       title: Text(
                         c.name,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.85),
-                          fontWeight: isSelected
-                              ? FontWeight.w700
-                              : FontWeight.w400,
+                          color: Colors.white.withValues(alpha: 0.85),
+                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
                         ),
                       ),
                       trailing: Text(
@@ -983,14 +940,13 @@ class _CountryPickerSheetState extends State<_CountryPickerSheet> {
                         style: TextStyle(
                           color: isSelected
                               ? const Color(0xFF4F8DFF)
-                              : Colors.white.withOpacity(0.45),
+                              : Colors.white.withValues(alpha: 0.45),
                           fontWeight: FontWeight.w600,
                           fontSize: 14,
                         ),
                       ),
                       onTap: () {
-                        widget.onSelect(
-                            code: c.code, flag: c.flag);
+                        widget.onSelect(code: c.code, flag: c.flag);
                         Navigator.pop(context);
                       },
                     );

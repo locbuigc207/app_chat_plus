@@ -1,14 +1,15 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GroupMediaPage
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class GroupMediaPage extends StatefulWidget {
   const GroupMediaPage({
@@ -24,14 +25,13 @@ class GroupMediaPage extends StatefulWidget {
   State<GroupMediaPage> createState() => _GroupMediaPageState();
 }
 
-class _GroupMediaPageState extends State<GroupMediaPage>
-    with SingleTickerProviderStateMixin {
+class _GroupMediaPageState extends State<GroupMediaPage> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   List<DocumentSnapshot> _allMessages = [];
   bool _isLoading = true;
   int _selectedImageIndex = -1;
 
-  // ── colour palette ─────────────────────────────────────────────────────────
+  
   static const _bg = Color(0xFF0D0F14);
   static const _surface = Color(0xFF181B24);
   static const _accent = Color(0xFF4F8EF7);
@@ -102,9 +102,7 @@ class _GroupMediaPageState extends State<GroupMediaPage>
             _buildSliverAppBar(innerBoxIsScrolled),
           ],
           body: _isLoading
-              ? const Center(
-                  child: CircularProgressIndicator(
-                      color: _accent, strokeWidth: 2.5))
+              ? const Center(child: CircularProgressIndicator(color: _accent, strokeWidth: 2.5))
               : TabBarView(
                   controller: _tabController,
                   children: [
@@ -120,12 +118,8 @@ class _GroupMediaPageState extends State<GroupMediaPage>
 
   SliverAppBar _buildSliverAppBar(bool innerBoxIsScrolled) {
     final tabs = [
-      _TabInfo(
-          icon: Icons.image_rounded, label: 'Photos', count: _images.length),
-      _TabInfo(
-          icon: Icons.mic_rounded,
-          label: 'Voice',
-          count: _voiceMessages.length),
+      _TabInfo(icon: Icons.image_rounded, label: 'Photos', count: _images.length),
+      _TabInfo(icon: Icons.mic_rounded, label: 'Voice', count: _voiceMessages.length),
       _TabInfo(icon: Icons.link_rounded, label: 'Links', count: _links.length),
     ];
 
@@ -136,20 +130,15 @@ class _GroupMediaPageState extends State<GroupMediaPage>
       backgroundColor: _bg,
       elevation: 0,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new_rounded,
-            color: _textPrimary, size: 20),
+        icon: const Icon(Icons.arrow_back_ios_new_rounded, color: _textPrimary, size: 20),
         onPressed: () => Navigator.pop(context),
       ),
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('Media & Files',
-              style: TextStyle(
-                  color: _textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700)),
-          Text(widget.groupName,
-              style: const TextStyle(color: _textSecondary, fontSize: 12)),
+              style: TextStyle(color: _textPrimary, fontSize: 18, fontWeight: FontWeight.w700)),
+          Text(widget.groupName, style: const TextStyle(color: _textSecondary, fontSize: 12)),
         ],
       ),
       actions: [
@@ -174,10 +163,8 @@ class _GroupMediaPageState extends State<GroupMediaPage>
             indicatorSize: TabBarIndicatorSize.label,
             labelColor: _accent,
             unselectedLabelColor: _textSecondary,
-            labelStyle:
-                const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-            unselectedLabelStyle:
-                const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+            labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+            unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
             tabs: tabs.map((t) {
               return Tab(
                 child: Row(
@@ -200,7 +187,7 @@ class _GroupMediaPageState extends State<GroupMediaPage>
     );
   }
 
-  // ── photos tab ─────────────────────────────────────────────────────────────
+  
 
   Widget _buildImagesTab() {
     if (_images.isEmpty) {
@@ -239,8 +226,7 @@ class _GroupMediaPageState extends State<GroupMediaPage>
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             decoration: BoxDecoration(
-              border:
-                  isSelected ? Border.all(color: _accent, width: 2.5) : null,
+              border: isSelected ? Border.all(color: _accent, width: 2.5) : null,
             ),
             child: Stack(
               fit: StackFit.expand,
@@ -255,8 +241,7 @@ class _GroupMediaPageState extends State<GroupMediaPage>
                       child: Center(
                         child: CircularProgressIndicator(
                           value: prog.expectedTotalBytes != null
-                              ? prog.cumulativeBytesLoaded /
-                                  prog.expectedTotalBytes!
+                              ? prog.cumulativeBytesLoaded / prog.expectedTotalBytes!
                               : null,
                           color: _accent,
                           strokeWidth: 1.5,
@@ -266,24 +251,21 @@ class _GroupMediaPageState extends State<GroupMediaPage>
                   },
                   errorBuilder: (_, __, ___) => Container(
                     color: _surface,
-                    child: const Icon(Icons.broken_image_rounded,
-                        color: _textSecondary),
+                    child: const Icon(Icons.broken_image_rounded, color: _textSecondary),
                   ),
                 ),
                 if (isSelected)
                   Container(
-                    color: _accent.withOpacity(.25),
+                    color: _accent.withValues(alpha: .25),
                     alignment: Alignment.center,
-                    child: const Icon(Icons.check_circle_rounded,
-                        color: Colors.white, size: 28),
+                    child: const Icon(Icons.check_circle_rounded, color: Colors.white, size: 28),
                   ),
-                // Timestamp overlay
+                
                 Positioned(
                   bottom: 4,
                   right: 4,
                   child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                     decoration: BoxDecoration(
                       color: Colors.black54,
                       borderRadius: BorderRadius.circular(4),
@@ -291,9 +273,7 @@ class _GroupMediaPageState extends State<GroupMediaPage>
                     child: Text(
                       _formatShortDate(data['timestamp'] as String? ?? '0'),
                       style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w500),
+                          color: Colors.white, fontSize: 9, fontWeight: FontWeight.w500),
                     ),
                   ),
                 ),
@@ -305,7 +285,7 @@ class _GroupMediaPageState extends State<GroupMediaPage>
     );
   }
 
-  // ── voice tab ──────────────────────────────────────────────────────────────
+  
 
   Widget _buildVoiceTab() {
     if (_voiceMessages.isEmpty) {
@@ -332,8 +312,7 @@ class _GroupMediaPageState extends State<GroupMediaPage>
             border: Border.all(color: _divider, width: .8),
           ),
           child: ListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             leading: Container(
               width: 44,
               height: 44,
@@ -345,14 +324,10 @@ class _GroupMediaPageState extends State<GroupMediaPage>
                 ),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child:
-                  const Icon(Icons.mic_rounded, color: Colors.white, size: 22),
+              child: const Icon(Icons.mic_rounded, color: Colors.white, size: 22),
             ),
             title: const Text('Voice Message',
-                style: TextStyle(
-                    color: _textPrimary,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14.5)),
+                style: TextStyle(color: _textPrimary, fontWeight: FontWeight.w600, fontSize: 14.5)),
             subtitle: Text(
               _formatFullDate(dt),
               style: const TextStyle(color: _textSecondary, fontSize: 12.5),
@@ -360,7 +335,7 @@ class _GroupMediaPageState extends State<GroupMediaPage>
             trailing: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: _accent.withOpacity(.12),
+                color: _accent.withValues(alpha: .12),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: const Row(
@@ -369,10 +344,7 @@ class _GroupMediaPageState extends State<GroupMediaPage>
                   Icon(Icons.play_arrow_rounded, color: _accent, size: 18),
                   SizedBox(width: 2),
                   Text('Play',
-                      style: TextStyle(
-                          color: _accent,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600)),
+                      style: TextStyle(color: _accent, fontSize: 12, fontWeight: FontWeight.w600)),
                 ],
               ),
             ),
@@ -382,7 +354,7 @@ class _GroupMediaPageState extends State<GroupMediaPage>
     );
   }
 
-  // ── links tab ──────────────────────────────────────────────────────────────
+  
 
   Widget _buildLinksTab() {
     if (_links.isEmpty) {
@@ -430,22 +402,20 @@ class _GroupMediaPageState extends State<GroupMediaPage>
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Link icon
+                  
                   Container(
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF43C6AC).withOpacity(.15),
+                      color: const Color(0xFF43C6AC).withValues(alpha: .15),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                          color: const Color(0xFF43C6AC).withOpacity(.3),
-                          width: .8),
+                          color: const Color(0xFF43C6AC).withValues(alpha: .3), width: .8),
                     ),
-                    child: const Icon(Icons.public_rounded,
-                        color: Color(0xFF43C6AC), size: 22),
+                    child: const Icon(Icons.public_rounded, color: Color(0xFF43C6AC), size: 22),
                   ),
                   const SizedBox(width: 12),
-                  // URL info
+                  
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -471,14 +441,12 @@ class _GroupMediaPageState extends State<GroupMediaPage>
                         const SizedBox(height: 4),
                         Text(
                           _formatFullDate(dt),
-                          style: const TextStyle(
-                              color: _textSecondary, fontSize: 11),
+                          style: const TextStyle(color: _textSecondary, fontSize: 11),
                         ),
                       ],
                     ),
                   ),
-                  const Icon(Icons.open_in_new_rounded,
-                      color: _textSecondary, size: 16),
+                  const Icon(Icons.open_in_new_rounded, color: _textSecondary, size: 16),
                 ],
               ),
             ),
@@ -488,7 +456,7 @@ class _GroupMediaPageState extends State<GroupMediaPage>
     );
   }
 
-  // ── helpers ────────────────────────────────────────────────────────────────
+  
 
   DateTime _parseTimestamp(String ts) {
     try {
@@ -522,17 +490,16 @@ class _GroupMediaPageState extends State<GroupMediaPage>
   }
 }
 
-// ── tab info helper ────────────────────────────────────────────────────────
+
 
 class _TabInfo {
-  const _TabInfo(
-      {required this.icon, required this.label, required this.count});
+  const _TabInfo({required this.icon, required this.label, required this.count});
   final IconData icon;
   final String label;
   final int count;
 }
 
-// ── count badge ────────────────────────────────────────────────────────────
+
 
 class _CountBadge extends StatelessWidget {
   const _CountBadge({required this.count});
@@ -543,21 +510,18 @@ class _CountBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(
-        color: const Color(0xFF4F8EF7).withOpacity(.2),
+        color: const Color(0xFF4F8EF7).withValues(alpha: .2),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Text(
         '$count',
-        style: const TextStyle(
-            color: Color(0xFF4F8EF7),
-            fontSize: 11,
-            fontWeight: FontWeight.w700),
+        style: const TextStyle(color: Color(0xFF4F8EF7), fontSize: 11, fontWeight: FontWeight.w700),
       ),
     );
   }
 }
 
-// ── empty state ────────────────────────────────────────────────────────────
+
 
 class _EmptyState extends StatelessWidget {
   const _EmptyState({
@@ -588,16 +552,13 @@ class _EmptyState extends StatelessWidget {
           const SizedBox(height: 20),
           Text(title,
               style: const TextStyle(
-                  color: Color(0xFFEEF2FF),
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600)),
+                  color: Color(0xFFEEF2FF), fontSize: 18, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 40),
             child: Text(subtitle,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                    color: Color(0xFF8B93B0), fontSize: 14, height: 1.5)),
+                style: const TextStyle(color: Color(0xFF8B93B0), fontSize: 14, height: 1.5)),
           ),
         ],
       ),

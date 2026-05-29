@@ -2,45 +2,52 @@
 
 import 'dart:async';
 
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
+
+import 'package:cloud_functions/cloud_functions.dart';
 
 import '../utils/utils.dart';
 
-// =========================================================
-// MODELS
-// =========================================================
 
-/// Mức độ nguy hiểm của tin nhắn sau phân tích scam.
+
+
+
+
 enum ScamLevel {
-  safe,    // An toàn
-  warning, // Đáng ngờ
-  scam,    // Lừa đảo rõ ràng
+  safe, 
+  warning, 
+  scam, 
 }
 
 extension ScamLevelX on ScamLevel {
   String get label {
     switch (this) {
-      case ScamLevel.safe:    return 'SAFE';
-      case ScamLevel.warning: return 'WARNING';
-      case ScamLevel.scam:    return 'SCAM';
+      case ScamLevel.safe:
+        return 'SAFE';
+      case ScamLevel.warning:
+        return 'WARNING';
+      case ScamLevel.scam:
+        return 'SCAM';
     }
   }
 
   static ScamLevel fromString(String? raw) {
     switch (raw?.toUpperCase()) {
-      case 'WARNING': return ScamLevel.warning;
-      case 'SCAM':    return ScamLevel.scam;
-      default:        return ScamLevel.safe;
+      case 'WARNING':
+        return ScamLevel.warning;
+      case 'SCAM':
+        return ScamLevel.scam;
+      default:
+        return ScamLevel.safe;
     }
   }
 }
 
-/// Kết quả phân tích scam đầy đủ.
+
 class ScamAnalysisResult {
   final ScamLevel level;
   final String? reason;
-  final double? confidence; // 0.0 – 1.0
+  final double? confidence; 
   final List<String> warningKeywords;
 
   const ScamAnalysisResult({
@@ -50,8 +57,7 @@ class ScamAnalysisResult {
     this.warningKeywords = const [],
   });
 
-  factory ScamAnalysisResult.safe() =>
-      const ScamAnalysisResult(level: ScamLevel.safe);
+  factory ScamAnalysisResult.safe() => const ScamAnalysisResult(level: ScamLevel.safe);
 
   factory ScamAnalysisResult.fromMap(Map<dynamic, dynamic> data) {
     final keywords = data['warningKeywords'];
@@ -59,16 +65,14 @@ class ScamAnalysisResult {
       level: ScamLevelX.fromString(data['status'] as String?),
       reason: data['reason'] as String?,
       confidence: (data['confidence'] as num?)?.toDouble(),
-      warningKeywords: keywords is List
-          ? keywords.cast<String>()
-          : const [],
+      warningKeywords: keywords is List ? keywords.cast<String>() : const [],
     );
   }
 }
 
-/// Kết quả trích xuất relationship memory.
+
 class RelationshipMemory {
-  final String? relationshipType; // friend, family, colleague...
+  final String? relationshipType; 
   final List<String> sharedTopics;
   final List<String> importantDates;
   final Map<String, dynamic> rawData;
@@ -92,9 +96,9 @@ class RelationshipMemory {
   }
 }
 
-// =========================================================
-// EXCEPTIONS
-// =========================================================
+
+
+
 
 enum AIBackendErrorType {
   networkError,
@@ -113,55 +117,54 @@ class AIBackendException implements Exception {
   const AIBackendException(this.type, this.message, {this.cause});
 
   @override
-  String toString() =>
-      'AIBackendException(${type.name}): $message'
-          '${cause != null ? ' — $cause' : ''}';
+  String toString() => 'AIBackendException(${type.name}): $message'
+      '${cause != null ? ' — $cause' : ''}';
 }
 
-// =========================================================
-// AI BACKEND SERVICE
-// =========================================================
 
-/// Service giao tiếp với Firebase Cloud Functions để xử lý AI phía backend.
-///
-/// Toàn bộ nội dung tin nhắn được mask qua [DataMaskingUtils] trước khi
-/// gửi lên server, đảm bảo không rò rỉ dữ liệu nhạy cảm ra ngoài.
-///
-/// Tất cả các method đều:
-/// - Mask PII trước khi gửi lên server.
-/// - Có timeout tích hợp để tránh treo UI.
-/// - Trả về giá trị mặc định an toàn khi gặp lỗi (không ném exception ra ngoài).
+
+
+
+
+
+
+
+
+
+
+
+
 class AIBackendService {
-  // ── Singleton ──────────────────────────────────────────
+  
   AIBackendService._internal();
   static final AIBackendService _instance = AIBackendService._internal();
   factory AIBackendService() => _instance;
 
-  // ── Dependencies ───────────────────────────────────────
+  
   final FirebaseFunctions _functions = FirebaseFunctions.instanceFor(
-    region: 'asia-southeast1', // Đặt gần Vietnam để giảm latency
+    region: 'asia-southeast1', 
   );
 
-  // ── Timeouts ───────────────────────────────────────────
+  
   static const _kDefaultTimeout = Duration(seconds: 15);
   static const _kAnalysisTimeout = Duration(seconds: 20);
   static const _kBatchTimeout = Duration(seconds: 30);
 
-  // ── Masking config cho AI (chỉ mask PII, giữ ngữ cảnh) ─
+  
   static const _kAiMaskingConfig = MaskingConfig.piiOnly;
 
-  // =========================================================
-  // 1. PHÂN TÍCH SCAM (NHANH)
-  // =========================================================
+  
+  
+  
 
-  /// Kiểm tra nhanh một tin nhắn có dấu hiệu scam/lừa đảo không.
-  /// Trả về [ScamLevel.safe] nếu gặp lỗi để không làm gián đoạn UX.
+  
+  
   Future<ScamLevel> checkScam(String message) async {
     final result = await analyzeScamDetailed(message);
     return result.level;
   }
 
-  /// Phân tích scam chi tiết — trả về [ScamAnalysisResult] đầy đủ.
+  
   Future<ScamAnalysisResult> analyzeScamDetailed(String message) async {
     if (message.trim().isEmpty) return ScamAnalysisResult.safe();
 
@@ -178,21 +181,21 @@ class AIBackendService {
       );
 
       if (result == null) return ScamAnalysisResult.safe();
-      return ScamAnalysisResult.fromMap(result as Map);
+      return ScamAnalysisResult.fromMap(result);
     } catch (e) {
       _log('checkScam error: $e');
       return ScamAnalysisResult.safe();
     }
   }
 
-  // =========================================================
-  // 2. PHÂN TÍCH TIN NHẮN ĐÃ GIẢI MÃ (SCAM DETECTION PIPELINE)
-  // =========================================================
+  
+  
+  
 
-  /// Gửi tin nhắn đã giải mã E2EE lên Cloud Function để phân tích.
-  ///
-  /// Được gọi từ [AdaptiveChatBubble._triggerClientSideAI] sau khi
-  /// giải mã thành công, chỉ với tin nhắn từ người khác.
+  
+  
+  
+  
   Future<void> analyzeDecryptedMessage({
     required String plainText,
     required String conversationId,
@@ -225,17 +228,17 @@ class AIBackendService {
     }
   }
 
-  // =========================================================
-  // 3. DỊCH / DIỄN GIẢI TIN NHẮN
-  // =========================================================
+  
+  
+  
 
-  /// Dịch/diễn giải lại tin nhắn phù hợp với đối tượng nhận.
-  ///
-  /// [targetAudience]: `'elder'` | `'student'` | `'work'` | `'child'`
+  
+  
+  
   Future<String?> translateCommunication(
-      String message,
-      String targetAudience,
-      ) async {
+    String message,
+    String targetAudience,
+  ) async {
     if (message.trim().isEmpty) return null;
 
     try {
@@ -260,19 +263,19 @@ class AIBackendService {
     }
   }
 
-  // =========================================================
-  // 4. PHÂN TÍCH NGỮ CẢNH CHAT
-  // =========================================================
+  
+  
+  
 
-  /// Phân tích ngữ cảnh cuộc hội thoại để gợi ý hành động hoặc tóm tắt.
-  ///
-  /// [contextType]: `'study'` | `'work'` | `'elder'` | `'general'`
-  /// [action]: `'summarize'` | `'suggest'` | `'analyze_mood'`
+  
+  
+  
+  
   Future<String?> analyzeChatContext(
-      List<String> messages,
-      String contextType,
-      String action,
-      ) async {
+    List<String> messages,
+    String contextType,
+    String action,
+  ) async {
     if (messages.isEmpty) return null;
 
     try {
@@ -281,7 +284,7 @@ class AIBackendService {
       final result = await _call(
         functionName: 'analyzeChatContext',
         params: {
-          'messages': safeMessages, // Gửi dạng List thay vì join — backend dễ xử lý hơn
+          'messages': safeMessages, 
           'contextType': contextType,
           'action': action,
           'messageCount': messages.length,
@@ -296,15 +299,15 @@ class AIBackendService {
     }
   }
 
-  // =========================================================
-  // 5. TRÍCH XUẤT RELATIONSHIP MEMORY
-  // =========================================================
+  
+  
+  
 
-  /// Trích xuất thông tin quan hệ/ngữ cảnh từ lịch sử hội thoại.
+  
   Future<RelationshipMemory?> extractRelationshipMemory(
-      List<String> messages, {
-        String? conversationId,
-      }) async {
+    List<String> messages, {
+    String? conversationId,
+  }) async {
     if (messages.isEmpty) return null;
 
     try {
@@ -320,22 +323,22 @@ class AIBackendService {
       );
 
       if (result == null) return null;
-      return RelationshipMemory.fromMap(result as Map);
+      return RelationshipMemory.fromMap(result);
     } catch (e, st) {
       _logError('extractRelationshipMemory', e, st);
       return null;
     }
   }
 
-  // =========================================================
-  // 6. GỢI Ý TRẢ LỜI THÔNG MINH
-  // =========================================================
+  
+  
+  
 
-  /// Gợi ý 3 cách trả lời ngắn gọn phù hợp với ngữ cảnh.
+  
   Future<List<String>> suggestReplies(
-      List<String> recentMessages, {
-        String tone = 'friendly', // 'friendly' | 'formal' | 'casual'
-      }) async {
+    List<String> recentMessages, {
+    String tone = 'friendly', 
+  }) async {
     if (recentMessages.isEmpty) return [];
 
     try {
@@ -360,16 +363,16 @@ class AIBackendService {
     }
   }
 
-  // =========================================================
-  // 7. TÓM TẮT CUỘC TRÒ CHUYỆN
-  // =========================================================
+  
+  
+  
 
-  /// Tóm tắt nội dung cuộc hội thoại trong một đoạn ngắn.
+  
   Future<String?> summarizeConversation(
-      List<String> messages, {
-        int maxSentences = 3,
-        String language = 'vi',
-      }) async {
+    List<String> messages, {
+    int maxSentences = 3,
+    String language = 'vi',
+  }) async {
     if (messages.isEmpty) return null;
 
     try {
@@ -392,15 +395,15 @@ class AIBackendService {
     }
   }
 
-  // =========================================================
-  // 8. PHÂN TÍCH CẢM XÚC (SENTIMENT)
-  // =========================================================
+  
+  
+  
 
-  /// Phân tích cảm xúc tổng thể của cuộc hội thoại.
-  /// Trả về map: `{'sentiment': 'positive'|'neutral'|'negative', 'score': 0.0-1.0}`
+  
+  
   Future<Map<String, dynamic>?> analyzeSentiment(
-      List<String> messages,
-      ) async {
+    List<String> messages,
+  ) async {
     if (messages.isEmpty) return null;
 
     try {
@@ -413,19 +416,19 @@ class AIBackendService {
       );
 
       if (result == null) return null;
-      return Map<String, dynamic>.from(result as Map);
+      return Map<String, dynamic>.from(result);
     } catch (e, st) {
       _logError('analyzeSentiment', e, st);
       return null;
     }
   }
 
-  // =========================================================
-  // 9. PHÁT HIỆN NGÔN NGỮ THÙ GHÉT / NỘI DUNG ĐỘC HẠI
-  // =========================================================
+  
+  
+  
 
-  /// Kiểm tra tin nhắn có chứa ngôn ngữ thù ghét, quấy rối, nội dung độc hại.
-  /// Trả về `false` nếu an toàn hoặc gặp lỗi.
+  
+  
   Future<bool> detectHateSpeech(String message) async {
     if (message.trim().isEmpty) return false;
 
@@ -448,12 +451,12 @@ class AIBackendService {
     }
   }
 
-  // =========================================================
-  // PRIVATE: HTTP CALL WRAPPER
-  // =========================================================
+  
+  
+  
 
-  /// Wrapper chung cho tất cả Cloud Function calls.
-  /// Tích hợp: timeout, error mapping, retry cho rate-limit.
+  
+  
   Future<Map<dynamic, dynamic>?> _call({
     required String functionName,
     required Map<String, dynamic> params,
@@ -474,9 +477,8 @@ class AIBackendService {
       } on FirebaseFunctionsException catch (e) {
         final mapped = _mapFunctionsException(e);
 
-        // Retry chỉ khi bị rate-limit
-        if (mapped.type == AIBackendErrorType.quotaExceeded &&
-            attempt < maxRetries) {
+        
+        if (mapped.type == AIBackendErrorType.quotaExceeded && attempt < maxRetries) {
           attempt++;
           await Future.delayed(Duration(seconds: 2 * attempt));
           continue;
@@ -537,9 +539,9 @@ class AIBackendService {
     }
   }
 
-  // =========================================================
-  // LOGGING
-  // =========================================================
+  
+  
+  
 
   void _log(String msg) {
     if (kDebugMode) debugPrint('[AIBackendService] $msg');

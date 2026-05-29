@@ -1,7 +1,8 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -10,7 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/e2ee_service.dart';
 
-// ─── Status Enum ──────────────────────────────────────────────────────────────
+
 
 enum Status {
   uninitialized,
@@ -21,10 +22,10 @@ enum Status {
   authenticateCanceled,
 }
 
-// ─── AuthProvider ──────────────────────────────────────────────────────────────
+
 
 class AuthProvider extends ChangeNotifier {
-  // ── Dependencies ────────────────────────────────────────────────────────────
+  
 
   final GoogleSignIn googleSignIn = GoogleSignIn(
     clientId: kIsWeb ? dotenv.env['WEB_CLIENT_ID'] : null,
@@ -44,22 +45,22 @@ class AuthProvider extends ChangeNotifier {
     required this.firebaseFirestore,
   });
 
-  // ── State ────────────────────────────────────────────────────────────────────
+  
 
   Status _status = Status.uninitialized;
   Status get status => _status;
 
-  /// Firebase UID hiện tại (từ SharedPreferences).
+  
   String? get userFirebaseId => prefs.getString(FirestoreConstants.id);
   String? get currentUserName => prefs.getString(FirestoreConstants.nickname);
   String? get currentUserAvatar => prefs.getString(FirestoreConstants.photoUrl);
 
-  /// Lưu tạm thông tin user khi đang chờ xác thực 2FA.
+  
   UserChat? tempUserChat;
 
-  // ── Is Logged In ─────────────────────────────────────────────────────────────
+  
 
-  /// Kiểm tra phiên đăng nhập còn hợp lệ không.
+  
   Future<bool> isLoggedIn() async {
     try {
       final currentUser = firebaseAuth.currentUser;
@@ -70,22 +71,22 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // ── Generate QR Code ─────────────────────────────────────────────────────────
+  
 
   String _generateQRCode(String userId) {
     return 'CHATAPP_${userId}_${DateTime.now().millisecondsSinceEpoch}';
   }
 
-  // ── Sign In with Google ───────────────────────────────────────────────────────
+  
 
-  /// Xử lý đăng nhập Google.
-  /// Returns: 'success' | 'requires_2fa' | 'canceled' | 'error'
+  
+  
   Future<String> handleSignIn() async {
     _status = Status.authenticating;
     notifyListeners();
 
     try {
-      // 1. Google OAuth flow
+      
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
 
       if (googleUser == null) {
@@ -94,17 +95,15 @@ class AuthProvider extends ChangeNotifier {
         return 'canceled';
       }
 
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
 
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      // 2. Firebase sign in
-      final UserCredential userCredential =
-          await firebaseAuth.signInWithCredential(credential);
+      
+      final UserCredential userCredential = await firebaseAuth.signInWithCredential(credential);
       final User? firebaseUser = userCredential.user;
 
       if (firebaseUser == null) {
@@ -113,22 +112,22 @@ class AuthProvider extends ChangeNotifier {
         return 'error';
       }
 
-      // 3. Khởi tạo E2EE keys
+      
       debugPrint('🔑 Khởi tạo cặp khóa E2EE...');
       await E2EEService().generateAndStoreUserKeys(firebaseUser.uid);
       debugPrint('✅ Khóa E2EE đã được khởi tạo thành công!');
 
-      // 4. Kiểm tra Firestore
+      
       final result = await firebaseFirestore
           .collection(FirestoreConstants.pathUserCollection)
           .where(FirestoreConstants.id, isEqualTo: firebaseUser.uid)
           .get();
 
       if (result.docs.isEmpty) {
-        // ── New user: tạo document ──
+        
         return await _createNewUser(firebaseUser);
       } else {
-        // ── Existing user: đọc dữ liệu ──
+        
         return await _handleExistingUser(firebaseUser, result.docs.first);
       }
     } catch (e) {
@@ -151,8 +150,7 @@ class AuthProvider extends ChangeNotifier {
       FirestoreConstants.id: firebaseUser.uid,
       FirestoreConstants.phoneNumber: firebaseUser.phoneNumber ?? '',
       FirestoreConstants.qrCode: qrCode,
-      FirestoreConstants.createdAt:
-          DateTime.now().millisecondsSinceEpoch.toString(),
+      FirestoreConstants.createdAt: DateTime.now().millisecondsSinceEpoch.toString(),
       FirestoreConstants.chattingWith: null,
       FirestoreConstants.aboutMe: '',
       'is2FAEnabled': false,
@@ -175,11 +173,10 @@ class AuthProvider extends ChangeNotifier {
     return 'success';
   }
 
-  Future<String> _handleExistingUser(
-      User firebaseUser, DocumentSnapshot documentSnapshot) async {
+  Future<String> _handleExistingUser(User firebaseUser, DocumentSnapshot documentSnapshot) async {
     final userChat = UserChat.fromDocument(documentSnapshot);
 
-    // Cập nhật QR code nếu trống
+    
     String qrCode = userChat.qrCode;
     if (qrCode.isEmpty) {
       qrCode = _generateQRCode(firebaseUser.uid);
@@ -189,7 +186,7 @@ class AuthProvider extends ChangeNotifier {
           .update({FirestoreConstants.qrCode: qrCode});
     }
 
-    // Yêu cầu 2FA nếu bật
+    
     if (userChat.is2FAEnabled) {
       tempUserChat = userChat.copyWith(qrCode: qrCode);
       _status = Status.uninitialized;
@@ -213,9 +210,9 @@ class AuthProvider extends ChangeNotifier {
     return 'success';
   }
 
-  // ── Complete 2FA Login ────────────────────────────────────────────────────────
+  
 
-  /// Gọi sau khi xác thực 2FA thành công để hoàn tất đăng nhập.
+  
   Future<void> complete2FALogin() async {
     if (tempUserChat == null) return;
 
@@ -235,7 +232,7 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Save User to Prefs ────────────────────────────────────────────────────────
+  
 
   Future<void> _saveUserToPrefs({
     required String id,
@@ -259,9 +256,9 @@ class AuthProvider extends ChangeNotifier {
     ]);
   }
 
-  // ── Refresh User Profile ──────────────────────────────────────────────────────
+  
 
-  /// Làm mới dữ liệu hồ sơ từ Firestore (dùng sau khi cập nhật profile).
+  
   Future<void> refreshUserProfile() async {
     final userId = userFirebaseId;
     if (userId == null) return;
@@ -291,24 +288,24 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // ── Handle Exception ──────────────────────────────────────────────────────────
+  
 
   void handleException() {
     _status = Status.authenticateException;
     notifyListeners();
   }
 
-  // ── Sign Out ──────────────────────────────────────────────────────────────────
+  
 
-  /// Đăng xuất hoàn toàn:
-  /// - Xóa khóa E2EE cục bộ
-  /// - Đăng xuất Firebase & Google
-  /// - Xóa SharedPreferences
+  
+  
+  
+  
   Future<void> handleSignOut() async {
     _status = Status.uninitialized;
 
     try {
-      // Xóa khóa E2EE trước khi đăng xuất
+      
       debugPrint('🗑️ Đang xóa khóa E2EE cục bộ...');
       await E2EEService().clearKeysOnLogout();
       debugPrint('✅ Đã xóa khóa E2EE!');
@@ -328,24 +325,24 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Delete Account ────────────────────────────────────────────────────────────
+  
 
-  /// Xóa tài khoản vĩnh viễn.
+  
   Future<bool> deleteAccount() async {
     try {
       final userId = userFirebaseId;
       if (userId == null) return false;
 
-      // Xóa document trên Firestore
+      
       await firebaseFirestore
           .collection(FirestoreConstants.pathUserCollection)
           .doc(userId)
           .delete();
 
-      // Xóa Firebase Auth user
+      
       await firebaseAuth.currentUser?.delete();
 
-      // Xóa keys & prefs
+      
       await E2EEService().clearKeysOnLogout();
       await prefs.clear();
 

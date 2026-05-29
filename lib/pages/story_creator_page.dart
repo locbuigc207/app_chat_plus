@@ -1,12 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
 import 'package:deepar_flutter_plus/deepar_flutter_plus.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/color_constants.dart';
 import 'package:flutter_chat_demo/providers/story_provider.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -16,9 +17,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// StoryCreatorPage
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class StoryCreatorPage extends StatefulWidget {
   final String userId;
@@ -36,8 +37,7 @@ class StoryCreatorPage extends StatefulWidget {
   State<StoryCreatorPage> createState() => _StoryCreatorPageState();
 }
 
-class _StoryCreatorPageState extends State<StoryCreatorPage>
-    with SingleTickerProviderStateMixin {
+class _StoryCreatorPageState extends State<StoryCreatorPage> with SingleTickerProviderStateMixin {
   late TabController _tab;
   int _tabIndex = 0;
 
@@ -115,9 +115,9 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Tab Selector
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _TabSelector extends StatelessWidget {
   final int index;
@@ -169,9 +169,9 @@ class _TabSelector extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Photo Creator
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _PhotoCreator extends StatefulWidget {
   final String userId;
@@ -220,15 +220,13 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
 
     try {
       final id = await context.read<StoryProvider>().createImageStory(
-        userId: widget.userId,
-        userName: widget.userName,
-        userPhotoUrl: widget.userPhotoUrl,
-        imageFile: _image!,
-        caption: _captionCtrl.text.trim().isEmpty
-            ? null
-            : _captionCtrl.text.trim(),
-        privacy: _privacy,
-      );
+            userId: widget.userId,
+            userName: widget.userName,
+            userPhotoUrl: widget.userPhotoUrl,
+            imageFile: _image!,
+            caption: _captionCtrl.text.trim().isEmpty ? null : _captionCtrl.text.trim(),
+            privacy: _privacy,
+          );
 
       if (!mounted) return;
       if (id != null) {
@@ -252,9 +250,7 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
 
   void _togglePrivacy() {
     setState(() {
-      _privacy = _privacy == StoryPrivacy.friends
-          ? StoryPrivacy.everyone
-          : StoryPrivacy.friends;
+      _privacy = _privacy == StoryPrivacy.friends ? StoryPrivacy.everyone : StoryPrivacy.friends;
     });
     HapticFeedback.selectionClick();
   }
@@ -270,10 +266,10 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Background image
+          
           Image.file(_image!, fit: BoxFit.cover),
 
-          // Dark gradient bottom
+          
           Positioned(
             bottom: 0,
             left: 0,
@@ -284,13 +280,13 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
                 gradient: LinearGradient(
                   begin: Alignment.bottomCenter,
                   end: Alignment.topCenter,
-                  colors: [Colors.black.withOpacity(0.7), Colors.transparent],
+                  colors: [Colors.black.withValues(alpha: 0.7), Colors.transparent],
                 ),
               ),
             ),
           ),
 
-          // Side buttons
+          
           Positioned(
             top: 16,
             right: 16,
@@ -309,20 +305,16 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
                 ),
                 const SizedBox(height: 12),
                 _SideBtn(
-                  icon: _privacy == StoryPrivacy.friends
-                      ? Icons.people
-                      : Icons.public,
+                  icon: _privacy == StoryPrivacy.friends ? Icons.people : Icons.public,
                   label: _privacy == StoryPrivacy.friends ? 'Friends' : 'All',
                   onTap: _togglePrivacy,
-                  iconColor: _privacy == StoryPrivacy.friends
-                      ? Colors.amber
-                      : Colors.greenAccent,
+                  iconColor: _privacy == StoryPrivacy.friends ? Colors.amber : Colors.greenAccent,
                 ),
               ],
             ),
           ),
 
-          // Caption input
+          
           Positioned(
             bottom: bottomInset > 0 ? bottomInset + 16 : 96,
             left: 16,
@@ -339,11 +331,9 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
                 decoration: const InputDecoration(
                   hintText: 'Add a caption…',
                   hintStyle: TextStyle(color: Colors.white38),
-                  contentPadding:
-                  EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                   border: InputBorder.none,
-                  prefixIcon:
-                  Icon(Icons.edit_note, color: Colors.white38, size: 22),
+                  prefixIcon: Icon(Icons.edit_note, color: Colors.white38, size: 22),
                 ),
                 maxLines: 3,
                 minLines: 1,
@@ -351,7 +341,7 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
             ),
           ),
 
-          // Publish button
+          
           if (bottomInset == 0)
             Positioned(
               bottom: 32,
@@ -365,9 +355,9 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Picker prompt (empty state)
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _PickerPrompt extends StatelessWidget {
   final void Function(ImageSource) onPick;
@@ -390,14 +380,12 @@ class _PickerPrompt extends StatelessWidget {
               ),
               borderRadius: BorderRadius.circular(30),
             ),
-            child: const Icon(Icons.add_photo_alternate,
-                color: Colors.white, size: 50),
+            child: const Icon(Icons.add_photo_alternate, color: Colors.white, size: 50),
           ),
           const SizedBox(height: 28),
           const Text(
             'Share a Photo',
-            style: TextStyle(
-                color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800),
+            style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
           const Text(
@@ -452,12 +440,11 @@ class _BigPickBtn extends StatelessWidget {
             width: 72,
             height: 72,
             decoration: BoxDecoration(
-              gradient:
-              LinearGradient(colors: gradient, begin: Alignment.topLeft),
+              gradient: LinearGradient(colors: gradient, begin: Alignment.topLeft),
               borderRadius: BorderRadius.circular(22),
               boxShadow: [
                 BoxShadow(
-                    color: gradient.last.withOpacity(0.4),
+                    color: gradient.last.withValues(alpha: 0.4),
                     blurRadius: 14,
                     offset: const Offset(0, 6)),
               ],
@@ -467,18 +454,16 @@ class _BigPickBtn extends StatelessWidget {
           const SizedBox(height: 10),
           Text(label,
               style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500)),
+                  color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500)),
         ],
       ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Text Creator
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _TextCreator extends StatefulWidget {
   final String userId;
@@ -549,16 +534,16 @@ class _TextCreatorState extends State<_TextCreator> {
 
     try {
       final id = await context.read<StoryProvider>().createTextStory(
-        userId: widget.userId,
-        userName: widget.userName,
-        userPhotoUrl: widget.userPhotoUrl,
-        textContent: text,
-        backgroundColor: _bg1,
-        textColor: _tc,
-        fontFamily: _fontFamilies[_fontIdx],
-        fontSize: _fontSize,
-        privacy: _privacy,
-      );
+            userId: widget.userId,
+            userName: widget.userName,
+            userPhotoUrl: widget.userPhotoUrl,
+            textContent: text,
+            backgroundColor: _bg1,
+            textColor: _tc,
+            fontFamily: _fontFamilies[_fontIdx],
+            fontSize: _fontSize,
+            privacy: _privacy,
+          );
 
       if (!mounted) return;
       if (id != null) {
@@ -585,7 +570,7 @@ class _TextCreatorState extends State<_TextCreator> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Background
+        
         AnimatedContainer(
           duration: const Duration(milliseconds: 350),
           decoration: BoxDecoration(
@@ -597,7 +582,7 @@ class _TextCreatorState extends State<_TextCreator> {
           ),
         ),
 
-        // Text input centred
+        
         Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -616,7 +601,7 @@ class _TextCreatorState extends State<_TextCreator> {
               decoration: InputDecoration(
                 hintText: 'Type something…',
                 hintStyle: TextStyle(
-                  color: _tc.withOpacity(0.4),
+                  color: _tc.withValues(alpha: 0.4),
                   fontSize: _fontSize,
                   fontWeight: FontWeight.w700,
                 ),
@@ -627,7 +612,7 @@ class _TextCreatorState extends State<_TextCreator> {
           ),
         ),
 
-        // Right-side controls
+        
         Positioned(
           top: 16,
           right: 16,
@@ -636,24 +621,22 @@ class _TextCreatorState extends State<_TextCreator> {
               _SideBtn(
                 icon: Icons.text_fields,
                 label: _fontLabels[_fontIdx],
-                onTap: () => setState(
-                        () => _fontIdx = (_fontIdx + 1) % _fontFamilies.length),
+                onTap: () => setState(() => _fontIdx = (_fontIdx + 1) % _fontFamilies.length),
               ),
               const SizedBox(height: 12),
               _SideBtn(
                 icon: Icons.format_color_text,
                 label: 'Color',
                 iconColor: _tc,
-                onTap: () => setState(
-                        () => _colorIdx = (_colorIdx + 1) % _textColors.length),
+                onTap: () => setState(() => _colorIdx = (_colorIdx + 1) % _textColors.length),
               ),
               const SizedBox(height: 12),
               _SideBtn(
                 icon: _align == TextAlign.center
                     ? Icons.format_align_center
                     : _align == TextAlign.left
-                    ? Icons.format_align_left
-                    : Icons.format_align_right,
+                        ? Icons.format_align_left
+                        : Icons.format_align_right,
                 label: 'Align',
                 onTap: () => setState(() {
                   if (_align == TextAlign.center) {
@@ -667,24 +650,20 @@ class _TextCreatorState extends State<_TextCreator> {
               ),
               const SizedBox(height: 12),
               _SideBtn(
-                icon: _privacy == StoryPrivacy.friends
-                    ? Icons.people
-                    : Icons.public,
+                icon: _privacy == StoryPrivacy.friends ? Icons.people : Icons.public,
                 label: _privacy == StoryPrivacy.friends ? 'Friends' : 'All',
                 onTap: () => setState(() {
                   _privacy = _privacy == StoryPrivacy.friends
                       ? StoryPrivacy.everyone
                       : StoryPrivacy.friends;
                 }),
-                iconColor: _privacy == StoryPrivacy.friends
-                    ? Colors.amber
-                    : Colors.greenAccent,
+                iconColor: _privacy == StoryPrivacy.friends ? Colors.amber : Colors.greenAccent,
               ),
             ],
           ),
         ),
 
-        // Bottom controls
+        
         Positioned(
           bottom: 96,
           left: 0,
@@ -692,7 +671,7 @@ class _TextCreatorState extends State<_TextCreator> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Font size slider
+              
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Row(
@@ -721,7 +700,7 @@ class _TextCreatorState extends State<_TextCreator> {
               ),
               const SizedBox(height: 10),
 
-              // Background gradient swatches
+              
               SizedBox(
                 height: 48,
                 child: ListView.builder(
@@ -747,16 +726,14 @@ class _TextCreatorState extends State<_TextCreator> {
                             end: Alignment.bottomRight,
                           ),
                           shape: BoxShape.circle,
-                          border: sel
-                              ? Border.all(color: Colors.white, width: 2.5)
-                              : null,
+                          border: sel ? Border.all(color: Colors.white, width: 2.5) : null,
                           boxShadow: sel
                               ? [
-                            BoxShadow(
-                              color: Color(_bgs[i][1]).withOpacity(0.5),
-                              blurRadius: 8,
-                            )
-                          ]
+                                  BoxShadow(
+                                    color: Color(_bgs[i][1]).withValues(alpha: 0.5),
+                                    blurRadius: 8,
+                                  )
+                                ]
                               : null,
                         ),
                       ),
@@ -768,7 +745,7 @@ class _TextCreatorState extends State<_TextCreator> {
           ),
         ),
 
-        // Publish button
+        
         Positioned(
           bottom: 32,
           left: 16,
@@ -784,9 +761,9 @@ class _TextCreatorState extends State<_TextCreator> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// AR Filter model
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _ArFilter {
   final String displayName;
@@ -797,8 +774,7 @@ class _ArFilter {
   static const _ArFilter none = _ArFilter(displayName: 'None');
 
   static String _toDisplayName(String assetPath) {
-    final withoutExt =
-    assetPath.split('/').last.replaceAll('.deepar', '');
+    final withoutExt = assetPath.split('/').last.replaceAll('.deepar', '');
     return withoutExt
         .split('_')
         .map((w) => w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}')
@@ -810,15 +786,14 @@ class _ArFilter {
       final manifestJson = await rootBundle.loadString('AssetManifest.json');
       final manifest = json.decode(manifestJson) as Map<String, dynamic>;
       final effectPaths = manifest.keys
-          .where((k) =>
-      k.startsWith('assets/effects/') && k.endsWith('.deepar'))
+          .where((k) => k.startsWith('assets/effects/') && k.endsWith('.deepar'))
           .toList()
         ..sort();
 
       return [
         _ArFilter.none,
         ...effectPaths.map(
-              (p) => _ArFilter(displayName: _toDisplayName(p), assetPath: p),
+          (p) => _ArFilter(displayName: _toDisplayName(p), assetPath: p),
         ),
       ];
     } catch (e) {
@@ -828,9 +803,9 @@ class _ArFilter {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Video Creator
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _VideoCreator extends StatefulWidget {
   final String userId;
@@ -847,8 +822,7 @@ class _VideoCreator extends StatefulWidget {
   State<_VideoCreator> createState() => _VideoCreatorState();
 }
 
-class _VideoCreatorState extends State<_VideoCreator>
-    with SingleTickerProviderStateMixin {
+class _VideoCreatorState extends State<_VideoCreator> with SingleTickerProviderStateMixin {
   static const _androidKey =
       '694aafc68314126d55d03f1cb2b23ce05f57467994107fb3895aab7f7060c2a5863a6c28f29a341b';
   static const _iosKey = 'YOUR_IOS_DEEPAR_KEY_HERE';
@@ -890,8 +864,7 @@ class _VideoCreatorState extends State<_VideoCreator>
       Permission.microphone,
     ].request();
 
-    if (statuses[Permission.camera]!.isGranted &&
-        statuses[Permission.microphone]!.isGranted) {
+    if (statuses[Permission.camera]!.isGranted && statuses[Permission.microphone]!.isGranted) {
       _deepArController = DeepArControllerPlus();
       await _deepArController.initialize(
         androidLicenseKey: _androidKey,
@@ -923,8 +896,7 @@ class _VideoCreatorState extends State<_VideoCreator>
         if (path != null) {
           setState(() {
             _selectedAudioPath = path;
-            _selectedAudioName =
-            name.length > 20 ? '${name.substring(0, 20)}…' : name;
+            _selectedAudioName = name.length > 20 ? '${name.substring(0, 20)}…' : name;
           });
           await _audioPlayer.setFilePath(path);
           Fluttertoast.showToast(msg: '✅ Music added!');
@@ -950,7 +922,7 @@ class _VideoCreatorState extends State<_VideoCreator>
 
     await _deepArController.startVideoRecording();
 
-    // Count seconds up to max
+    
     _countUp();
   }
 
@@ -980,8 +952,7 @@ class _VideoCreatorState extends State<_VideoCreator>
       if (_selectedAudioPath != null) {
         await _mergeAudioAndVideo(videoFile.path, _selectedAudioPath!);
       } else {
-        await _uploadStory(videoFile.path,
-            Duration(seconds: _recordSeconds.clamp(1, _maxSeconds)));
+        await _uploadStory(videoFile.path, Duration(seconds: _recordSeconds.clamp(1, _maxSeconds)));
       }
     } catch (e) {
       setState(() {
@@ -992,12 +963,10 @@ class _VideoCreatorState extends State<_VideoCreator>
     }
   }
 
-  Future<void> _mergeAudioAndVideo(
-      String videoPath, String audioPath) async {
+  Future<void> _mergeAudioAndVideo(String videoPath, String audioPath) async {
     try {
       final dir = await getApplicationDocumentsDirectory();
-      final output =
-          '${dir.path}/story_${DateTime.now().millisecondsSinceEpoch}.mp4';
+      final output = '${dir.path}/story_${DateTime.now().millisecondsSinceEpoch}.mp4';
 
       final cmd =
           "-i '$videoPath' -i '$audioPath' -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest '$output'";
@@ -1006,8 +975,7 @@ class _VideoCreatorState extends State<_VideoCreator>
       final rc = await session.getReturnCode();
 
       if (ReturnCode.isSuccess(rc)) {
-        await _uploadStory(output,
-            Duration(seconds: _recordSeconds.clamp(1, _maxSeconds)));
+        await _uploadStory(output, Duration(seconds: _recordSeconds.clamp(1, _maxSeconds)));
       } else {
         final logs = await session.getAllLogsAsString();
         debugPrint('FFmpeg logs: $logs');
@@ -1023,13 +991,13 @@ class _VideoCreatorState extends State<_VideoCreator>
   Future<void> _uploadStory(String finalPath, Duration duration) async {
     try {
       await context.read<StoryProvider>().createVideoStory(
-        userId: widget.userId,
-        userName: widget.userName,
-        userPhotoUrl: widget.userPhotoUrl,
-        videoFile: File(finalPath),
-        videoDuration: duration,
-        privacy: StoryPrivacy.friends,
-      );
+            userId: widget.userId,
+            userName: widget.userName,
+            userPhotoUrl: widget.userPhotoUrl,
+            videoFile: File(finalPath),
+            videoDuration: duration,
+            privacy: StoryPrivacy.friends,
+          );
       Fluttertoast.showToast(msg: '✅ Story published!');
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -1056,8 +1024,7 @@ class _VideoCreatorState extends State<_VideoCreator>
           children: [
             const CircularProgressIndicator(color: ColorConstants.primaryColor),
             const SizedBox(height: 16),
-            const Text('Initializing camera…',
-                style: TextStyle(color: Colors.white54)),
+            const Text('Initializing camera…', style: TextStyle(color: Colors.white54)),
           ],
         ),
       );
@@ -1066,30 +1033,26 @@ class _VideoCreatorState extends State<_VideoCreator>
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Camera preview
+        
         Positioned.fill(child: DeepArPreviewPlus(_deepArController)),
 
-        // Music button top-right
+        
         Positioned(
           top: 16,
           right: 16,
           child: Column(
             children: [
               _SideBtn(
-                icon: _selectedAudioPath != null
-                    ? Icons.music_note
-                    : Icons.music_off,
+                icon: _selectedAudioPath != null ? Icons.music_note : Icons.music_off,
                 label: _selectedAudioName ?? 'Music',
-                iconColor: _selectedAudioPath != null
-                    ? Colors.greenAccent
-                    : Colors.white,
+                iconColor: _selectedAudioPath != null ? Colors.greenAccent : Colors.white,
                 onTap: _pickMusic,
               ),
             ],
           ),
         ),
 
-        // Recording timer
+        
         if (_isRecording)
           Positioned(
             top: 16,
@@ -1097,8 +1060,7 @@ class _VideoCreatorState extends State<_VideoCreator>
             right: 0,
             child: Center(
               child: Container(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 decoration: BoxDecoration(
                   color: Colors.black54,
                   borderRadius: BorderRadius.circular(20),
@@ -1114,8 +1076,7 @@ class _VideoCreatorState extends State<_VideoCreator>
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: Color.lerp(
-                              Colors.red, Colors.red.withOpacity(0.2),
-                              _pulseCtrl.value),
+                              Colors.red, Colors.red.withValues(alpha: 0.2), _pulseCtrl.value),
                         ),
                       ),
                     ),
@@ -1123,9 +1084,7 @@ class _VideoCreatorState extends State<_VideoCreator>
                     Text(
                       '${_recordSeconds}s / ${_maxSeconds}s',
                       style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700),
+                          color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700),
                     ),
                   ],
                 ),
@@ -1133,7 +1092,7 @@ class _VideoCreatorState extends State<_VideoCreator>
             ),
           ),
 
-        // Processing overlay
+        
         if (_isProcessing)
           Container(
             color: Colors.black87,
@@ -1143,14 +1102,13 @@ class _VideoCreatorState extends State<_VideoCreator>
                 children: [
                   CircularProgressIndicator(color: Colors.white),
                   SizedBox(height: 16),
-                  Text('Processing video…',
-                      style: TextStyle(color: Colors.white, fontSize: 16)),
+                  Text('Processing video…', style: TextStyle(color: Colors.white, fontSize: 16)),
                 ],
               ),
             ),
           ),
 
-        // Bottom controls
+        
         if (!_isProcessing)
           Positioned(
             bottom: 32,
@@ -1159,7 +1117,7 @@ class _VideoCreatorState extends State<_VideoCreator>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Filter carousel
+                
                 if (_filters.isNotEmpty)
                   SizedBox(
                     height: 80,
@@ -1180,11 +1138,8 @@ class _VideoCreatorState extends State<_VideoCreator>
                               shape: BoxShape.circle,
                               gradient: sel
                                   ? const LinearGradient(
-                                colors: [
-                                  Color(0xFF2196F3),
-                                  Color(0xFF7C4DFF)
-                                ],
-                              )
+                                      colors: [Color(0xFF2196F3), Color(0xFF7C4DFF)],
+                                    )
                                   : null,
                               color: sel ? null : Colors.white24,
                               border: Border.all(
@@ -1213,7 +1168,7 @@ class _VideoCreatorState extends State<_VideoCreator>
 
                 const SizedBox(height: 16),
 
-                // Record button
+                
                 GestureDetector(
                   onLongPressStart: (_) => _startRecording(),
                   onLongPressEnd: (_) => _stopRecording(),
@@ -1223,29 +1178,26 @@ class _VideoCreatorState extends State<_VideoCreator>
                     height: 84,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.all(
-                          color: _isRecording ? Colors.red : Colors.white,
-                          width: 4),
+                      border: Border.all(color: _isRecording ? Colors.red : Colors.white, width: 4),
                       gradient: _isRecording
                           ? const LinearGradient(
-                        colors: [Color(0xFFFF2D55), Color(0xFFFF6B35)],
-                      )
+                              colors: [Color(0xFFFF2D55), Color(0xFFFF6B35)],
+                            )
                           : null,
                       color: _isRecording ? null : Colors.white30,
                       boxShadow: _isRecording
                           ? [
-                        const BoxShadow(
-                          color: Colors.red,
-                          blurRadius: 20,
-                          spreadRadius: 2,
-                        )
-                      ]
+                              const BoxShadow(
+                                color: Colors.red,
+                                blurRadius: 20,
+                                spreadRadius: 2,
+                              )
+                            ]
                           : null,
                     ),
                     child: _isRecording
                         ? const Icon(Icons.stop, color: Colors.white, size: 40)
-                        : const Icon(Icons.videocam,
-                        color: Colors.white, size: 36),
+                        : const Icon(Icons.videocam, color: Colors.white, size: 36),
                   ),
                 ),
 
@@ -1262,9 +1214,9 @@ class _VideoCreatorState extends State<_VideoCreator>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Shared widgets
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _SideBtn extends StatelessWidget {
   final IconData icon;
@@ -1341,38 +1293,37 @@ class _PublishBtn extends StatelessWidget {
           borderRadius: BorderRadius.circular(27),
           boxShadow: active
               ? [
-            BoxShadow(
-              color: const Color(0xFF2196F3).withOpacity(0.45),
-              blurRadius: 18,
-              offset: const Offset(0, 6),
-            )
-          ]
+                  BoxShadow(
+                    color: const Color(0xFF2196F3).withValues(alpha: 0.45),
+                    blurRadius: 18,
+                    offset: const Offset(0, 6),
+                  )
+                ]
               : null,
         ),
         child: Center(
           child: loading
               ? const SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(
-                color: Colors.white, strokeWidth: 2.5),
-          )
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                )
               : const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.send_rounded, color: Colors.white, size: 20),
-              SizedBox(width: 8),
-              Text(
-                'Share to Status',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.4,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'Share to Status',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
         ),
       ),
     );

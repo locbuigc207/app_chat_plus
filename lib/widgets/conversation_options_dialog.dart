@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:flutter_chat_demo/constants/constants.dart';
 
 class ConversationOptionsDialog extends StatelessWidget {
@@ -36,21 +37,19 @@ class ConversationOptionsDialog extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Handle bar
+          
           Container(
             margin: const EdgeInsets.only(top: 12),
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: isDark
-                  ? Colors.white.withOpacity(0.15)
-                  : Colors.grey.shade300,
+              color: isDark ? Colors.white.withValues(alpha: 0.15) : Colors.grey.shade300,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
           const SizedBox(height: 16),
 
-          // Title
+          
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
@@ -59,7 +58,7 @@ class ConversationOptionsDialog extends StatelessWidget {
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
-                    color: ColorConstants.primaryColor.withOpacity(0.1),
+                    color: ColorConstants.primaryColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: const Icon(Icons.more_horiz_rounded,
@@ -81,19 +80,15 @@ class ConversationOptionsDialog extends StatelessWidget {
 
           Divider(
               height: 1,
-              color: isDark
-                  ? Colors.white.withOpacity(0.07)
-                  : Colors.grey.shade100),
+              color: isDark ? Colors.white.withValues(alpha: 0.07) : Colors.grey.shade100),
 
-          // Options list
+          
           _buildListOption(
             context: context,
             isDark: isDark,
             icon: isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
             label: isPinned ? 'Bỏ ghim' : 'Ghim cuộc trò chuyện',
-            subtitle: isPinned
-                ? 'Xóa khỏi danh sách đã ghim'
-                : 'Hiển thị ở đầu danh sách',
+            subtitle: isPinned ? 'Xóa khỏi danh sách đã ghim' : 'Hiển thị ở đầu danh sách',
             color: ColorConstants.primaryColor,
             onTap: () {
               HapticFeedback.selectionClick();
@@ -106,9 +101,7 @@ class ConversationOptionsDialog extends StatelessWidget {
             isDark: isDark,
             icon: isMuted ? Icons.volume_up_rounded : Icons.volume_off_rounded,
             label: isMuted ? 'Bật thông báo' : 'Tắt thông báo',
-            subtitle: isMuted
-                ? 'Nhận thông báo từ cuộc trò chuyện'
-                : 'Không nhận thông báo',
+            subtitle: isMuted ? 'Nhận thông báo từ cuộc trò chuyện' : 'Không nhận thông báo',
             color: const Color(0xFF9C27B0),
             onTap: () {
               HapticFeedback.selectionClick();
@@ -121,9 +114,7 @@ class ConversationOptionsDialog extends StatelessWidget {
             isDark: isDark,
             icon: isArchived ? Icons.unarchive_rounded : Icons.archive_rounded,
             label: isArchived ? 'Bỏ lưu trữ' : 'Lưu trữ',
-            subtitle: isArchived
-                ? 'Đưa về danh sách chính'
-                : 'Chuyển vào mục lưu trữ',
+            subtitle: isArchived ? 'Đưa về danh sách chính' : 'Chuyển vào mục lưu trữ',
             color: const Color(0xFFFF9800),
             onTap: () {
               HapticFeedback.selectionClick();
@@ -147,11 +138,9 @@ class ConversationOptionsDialog extends StatelessWidget {
 
           Divider(
               height: 1,
-              color: isDark
-                  ? Colors.white.withOpacity(0.07)
-                  : Colors.grey.shade100),
+              color: isDark ? Colors.white.withValues(alpha: 0.07) : Colors.grey.shade100),
 
-          // Destructive option
+          
           _buildListOption(
             context: context,
             isDark: isDark,
@@ -192,7 +181,7 @@ class ConversationOptionsDialog extends StatelessWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: color.withOpacity(isDark ? 0.15 : 0.1),
+                color: color.withValues(alpha: isDark ? 0.15 : 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: color, size: 22),
@@ -210,15 +199,12 @@ class ConversationOptionsDialog extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(subtitle,
                       style: TextStyle(
-                          fontSize: 12.5,
-                          color:
-                              isDark ? Colors.white38 : Colors.grey.shade500)),
+                          fontSize: 12.5, color: isDark ? Colors.white38 : Colors.grey.shade500)),
                 ],
               ),
             ),
             Icon(Icons.chevron_right_rounded,
-                color: isDark ? Colors.white12 : Colors.grey.shade300,
-                size: 18),
+                color: isDark ? Colors.white12 : Colors.grey.shade300, size: 18),
           ],
         ),
       ),
@@ -237,11 +223,10 @@ class ConversationOptionsDialog extends StatelessWidget {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.1),
+                color: Colors.red.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.warning_amber_rounded,
-                  color: Colors.red, size: 20),
+              child: const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 20),
             ),
             const SizedBox(width: 10),
             Text('Xóa lịch sử',
@@ -253,16 +238,13 @@ class ConversationOptionsDialog extends StatelessWidget {
         ),
         content: Text(
           'Toàn bộ tin nhắn sẽ bị xóa vĩnh viễn và không thể khôi phục. Bạn có chắc chắn?',
-          style: TextStyle(
-              color: isDark ? Colors.white70 : Colors.grey.shade700,
-              height: 1.5),
+          style: TextStyle(color: isDark ? Colors.white70 : Colors.grey.shade700, height: 1.5),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text('Huỷ',
-                style: TextStyle(
-                    color: isDark ? Colors.white54 : Colors.grey.shade600)),
+                style: TextStyle(color: isDark ? Colors.white54 : Colors.grey.shade600)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -273,11 +255,9 @@ class ConversationOptionsDialog extends StatelessWidget {
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
               elevation: 0,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
-            child: const Text('Xóa',
-                style: TextStyle(fontWeight: FontWeight.w600)),
+            child: const Text('Xóa', style: TextStyle(fontWeight: FontWeight.w600)),
           ),
         ],
       ),

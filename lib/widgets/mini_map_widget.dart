@@ -1,4 +1,4 @@
-// lib/bubble/widgets/mini_map_widget.dart
+
 // ignore_for_file: use_super_parameters
 
 import 'dart:math' as math;
@@ -6,14 +6,14 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PUBLIC WIDGET
-// ─────────────────────────────────────────────────────────────────────────────
 
-/// Compact location card that shows distance between two users.
-///
-/// Renders a stylised map grid background with animated ping rings for
-/// both users. If coordinates are null the distance shows "Đang xác định…".
+
+
+
+
+
+
+
 class MiniMapWidget extends StatefulWidget {
   final double? myLat;
   final double? myLng;
@@ -22,10 +22,10 @@ class MiniMapWidget extends StatefulWidget {
   final String peerName;
   final String peerAvatar;
 
-  /// Called when the user taps the "Mở Maps" button.
+  
   final VoidCallback? onOpenFullMap;
 
-  /// Called when the user taps the "Chỉ đường" button.
+  
   final VoidCallback? onGetDirections;
 
   const MiniMapWidget({
@@ -44,8 +44,7 @@ class MiniMapWidget extends StatefulWidget {
   State<MiniMapWidget> createState() => _MiniMapWidgetState();
 }
 
-class _MiniMapWidgetState extends State<MiniMapWidget>
-    with TickerProviderStateMixin {
+class _MiniMapWidgetState extends State<MiniMapWidget> with TickerProviderStateMixin {
   late AnimationController _pulseAnim;
   late AnimationController _pingAnim;
   late AnimationController _entryAnim;
@@ -77,15 +76,16 @@ class _MiniMapWidgetState extends State<MiniMapWidget>
     super.dispose();
   }
 
-  // ── Distance ──────────────────────────────────────────────────────────────
+  
 
   double? get _distanceKm {
     if (widget.myLat == null ||
         widget.myLng == null ||
         widget.peerLat == null ||
-        widget.peerLng == null) return null;
-    return _haversine(
-        widget.myLat!, widget.myLng!, widget.peerLat!, widget.peerLng!);
+        widget.peerLng == null) {
+      return null;
+    }
+    return _haversine(widget.myLat!, widget.myLng!, widget.peerLat!, widget.peerLng!);
   }
 
   static double _haversine(double lat1, double lon1, double lat2, double lon2) {
@@ -93,9 +93,7 @@ class _MiniMapWidgetState extends State<MiniMapWidget>
     final dLat = _rad(lat2 - lat1);
     final dLon = _rad(lon2 - lon1);
     final a = math.pow(math.sin(dLat / 2), 2) +
-        math.cos(_rad(lat1)) *
-            math.cos(_rad(lat2)) *
-            math.pow(math.sin(dLon / 2), 2);
+        math.cos(_rad(lat1)) * math.cos(_rad(lat2)) * math.pow(math.sin(dLon / 2), 2);
     return r * 2 * math.asin(math.sqrt(a.clamp(0.0, 1.0)));
   }
 
@@ -120,9 +118,9 @@ class _MiniMapWidgetState extends State<MiniMapWidget>
     return '• Khoảng cách xa';
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // BUILD
-  // ─────────────────────────────────────────────────────────────────────────
+  
+  
+  
 
   @override
   Widget build(BuildContext context) {
@@ -130,8 +128,7 @@ class _MiniMapWidgetState extends State<MiniMapWidget>
       opacity: CurvedAnimation(parent: _entryAnim, curve: Curves.easeOut),
       child: SlideTransition(
         position: Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero)
-            .animate(CurvedAnimation(
-                parent: _entryAnim, curve: Curves.easeOutCubic)),
+            .animate(CurvedAnimation(parent: _entryAnim, curve: Curves.easeOutCubic)),
         child: Container(
           height: 172,
           margin: const EdgeInsets.fromLTRB(10, 6, 10, 6),
@@ -139,7 +136,7 @@ class _MiniMapWidgetState extends State<MiniMapWidget>
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF2E7D32).withOpacity(0.35),
+                color: const Color(0xFF2E7D32).withValues(alpha: 0.35),
                 blurRadius: 20,
                 offset: const Offset(0, 6),
               ),
@@ -149,10 +146,10 @@ class _MiniMapWidgetState extends State<MiniMapWidget>
             borderRadius: BorderRadius.circular(16),
             child: Stack(
               children: [
-                // Map background
+                
                 const Positioned.fill(child: _MapBackground()),
 
-                // Gradient overlay for bottom panel
+                
                 Positioned(
                   bottom: 0,
                   left: 0,
@@ -164,7 +161,7 @@ class _MiniMapWidgetState extends State<MiniMapWidget>
                         begin: Alignment.bottomCenter,
                         end: Alignment.topCenter,
                         colors: [
-                          Colors.black.withOpacity(0.75),
+                          Colors.black.withValues(alpha: 0.75),
                           Colors.transparent,
                         ],
                       ),
@@ -172,7 +169,7 @@ class _MiniMapWidgetState extends State<MiniMapWidget>
                   ),
                 ),
 
-                // Bottom info panel
+                
                 Positioned(
                   bottom: 0,
                   left: 0,
@@ -180,14 +177,14 @@ class _MiniMapWidgetState extends State<MiniMapWidget>
                   child: _buildInfoPanel(),
                 ),
 
-                // Action buttons (top-right)
+                
                 Positioned(
                   top: 8,
                   right: 8,
                   child: _buildActionButtons(),
                 ),
 
-                // Mode badge (top-left)
+                
                 Positioned(
                   top: 8,
                   left: 8,
@@ -206,7 +203,7 @@ class _MiniMapWidgetState extends State<MiniMapWidget>
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
       child: Row(
         children: [
-          // My ping
+          
           AnimatedBuilder(
             animation: _pingAnim,
             builder: (_, __) => _PingDot(
@@ -216,7 +213,7 @@ class _MiniMapWidgetState extends State<MiniMapWidget>
             ),
           ),
 
-          // Distance label
+          
           Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -226,14 +223,12 @@ class _MiniMapWidgetState extends State<MiniMapWidget>
                   builder: (_, __) => Text(
                     _distanceLabel,
                     style: TextStyle(
-                      color: Color.lerp(Colors.white, const Color(0xFF69F0AE),
-                          _pulseAnim.value * 0.3),
+                      color:
+                          Color.lerp(Colors.white, const Color(0xFF69F0AE), _pulseAnim.value * 0.3),
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0.3,
-                      shadows: const [
-                        Shadow(blurRadius: 8, color: Colors.black54)
-                      ],
+                      shadows: const [Shadow(blurRadius: 8, color: Colors.black54)],
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -251,7 +246,7 @@ class _MiniMapWidgetState extends State<MiniMapWidget>
             ),
           ),
 
-          // Peer ping
+          
           AnimatedBuilder(
             animation: _pingAnim,
             builder: (_, __) => _PingDot(
@@ -288,9 +283,9 @@ class _MiniMapWidgetState extends State<MiniMapWidget>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PING DOT
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _PingDot extends StatelessWidget {
   final Color color;
@@ -319,19 +314,19 @@ class _PingDot extends StatelessWidget {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // Expanding ring
+              
               Container(
                 width: ringSize,
                 height: ringSize,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: color.withOpacity(ringOpacity),
+                    color: color.withValues(alpha: ringOpacity),
                     width: 1.5,
                   ),
                 ),
               ),
-              // Core dot / avatar
+              
               Container(
                 width: 28,
                 height: 28,
@@ -346,15 +341,14 @@ class _PingDot extends StatelessWidget {
                       : null,
                   boxShadow: [
                     BoxShadow(
-                      color: color.withOpacity(0.5),
+                      color: color.withValues(alpha: 0.5),
                       blurRadius: 10,
                       spreadRadius: 2,
                     ),
                   ],
                 ),
                 child: (avatarUrl == null || avatarUrl!.isEmpty)
-                    ? const Icon(Icons.person_pin_rounded,
-                        color: Colors.white, size: 15)
+                    ? const Icon(Icons.person_pin_rounded, color: Colors.white, size: 15)
                     : null,
               ),
             ],
@@ -377,9 +371,9 @@ class _PingDot extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MAP ACTION BUTTON
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _MapActionBtn extends StatelessWidget {
   final IconData icon;
@@ -402,10 +396,10 @@ class _MapActionBtn extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.45),
+          color: Colors.black.withValues(alpha: 0.45),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: Colors.white.withOpacity(0.25),
+            color: Colors.white.withValues(alpha: 0.25),
             width: 1,
           ),
         ),
@@ -429,9 +423,9 @@ class _MapActionBtn extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MAP BADGE
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _MapBadge extends StatelessWidget {
   final String label;
@@ -442,9 +436,9 @@ class _MapBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.45),
+        color: Colors.black.withValues(alpha: 0.45),
         borderRadius: BorderRadius.circular(7),
-        border: Border.all(color: Colors.white.withOpacity(0.2), width: 1),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1),
       ),
       child: Text(
         label,
@@ -458,9 +452,9 @@ class _MapBadge extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MAP BACKGROUND (CustomPainter)
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class _MapBackground extends StatelessWidget {
   const _MapBackground();
@@ -477,7 +471,7 @@ class _MapBackground extends StatelessWidget {
 class _MapGridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    // Dark map background with subtle gradient
+    
     final bgPaint = Paint()
       ..shader = const LinearGradient(
         colors: [Color(0xFF1B4332), Color(0xFF2D6A4F)],
@@ -486,75 +480,63 @@ class _MapGridPainter extends CustomPainter {
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
     canvas.drawRect(Offset.zero & size, bgPaint);
 
-    // Minor grid (dots)
-    final dotPaint = Paint()..color = Colors.white.withOpacity(0.06);
+    
+    final dotPaint = Paint()..color = Colors.white.withValues(alpha: 0.06);
     for (double y = 20; y < size.height; y += 20) {
       for (double x = 20; x < size.width; x += 20) {
         canvas.drawCircle(Offset(x, y), 1.2, dotPaint);
       }
     }
 
-    // Secondary roads
+    
     final roadPaint = Paint()
-      ..color = Colors.white.withOpacity(0.09)
+      ..color = Colors.white.withValues(alpha: 0.09)
       ..strokeWidth = 1.5
       ..strokeCap = StrokeCap.round;
 
-    // Horizontal roads
+    
     for (final y in [size.height * 0.35, size.height * 0.65]) {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), roadPaint);
     }
-    // Vertical roads
+    
     for (final x in [size.width * 0.28, size.width * 0.62]) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), roadPaint);
     }
 
-    // Main roads
+    
     final mainRoad = Paint()
-      ..color = Colors.white.withOpacity(0.18)
+      ..color = Colors.white.withValues(alpha: 0.18)
       ..strokeWidth = 3
       ..strokeCap = StrokeCap.round;
-    canvas.drawLine(Offset(0, size.height * 0.5),
-        Offset(size.width, size.height * 0.5), mainRoad);
-    canvas.drawLine(Offset(size.width * 0.45, 0),
-        Offset(size.width * 0.45, size.height), mainRoad);
+    canvas.drawLine(Offset(0, size.height * 0.5), Offset(size.width, size.height * 0.5), mainRoad);
+    canvas.drawLine(Offset(size.width * 0.45, 0), Offset(size.width * 0.45, size.height), mainRoad);
 
-    // Building blocks
-    final blockPaint = Paint()..color = Colors.white.withOpacity(0.07);
+    
+    final blockPaint = Paint()..color = Colors.white.withValues(alpha: 0.07);
     final blocks = [
-      Rect.fromLTWH(size.width * 0.05, size.height * 0.06, size.width * 0.18,
-          size.height * 0.22),
-      Rect.fromLTWH(size.width * 0.50, size.height * 0.06, size.width * 0.14,
-          size.height * 0.18),
-      Rect.fromLTWH(size.width * 0.68, size.height * 0.06, size.width * 0.25,
-          size.height * 0.25),
-      Rect.fromLTWH(size.width * 0.05, size.height * 0.55, size.width * 0.20,
-          size.height * 0.28),
-      Rect.fromLTWH(size.width * 0.50, size.height * 0.58, size.width * 0.16,
-          size.height * 0.24),
-      Rect.fromLTWH(size.width * 0.70, size.height * 0.55, size.width * 0.22,
-          size.height * 0.20),
+      Rect.fromLTWH(size.width * 0.05, size.height * 0.06, size.width * 0.18, size.height * 0.22),
+      Rect.fromLTWH(size.width * 0.50, size.height * 0.06, size.width * 0.14, size.height * 0.18),
+      Rect.fromLTWH(size.width * 0.68, size.height * 0.06, size.width * 0.25, size.height * 0.25),
+      Rect.fromLTWH(size.width * 0.05, size.height * 0.55, size.width * 0.20, size.height * 0.28),
+      Rect.fromLTWH(size.width * 0.50, size.height * 0.58, size.width * 0.16, size.height * 0.24),
+      Rect.fromLTWH(size.width * 0.70, size.height * 0.55, size.width * 0.22, size.height * 0.20),
     ];
     for (final b in blocks) {
-      canvas.drawRRect(
-          RRect.fromRectAndRadius(b, const Radius.circular(3)), blockPaint);
+      canvas.drawRRect(RRect.fromRectAndRadius(b, const Radius.circular(3)), blockPaint);
     }
 
-    // Park / green area
-    final parkPaint = Paint()
-      ..color = const Color(0xFF52B788).withOpacity(0.15);
+    
+    final parkPaint = Paint()..color = const Color(0xFF52B788).withValues(alpha: 0.15);
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTWH(size.width * 0.28, size.height * 0.06, size.width * 0.18,
-            size.height * 0.20),
+        Rect.fromLTWH(size.width * 0.28, size.height * 0.06, size.width * 0.18, size.height * 0.20),
         const Radius.circular(4),
       ),
       parkPaint,
     );
 
-    // Water body
-    final waterPaint = Paint()
-      ..color = const Color(0xFF4FC3F7).withOpacity(0.12);
+    
+    final waterPaint = Paint()..color = const Color(0xFF4FC3F7).withValues(alpha: 0.12);
     final waterPath = Path()
       ..moveTo(0, size.height * 0.42)
       ..quadraticBezierTo(

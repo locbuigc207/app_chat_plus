@@ -1,15 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/foundation.dart';
+
+import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Enums & value types
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 enum RtcConnectionState {
   disconnected,
@@ -22,12 +23,12 @@ enum RtcConnectionState {
 enum NetworkQuality { unknown, excellent, good, poor, bad, veryBad, down }
 
 class RtcCallStats {
-  final int txBitrate; // kbps
-  final int rxBitrate; // kbps
-  final int txPacketLoss; // %
-  final int rxPacketLoss; // %
-  final int rtt; // ms
-  final int duration; // seconds
+  final int txBitrate; 
+  final int rxBitrate; 
+  final int txPacketLoss; 
+  final int rxPacketLoss; 
+  final int rtt; 
+  final int duration; 
 
   const RtcCallStats({
     this.txBitrate = 0,
@@ -57,12 +58,12 @@ class RemoteUserState {
       );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// AgoraRtcManager
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 class AgoraRtcManager extends ChangeNotifier {
-  // ── State ─────────────────────────────────────────────────────────────────
+  
   RtcConnectionState _connectionState = RtcConnectionState.disconnected;
   bool _isMuted = false;
   bool _isCameraOff = false;
@@ -78,10 +79,10 @@ class AgoraRtcManager extends ChangeNotifier {
   NetworkQuality _networkQuality = NetworkQuality.unknown;
   Map<int, RemoteUserState> _remoteUsers = {};
 
-  // ── Engine ────────────────────────────────────────────────────────────────
+  
   RtcEngine? _engine;
 
-  // ── Streams ───────────────────────────────────────────────────────────────
+  
   final _remoteJoinedCtrl = StreamController<int>.broadcast();
   final _remoteLeftCtrl = StreamController<int>.broadcast();
   final _connectionCtrl = StreamController<RtcConnectionState>.broadcast();
@@ -96,7 +97,7 @@ class AgoraRtcManager extends ChangeNotifier {
   Stream<NetworkQuality> get networkQualityStream => _networkQualityCtrl.stream;
   Stream<int> get activeSpeakerStream => _activeSpeakerCtrl.stream;
 
-  // ── Public getters ────────────────────────────────────────────────────────
+  
   RtcConnectionState get connectionState => _connectionState;
   bool get isMuted => _isMuted;
   bool get isCameraOff => _isCameraOff;
@@ -107,7 +108,7 @@ class AgoraRtcManager extends ChangeNotifier {
   bool get hasRemoteUser => _remoteUsers.isNotEmpty;
   int? get remoteUid => _remoteUsers.keys.firstOrNull;
 
-  // TÍCH HỢP CHO CALL_PAGE: Trả về trạng thái camera của user đang gọi
+  
   bool get remoteVideoOn {
     final uid = remoteUid;
     if (uid == null) return false;
@@ -120,16 +121,15 @@ class AgoraRtcManager extends ChangeNotifier {
   String? get currentChannel => _currentChannel;
   RtcEngine? get engine => _engine;
 
-  // Token server URL — override to point at your own token service.
+  
   String get _tokenServerBase =>
-      dotenv.env['AGORA_TOKEN_SERVER'] ??
-      'https://agora-token-service-boa9.onrender.com';
+      dotenv.env['AGORA_TOKEN_SERVER'] ?? 'https://agora-token-service-boa9.onrender.com';
 
   String get _appId => (dotenv.env['AGORA_APP_ID'] ?? '').trim();
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // INITIALISATION
-  // ═══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   Future<bool> initialize() async {
     if (_initialized) return true;
@@ -153,17 +153,17 @@ class AgoraRtcManager extends ChangeNotifier {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // CHANNEL
-  // ═══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
-  /// Joins an Agora channel.
-  /// Returns true if the join command was dispatched successfully.
+  
+  
   Future<bool> joinChannel({
     required String channelName,
     required bool isVideoCall,
     int uid = 0,
-    String? token, // pass pre-fetched token to skip server call
+    String? token, 
   }) async {
     if (_disposed) return false;
     if (_joining) return false;
@@ -187,7 +187,7 @@ class AgoraRtcManager extends ChangeNotifier {
       _currentChannel = ch;
       _setConnectionState(RtcConnectionState.connecting);
 
-      // Fetch token
+      
       final rtcToken = token ?? await _fetchToken(ch, uid: uid);
       if (rtcToken == null || rtcToken.isEmpty) {
         _emitError('Không thể lấy Token cuộc gọi. Vui lòng thử lại.');
@@ -245,9 +245,9 @@ class AgoraRtcManager extends ChangeNotifier {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // CONTROLS
-  // ═══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   Future<void> toggleMute() async {
     if (_disposed) return;
@@ -284,15 +284,14 @@ class AgoraRtcManager extends ChangeNotifier {
     _safeNotify();
   }
 
-  /// Adjusts the remote user's audio volume (0–400; 100 = original).
+  
   Future<void> adjustRemoteVolume(int uid, int volume) async {
     if (_disposed) return;
     final v = volume.clamp(0, 400);
-    await _safeCall(
-        () => _engine?.adjustUserPlaybackSignalVolume(uid: uid, volume: v));
+    await _safeCall(() => _engine?.adjustUserPlaybackSignalVolume(uid: uid, volume: v));
   }
 
-  /// Subscribes/unsubscribes to a remote user's video stream.
+  
   Future<void> muteRemoteVideo(int uid, {required bool mute}) async {
     if (_disposed) return;
     await _safeCall(
@@ -304,9 +303,9 @@ class AgoraRtcManager extends ChangeNotifier {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // DISPOSE
-  // ═══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   @override
   void dispose() {
@@ -328,9 +327,9 @@ class AgoraRtcManager extends ChangeNotifier {
     super.dispose();
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PRIVATE — Engine init & event handler
-  // ═══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   Future<void> _initEngine() async {
     _engine = createAgoraRtcEngine();
@@ -352,7 +351,7 @@ class AgoraRtcManager extends ChangeNotifier {
     );
     await _engine!.setEnableSpeakerphone(true);
 
-    // Echo cancellation, noise suppression, AGC
+    
     await _engine!.setParameters('{"che.audio.enable.aec":true}');
     await _engine!.setParameters('{"che.audio.enable.agc":true}');
     await _engine!.setParameters('{"che.audio.enable.ns":true}');
@@ -411,9 +410,8 @@ class AgoraRtcManager extends ChangeNotifier {
       },
       onNetworkQuality: (connection, uid, txQuality, rxQuality) {
         if (uid == 0) {
-          // Local user quality
-          final worst =
-              txQuality.index > rxQuality.index ? txQuality : rxQuality;
+          
+          final worst = txQuality.index > rxQuality.index ? txQuality : rxQuality;
           final q = _mapNetworkQuality(worst);
           if (q != _networkQuality) {
             _networkQuality = q;
@@ -449,9 +447,9 @@ class AgoraRtcManager extends ChangeNotifier {
     ));
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PRIVATE — Token
-  // ═══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   Future<String?> _fetchToken(String channelName, {int uid = 0}) async {
     const maxRetries = 3;
@@ -482,9 +480,9 @@ class AgoraRtcManager extends ChangeNotifier {
     return null;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PRIVATE — Permissions
-  // ═══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   Future<void> _requestPermissions({bool video = false}) async {
     if (kIsWeb) return;
@@ -498,9 +496,9 @@ class AgoraRtcManager extends ChangeNotifier {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PRIVATE — Utilities
-  // ═══════════════════════════════════════════════════════════════════════════
+  
+  
+  
 
   void _setConnectionState(RtcConnectionState state) {
     if (_disposed || _connectionState == state) return;

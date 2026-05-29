@@ -101,8 +101,7 @@ class _Options {
     this.skipTrailingComma = false,
     this.skipSortImports = false,
     this.skipAnalyze = false,
-    this.targetDirs = const [_libDir, _testDir],
-  });
+  }) : targetDirs = const [_libDir, _testDir];
 }
 
 _Options _parseArgs(List<String> args) {
@@ -287,9 +286,7 @@ String _ensureFoundationImport(String content) {
   final firstImport = RegExp(r'^import ', multiLine: true);
   final match = firstImport.firstMatch(content);
   if (match != null) {
-    return content.substring(0, match.start) +
-        "import 'package:flutter/foundation.dart';\n" +
-        content.substring(match.start);
+    return "${content.substring(0, match.start)}import 'package:flutter/foundation.dart';\n${content.substring(match.start)}";
   }
 
   return content;
@@ -642,7 +639,7 @@ void _printSummary(int totalIssues, Duration elapsed) {
       '  ⏱  Thời gian: ${elapsed.inSeconds}s ${elapsed.inMilliseconds % 1000}ms');
   print('  🔧 Tổng vấn đề xử lý: $totalIssues');
   print('');
-  print('$_bold${_green}✅ HOÀN TẤT!$_reset');
+  print('$_bold$_green✅ HOÀN TẤT!$_reset');
   print('');
   print('$_yellow💡 Lưu ý:$_reset');
   print('  • Kiểm tra lại các file đã thay đổi trước khi commit');

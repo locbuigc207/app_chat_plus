@@ -1,22 +1,21 @@
 import 'package:flutter/material.dart';
 
-/// Breakpoints used across the app.
+
 class Breakpoints {
   static const double mobile = 600;
   static const double tablet = 900;
   static const double desktop = 1280;
 }
 
-/// Screen size classification.
+
 enum ScreenSize { mobile, tablet, desktop }
 
-/// Extension for quick screen-size access on [BuildContext].
+
 extension ScreenSizeContext on BuildContext {
   double get screenWidth => MediaQuery.of(this).size.width;
   double get screenHeight => MediaQuery.of(this).size.height;
   bool get isMobile => screenWidth < Breakpoints.mobile;
-  bool get isTablet =>
-      screenWidth >= Breakpoints.mobile && screenWidth < Breakpoints.tablet;
+  bool get isTablet => screenWidth >= Breakpoints.mobile && screenWidth < Breakpoints.tablet;
   bool get isDesktop => screenWidth >= Breakpoints.tablet;
   ScreenSize get screenSize {
     if (screenWidth < Breakpoints.mobile) return ScreenSize.mobile;
@@ -24,7 +23,7 @@ extension ScreenSizeContext on BuildContext {
     return ScreenSize.desktop;
   }
 
-  /// Columns for chat list grid: 1 on mobile, 2 on tablet, 3 on desktop.
+  
   int get chatListColumns {
     if (isMobile) return 1;
     if (isTablet) return 2;
@@ -32,9 +31,9 @@ extension ScreenSizeContext on BuildContext {
   }
 }
 
-/// Responsive layout that chooses between [mobileLayout] and [desktopLayout].
-/// On tablet sizes, [tabletLayout] is used when provided, otherwise falls back
-/// to [desktopLayout].
+
+
+
 class ResponsiveLayout extends StatelessWidget {
   final Widget mobileLayout;
   final Widget? tabletLayout;
@@ -47,7 +46,7 @@ class ResponsiveLayout extends StatelessWidget {
     required this.desktopLayout,
   });
 
-  // Convenience aliases for legacy code that used `webLayout`.
+  
   static ResponsiveLayout withWeb({
     Key? key,
     required Widget mobileLayout,
@@ -59,7 +58,7 @@ class ResponsiveLayout extends StatelessWidget {
         desktopLayout: webLayout,
       );
 
-  // ── Static helpers ──────────────────────────────────────────────────────
+  
   static bool isMobile(BuildContext context) =>
       MediaQuery.of(context).size.width < Breakpoints.mobile;
 
@@ -71,7 +70,7 @@ class ResponsiveLayout extends StatelessWidget {
   static bool isWeb(BuildContext context) =>
       MediaQuery.of(context).size.width >= Breakpoints.tablet;
 
-  /// Returns the appropriate value based on current screen size.
+  
   static T value<T>(
     BuildContext context, {
     required T mobile,
@@ -100,8 +99,8 @@ class ResponsiveLayout extends StatelessWidget {
   }
 }
 
-/// A two-pane layout for tablet/desktop: a fixed-width side panel + main content.
-/// On mobile, only [mainContent] is shown (side panel is a drawer).
+
+
 class TwoPaneLayout extends StatelessWidget {
   final Widget sidePanel;
   final Widget mainContent;
@@ -121,11 +120,11 @@ class TwoPaneLayout extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < Breakpoints.tablet) {
-          // Mobile: full-screen main content
+          
           return mainContent;
         }
 
-        // Tablet / Desktop: two-pane
+        
         return Row(
           children: [
             SizedBox(
@@ -145,7 +144,7 @@ class TwoPaneLayout extends StatelessWidget {
   }
 }
 
-/// Padding that adapts to screen size.
+
 class ResponsivePadding extends StatelessWidget {
   final Widget child;
   final EdgeInsets mobile;
@@ -172,7 +171,7 @@ class ResponsivePadding extends StatelessWidget {
   }
 }
 
-/// SizedBox whose size adapts to screen size.
+
 class ResponsiveSizedBox extends StatelessWidget {
   final double mobileSize;
   final double? tabletSize;
@@ -201,8 +200,6 @@ class ResponsiveSizedBox extends StatelessWidget {
       tablet: tabletSize,
       desktop: desktopSize,
     );
-    return axis == Axis.vertical
-        ? SizedBox(height: size)
-        : SizedBox(width: size);
+    return axis == Axis.vertical ? SizedBox(height: size) : SizedBox(width: size);
   }
 }

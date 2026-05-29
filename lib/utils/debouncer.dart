@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:ui';
 
-/// Debouncer mạnh mẽ: trì hoãn thực thi action cho đến khi ngừng gọi
-/// Dùng cho: tìm kiếm, auto-save, resize, scroll handler...
+
+
 class Debouncer {
   final Duration duration;
   Timer? _timer;
@@ -13,13 +13,13 @@ class Debouncer {
 
   Debouncer.fromDuration(this.duration);
 
-  /// Hủy timer hiện tại và đặt lại
+  
   void run(VoidCallback action) {
     _timer?.cancel();
     _timer = Timer(duration, action);
   }
 
-  /// Chạy ngay lập tức, sau đó debounce các lần gọi tiếp theo
+  
   void runImmediate(VoidCallback action) {
     if (_timer == null || !_timer!.isActive) {
       action();
@@ -28,13 +28,13 @@ class Debouncer {
     _timer = Timer(duration, () {});
   }
 
-  /// Hủy timer đang chờ (không thực thi action)
+  
   void cancel() {
     _timer?.cancel();
     _timer = null;
   }
 
-  /// Flush: thực thi ngay action đang pending nếu có, hủy timer
+  
   void flush(VoidCallback action) {
     if (_timer != null && _timer!.isActive) {
       _timer!.cancel();
@@ -51,9 +51,9 @@ class Debouncer {
   }
 }
 
-/// Throttler: đảm bảo action chỉ chạy tối đa 1 lần trong khoảng thời gian
-/// Khác với Debouncer: chạy action NGAY lập tức rồi chặn các lần tiếp theo
-/// Dùng cho: nút bấm chống double-tap, scroll events, network polling...
+
+
+
 class Throttler {
   final Duration duration;
   DateTime? _lastRun;
@@ -66,7 +66,7 @@ class Throttler {
 
   Throttler.fromDuration(this.duration, {this.trailing = false});
 
-  /// Khi [trailing] = true, lần gọi cuối trong window sẽ được thực thi sau delay
+  
   final bool trailing;
 
   VoidCallback? _pendingAction;
@@ -105,8 +105,8 @@ class Throttler {
   }
 }
 
-/// RateLimiter: giới hạn số lần gọi trong một khoảng thời gian nhất định
-/// Dùng cho: API calls, message sending rate limit...
+
+
 class RateLimiter {
   final int maxCalls;
   final Duration window;
@@ -117,7 +117,7 @@ class RateLimiter {
     required this.window,
   });
 
-  /// Trả về true nếu còn trong giới hạn rate, false nếu đã vượt
+  
   bool tryAcquire() {
     final now = DateTime.now();
     _timestamps.removeWhere(
@@ -131,7 +131,7 @@ class RateLimiter {
     return false;
   }
 
-  /// Thời gian còn lại đến khi có thể gọi tiếp (null nếu đang available)
+  
   Duration? get timeUntilAvailable {
     if (_timestamps.length < maxCalls) return null;
     final now = DateTime.now();

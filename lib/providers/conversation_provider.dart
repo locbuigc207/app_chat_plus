@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
@@ -36,8 +38,7 @@ class ConversationSummary {
       isMuted: data['isMuted'] as bool? ?? false,
       isLocked: data['isLocked'] as bool? ?? false,
       unreadCount: data['unreadCount'] as int? ?? 0,
-      lastMessageTime:
-          int.tryParse(data['lastMessageTime']?.toString() ?? '0') ?? 0,
+      lastMessageTime: int.tryParse(data['lastMessageTime']?.toString() ?? '0') ?? 0,
       lastMessage: data['lastMessage'] as String? ?? '',
       participants: List<String>.from(data['participants'] as List? ?? []),
       isGroup: data['isGroup'] as bool? ?? false,
@@ -55,19 +56,17 @@ class ConversationProvider {
 
   ConversationProvider({required this.firebaseFirestore});
 
-  // ─── Streams ──────────────────────────────────────────────────────────────
+  
 
-  /// Active (non-archived) conversations sorted: pinned first, then by recency.
-  Stream<List<QueryDocumentSnapshot>> getConversationsWithPinned(
-      String userId) {
+  
+  Stream<List<QueryDocumentSnapshot>> getConversationsWithPinned(String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathConversationCollection)
         .where(FirestoreConstants.participants, arrayContains: userId)
         .snapshots()
         .map((snapshot) {
       final docs = snapshot.docs.where((doc) {
-        final archivedBy =
-            List<String>.from(doc.data()['archivedBy'] as List? ?? []);
+        final archivedBy = List<String>.from(doc.data()['archivedBy'] as List? ?? []);
         return !archivedBy.contains(userId);
       }).toList();
 
@@ -79,10 +78,8 @@ class ConversationProvider {
 
         if (aPinned != bPinned) return aPinned ? -1 : 1;
 
-        final aTime =
-            int.tryParse(aData['lastMessageTime']?.toString() ?? '0') ?? 0;
-        final bTime =
-            int.tryParse(bData['lastMessageTime']?.toString() ?? '0') ?? 0;
+        final aTime = int.tryParse(aData['lastMessageTime']?.toString() ?? '0') ?? 0;
+        final bTime = int.tryParse(bData['lastMessageTime']?.toString() ?? '0') ?? 0;
         return bTime.compareTo(aTime);
       });
 
@@ -90,7 +87,7 @@ class ConversationProvider {
     });
   }
 
-  /// Archived conversations for the given user.
+  
   Stream<List<QueryDocumentSnapshot>> getArchivedConversations(String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathConversationCollection)
@@ -100,7 +97,7 @@ class ConversationProvider {
         .map((s) => s.docs);
   }
 
-  /// Unread conversations for the given user.
+  
   Stream<List<QueryDocumentSnapshot>> getUnreadConversations(String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathConversationCollection)
@@ -117,10 +114,9 @@ class ConversationProvider {
         .snapshots();
   }
 
-  // ─── Pin / Unpin ──────────────────────────────────────────────────────────
+  
 
-  Future<bool> togglePinConversation(
-      String conversationId, bool currentStatus) async {
+  Future<bool> togglePinConversation(String conversationId, bool currentStatus) async {
     try {
       final newPinned = !currentStatus;
       await firebaseFirestore
@@ -128,21 +124,19 @@ class ConversationProvider {
           .doc(conversationId)
           .update({
         'isPinned': newPinned,
-        'pinnedAt': newPinned
-            ? DateTime.now().millisecondsSinceEpoch.toString()
-            : FieldValue.delete(),
+        'pinnedAt':
+            newPinned ? DateTime.now().millisecondsSinceEpoch.toString() : FieldValue.delete(),
       });
       return true;
     } catch (e) {
-      print('❌ Error toggling pin: $e');
+      debugPrint('❌ Error toggling pin: $e');
       return false;
     }
   }
 
-  // ─── Mute / Unmute ────────────────────────────────────────────────────────
+  
 
-  Future<bool> toggleMuteConversation(
-      String conversationId, bool currentStatus) async {
+  Future<bool> toggleMuteConversation(String conversationId, bool currentStatus) async {
     try {
       await firebaseFirestore
           .collection(FirestoreConstants.pathConversationCollection)
@@ -150,12 +144,12 @@ class ConversationProvider {
           .update({'isMuted': !currentStatus});
       return true;
     } catch (e) {
-      print('❌ Error toggling mute: $e');
+      debugPrint('❌ Error toggling mute: $e');
       return false;
     }
   }
 
-  /// Mute for a specific duration (in minutes). Pass null to unmute immediately.
+  
   Future<bool> muteUntil(String conversationId, Duration? duration) async {
     try {
       final update = duration == null
@@ -171,12 +165,12 @@ class ConversationProvider {
           .update(update);
       return true;
     } catch (e) {
-      print('❌ Error muting conversation: $e');
+      debugPrint('❌ Error muting conversation: $e');
       return false;
     }
   }
 
-  // ─── Archive ──────────────────────────────────────────────────────────────
+  
 
   Future<bool> toggleArchiveConversation(
     String conversationId,
@@ -194,12 +188,12 @@ class ConversationProvider {
       });
       return true;
     } catch (e) {
-      print('❌ Error archiving conversation: $e');
+      debugPrint('❌ Error archiving conversation: $e');
       return false;
     }
   }
 
-  // ─── Unread Count ─────────────────────────────────────────────────────────
+  
 
   Future<bool> markAsRead(String conversationId, String userId) async {
     try {
@@ -212,13 +206,12 @@ class ConversationProvider {
       });
       return true;
     } catch (e) {
-      print('❌ Error marking as read: $e');
+      debugPrint('❌ Error marking as read: $e');
       return false;
     }
   }
 
-  Future<bool> incrementUnreadCount(
-      String conversationId, List<String> excludeUserIds) async {
+  Future<bool> incrementUnreadCount(String conversationId, List<String> excludeUserIds) async {
     try {
       await firebaseFirestore
           .collection(FirestoreConstants.pathConversationCollection)
@@ -226,12 +219,12 @@ class ConversationProvider {
           .update({'unreadCount': FieldValue.increment(1)});
       return true;
     } catch (e) {
-      print('❌ Error incrementing unread: $e');
+      debugPrint('❌ Error incrementing unread: $e');
       return false;
     }
   }
 
-  // ─── Clear History ────────────────────────────────────────────────────────
+  
 
   Future<bool> clearConversationHistory(String conversationId) async {
     try {
@@ -270,16 +263,15 @@ class ConversationProvider {
 
       return true;
     } catch (e) {
-      print('❌ Error clearing conversation history: $e');
+      debugPrint('❌ Error clearing conversation history: $e');
       return false;
     }
   }
 
-  // ─── Delete Conversation ──────────────────────────────────────────────────
+  
 
-  /// Soft-delete: marks conversation as deleted for the given user.
-  Future<bool> deleteConversationForUser(
-      String conversationId, String userId) async {
+  
+  Future<bool> deleteConversationForUser(String conversationId, String userId) async {
     try {
       await firebaseFirestore
           .collection(FirestoreConstants.pathConversationCollection)
@@ -289,12 +281,12 @@ class ConversationProvider {
       });
       return true;
     } catch (e) {
-      print('❌ Error deleting conversation for user: $e');
+      debugPrint('❌ Error deleting conversation for user: $e');
       return false;
     }
   }
 
-  // ─── Typing Indicator ─────────────────────────────────────────────────────
+  
 
   Future<void> setTypingStatus(
     String conversationId,
@@ -306,12 +298,11 @@ class ConversationProvider {
           .collection(FirestoreConstants.pathConversationCollection)
           .doc(conversationId)
           .update({
-        'typingUsers.$userId': isTyping
-            ? DateTime.now().millisecondsSinceEpoch.toString()
-            : FieldValue.delete(),
+        'typingUsers.$userId':
+            isTyping ? DateTime.now().millisecondsSinceEpoch.toString() : FieldValue.delete(),
       });
     } catch (e) {
-      print('❌ Error setting typing status: $e');
+      debugPrint('❌ Error setting typing status: $e');
     }
   }
 
@@ -325,7 +316,7 @@ class ConversationProvider {
       if (data == null) return {};
       final typingUsers = data['typingUsers'] as Map<String, dynamic>? ?? {};
 
-      // Filter out stale entries (> 10 seconds old)
+      
       final now = DateTime.now().millisecondsSinceEpoch;
       return Map.fromEntries(
         typingUsers.entries.where((e) {
