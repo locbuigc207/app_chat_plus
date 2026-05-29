@@ -1,18 +1,9 @@
-
 // ignore_for_file: use_super_parameters
 
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
-
-
-
-
-
-
-
 
 class MiniMapWidget extends StatefulWidget {
   final double? myLat;
@@ -22,10 +13,8 @@ class MiniMapWidget extends StatefulWidget {
   final String peerName;
   final String peerAvatar;
 
-  
   final VoidCallback? onOpenFullMap;
 
-  
   final VoidCallback? onGetDirections;
 
   const MiniMapWidget({
@@ -76,8 +65,6 @@ class _MiniMapWidgetState extends State<MiniMapWidget> with TickerProviderStateM
     super.dispose();
   }
 
-  
-
   double? get _distanceKm {
     if (widget.myLat == null ||
         widget.myLng == null ||
@@ -118,10 +105,6 @@ class _MiniMapWidgetState extends State<MiniMapWidget> with TickerProviderStateM
     return '• Khoảng cách xa';
   }
 
-  
-  
-  
-
   @override
   Widget build(BuildContext context) {
     return FadeTransition(
@@ -146,10 +129,7 @@ class _MiniMapWidgetState extends State<MiniMapWidget> with TickerProviderStateM
             borderRadius: BorderRadius.circular(16),
             child: Stack(
               children: [
-                
                 const Positioned.fill(child: _MapBackground()),
-
-                
                 Positioned(
                   bottom: 0,
                   left: 0,
@@ -168,23 +148,17 @@ class _MiniMapWidgetState extends State<MiniMapWidget> with TickerProviderStateM
                     ),
                   ),
                 ),
-
-                
                 Positioned(
                   bottom: 0,
                   left: 0,
                   right: 0,
                   child: _buildInfoPanel(),
                 ),
-
-                
                 Positioned(
                   top: 8,
                   right: 8,
                   child: _buildActionButtons(),
                 ),
-
-                
                 Positioned(
                   top: 8,
                   left: 8,
@@ -203,7 +177,6 @@ class _MiniMapWidgetState extends State<MiniMapWidget> with TickerProviderStateM
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
       child: Row(
         children: [
-          
           AnimatedBuilder(
             animation: _pingAnim,
             builder: (_, __) => _PingDot(
@@ -212,8 +185,6 @@ class _MiniMapWidgetState extends State<MiniMapWidget> with TickerProviderStateM
               pingProgress: _pingAnim.value,
             ),
           ),
-
-          
           Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -245,8 +216,6 @@ class _MiniMapWidgetState extends State<MiniMapWidget> with TickerProviderStateM
               ],
             ),
           ),
-
-          
           AnimatedBuilder(
             animation: _pingAnim,
             builder: (_, __) => _PingDot(
@@ -283,10 +252,6 @@ class _MiniMapWidgetState extends State<MiniMapWidget> with TickerProviderStateM
   }
 }
 
-
-
-
-
 class _PingDot extends StatelessWidget {
   final Color color;
   final String label;
@@ -314,7 +279,6 @@ class _PingDot extends StatelessWidget {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              
               Container(
                 width: ringSize,
                 height: ringSize,
@@ -326,7 +290,6 @@ class _PingDot extends StatelessWidget {
                   ),
                 ),
               ),
-              
               Container(
                 width: 28,
                 height: 28,
@@ -370,10 +333,6 @@ class _PingDot extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _MapActionBtn extends StatelessWidget {
   final IconData icon;
@@ -423,10 +382,6 @@ class _MapActionBtn extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _MapBadge extends StatelessWidget {
   final String label;
   const _MapBadge({required this.label});
@@ -452,10 +407,6 @@ class _MapBadge extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _MapBackground extends StatelessWidget {
   const _MapBackground();
 
@@ -471,7 +422,6 @@ class _MapBackground extends StatelessWidget {
 class _MapGridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    
     final bgPaint = Paint()
       ..shader = const LinearGradient(
         colors: [Color(0xFF1B4332), Color(0xFF2D6A4F)],
@@ -480,7 +430,6 @@ class _MapGridPainter extends CustomPainter {
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
     canvas.drawRect(Offset.zero & size, bgPaint);
 
-    
     final dotPaint = Paint()..color = Colors.white.withValues(alpha: 0.06);
     for (double y = 20; y < size.height; y += 20) {
       for (double x = 20; x < size.width; x += 20) {
@@ -488,22 +437,19 @@ class _MapGridPainter extends CustomPainter {
       }
     }
 
-    
     final roadPaint = Paint()
       ..color = Colors.white.withValues(alpha: 0.09)
       ..strokeWidth = 1.5
       ..strokeCap = StrokeCap.round;
 
-    
     for (final y in [size.height * 0.35, size.height * 0.65]) {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), roadPaint);
     }
-    
+
     for (final x in [size.width * 0.28, size.width * 0.62]) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), roadPaint);
     }
 
-    
     final mainRoad = Paint()
       ..color = Colors.white.withValues(alpha: 0.18)
       ..strokeWidth = 3
@@ -511,7 +457,6 @@ class _MapGridPainter extends CustomPainter {
     canvas.drawLine(Offset(0, size.height * 0.5), Offset(size.width, size.height * 0.5), mainRoad);
     canvas.drawLine(Offset(size.width * 0.45, 0), Offset(size.width * 0.45, size.height), mainRoad);
 
-    
     final blockPaint = Paint()..color = Colors.white.withValues(alpha: 0.07);
     final blocks = [
       Rect.fromLTWH(size.width * 0.05, size.height * 0.06, size.width * 0.18, size.height * 0.22),
@@ -525,7 +470,6 @@ class _MapGridPainter extends CustomPainter {
       canvas.drawRRect(RRect.fromRectAndRadius(b, const Radius.circular(3)), blockPaint);
     }
 
-    
     final parkPaint = Paint()..color = const Color(0xFF52B788).withValues(alpha: 0.15);
     canvas.drawRRect(
       RRect.fromRectAndRadius(
@@ -535,7 +479,6 @@ class _MapGridPainter extends CustomPainter {
       parkPaint,
     );
 
-    
     final waterPaint = Paint()..color = const Color(0xFF4FC3F7).withValues(alpha: 0.12);
     final waterPath = Path()
       ..moveTo(0, size.height * 0.42)

@@ -3,8 +3,6 @@ import 'package:flutter/services.dart';
 
 import 'package:flutter_chat_demo/constants/constants.dart';
 
-
-
 class MessageOptionsDialog extends StatelessWidget {
   final bool isOwnMessage;
   final bool isPinned;
@@ -50,7 +48,6 @@ class MessageOptionsDialog extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          
           Padding(
             padding: const EdgeInsets.only(top: 10, bottom: 6),
             child: Container(
@@ -62,8 +59,6 @@ class MessageOptionsDialog extends StatelessWidget {
               ),
             ),
           ),
-
-          
           if (isOwnMessage && !isDeleted) ...[
             _buildOption(
               context,
@@ -87,8 +82,6 @@ class MessageOptionsDialog extends StatelessWidget {
             ),
             _divider(),
           ],
-
-          
           if (!isDeleted) ...[
             _buildOption(
               context,
@@ -144,7 +137,6 @@ class MessageOptionsDialog extends StatelessWidget {
               ),
             ],
           ],
-
           const SizedBox(height: 8),
         ],
       ),

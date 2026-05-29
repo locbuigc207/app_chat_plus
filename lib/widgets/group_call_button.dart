@@ -10,10 +10,6 @@ import '../pages/pages.dart';
 import '../providers/providers.dart';
 import '../services/services.dart';
 
-
-
-
-
 class GroupVideoCallButton extends StatelessWidget {
   final String groupId;
   final String groupName;
@@ -162,10 +158,6 @@ class GroupVideoCallButton extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class GroupCallIconButton extends StatefulWidget {
   final String groupId;
@@ -317,10 +309,6 @@ class _GroupCallIconButtonState extends State<GroupCallIconButton>
   }
 }
 
-
-
-
-
 class ActiveGroupCallBanner extends StatelessWidget {
   final String groupId;
   final String currentUserId;
@@ -449,7 +437,6 @@ class _BannerContentState extends State<_BannerContent> with SingleTickerProvide
           ),
           child: Row(
             children: [
-              
               _buildLiveDot(),
               const SizedBox(width: 10),
               Expanded(
@@ -546,10 +533,6 @@ class _BannerContentState extends State<_BannerContent> with SingleTickerProvide
     );
   }
 }
-
-
-
-
 
 class _JoinCallDialog extends StatelessWidget {
   final GroupCallModel call;

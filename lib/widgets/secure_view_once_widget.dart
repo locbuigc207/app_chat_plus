@@ -3,9 +3,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-
-
-
 abstract class _SC {
   static const bg0 = Color(0xFF060A14);
   static const bg1 = Color(0xFF0D1528);
@@ -19,46 +16,21 @@ abstract class _SC {
   static const white10 = Color(0x1AFFFFFF);
 }
 
-
-
-
-
 enum SecureState {
-  
   disabled,
 
-  
   monitoring,
 
-  
   warning,
 
-  
   blurred,
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 class SecureOverlayManager extends StatefulWidget {
   final Widget child;
   final bool isActive;
   final VoidCallback? onSecureStateChanged;
 
-  
   final void Function(SecureState state)? onStateChanged;
 
   const SecureOverlayManager({
@@ -77,24 +49,21 @@ class SecureOverlayManagerState extends State<SecureOverlayManager> with TickerP
   SecureState _state = SecureState.disabled;
   SecureState get currentState => _state;
 
-  
   int _suspiciousFrames = 0;
-  static const _blurThreshold = 4; 
-  static const _clearThreshold = 6; 
+  static const _blurThreshold = 4;
+  static const _clearThreshold = 6;
 
   bool _revealRequested = false;
 
-  
-  late AnimationController _blurCtrl; 
-  late AnimationController _shieldCtrl; 
-  late AnimationController _warningCtrl; 
-  late AnimationController _scanCtrl; 
-  late AnimationController _warningShimCtrl; 
+  late AnimationController _blurCtrl;
+  late AnimationController _shieldCtrl;
+  late AnimationController _warningCtrl;
+  late AnimationController _scanCtrl;
+  late AnimationController _warningShimCtrl;
 
   late Animation<double> _blurCurve;
   late Animation<double> _warningSlide;
 
-  
   @override
   void initState() {
     super.initState();
@@ -137,10 +106,6 @@ class SecureOverlayManagerState extends State<SecureOverlayManager> with TickerP
     super.dispose();
   }
 
-  
-  
-  
-
   void _activate() {
     if (!mounted) return;
     _transitionTo(SecureState.monitoring);
@@ -163,12 +128,6 @@ class SecureOverlayManagerState extends State<SecureOverlayManager> with TickerP
     widget.onStateChanged?.call(next);
   }
 
-  
-  
-  
-
-  
-  
   void reportDetection({required bool isSuspicious}) {
     if (!mounted || !widget.isActive) return;
     if (isSuspicious) {
@@ -189,19 +148,9 @@ class SecureOverlayManagerState extends State<SecureOverlayManager> with TickerP
     }
   }
 
-  
-  
-  
-
-  
   void debugTriggerBlur() => _triggerBlur();
 
-  
   void debugClearBlur() => _clearBlur();
-
-  
-  
-  
 
   void _triggerBlur() {
     if (!mounted) return;
@@ -229,10 +178,6 @@ class SecureOverlayManagerState extends State<SecureOverlayManager> with TickerP
     HapticFeedback.mediumImpact();
   }
 
-  
-  
-  
-
   @override
   Widget build(BuildContext context) {
     return Stack(
@@ -255,7 +200,6 @@ class SecureOverlayManagerState extends State<SecureOverlayManager> with TickerP
         final bp = _blurCurve.value;
         return Stack(
           children: [
-            
             if (bp > 0.01)
               Positioned.fill(
                 child: ClipRect(
@@ -270,8 +214,6 @@ class SecureOverlayManagerState extends State<SecureOverlayManager> with TickerP
                   ),
                 ),
               ),
-
-            
             if (_state == SecureState.monitoring || _state == SecureState.warning)
               Positioned.fill(
                 child: IgnorePointer(
@@ -284,8 +226,6 @@ class SecureOverlayManagerState extends State<SecureOverlayManager> with TickerP
                   ),
                 ),
               ),
-
-            
             if (_state == SecureState.warning)
               Positioned.fill(
                 child: IgnorePointer(
@@ -297,8 +237,6 @@ class SecureOverlayManagerState extends State<SecureOverlayManager> with TickerP
                   ),
                 ),
               ),
-
-            
             if (bp > 0.35)
               Positioned.fill(
                 child: ScaleTransition(
@@ -312,8 +250,6 @@ class SecureOverlayManagerState extends State<SecureOverlayManager> with TickerP
                   ),
                 ),
               ),
-
-            
             if (_state != SecureState.disabled)
               Positioned(
                 top: 10,
@@ -329,10 +265,6 @@ class SecureOverlayManagerState extends State<SecureOverlayManager> with TickerP
     );
   }
 }
-
-
-
-
 
 class _WarningCard extends StatelessWidget {
   final AnimationController shieldAnim;
@@ -426,10 +358,6 @@ class _WarningCard extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _PulsingEyeIcon extends StatelessWidget {
   final AnimationController shieldAnim;
   const _PulsingEyeIcon({required this.shieldAnim});
@@ -443,7 +371,6 @@ class _PulsingEyeIcon extends StatelessWidget {
         return Stack(
           alignment: Alignment.center,
           children: [
-            
             Container(
               width: 90 + t * 10,
               height: 90 + t * 10,
@@ -455,7 +382,6 @@ class _PulsingEyeIcon extends StatelessWidget {
                 ),
               ),
             ),
-            
             Container(
               width: 72,
               height: 72,
@@ -479,10 +405,6 @@ class _PulsingEyeIcon extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _RevealButton extends StatefulWidget {
   final VoidCallback onTap;
@@ -561,10 +483,6 @@ class _RevealButtonState extends State<_RevealButton> with SingleTickerProviderS
   }
 }
 
-
-
-
-
 class _SecureStatusBadge extends StatelessWidget {
   final SecureState state;
   final AnimationController shieldAnim;
@@ -630,10 +548,6 @@ class _SecureStatusBadge extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _ScanlinePainter extends CustomPainter {
   final double progress;
   final double opacity;
@@ -670,10 +584,6 @@ class _ScanlinePainter extends CustomPainter {
   bool shouldRepaint(_ScanlinePainter o) => o.progress != progress || o.opacity != opacity;
 }
 
-
-
-
-
 class _BorderGlowPainter extends CustomPainter {
   final double opacity;
   final Color color;
@@ -693,10 +603,6 @@ class _BorderGlowPainter extends CustomPainter {
   @override
   bool shouldRepaint(_BorderGlowPainter o) => o.opacity != opacity || o.color != color;
 }
-
-
-
-
 
 class SecureModeToggle extends StatefulWidget {
   final bool isActive;

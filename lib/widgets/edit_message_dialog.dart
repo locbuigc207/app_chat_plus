@@ -116,7 +116,6 @@ class _EditMessageDialogState extends State<EditMessageDialog> with SingleTicker
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                
                 Container(
                   padding: const EdgeInsets.fromLTRB(24, 20, 16, 16),
                   decoration: BoxDecoration(
@@ -183,8 +182,6 @@ class _EditMessageDialogState extends State<EditMessageDialog> with SingleTicker
                     ],
                   ),
                 ),
-
-                
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                   child: Container(
@@ -234,8 +231,6 @@ class _EditMessageDialogState extends State<EditMessageDialog> with SingleTicker
                     ),
                   ),
                 ),
-
-                
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
                   child: Column(
@@ -288,7 +283,6 @@ class _EditMessageDialogState extends State<EditMessageDialog> with SingleTicker
                         ),
                       ),
                       const SizedBox(height: 6),
-                      
                       AnimatedDefaultTextStyle(
                         duration: const Duration(milliseconds: 200),
                         style: TextStyle(
@@ -305,8 +299,6 @@ class _EditMessageDialogState extends State<EditMessageDialog> with SingleTicker
                     ],
                   ),
                 ),
-
-                
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
                   child: Row(

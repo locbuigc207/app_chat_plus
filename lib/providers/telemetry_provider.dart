@@ -3,10 +3,6 @@ import 'dart:collection';
 
 import 'package:flutter/material.dart';
 
-
-
-
-
 enum TelemetryEvent {
   keystroke,
   backspace,
@@ -29,10 +25,6 @@ enum BehaviorSuggestion {
   largerText,
   simplifiedUI,
 }
-
-
-
-
 
 class TypingPattern {
   final double wordsPerMinute;
@@ -60,10 +52,6 @@ class TypingPattern {
         'usesSlang': usesSlang,
       };
 }
-
-
-
-
 
 class SessionStats {
   final int totalKeystrokes;
@@ -98,15 +86,7 @@ class SessionStats {
       };
 }
 
-
-
-
-
 class TelemetryProvider with ChangeNotifier {
-  
-  
-  
-
   int _keystrokeCount = 0;
   int _backspaceCount = 0;
   int _pasteCount = 0;
@@ -115,35 +95,19 @@ class TelemetryProvider with ChangeNotifier {
   int _previousLength = 0;
   int _totalMessageLength = 0;
 
-  
-  
-  
-
   final Queue<DateTime> _recentKeystrokes = Queue();
-  static const int _wpmWindowSize = 20; 
+  static const int _wpmWindowSize = 20;
   DateTime? _sessionStart;
   Timer? _sessionTimer;
 
-  
-  
-  
-
   DateTime? _lastKeystrokeTime;
-  int _pauseCount = 0; 
+  int _pauseCount = 0;
   static const Duration _pauseThreshold = Duration(seconds: 2);
   Timer? _pauseTimer;
-
-  
-  
-  
 
   BehaviorSuggestion _currentSuggestion = BehaviorSuggestion.none;
   bool _suggestionHandled = false;
   final Map<BehaviorSuggestion, int> _suggestionTriggerCount = {};
-
-  
-  
-  
 
   static const Set<String> _slangWords = {
     'okk',
@@ -177,26 +141,14 @@ class TelemetryProvider with ChangeNotifier {
   bool _detectedSlang = false;
   bool _detectedEmoji = false;
 
-  
-  
-  
-
   final List<Map<String, dynamic>> _eventHistory = [];
   static const int _maxHistorySize = 500;
-
-  
-  
-  
 
   static const double _elderModeErrorThreshold = 0.28;
   static const double _largerTextErrorThreshold = 0.20;
   static const int _minKeystrokesForAnalysis = 25;
   static const double _slowWpmThreshold = 15.0;
   static const int _highPauseCountThreshold = 5;
-
-  
-  
-  
 
   TelemetryProvider() {
     _startSession();
@@ -209,10 +161,6 @@ class TelemetryProvider with ChangeNotifier {
     super.dispose();
   }
 
-  
-  
-  
-
   void _startSession() {
     _sessionStart = DateTime.now();
     _logEvent(TelemetryEvent.sessionStart);
@@ -223,22 +171,16 @@ class TelemetryProvider with ChangeNotifier {
     _logEvent(TelemetryEvent.sessionEnd);
   }
 
-  
-  
-  
-
-  
   void recordTextChange(String currentText) {
     final now = DateTime.now();
 
-    
     if (currentText.length < _previousLength) {
       final deletedCount = _previousLength - currentText.length;
       _backspaceCount += deletedCount;
       _logEvent(TelemetryEvent.backspace, metadata: {'count': deletedCount});
     } else if (currentText.length > _previousLength) {
       final added = currentText.length - _previousLength;
-      
+
       if (added > 3 && !_recentKeystrokes.isNotEmpty) {
         _pasteCount++;
         _logEvent(TelemetryEvent.paste, metadata: {'chars': added});
@@ -249,7 +191,6 @@ class TelemetryProvider with ChangeNotifier {
       }
     }
 
-    
     final hasEmoji = _containsEmoji(currentText);
     if (hasEmoji && !_detectedEmoji) {
       _detectedEmoji = true;
@@ -257,13 +198,11 @@ class TelemetryProvider with ChangeNotifier {
       _logEvent(TelemetryEvent.emojiUsed);
     }
 
-    
     if (!_detectedSlang) {
       final lower = currentText.toLowerCase();
       _detectedSlang = _slangWords.any((w) => lower.contains(w));
     }
 
-    
     _lastKeystrokeTime = now;
     _pauseTimer?.cancel();
     _pauseTimer = Timer(_pauseThreshold, () {
@@ -277,13 +216,11 @@ class TelemetryProvider with ChangeNotifier {
     _analyzeBehavior();
   }
 
-  
   void recordPaste(int charCount) {
     _pasteCount++;
     _logEvent(TelemetryEvent.paste, metadata: {'chars': charCount});
   }
 
-  
   void recordMessageSent(String messageText) {
     _messageSentCount++;
     _totalMessageLength += messageText.length;
@@ -293,25 +230,18 @@ class TelemetryProvider with ChangeNotifier {
     _analyzeBehavior();
   }
 
-  
   void recordEmojiUsed() {
     _emojiCount++;
     _logEvent(TelemetryEvent.emojiUsed);
   }
 
-  
   void recordSwipe(String direction) {
     _logEvent(TelemetryEvent.swipe, metadata: {'direction': direction});
   }
 
-  
   void recordLongPress(String target) {
     _logEvent(TelemetryEvent.longPress, metadata: {'target': target});
   }
-
-  
-  
-  
 
   BehaviorSuggestion get currentSuggestion =>
       _suggestionHandled ? BehaviorSuggestion.none : _currentSuggestion;
@@ -342,7 +272,7 @@ class TelemetryProvider with ChangeNotifier {
     final newest = _recentKeystrokes.last;
     final durationMin = newest.difference(oldest).inMilliseconds / 60000;
     if (durationMin <= 0) return 0;
-    
+
     final words = _recentKeystrokes.length / 5;
     return words / durationMin;
   }
@@ -378,24 +308,17 @@ class TelemetryProvider with ChangeNotifier {
 
   List<Map<String, dynamic>> get recentEvents => _eventHistory.reversed.take(50).toList();
 
-  
-  
-  
-
-  
   void markAsHandled() {
     _suggestionHandled = true;
     notifyListeners();
   }
 
-  
   void resetSuggestion() {
     _currentSuggestion = BehaviorSuggestion.none;
     _suggestionHandled = false;
     notifyListeners();
   }
 
-  
   void resetAll() {
     _keystrokeCount = 0;
     _backspaceCount = 0;
@@ -416,10 +339,6 @@ class TelemetryProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  
-  
-  
-
   void _analyzeBehavior() {
     if (_keystrokeCount < _minKeystrokesForAnalysis) return;
     if (_suggestionHandled) return;
@@ -430,17 +349,12 @@ class TelemetryProvider with ChangeNotifier {
 
     BehaviorSuggestion newSuggestion = BehaviorSuggestion.none;
 
-    
     if (rate > _elderModeErrorThreshold &&
         (wpm < _slowWpmThreshold || pauses > _highPauseCountThreshold)) {
       newSuggestion = BehaviorSuggestion.elderMode;
-    }
-    
-    else if (rate > _largerTextErrorThreshold && wpm < _slowWpmThreshold) {
+    } else if (rate > _largerTextErrorThreshold && wpm < _slowWpmThreshold) {
       newSuggestion = BehaviorSuggestion.largerText;
-    }
-    
-    else if (pauses > _highPauseCountThreshold * 2 && rate < 0.1) {
+    } else if (pauses > _highPauseCountThreshold * 2 && rate < 0.1) {
       newSuggestion = BehaviorSuggestion.reducedMotion;
     }
 
@@ -448,7 +362,6 @@ class TelemetryProvider with ChangeNotifier {
       final count = (_suggestionTriggerCount[newSuggestion] ?? 0) + 1;
       _suggestionTriggerCount[newSuggestion] = count;
 
-      
       if (count >= 2) {
         _currentSuggestion = newSuggestion;
         _suggestionHandled = false;
@@ -456,10 +369,6 @@ class TelemetryProvider with ChangeNotifier {
       }
     }
   }
-
-  
-  
-  
 
   void _trackKeystrokeTime(DateTime now) {
     _recentKeystrokes.addLast(now);
@@ -483,17 +392,12 @@ class TelemetryProvider with ChangeNotifier {
   }
 
   bool _containsEmoji(String text) {
-    
     final emojiRegex = RegExp(
       r'[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]',
       unicode: true,
     );
     return emojiRegex.hasMatch(text);
   }
-
-  
-  
-  
 
   Map<String, dynamic> exportDebugData() => {
         'session': sessionStats.toMap(),

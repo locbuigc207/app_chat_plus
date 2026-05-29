@@ -5,10 +5,6 @@ import '../models/call_model.dart';
 import '../pages/outgoing_call_page.dart';
 import '../services/call_service.dart';
 
-
-
-
-
 class CallButtons extends StatelessWidget {
   final String peerId;
   final String peerName;
@@ -47,7 +43,6 @@ class CallButtons extends StatelessWidget {
     HapticFeedback.lightImpact();
     final service = CallService.instance;
 
-    
     final messenger = ScaffoldMessenger.of(context);
     final snackBar = SnackBar(
       content: Row(
@@ -96,10 +91,6 @@ class CallButtons extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class VoiceCallIconButton extends StatelessWidget {
   final String peerId;
@@ -153,10 +144,6 @@ class VoiceCallIconButton extends StatelessWidget {
   }
 }
 
-
-
-
-
 class VideoCallIconButton extends StatelessWidget {
   final String peerId;
   final String peerName;
@@ -208,10 +195,6 @@ class VideoCallIconButton extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _PremiumCallBtn extends StatefulWidget {
   final IconData icon;

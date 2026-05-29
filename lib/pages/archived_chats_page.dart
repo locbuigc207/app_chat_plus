@@ -10,10 +10,6 @@ import '../providers/providers.dart';
 import 'chat_page.dart';
 import 'group_chat_page.dart';
 
-
-
-
-
 class ArchivedChatsPage extends StatefulWidget {
   const ArchivedChatsPage({super.key});
 
@@ -167,10 +163,6 @@ class _ArchivedChatsPageState extends State<ArchivedChatsPage> with SingleTicker
   }
 }
 
-
-
-
-
 class _DirectArchiveTile extends StatelessWidget {
   final Conversation conversation;
   final String currentUserId;
@@ -231,10 +223,6 @@ class _DirectArchiveTile extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _GroupArchiveTile extends StatelessWidget {
   final Conversation conversation;
   final String currentUserId;
@@ -285,10 +273,6 @@ class _GroupArchiveTile extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _ArchiveTileCard extends StatefulWidget {
   final String name;
@@ -374,15 +358,12 @@ class _ArchiveTileCardState extends State<_ArchiveTileCard> with SingleTickerPro
                 ),
                 child: Row(
                   children: [
-                    
                     _ArchiveAvatar(
                       url: widget.photoUrl,
                       name: widget.name,
                       isGroup: widget.isGroup,
                     ),
                     const SizedBox(width: 14),
-
-                    
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -433,8 +414,6 @@ class _ArchiveTileCardState extends State<_ArchiveTileCard> with SingleTickerPro
                         ],
                       ),
                     ),
-
-                    
                     _UnarchiveBtn(onTap: widget.onUnarchive),
                   ],
                 ),
@@ -446,10 +425,6 @@ class _ArchiveTileCardState extends State<_ArchiveTileCard> with SingleTickerPro
     );
   }
 }
-
-
-
-
 
 class _ArchiveAvatar extends StatelessWidget {
   final String url;
@@ -557,10 +532,6 @@ class _UnarchiveBtnState extends State<_UnarchiveBtn> with SingleTickerProviderS
     );
   }
 }
-
-
-
-
 
 class _EmptyArchiveState extends StatelessWidget {
   const _EmptyArchiveState();
@@ -753,10 +724,6 @@ class _ErrorState extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 PageRoute _slideRoute(Widget page) {
   return PageRouteBuilder(

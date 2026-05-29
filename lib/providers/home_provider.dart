@@ -11,8 +11,6 @@ class HomeProvider {
 
   HomeProvider({required this.firebaseFirestore});
 
-  
-
   Future<void> updateDataFirestore(
     String collectionPath,
     String path,
@@ -20,8 +18,6 @@ class HomeProvider {
   ) {
     return firebaseFirestore.collection(collectionPath).doc(path).update(dataNeedUpdate);
   }
-
-  
 
   Stream<QuerySnapshot> getStreamFireStore(
     String pathCollection,
@@ -92,7 +88,6 @@ class HomeProvider {
         .snapshots();
   }
 
-  
   Stream<QuerySnapshot> searchUsersByPrefix(
     String prefix,
     int limit,
@@ -105,7 +100,6 @@ class HomeProvider {
           .snapshots();
     }
 
-    
     if (RegExp(r'^[+\d][\d\s-]*$').hasMatch(trimmed)) {
       return firebaseFirestore
           .collection(FirestoreConstants.pathUserCollection)
@@ -121,8 +115,6 @@ class HomeProvider {
         .limit(limit)
         .snapshots();
   }
-
-  
 
   Future<DocumentSnapshot?> getUserProfile(String userId) async {
     try {
@@ -165,7 +157,6 @@ class HomeProvider {
     if (userIds.isEmpty) return {};
 
     try {
-      
       final chunks = <List<String>>[];
       for (int i = 0; i < userIds.length; i += 30) {
         chunks.add(userIds.sublist(i, i + 30 > userIds.length ? userIds.length : i + 30));
@@ -187,8 +178,6 @@ class HomeProvider {
     }
   }
 
-  
-
   Future<void> setOnlineStatus(String userId, bool isOnline) async {
     try {
       await firebaseFirestore.collection(FirestoreConstants.pathUserCollection).doc(userId).update({
@@ -207,8 +196,6 @@ class HomeProvider {
         .snapshots()
         .map((snap) => snap.data()?['isOnline'] as bool? ?? false);
   }
-
-  
 
   Stream<List<QueryDocumentSnapshot>> getConversationsOptimized(
     String userId, {

@@ -2,8 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
 class ReactionSummary {
-  final Map<String, int> counts; 
-  final Map<String, bool> mine; 
+  final Map<String, int> counts;
+  final Map<String, bool> mine;
   final int total;
 
   const ReactionSummary({
@@ -23,16 +23,12 @@ class ReactionProvider {
 
   ReactionProvider({required this.firebaseFirestore});
 
-  
-
   CollectionReference _reactionsRef(String groupChatId, String messageId) => firebaseFirestore
       .collection(FirestoreConstants.pathMessageCollection)
       .doc(groupChatId)
       .collection(groupChatId)
       .doc(messageId)
       .collection('reactions');
-
-  
 
   Future<void> toggleReaction(
     String groupChatId,
@@ -42,7 +38,6 @@ class ReactionProvider {
   ) async {
     final ref = _reactionsRef(groupChatId, messageId);
 
-    
     final existing = await ref
         .where('userId', isEqualTo: userId)
         .where('emoji', isEqualTo: emoji)
@@ -50,16 +45,14 @@ class ReactionProvider {
         .get();
 
     if (existing.docs.isNotEmpty) {
-      
       await existing.docs.first.reference.delete();
     } else {
-      
       final previous = await ref.where('userId', isEqualTo: userId).get();
       final batch = firebaseFirestore.batch();
       for (final doc in previous.docs) {
         batch.delete(doc.reference);
       }
-      
+
       batch.set(ref.doc(), {
         'userId': userId,
         'emoji': emoji,
@@ -69,8 +62,6 @@ class ReactionProvider {
     }
   }
 
-  
-
   Future<void> addReaction(
     String groupChatId,
     String messageId,
@@ -79,14 +70,13 @@ class ReactionProvider {
   ) async {
     final ref = _reactionsRef(groupChatId, messageId);
 
-    
     final existing = await ref
         .where('userId', isEqualTo: userId)
         .where('emoji', isEqualTo: emoji)
         .limit(1)
         .get();
 
-    if (existing.docs.isNotEmpty) return; 
+    if (existing.docs.isNotEmpty) return;
 
     await ref.add({
       'userId': userId,
@@ -127,8 +117,6 @@ class ReactionProvider {
     await batch.commit();
   }
 
-  
-
   Stream<QuerySnapshot> getReactions(String groupChatId, String messageId) {
     return _reactionsRef(groupChatId, messageId)
         .orderBy('timestamp', descending: false)
@@ -160,8 +148,6 @@ class ReactionProvider {
       );
     });
   }
-
-  
 
   Future<Map<String, int>> getAggregatedReactions(
     String groupChatId,

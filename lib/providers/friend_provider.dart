@@ -10,13 +10,10 @@ class FriendProvider {
 
   FriendProvider({required this.firebaseFirestore});
 
-  
-
   Future<bool> sendFriendRequest(String requesterId, String receiverId) async {
     try {
       if (requesterId == receiverId) return false;
 
-      
       final checks = await Future.wait([
         firebaseFirestore
             .collection(FirestoreConstants.pathFriendRequestCollection)
@@ -36,7 +33,6 @@ class FriendProvider {
         return false;
       }
 
-      
       if (await areFriends(requesterId, receiverId)) return false;
 
       await firebaseFirestore.collection(FirestoreConstants.pathFriendRequestCollection).add({
@@ -61,13 +57,11 @@ class FriendProvider {
     try {
       final batch = firebaseFirestore.batch();
 
-      
       batch.update(
         firebaseFirestore.collection(FirestoreConstants.pathFriendRequestCollection).doc(requestId),
         {FirestoreConstants.status: 'accepted'},
       );
 
-      
       final friendshipId = _getFriendshipId(userId1, userId2);
       final sorted = _sortedIds(userId1, userId2);
 
@@ -134,8 +128,6 @@ class FriendProvider {
     }
   }
 
-  
-
   Future<bool> areFriends(String userId1, String userId2) async {
     try {
       final doc = await firebaseFirestore
@@ -181,7 +173,6 @@ class FriendProvider {
     }
   }
 
-  
   Future<String?> checkFriendRequest(String userId1, String userId2) async {
     try {
       final results = await Future.wait([
@@ -210,8 +201,6 @@ class FriendProvider {
     }
   }
 
-  
-
   Stream<QuerySnapshot> getFriendsList(String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathFriendshipCollection)
@@ -226,7 +215,6 @@ class FriendProvider {
         .snapshots();
   }
 
-  
   Stream<List<String>> getFriendIds(String userId) {
     final s1 = firebaseFirestore
         .collection(FirestoreConstants.pathFriendshipCollection)
@@ -240,7 +228,6 @@ class FriendProvider {
         .snapshots()
         .map((s) => s.docs.map((d) => d.data()[FirestoreConstants.userId1] as String).toList());
 
-    
     return s1.asyncMap((ids1) async {
       final snap2 = await firebaseFirestore
           .collection(FirestoreConstants.pathFriendshipCollection)
@@ -267,8 +254,6 @@ class FriendProvider {
         .where(FirestoreConstants.status, isEqualTo: 'pending')
         .snapshots();
   }
-
-  
 
   Stream<QuerySnapshot> getConversations(String userId) {
     return firebaseFirestore
@@ -336,8 +321,6 @@ class FriendProvider {
       return '';
     }
   }
-
-  
 
   String _getFriendshipId(String a, String b) => a.compareTo(b) < 0 ? '$a-$b' : '$b-$a';
 

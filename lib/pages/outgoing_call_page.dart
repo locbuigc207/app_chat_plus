@@ -8,10 +8,6 @@ import '../models/call_model.dart';
 import '../services/call_service.dart';
 import 'call_page.dart';
 
-
-
-
-
 class OutgoingCallPage extends StatefulWidget {
   final CallModel call;
 
@@ -174,7 +170,6 @@ class _OutgoingCallPageState extends State<OutgoingCallPage> with TickerProvider
         body: Stack(
           fit: StackFit.expand,
           children: [
-            
             if (avatar.isNotEmpty)
               Image.network(avatar,
                   fit: BoxFit.cover,
@@ -193,7 +188,6 @@ class _OutgoingCallPageState extends State<OutgoingCallPage> with TickerProvider
                 ),
               ),
             ),
-
             SafeArea(
               child: FadeTransition(
                 opacity: _fadeIn,
@@ -202,21 +196,14 @@ class _OutgoingCallPageState extends State<OutgoingCallPage> with TickerProvider
                   child: Column(
                     children: [
                       const SizedBox(height: 20),
-
-                      
                       _OutgoingBadge(isVideo: isVideo),
-
                       const Spacer(flex: 2),
-
-                      
                       _AnimatedWaveAvatar(
                         controller: _waveController,
                         avatarUrl: avatar,
                         name: name,
                       ),
                       const SizedBox(height: 36),
-
-                      
                       Text(
                         name,
                         style: const TextStyle(
@@ -228,13 +215,8 @@ class _OutgoingCallPageState extends State<OutgoingCallPage> with TickerProvider
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 10),
-
-                      
                       _RingingDotsText(label: isVideo ? 'Đang gọi video' : 'Đang đổ chuông'),
-
                       const Spacer(flex: 2),
-
-                      
                       Padding(
                         padding: const EdgeInsets.only(bottom: 60),
                         child: _CancelButton(onTap: _cancelCall),
@@ -250,10 +232,6 @@ class _OutgoingCallPageState extends State<OutgoingCallPage> with TickerProvider
     );
   }
 }
-
-
-
-
 
 class _OutgoingBadge extends StatelessWidget {
   final bool isVideo;

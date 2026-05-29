@@ -1,12 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-
-
-
-
-
-
 enum SafeSendLevel { warning, danger }
 
 class SafeSendDialog extends StatefulWidget {
@@ -14,13 +8,10 @@ class SafeSendDialog extends StatefulWidget {
   final String content;
   final IconData icon;
 
-  
   final SafeSendLevel level;
 
-  
   final String confirmLabel;
 
-  
   final String cancelLabel;
 
   const SafeSendDialog({
@@ -33,7 +24,6 @@ class SafeSendDialog extends StatefulWidget {
     this.cancelLabel = 'KHÔNG, TÔI BẤM NHẦM',
   });
 
-  
   factory SafeSendDialog.money() => const SafeSendDialog(
         title: 'Xác nhận chuyển tiền?',
         content:
@@ -42,7 +32,6 @@ class SafeSendDialog extends StatefulWidget {
         level: SafeSendLevel.warning,
       );
 
-  
   factory SafeSendDialog.link() => const SafeSendDialog(
         title: 'Gửi đường link lạ?',
         content:
@@ -51,7 +40,6 @@ class SafeSendDialog extends StatefulWidget {
         level: SafeSendLevel.warning,
       );
 
-  
   factory SafeSendDialog.danger() => const SafeSendDialog(
         title: 'NGUY HIỂM!',
         content: 'Nội dung này có dấu hiệu lừa đảo nghiêm trọng.\nBạn có chắc chắn muốn gửi không?',
@@ -97,7 +85,6 @@ class _SafeSendDialogState extends State<SafeSendDialog> with SingleTickerProvid
 
     _ctrl.forward();
 
-    
     if (widget.level == SafeSendLevel.danger) {
       HapticFeedback.heavyImpact();
     } else {
@@ -111,7 +98,6 @@ class _SafeSendDialogState extends State<SafeSendDialog> with SingleTickerProvid
     super.dispose();
   }
 
-  
   Color get _primaryColor =>
       widget.level == SafeSendLevel.danger ? const Color(0xFFE53935) : const Color(0xFFF57C00);
 
@@ -121,7 +107,6 @@ class _SafeSendDialogState extends State<SafeSendDialog> with SingleTickerProvid
   Color get _confirmBg =>
       widget.level == SafeSendLevel.danger ? const Color(0xFFE53935) : const Color(0xFF1565C0);
 
-  
   @override
   Widget build(BuildContext context) {
     return FadeTransition(
@@ -147,9 +132,7 @@ class _SafeSendDialogState extends State<SafeSendDialog> with SingleTickerProvid
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                
                 _buildHeader(),
-                
                 Padding(
                   padding: const EdgeInsets.fromLTRB(28, 20, 28, 28),
                   child: Column(
@@ -182,7 +165,6 @@ class _SafeSendDialogState extends State<SafeSendDialog> with SingleTickerProvid
       ),
       child: Column(
         children: [
-          
           AnimatedBuilder(
             animation: _iconBounce,
             builder: (_, child) => Transform.scale(
@@ -201,7 +183,6 @@ class _SafeSendDialogState extends State<SafeSendDialog> with SingleTickerProvid
             ),
           ),
           const SizedBox(height: 10),
-          
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
             decoration: BoxDecoration(
@@ -307,11 +288,6 @@ class _SafeSendDialogState extends State<SafeSendDialog> with SingleTickerProvid
     );
   }
 }
-
-
-
-
-
 
 Future<bool> showSafeSendDialog(BuildContext context, SafeSendDialog dialog) async {
   final result = await showDialog<bool>(

@@ -29,12 +29,10 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
     with TickerProviderStateMixin {
   final _service = GroupCallService.instance;
 
-  
   StreamSubscription? _callSub;
   Timer? _countdownTimer;
   int _countdown = 30;
 
-  
   late AnimationController _rippleCtrl;
   late AnimationController _pulseCtrl;
   late AnimationController _slideInCtrl;
@@ -174,10 +172,6 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
     super.dispose();
   }
 
-  
-  
-  
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -215,9 +209,7 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
       child: Stack(
         fit: StackFit.expand,
         children: [
-          
           _buildBackgroundBlobs(isVideo),
-          
           SafeArea(child: _buildContent(isVideo)),
         ],
       ),
@@ -242,30 +234,15 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
     return Column(
       children: [
         const SizedBox(height: 20),
-
-        
         _buildCallTypeBadge(isVideo),
-
         const Spacer(flex: 2),
-
-        
         _buildAvatarSection(isVideo),
-
         const SizedBox(height: 28),
-
-        
         _buildGroupInfo(isVideo),
-
         const Spacer(flex: 1),
-
-        
         if (_shouldShowParticipants) _buildParticipantsPreview(),
-
         const Spacer(flex: 2),
-
-        
         _buildActionButtons(isVideo),
-
         const SizedBox(height: 32),
       ],
     );
@@ -273,8 +250,6 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
 
   bool get _shouldShowParticipants =>
       widget.call.participants.isNotEmpty && widget.call.participants.length > 1;
-
-  
 
   Widget _buildCallTypeBadge(bool isVideo) {
     return Container(
@@ -320,7 +295,6 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
       child: Stack(
         alignment: Alignment.center,
         children: [
-          
           ...List.generate(3, (i) {
             return AnimatedBuilder(
               animation: _ripple,
@@ -352,8 +326,6 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
               },
             );
           }),
-
-          
           AnimatedBuilder(
             animation: _pulse,
             builder: (_, child) => Transform.scale(scale: _pulse.value, child: child),
@@ -414,7 +386,6 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 14),
-        
         _buildCountdownBadge(),
       ],
     );
@@ -590,10 +561,6 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
   }
 }
 
-
-
-
-
 class _BlobPainter extends CustomPainter {
   final double opacity;
   final bool isVideo;
@@ -608,14 +575,12 @@ class _BlobPainter extends CustomPainter {
       ..color = baseColor.withValues(alpha: opacity * 0.08)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 80);
 
-    
     canvas.drawCircle(
       Offset(size.width * 0.15, size.height * 0.2),
       size.width * 0.45,
       paint,
     );
 
-    
     canvas.drawCircle(
       Offset(size.width * 0.85, size.height * 0.78),
       size.width * 0.5,

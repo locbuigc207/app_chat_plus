@@ -8,10 +8,6 @@ import '../models/call_model.dart';
 import '../services/call_service.dart';
 import 'call_page.dart';
 
-
-
-
-
 class IncomingCallPage extends StatefulWidget {
   final CallModel call;
 
@@ -35,8 +31,7 @@ class _IncomingCallPageState extends State<IncomingCallPage> with TickerProvider
   int _secondsRemaining = 30;
   bool _dismissed = false;
 
-  
-  final double _swipeProgress = 0.0; 
+  final double _swipeProgress = 0.0;
   final bool _swipeStarted = false;
 
   @override
@@ -151,7 +146,6 @@ class _IncomingCallPageState extends State<IncomingCallPage> with TickerProvider
         child: Stack(
           fit: StackFit.expand,
           children: [
-            
             if (avatar.isNotEmpty)
               Image.network(avatar,
                   fit: BoxFit.cover,
@@ -171,18 +165,12 @@ class _IncomingCallPageState extends State<IncomingCallPage> with TickerProvider
                 ),
               ),
             ),
-
             SafeArea(
               child: Column(
                 children: [
                   const SizedBox(height: 24),
-
-                  
                   _CallTypeBadge(isVideo: isVideo),
-
                   const Spacer(),
-
-                  
                   _RippleAvatar(
                     rippleController: _rippleController,
                     pulseAnimation: _pulseAnimation,
@@ -190,8 +178,6 @@ class _IncomingCallPageState extends State<IncomingCallPage> with TickerProvider
                     name: name,
                   ),
                   const SizedBox(height: 36),
-
-                  
                   Text(
                     name,
                     style: const TextStyle(
@@ -203,20 +189,13 @@ class _IncomingCallPageState extends State<IncomingCallPage> with TickerProvider
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 6),
-
-                  
                   Text(
                     isVideo ? 'Đang gọi video cho bạn' : 'Đang gọi thoại cho bạn',
                     style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 15),
                   ),
                   const SizedBox(height: 12),
-
-                  
                   _CountdownRing(seconds: _secondsRemaining, total: 30),
-
                   const Spacer(),
-
-                  
                   Padding(
                     padding: const EdgeInsets.fromLTRB(40, 0, 40, 56),
                     child: Row(
@@ -246,10 +225,6 @@ class _IncomingCallPageState extends State<IncomingCallPage> with TickerProvider
     );
   }
 }
-
-
-
-
 
 class _CallTypeBadge extends StatelessWidget {
   final bool isVideo;
@@ -311,7 +286,6 @@ class _RippleAvatar extends StatelessWidget {
     return Stack(
       alignment: Alignment.center,
       children: [
-        
         ...List.generate(3, (i) {
           return AnimatedBuilder(
             animation: rippleController,
@@ -331,8 +305,6 @@ class _RippleAvatar extends StatelessWidget {
             },
           );
         }),
-
-        
         AnimatedBuilder(
           animation: pulseAnimation,
           builder: (_, child) => Transform.scale(scale: pulseAnimation.value, child: child),

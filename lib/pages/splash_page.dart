@@ -55,7 +55,6 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
       duration: const Duration(milliseconds: 600),
     );
 
-    
     _logoScale = Tween<double>(begin: 0.5, end: 1.0).animate(
       CurvedAnimation(
         parent: _logoController,
@@ -68,7 +67,6 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
       curve: const Interval(0.0, 0.5, curve: Curves.easeOut),
     );
 
-    
     _ringScale1 = Tween<double>(begin: 0.8, end: 2.0).animate(
       CurvedAnimation(
         parent: _logoController,
@@ -95,12 +93,10 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
       ),
     );
 
-    
     _pulseScale = Tween<double>(begin: 1.0, end: 1.06).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
-    
     _appNameFade = CurvedAnimation(
       parent: _logoController,
       curve: const Interval(0.5, 1.0, curve: Curves.easeOut),
@@ -136,7 +132,6 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
   }
 
   void _checkSignedIn() async {
-    
     await Future.delayed(const Duration(milliseconds: 800));
 
     if (!mounted) return;
@@ -146,7 +141,6 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
 
     if (!mounted) return;
 
-    
     await _exitController.forward();
 
     if (!mounted) return;
@@ -169,7 +163,6 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
         opacity: _exitFade,
         child: Stack(
           children: [
-            
             Container(
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
@@ -183,8 +176,6 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                 ),
               ),
             ),
-
-            
             Positioned(
               top: -120,
               left: -80,
@@ -201,8 +192,6 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                 size: 300,
               ),
             ),
-
-            
             AnimatedBuilder(
               animation: _particleController,
               builder: (_, __) => CustomPaint(
@@ -210,19 +199,14 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                 size: MediaQuery.of(context).size,
               ),
             ),
-
-            
             CustomPaint(
               painter: _GridPainter(),
               size: MediaQuery.of(context).size,
             ),
-
-            
             Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  
                   AnimatedBuilder(
                     animation: _logoController,
                     builder: (_, __) {
@@ -232,7 +216,6 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            
                             Transform.scale(
                               scale: _ringScale2.value,
                               child: Container(
@@ -248,7 +231,6 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                                 ),
                               ),
                             ),
-                            
                             Transform.scale(
                               scale: _ringScale1.value,
                               child: Container(
@@ -264,7 +246,6 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                                 ),
                               ),
                             ),
-                            
                             FadeTransition(
                               opacity: _logoFade,
                               child: ScaleTransition(
@@ -284,10 +265,7 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                       );
                     },
                   ),
-
                   const SizedBox(height: 8),
-
-                  
                   SlideTransition(
                     position: _appNameSlide,
                     child: FadeTransition(
@@ -317,10 +295,7 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 64),
-
-                  
                   FadeTransition(
                     opacity: _loaderFade,
                     child: _AnimatedDotLoader(),
@@ -328,8 +303,6 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                 ],
               ),
             ),
-
-            
             FadeTransition(
               opacity: _appNameFade,
               child: Align(
@@ -353,8 +326,6 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
     );
   }
 }
-
-
 
 class _LogoIcon extends StatelessWidget {
   @override
@@ -387,7 +358,6 @@ class _LogoIcon extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          
           Positioned(
             top: 0,
             left: 0,
@@ -417,8 +387,6 @@ class _LogoIcon extends StatelessWidget {
     );
   }
 }
-
-
 
 class _AnimatedDotLoader extends StatefulWidget {
   @override
@@ -493,8 +461,6 @@ class _AnimatedDotLoaderState extends State<_AnimatedDotLoader> with TickerProvi
   }
 }
 
-
-
 class _Orb extends StatelessWidget {
   final Color color;
   final double size;
@@ -515,8 +481,6 @@ class _Orb extends StatelessWidget {
     );
   }
 }
-
-
 
 class _ParticlePainter extends CustomPainter {
   final double progress;
@@ -570,8 +534,6 @@ class _Particle {
     required this.phase,
   });
 }
-
-
 
 class _GridPainter extends CustomPainter {
   @override

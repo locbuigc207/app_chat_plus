@@ -2,13 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-
-
-
-
-
-
-
 class CallTimerWidget extends StatefulWidget {
   final DateTime startTime;
   final TextStyle? style;

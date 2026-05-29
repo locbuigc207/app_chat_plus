@@ -7,10 +7,6 @@ import 'package:flutter_chat_demo/providers/story_provider.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-
-
-
-
 class MyStoriesPage extends StatefulWidget {
   final String userId;
   final String userName;
@@ -31,10 +27,6 @@ class _MyStoriesPageState extends State<MyStoriesPage> {
   bool _gridView = false;
   final Set<String> _selected = {};
   bool _selecting = false;
-
-  
-  
-  
 
   void _openCreator() {
     Navigator.push(
@@ -71,10 +63,6 @@ class _MyStoriesPageState extends State<MyStoriesPage> {
       ),
     );
   }
-
-  
-  
-  
 
   void _toggleSelect(String id) {
     setState(() {
@@ -147,10 +135,6 @@ class _MyStoriesPageState extends State<MyStoriesPage> {
     return ok == true;
   }
 
-  
-  
-  
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -169,13 +153,11 @@ class _MyStoriesPageState extends State<MyStoriesPage> {
             return _EmptyState(onAdd: _openCreator);
           }
 
-          
           final totalViews = stories.fold<int>(0, (sum, s) => sum + s.viewCount);
           final totalReactions = stories.fold<int>(0, (sum, s) => sum + s.reactions.length);
 
           return CustomScrollView(
             slivers: [
-              
               SliverToBoxAdapter(
                 child: _StatsRow(
                   storyCount: stories.length,
@@ -183,8 +165,6 @@ class _MyStoriesPageState extends State<MyStoriesPage> {
                   totalReactions: totalReactions,
                 ),
               ),
-
-              
               if (_gridView)
                 SliverPadding(
                   padding: const EdgeInsets.all(12),
@@ -304,10 +284,6 @@ class _MyStoriesPageState extends State<MyStoriesPage> {
   }
 }
 
-
-
-
-
 class _StatsRow extends StatelessWidget {
   final int storyCount;
   final int totalViews;
@@ -399,10 +375,6 @@ class _StatItem extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _StoryListCard extends StatelessWidget {
   final Story story;
   final bool isSelected;
@@ -446,7 +418,6 @@ class _StoryListCard extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              
               Stack(
                 children: [
                   ClipRRect(
@@ -476,10 +447,7 @@ class _StoryListCard extends StatelessWidget {
                     ),
                 ],
               ),
-
               const SizedBox(width: 14),
-
-              
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -537,8 +505,6 @@ class _StoryListCard extends StatelessWidget {
                   ],
                 ),
               ),
-
-              
               if (!selecting)
                 IconButton(
                   icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
@@ -552,10 +518,6 @@ class _StoryListCard extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _StoryGridCard extends StatelessWidget {
   final Story story;
@@ -595,13 +557,10 @@ class _StoryGridCard extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: _Thumbnail(story: story, fillParent: true),
             ),
-
-            
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: Container(
@@ -618,15 +577,11 @@ class _StoryGridCard extends StatelessWidget {
                 ),
               ),
             ),
-
-            
             Positioned(
               top: 10,
               left: 10,
               child: _TypeBadge(type: story.type),
             ),
-
-            
             if (selecting)
               Positioned(
                 top: 8,
@@ -643,8 +598,6 @@ class _StoryGridCard extends StatelessWidget {
                   child: isSelected ? const Icon(Icons.check, color: Colors.white, size: 16) : null,
                 ),
               ),
-
-            
             if (!selecting)
               Positioned(
                 top: 6,
@@ -663,8 +616,6 @@ class _StoryGridCard extends StatelessWidget {
                   ),
                 ),
               ),
-
-            
             Positioned(
               bottom: 10,
               left: 10,
@@ -711,10 +662,6 @@ class _StoryGridCard extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _SelectionBar extends StatelessWidget {
   final int count;
   final VoidCallback onDelete;
@@ -760,10 +707,6 @@ class _SelectionBar extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _EmptyState extends StatelessWidget {
   final VoidCallback onAdd;
@@ -823,10 +766,6 @@ class _EmptyState extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _Thumbnail extends StatelessWidget {
   final Story story;
@@ -895,10 +834,6 @@ class _Thumbnail extends StatelessWidget {
       );
 }
 
-
-
-
-
 class _TypeBadge extends StatelessWidget {
   final StoryType type;
   const _TypeBadge({required this.type});
@@ -928,10 +863,6 @@ class _TypeBadge extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _MiniStat extends StatelessWidget {
   final IconData icon;

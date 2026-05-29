@@ -2,10 +2,6 @@
 
 import 'package:flutter/material.dart';
 
-
-
-
-
 enum BubbleState { active, minimized, expanded, closing }
 
 enum BubbleMode { normal, work, media, location, shared, secure }
@@ -16,10 +12,6 @@ enum BubbleImplementation { bubbleApi, windowManager, none, unknown }
 
 enum MessageDeliveryStatus { sending, sent, delivered, read, failed }
 
-
-
-
-
 class BubbleData {
   final String userId;
   final String userName;
@@ -29,7 +21,7 @@ class BubbleData {
   final int unreadCount;
   final bool isOnline;
   final BubbleState state;
-  final String? lastMessageType; 
+  final String? lastMessageType;
 
   const BubbleData({
     required this.userId,
@@ -111,10 +103,6 @@ class BubbleData {
   String toString() => 'BubbleData(userId: $userId, userName: $userName, unread: $unreadCount)';
 }
 
-
-
-
-
 class BubbleClickEvent {
   final String userId;
   final String userName;
@@ -134,10 +122,6 @@ class BubbleClickEvent {
   String toString() => 'BubbleClickEvent(userId: $userId, userName: $userName)';
 }
 
-
-
-
-
 class MiniChatMessage {
   final String userId;
   final String message;
@@ -154,34 +138,30 @@ class MiniChatMessage {
   });
 }
 
-
-
-
-
 class BubbleContext {
   final BubbleMode mode;
   final String? detectedTopic;
   final Map<String, dynamic>? extraData;
-  final DateTime? updatedAt; 
+  final DateTime? updatedAt;
 
   const BubbleContext({
     this.mode = BubbleMode.normal,
     this.detectedTopic,
     this.extraData,
-    this.updatedAt, 
+    this.updatedAt,
   });
 
   BubbleContext copyWith({
     BubbleMode? mode,
     String? detectedTopic,
     Map<String, dynamic>? extraData,
-    DateTime? updatedAt, 
+    DateTime? updatedAt,
   }) =>
       BubbleContext(
         mode: mode ?? this.mode,
         detectedTopic: detectedTopic ?? this.detectedTopic,
         extraData: extraData ?? this.extraData,
-        updatedAt: updatedAt ?? this.updatedAt, 
+        updatedAt: updatedAt ?? this.updatedAt,
       );
 
   static BubbleContext detectFromMessage(String message) {
@@ -218,10 +198,6 @@ class BubbleContext {
   String toString() => 'BubbleContext(mode: $mode, topic: $detectedTopic, updated: $updatedAt)';
 }
 
-
-
-
-
 class BubbleConfig {
   final double size;
   final bool showUnreadBadge;
@@ -239,10 +215,6 @@ class BubbleConfig {
     this.maxBubbles = 5,
   });
 }
-
-
-
-
 
 @immutable
 class BubbleReaction {

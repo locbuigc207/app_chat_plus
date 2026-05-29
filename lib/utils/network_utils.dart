@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 
-
 enum NetworkType {
   wifi,
   mobile,
@@ -14,11 +13,10 @@ enum NetworkType {
   unknown,
 }
 
-
 class NetworkStatus {
   final bool isConnected;
   final NetworkType type;
-  final bool isMetered; 
+  final bool isMetered;
 
   const NetworkStatus({
     required this.isConnected,
@@ -38,7 +36,6 @@ class NetworkStatus {
   String toString() => 'NetworkStatus(connected: $isConnected, type: $type)';
 }
 
-
 class NetworkUtils {
   NetworkUtils._();
 
@@ -49,9 +46,6 @@ class NetworkUtils {
   static NetworkStatus _currentStatus = NetworkStatus.offline;
   static StreamSubscription? _subscription;
 
-  
-
-  
   static void startMonitoring() {
     _subscription?.cancel();
     _subscription = _connectivity.onConnectivityChanged.listen(
@@ -68,21 +62,16 @@ class NetworkUtils {
     _subscription = null;
   }
 
-  
-
-  
   static Future<bool> hasConnection({
     String testHost = 'google.com',
     Duration timeout = const Duration(seconds: 5),
   }) async {
-    
     if (kIsWeb) return true;
 
     try {
       final results = await _connectivity.checkConnectivity();
       if (results.contains(ConnectivityResult.none)) return false;
 
-      
       final lookup = await InternetAddress.lookup(testHost).timeout(timeout);
       return lookup.isNotEmpty && lookup.first.rawAddress.isNotEmpty;
     } on SocketException {
@@ -94,7 +83,6 @@ class NetworkUtils {
     }
   }
 
-  
   static Future<NetworkStatus> getStatus() async {
     try {
       final results = await _connectivity.checkConnectivity();
@@ -107,19 +95,10 @@ class NetworkUtils {
 
   static NetworkStatus get currentStatus => _currentStatus;
 
-  
   static Stream<NetworkStatus> get statusStream => _statusController.stream;
 
-  
   static Stream<bool> get connectivityStream => statusStream.map((s) => s.isConnected).distinct();
 
-  
-
-  
-  
-  
-  
-  
   static Future<T> retryOperation<T>(
     Future<T> Function() operation, {
     int maxRetries = 3,
@@ -136,17 +115,15 @@ class NetworkUtils {
       } catch (e) {
         lastError = e;
 
-        
         if (shouldRetry != null && !shouldRetry(e)) {
           rethrow;
         }
 
         if (attempt == maxRetries - 1) break;
 
-        
         final baseDelay = initialDelay * (1 << attempt);
         final delay = baseDelay > maxDelay ? maxDelay : baseDelay;
-        
+
         final jitter = Duration(
           milliseconds:
               (delay.inMilliseconds * 0.1 * (DateTime.now().millisecond % 10) / 10).round(),
@@ -164,7 +141,6 @@ class NetworkUtils {
     throw lastError;
   }
 
-  
   static Future<T?> executeWhenOnline<T>(
     Future<T> Function() operation, {
     Duration checkInterval = const Duration(seconds: 3),
@@ -173,7 +149,6 @@ class NetworkUtils {
     final hasConn = await hasConnection();
     if (hasConn) return operation();
 
-    
     final completer = Completer<T?>();
     Timer? timeout;
     StreamSubscription? sub;
@@ -197,9 +172,6 @@ class NetworkUtils {
     return completer.future;
   }
 
-  
-
-  
   static Future<Duration?> measureLatency({
     String host = 'google.com',
     Duration timeout = const Duration(seconds: 5),
@@ -213,8 +185,6 @@ class NetworkUtils {
       return null;
     }
   }
-
-  
 
   static Future<NetworkStatus> _buildStatus(List<ConnectivityResult> results) async {
     if (results.contains(ConnectivityResult.none)) {
@@ -233,7 +203,6 @@ class NetworkUtils {
       type = NetworkType.ethernet;
     }
 
-    
     final isConnected = await hasConnection();
 
     return NetworkStatus(
@@ -243,7 +212,6 @@ class NetworkUtils {
     );
   }
 }
-
 
 extension SafeTimeout<T> on Future<T> {
   Future<T?> withTimeout(

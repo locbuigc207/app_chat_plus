@@ -9,10 +9,6 @@ import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
 import 'package:provider/provider.dart';
 
-
-
-
-
 class FriendsPage extends StatefulWidget {
   const FriendsPage({super.key});
 
@@ -121,10 +117,6 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
     );
   }
 }
-
-
-
-
 
 class _MyFriendsTab extends StatelessWidget {
   final String currentUserId;
@@ -332,10 +324,6 @@ class _FriendTileState extends State<_FriendTile> with SingleTickerProviderState
   }
 }
 
-
-
-
-
 class _SuggestionsTab extends StatefulWidget {
   final String currentUserId;
   final FriendProvider friendProvider;
@@ -358,7 +346,6 @@ class _SuggestionsTabState extends State<_SuggestionsTab> {
   Map<String, List<String>> _mutualFriendsMap = {};
   bool _isLoading = true;
 
-  
   bool _isDisposed = false;
 
   @override
@@ -369,11 +356,10 @@ class _SuggestionsTabState extends State<_SuggestionsTab> {
 
   @override
   void dispose() {
-    _isDisposed = true; 
+    _isDisposed = true;
     super.dispose();
   }
 
-  
   void _safeSetState(VoidCallback fn) {
     if (!_isDisposed && mounted) setState(fn);
   }
@@ -653,10 +639,6 @@ class _SuggestionTileState extends State<_SuggestionTile> with SingleTickerProvi
   }
 }
 
-
-
-
-
 class _SimpleAvatar extends StatelessWidget {
   final String url;
   final String name;
@@ -761,10 +743,6 @@ class _IconActionBtnState extends State<_IconActionBtn> with SingleTickerProvide
     );
   }
 }
-
-
-
-
 
 class _EmptyFriendsState extends StatelessWidget {
   final bool isDark;

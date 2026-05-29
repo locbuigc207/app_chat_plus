@@ -10,17 +10,13 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-
-
-
-
 class PlaybackProgress {
   final Duration position;
   final Duration duration;
   final bool isPlaying;
   final bool isPaused;
   final double speed;
-  final double progress; 
+  final double progress;
 
   PlaybackProgress({
     required this.position,
@@ -41,8 +37,8 @@ class PlaybackProgress {
 class RecordingState {
   final bool isRecording;
   final Duration duration;
-  final double amplitude; 
-  final List<double> waveformData; 
+  final double amplitude;
+  final List<double> waveformData;
 
   const RecordingState({
     this.isRecording = false,
@@ -64,10 +60,6 @@ class VoiceUploadResult {
   });
 }
 
-
-
-
-
 class VoiceMessageProvider {
   final FirebaseStorage firebaseStorage;
 
@@ -79,19 +71,15 @@ class VoiceMessageProvider {
   String? _currentRecordingPath;
   DateTime? _recordingStartTime;
 
-  
   final List<double> _waveformSamples = [];
   static const int _maxWaveformSamples = 60;
   Timer? _waveformTimer;
 
-  
   final Map<String, String> _downloadCache = {};
 
-  
   double _playbackSpeed = 1.0;
   String? _currentPlayingUrl;
 
-  
   final _playbackController = StreamController<PlaybackProgress>.broadcast();
   final _recordingController = StreamController<RecordingState>.broadcast();
 
@@ -102,10 +90,6 @@ class VoiceMessageProvider {
     _recorder = FlutterSoundRecorder();
     _player = FlutterSoundPlayer();
   }
-
-  
-  
-  
 
   Future<bool> initRecorder() async {
     if (_isRecorderInitialized) return true;
@@ -126,10 +110,6 @@ class VoiceMessageProvider {
       return false;
     }
   }
-
-  
-  
-  
 
   Future<bool> startRecording() async {
     try {
@@ -154,7 +134,6 @@ class VoiceMessageProvider {
         sampleRate: 44100,
       );
 
-      
       _recorder?.onProgress?.listen(_handleRecorderProgress);
 
       debugPrint('🎤 Recording started: $_currentRecordingPath');
@@ -167,7 +146,7 @@ class VoiceMessageProvider {
 
   void _handleRecorderProgress(RecordingDisposition event) {
     final decibels = event.decibels ?? 0.0;
-    
+
     final normalised = ((decibels + 60) / 60).clamp(0.0, 1.0);
 
     _waveformSamples.add(normalised);
@@ -231,10 +210,6 @@ class VoiceMessageProvider {
 
   bool get isRecording => _recorder?.isRecording ?? false;
 
-  
-  
-  
-
   Future<VoiceUploadResult?> uploadVoiceMessage(
     String filePath,
     String fileName, {
@@ -270,12 +245,10 @@ class VoiceMessageProvider {
       final snapshot = await uploadTask;
       final url = await snapshot.ref.getDownloadURL();
 
-      
       try {
         await file.delete();
       } catch (_) {}
 
-      
       final estimatedDuration = Duration(seconds: (fileSize / 16000).round());
 
       debugPrint('✅ Voice uploaded: $url');
@@ -289,10 +262,6 @@ class VoiceMessageProvider {
       return null;
     }
   }
-
-  
-  
-  
 
   Future<String?> downloadVoiceMessage(String url) async {
     if (_downloadCache.containsKey(url)) {
@@ -328,10 +297,6 @@ class VoiceMessageProvider {
     debugPrint('✅ Download cache cleared');
   }
 
-  
-  
-  
-
   Future<bool> initPlayer() async {
     if (_isPlayerInitialized) return true;
     try {
@@ -346,10 +311,6 @@ class VoiceMessageProvider {
       return false;
     }
   }
-
-  
-  
-  
 
   Future<bool> playVoiceMessage(
     String url, {
@@ -368,7 +329,6 @@ class VoiceMessageProvider {
       _currentPlayingUrl = url;
       _playbackSpeed = speed.clamp(0.5, 3.0);
 
-      
       final localPath = await downloadVoiceMessage(url);
       final playUri = localPath ?? url;
 
@@ -381,15 +341,12 @@ class VoiceMessageProvider {
         },
       );
 
-      
       await _player?.setSpeed(_playbackSpeed);
 
-      
       if (startPosition != null) {
         await _player?.seekToPlayer(startPosition);
       }
 
-      
       _player?.onProgress?.listen((event) {
         _playbackController.add(PlaybackProgress(
           position: event.position,
@@ -448,7 +405,6 @@ class VoiceMessageProvider {
     }
   }
 
-  
   Future<void> setPlaybackSpeed(double speed) async {
     try {
       _playbackSpeed = speed.clamp(0.5, 3.0);
@@ -459,7 +415,6 @@ class VoiceMessageProvider {
     }
   }
 
-  
   double cycleSpeed() {
     const presets = [1.0, 1.5, 2.0, 0.75];
     final idx = presets.indexOf(_playbackSpeed);
@@ -475,24 +430,14 @@ class VoiceMessageProvider {
 
   bool isPlayingUrl(String url) => _currentPlayingUrl == url && isPlaying;
 
-  
-  
-  
-
-  
-  
   static List<double> generateWaveformPreview({int bars = 30, int seed = 42}) {
     final rng = math.Random(seed);
     return List.generate(bars, (i) {
       final base = 0.2 + rng.nextDouble() * 0.6;
-      final envelope = math.sin(i / bars * math.pi); 
+      final envelope = math.sin(i / bars * math.pi);
       return (base * envelope).clamp(0.05, 1.0);
     });
   }
-
-  
-  
-  
 
   Future<void> dispose() async {
     _waveformTimer?.cancel();

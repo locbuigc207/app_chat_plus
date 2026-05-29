@@ -1,19 +1,10 @@
 import 'package:flutter/material.dart';
 
-
-
-
-
-
-
-
 enum _WarningLevel { money, link, danger, none }
 
 class ScamWarningWidget extends StatefulWidget {
-  
   final String status;
 
-  
   final bool collapsible;
 
   const ScamWarningWidget({
@@ -32,7 +23,6 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget> with SingleTicker
   late final Animation<double> _fadeAnim;
   bool _collapsed = false;
 
-  
   _WarningLevel get _level {
     switch (widget.status) {
       case 'WARNING_MONEY':
@@ -46,7 +36,6 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget> with SingleTicker
     }
   }
 
-  
   _LevelConfig get _config {
     switch (_level) {
       case _WarningLevel.money:
@@ -175,7 +164,6 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget> with SingleTicker
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                
                 Container(
                   height: 4,
                   decoration: BoxDecoration(
@@ -183,12 +171,10 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget> with SingleTicker
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                   ),
                 ),
-                
                 Padding(
                   padding: const EdgeInsets.fromLTRB(14, 10, 10, 8),
                   child: Row(
                     children: [
-                      
                       Container(
                         width: 40,
                         height: 40,
@@ -199,7 +185,6 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget> with SingleTicker
                         child: Icon(cfg.icon, color: cfg.mainColor, size: 22),
                       ),
                       const SizedBox(width: 10),
-                      
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -232,7 +217,6 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget> with SingleTicker
                           ],
                         ),
                       ),
-                      
                       if (widget.collapsible)
                         GestureDetector(
                           onTap: () => setState(() => _collapsed = !_collapsed),
@@ -257,8 +241,6 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget> with SingleTicker
                     ],
                   ),
                 ),
-
-                
                 AnimatedCrossFade(
                   firstChild: const SizedBox(height: 0),
                   secondChild: _buildBody(cfg),
@@ -282,7 +264,6 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget> with SingleTicker
         children: [
           Divider(color: cfg.borderColor, height: 1),
           const SizedBox(height: 10),
-          
           Text(
             cfg.body,
             style: TextStyle(
@@ -293,13 +274,11 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget> with SingleTicker
             ),
           ),
           const SizedBox(height: 10),
-          
           Wrap(
             spacing: 6,
             runSpacing: 6,
             children: cfg.tips.map((tip) => _TipChip(tip: tip, color: cfg.mainColor)).toList(),
           ),
-          
           if (cfg.isDanger) ...[
             const SizedBox(height: 12),
             _DangerActions(color: cfg.mainColor),
@@ -309,7 +288,6 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget> with SingleTicker
     );
   }
 }
-
 
 class _TipChip extends StatelessWidget {
   final String tip;
@@ -343,7 +321,6 @@ class _TipChip extends StatelessWidget {
     );
   }
 }
-
 
 class _DangerActions extends StatelessWidget {
   final Color color;
@@ -424,7 +401,6 @@ class _ActionBtn extends StatelessWidget {
     );
   }
 }
-
 
 class _LevelConfig {
   final IconData icon;

@@ -2,13 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../services/agora_rtc_manager.dart';
 
-
-
-
-
-
-
-
 class CallQualityIndicator extends StatelessWidget {
   final RtcCallStats stats;
 
@@ -57,7 +50,6 @@ class CallQualityIndicator extends StatelessWidget {
   }
 
   int _qualityLevel() {
-    
     if (stats.rtt == 0 && stats.txBitrate == 0) return 4;
     if (stats.rtt < 80 && stats.txPacketLoss < 2) return 4;
     if (stats.rtt < 160 && stats.txPacketLoss < 5) return 3;
@@ -92,12 +84,8 @@ class CallQualityIndicator extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _SignalBars extends StatelessWidget {
-  final int level; 
+  final int level;
   final Color color;
 
   const _SignalBars({required this.level, required this.color});

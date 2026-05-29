@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'dart:ui';
 
-
-
 class Debouncer {
   final Duration duration;
   Timer? _timer;
@@ -13,13 +11,11 @@ class Debouncer {
 
   Debouncer.fromDuration(this.duration);
 
-  
   void run(VoidCallback action) {
     _timer?.cancel();
     _timer = Timer(duration, action);
   }
 
-  
   void runImmediate(VoidCallback action) {
     if (_timer == null || !_timer!.isActive) {
       action();
@@ -28,13 +24,11 @@ class Debouncer {
     _timer = Timer(duration, () {});
   }
 
-  
   void cancel() {
     _timer?.cancel();
     _timer = null;
   }
 
-  
   void flush(VoidCallback action) {
     if (_timer != null && _timer!.isActive) {
       _timer!.cancel();
@@ -51,9 +45,6 @@ class Debouncer {
   }
 }
 
-
-
-
 class Throttler {
   final Duration duration;
   DateTime? _lastRun;
@@ -66,7 +57,6 @@ class Throttler {
 
   Throttler.fromDuration(this.duration, {this.trailing = false});
 
-  
   final bool trailing;
 
   VoidCallback? _pendingAction;
@@ -105,8 +95,6 @@ class Throttler {
   }
 }
 
-
-
 class RateLimiter {
   final int maxCalls;
   final Duration window;
@@ -117,7 +105,6 @@ class RateLimiter {
     required this.window,
   });
 
-  
   bool tryAcquire() {
     final now = DateTime.now();
     _timestamps.removeWhere(
@@ -131,7 +118,6 @@ class RateLimiter {
     return false;
   }
 
-  
   Duration? get timeUntilAvailable {
     if (_timestamps.length < maxCalls) return null;
     final now = DateTime.now();

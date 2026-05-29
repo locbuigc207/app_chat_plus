@@ -5,10 +5,6 @@ import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-
-
-
-
 class MyQRCodePage extends StatefulWidget {
   const MyQRCodePage({super.key});
 
@@ -100,7 +96,6 @@ class _MyQRCodePageState extends State<MyQRCodePage> with SingleTickerProviderSt
             icon: Icon(Icons.share_rounded,
                 color: isDark ? Colors.white70 : ColorConstants.primaryColor),
             onPressed: () {
-              
               HapticFeedback.lightImpact();
             },
             tooltip: 'Chia sẻ',
@@ -114,7 +109,6 @@ class _MyQRCodePageState extends State<MyQRCodePage> with SingleTickerProviderSt
               padding: const EdgeInsets.fromLTRB(24, 8, 24, 40),
               child: Column(
                 children: [
-                  
                   Text(
                     'Quét để kết bạn',
                     style: TextStyle(
@@ -131,8 +125,6 @@ class _MyQRCodePageState extends State<MyQRCodePage> with SingleTickerProviderSt
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 32),
-
-                  
                   ScaleTransition(
                     scale: _scaleFade,
                     child: FadeTransition(
@@ -159,7 +151,6 @@ class _MyQRCodePageState extends State<MyQRCodePage> with SingleTickerProviderSt
                         ),
                         child: Column(
                           children: [
-                            
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                               decoration: BoxDecoration(
@@ -195,8 +186,6 @@ class _MyQRCodePageState extends State<MyQRCodePage> with SingleTickerProviderSt
                               ),
                             ),
                             const SizedBox(height: 24),
-
-                            
                             _qrCode.isNotEmpty
                                 ? Container(
                                     decoration: BoxDecoration(
@@ -249,10 +238,7 @@ class _MyQRCodePageState extends State<MyQRCodePage> with SingleTickerProviderSt
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 28),
-
-                  
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -304,10 +290,7 @@ class _MyQRCodePageState extends State<MyQRCodePage> with SingleTickerProviderSt
                       ],
                     ),
                   ),
-
                   const SizedBox(height: 24),
-
-                  
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
@@ -330,10 +313,6 @@ class _MyQRCodePageState extends State<MyQRCodePage> with SingleTickerProviderSt
     );
   }
 }
-
-
-
-
 
 class _InfoRow extends StatelessWidget {
   final IconData icon;

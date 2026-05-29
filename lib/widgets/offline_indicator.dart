@@ -4,9 +4,6 @@ import 'package:flutter/material.dart';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 
-
-
-
 class OfflineIndicator extends StatefulWidget {
   const OfflineIndicator({super.key});
 
@@ -37,7 +34,6 @@ class _OfflineIndicatorState extends State<OfflineIndicator> with SingleTickerPr
 
     _sub = Connectivity().onConnectivityChanged.listen(_handleConnectivityChange);
 
-    
     Connectivity().checkConnectivity().then((results) {
       if (mounted) _applyConnectivity(results);
     });
@@ -68,7 +64,6 @@ class _OfflineIndicatorState extends State<OfflineIndicator> with SingleTickerPr
         if (mounted) _hide();
       });
     }
-    
   }
 
   void _show(_BannerState state) {
@@ -98,10 +93,6 @@ class _OfflineIndicatorState extends State<OfflineIndicator> with SingleTickerPr
     );
   }
 }
-
-
-
-
 
 class _BannerContent extends StatelessWidget {
   final bool isOffline;
@@ -154,10 +145,6 @@ class _BannerContent extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _AnimatedStatusIcon extends StatefulWidget {
   final bool isOffline;
   const _AnimatedStatusIcon({required this.isOffline});
@@ -204,10 +191,6 @@ class _AnimatedStatusIconState extends State<_AnimatedStatusIcon>
     );
   }
 }
-
-
-
-
 
 class _RetryDots extends StatefulWidget {
   @override
@@ -264,9 +247,5 @@ class _RetryDotsState extends State<_RetryDots> with TickerProviderStateMixin {
     );
   }
 }
-
-
-
-
 
 enum _BannerState { hidden, offline, recovering }

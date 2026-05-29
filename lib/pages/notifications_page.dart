@@ -10,10 +10,6 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-
-
-
-
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
 
@@ -151,10 +147,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 }
 
-
-
-
-
 class _RequestCard extends StatefulWidget {
   final QueryDocumentSnapshot requestDoc;
   final FirebaseFirestore firebaseFirestore;
@@ -247,7 +239,6 @@ class _RequestCardState extends State<_RequestCard> with SingleTickerProviderSta
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    
                     Row(
                       children: [
                         _NotifAvatar(url: requester.photoUrl, name: requester.nickname),
@@ -281,8 +272,6 @@ class _RequestCardState extends State<_RequestCard> with SingleTickerProviderSta
                         ),
                       ],
                     ),
-
-                    
                     if (request.status == 'pending') ...[
                       const SizedBox(height: 14),
                       Row(
@@ -338,10 +327,6 @@ class _RequestCardState extends State<_RequestCard> with SingleTickerProviderSta
     );
   }
 }
-
-
-
-
 
 class _NotifAvatar extends StatelessWidget {
   final String url;
@@ -469,10 +454,6 @@ class _StatusBadge extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _EmptyNotifState extends StatelessWidget {
   final bool isDark;

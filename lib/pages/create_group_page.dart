@@ -10,10 +10,6 @@ import 'package:flutter_chat_demo/providers/home_provider.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:provider/provider.dart';
 
-
-
-
-
 class CreateGroupPage extends StatefulWidget {
   const CreateGroupPage({super.key});
 
@@ -27,7 +23,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
   final Set<String> _selectedMembers = {};
   bool _isLoading = false;
   String _searchQuery = '';
-  int _step = 0; 
+  int _step = 0;
 
   late AnimationController _fabAnimCtrl;
   late AnimationController _stepAnimCtrl;
@@ -38,7 +34,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
   late final FriendProvider _friendProvider;
   late final FirebaseFirestore _firebaseFirestore;
 
-  
   static const _bg = Color(0xFF0D0F14);
   static const _surface = Color(0xFF181B24);
   static const _surfaceHigh = Color(0xFF1E2233);
@@ -88,8 +83,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
     super.dispose();
   }
 
-  
-
   void _goToStep(int step) {
     if (step == 1 && _groupNameController.text.trim().isEmpty) {
       _showToast('❗ Please enter a group name');
@@ -100,8 +93,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
     setState(() => _step = step);
     _stepAnimCtrl.forward();
   }
-
-  
 
   Future<void> _createGroup() async {
     if (_groupNameController.text.trim().isEmpty) {
@@ -122,7 +113,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
       final groupName = _groupNameController.text.trim();
       final systemMsg = '$groupName group created';
 
-      
       final roles = <String, dynamic>{
         _currentUserId: 'owner',
         for (final id in _selectedMembers) id: 'member',
@@ -185,8 +175,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
     );
   }
 
-  
-
   @override
   Widget build(BuildContext context) {
     return Theme(
@@ -227,8 +215,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
       ),
     );
   }
-
-  
 
   Widget _buildHeader() {
     return Container(
@@ -301,8 +287,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
     );
   }
 
-  
-
   Widget _buildDetailsStep() {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
@@ -310,7 +294,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          
           Center(
             child: Stack(
               alignment: Alignment.bottomRight,
@@ -346,7 +329,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
             ),
           ),
           const SizedBox(height: 28),
-          
           const _FieldLabel(label: 'Group Name', required: true),
           const SizedBox(height: 8),
           _DarkInput(
@@ -364,7 +346,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
             ),
           ),
           const SizedBox(height: 20),
-          
           const _FieldLabel(label: 'Description', required: false),
           const SizedBox(height: 8),
           _DarkInput(
@@ -374,7 +355,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
             maxLength: 150,
           ),
           const SizedBox(height: 28),
-          
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -397,7 +377,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
             ),
           ),
           const SizedBox(height: 28),
-          
           SizedBox(
             width: double.infinity,
             child: _GradientBtn(
@@ -412,12 +391,9 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
     );
   }
 
-  
-
   Widget _buildMembersStep() {
     return Column(
       children: [
-        
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: Container(
@@ -439,9 +415,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
             ),
           ),
         ),
-        
         if (_selectedMembers.isNotEmpty) _buildSelectedChips(),
-        
         Expanded(child: _buildFriendsList()),
       ],
     );
@@ -585,7 +559,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
                       ),
                       child: Row(
                         children: [
-                          
                           Stack(
                             clipBehavior: Clip.none,
                             children: [
@@ -622,7 +595,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
                             ],
                           ),
                           const SizedBox(width: 14),
-                          
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -645,7 +617,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
                               ],
                             ),
                           ),
-                          
                           AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
                             width: 24,
@@ -675,10 +646,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
     );
   }
 }
-
-
-
-
 
 class _FieldLabel extends StatelessWidget {
   const _FieldLabel({required this.label, required this.required});

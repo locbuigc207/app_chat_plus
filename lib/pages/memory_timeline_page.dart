@@ -11,21 +11,16 @@ import 'package:flutter_chat_demo/services/ai_backend_service.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:intl/intl.dart';
 
-
-
-
-
 const _kBg = Color(0xFF0D0D14);
 const _kSurface = Color(0xFF16161F);
 const _kSurface2 = Color(0xFF1E1E2A);
 const _kBorder = Color(0xFF2A2A3A);
-const _kAccent = Color(0xFF7C6EFF); 
-const _kAccent2 = Color(0xFFFF6E9C); 
-const _kAccent3 = Color(0xFF6EFFCB); 
+const _kAccent = Color(0xFF7C6EFF);
+const _kAccent2 = Color(0xFFFF6E9C);
+const _kAccent3 = Color(0xFF6EFFCB);
 const _kTextPri = Color(0xFFF0F0FF);
 const _kTextSec = Color(0xFF8888AA);
 const _kTextDim = Color(0xFF55556A);
-
 
 const _kCatColors = {
   'memory': Color(0xFF7C6EFF),
@@ -35,10 +30,6 @@ const _kCatColors = {
   'conflict': Color(0xFFFF6E6E),
   'gratitude': Color(0xFFFFE56E),
 };
-
-
-
-
 
 enum MemoryCategory {
   memory,
@@ -188,10 +179,6 @@ class _RelationshipData {
   }
 }
 
-
-
-
-
 class MemoryTimelinePage extends StatefulWidget {
   const MemoryTimelinePage({
     super.key,
@@ -211,14 +198,12 @@ class MemoryTimelinePage extends StatefulWidget {
 }
 
 class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProviderStateMixin {
-  
   bool _isLoading = true;
   bool _isAnalyzing = false;
   _RelationshipData? _data;
   DateTime? _lastUpdated;
   String? _errorMessage;
 
-  
   late final AnimationController _fadeAc;
   late final AnimationController _scoreAc;
   late final Animation<double> _scoreAnim;
@@ -244,8 +229,6 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
     _scoreAc.dispose();
     super.dispose();
   }
-
-  
 
   Future<void> _fetchCachedMemory() async {
     setState(() {
@@ -280,7 +263,6 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
   }
 
   Future<void> _analyzeMemory({bool forceRefresh = false}) async {
-    
     if (!forceRefresh && _lastUpdated != null) {
       final days = DateTime.now().difference(_lastUpdated!).inDays;
       if (days < 7) {
@@ -326,7 +308,6 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
       if (result != null) {
         final dataMap = result.rawData;
 
-        
         await FirebaseFirestore.instance
             .collection('relationship_memories')
             .doc(widget.conversationId)
@@ -385,10 +366,6 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
       toastLength: Toast.LENGTH_SHORT,
     );
   }
-
-  
-  
-  
 
   @override
   Widget build(BuildContext context) {
@@ -457,8 +434,6 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
     return _buildContent();
   }
 
-  
-
   Widget _buildLoadingState() {
     return const Center(
       child: Column(
@@ -471,8 +446,6 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
       ),
     );
   }
-
-  
 
   Widget _buildEmptyState() {
     return Center(
@@ -526,8 +499,6 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
     );
   }
 
-  
-
   Widget _buildContent() {
     final data = _data!;
     return FadeTransition(
@@ -542,33 +513,23 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            
             _buildHealthScoreCard(data),
             const SizedBox(height: 16),
-
-            
             _buildInfoRow(data),
             const SizedBox(height: 16),
-
-            
             if (data.sharedTopics.isNotEmpty) ...[
               _buildTopicsSection(data.sharedTopics),
               const SizedBox(height: 16),
             ],
-
-            
             if (data.importantDates.isNotEmpty) ...[
               _buildDatesSection(data.importantDates),
               const SizedBox(height: 16),
             ],
-
-            
             if (data.memories.isNotEmpty) ...[
               _buildSectionHeader('Ký ức & Dấu mốc', Icons.timeline_rounded),
               const SizedBox(height: 12),
               _buildMemoryTimeline(data.memories),
             ],
-
             const SizedBox(height: 32),
             _buildFooter(),
           ],
@@ -576,8 +537,6 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
       ),
     );
   }
-
-  
 
   Widget _buildHealthScoreCard(_RelationshipData data) {
     final score = data.healthScore.clamp(0, 100);
@@ -643,7 +602,6 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
             ],
           ),
           const SizedBox(height: 20),
-          
           AnimatedBuilder(
             animation: _scoreAnim,
             builder: (_, __) => ClipRRect(
@@ -704,8 +662,6 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
     );
   }
 
-  
-
   Widget _buildInfoRow(_RelationshipData data) {
     final styleLabel = {
           'formal': 'Trang trọng',
@@ -746,8 +702,6 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
     );
   }
 
-  
-
   Widget _buildTopicsSection(List<String> topics) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -763,8 +717,6 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
     );
   }
 
-  
-
   Widget _buildDatesSection(List<String> dates) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -779,8 +731,6 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
     );
   }
 
-  
-
   Widget _buildMemoryTimeline(List<_MemoryEntry> memories) {
     return ListView.separated(
       shrinkWrap: true,
@@ -794,8 +744,6 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
       ),
     );
   }
-
-  
 
   Widget _buildFooter() {
     return Column(
@@ -830,8 +778,6 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
     );
   }
 
-  
-
   Widget _buildSectionHeader(String title, IconData icon) {
     return Row(
       children: [
@@ -850,10 +796,6 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
     );
   }
 }
-
-
-
-
 
 class _InfoChip extends StatelessWidget {
   final IconData icon;
@@ -988,7 +930,6 @@ class _TimelineEntry extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          
           SizedBox(
             width: 36,
             child: Column(
@@ -1021,7 +962,6 @@ class _TimelineEntry extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          
           Expanded(
             child: Container(
               margin: EdgeInsets.only(bottom: isLast ? 0 : 12),
@@ -1226,10 +1166,6 @@ class _PulsingOrbState extends State<_PulsingOrb> with SingleTickerProviderState
   }
 }
 
-
-
-
-
 class _ConfirmDialog extends StatelessWidget {
   final String title;
   final String message;
@@ -1313,10 +1249,6 @@ class _ConfirmDialog extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _ScoreGaugePainter extends CustomPainter {
   final double progress;
   final Color color;
@@ -1330,7 +1262,6 @@ class _ScoreGaugePainter extends CustomPainter {
     const startAngle = -math.pi * 0.8;
     const sweepMax = math.pi * 1.6;
 
-    
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: radius),
       startAngle,
@@ -1343,7 +1274,6 @@ class _ScoreGaugePainter extends CustomPainter {
         ..strokeCap = StrokeCap.round,
     );
 
-    
     if (progress > 0) {
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
@@ -1357,7 +1287,7 @@ class _ScoreGaugePainter extends CustomPainter {
           ..strokeCap = StrokeCap.round
           ..maskFilter = MaskFilter.blur(BlurStyle.normal, 3),
       );
-      
+
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
         startAngle,

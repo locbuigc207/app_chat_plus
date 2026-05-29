@@ -12,14 +12,10 @@ class MessageProvider {
 
   MessageProvider({required this.firebaseFirestore});
 
-  
-
   CollectionReference _msgCollection(String groupChatId) => firebaseFirestore
       .collection(FirestoreConstants.pathMessageCollection)
       .doc(groupChatId)
       .collection(groupChatId);
-
-  
 
   Stream<QuerySnapshot> getMessages(
     String groupChatId, {
@@ -48,8 +44,6 @@ class MessageProvider {
         .snapshots();
   }
 
-  
-
   Future<bool> editMessage(
     String groupChatId,
     String messageId,
@@ -70,8 +64,6 @@ class MessageProvider {
     }
   }
 
-  
-
   Future<bool> deleteMessage(
     String groupChatId,
     String messageId, {
@@ -88,7 +80,6 @@ class MessageProvider {
           'autoDeleteAt': FieldValue.delete(),
         });
       } else {
-        
         await _msgCollection(groupChatId).doc(messageId).update({
           'deletedBySender': true,
           'deletedAt': now,
@@ -136,8 +127,6 @@ class MessageProvider {
     }
   }
 
-  
-
   Future<bool> togglePinMessage(
     String groupChatId,
     String messageId,
@@ -157,8 +146,6 @@ class MessageProvider {
     }
   }
 
-  
-
   Future<bool> toggleStarMessage(
     String groupChatId,
     String messageId,
@@ -176,8 +163,6 @@ class MessageProvider {
     }
   }
 
-  
-
   Future<bool> forwardMessage({
     required String fromGroupChatId,
     required String messageId,
@@ -190,7 +175,6 @@ class MessageProvider {
 
       final data = Map<String, dynamic>.from(original.data() as Map<String, dynamic>);
 
-      
       data.remove('isPinned');
       data.remove('pinnedAt');
       data.remove('starredBy');
@@ -209,8 +193,6 @@ class MessageProvider {
       return false;
     }
   }
-
-  
 
   Future<bool> sendReply({
     required String groupChatId,
@@ -245,8 +227,6 @@ class MessageProvider {
     }
   }
 
-  
-
   Future<void> markMessageRead(
     String groupChatId,
     String messageId,
@@ -267,11 +247,9 @@ class MessageProvider {
     String userId,
   ) async {
     try {
-      final unread = await _msgCollection(groupChatId).where('readBy',
-              arrayContainsAny: ['NOT_${userId}_PLACEHOLDER']) 
-          .get();
+      final unread = await _msgCollection(groupChatId)
+          .where('readBy', arrayContainsAny: ['NOT_${userId}_PLACEHOLDER']).get();
 
-      
       final all = await _msgCollection(groupChatId)
           .where(FirestoreConstants.idTo, isEqualTo: userId)
           .where('isRead', isEqualTo: false)
@@ -301,8 +279,6 @@ class MessageProvider {
     }
   }
 
-  
-
   Future<List<QueryDocumentSnapshot>> searchMessages(
     String groupChatId,
     String query,
@@ -328,8 +304,6 @@ class MessageProvider {
       return [];
     }
   }
-
-  
 
   Future<void> _syncConversationLastMessage(
     String groupChatId,

@@ -8,15 +8,10 @@ import 'package:cloud_functions/cloud_functions.dart';
 
 import '../utils/utils.dart';
 
-
-
-
-
-
 enum ScamLevel {
-  safe, 
-  warning, 
-  scam, 
+  safe,
+  warning,
+  scam,
 }
 
 extension ScamLevelX on ScamLevel {
@@ -43,11 +38,10 @@ extension ScamLevelX on ScamLevel {
   }
 }
 
-
 class ScamAnalysisResult {
   final ScamLevel level;
   final String? reason;
-  final double? confidence; 
+  final double? confidence;
   final List<String> warningKeywords;
 
   const ScamAnalysisResult({
@@ -70,9 +64,8 @@ class ScamAnalysisResult {
   }
 }
 
-
 class RelationshipMemory {
-  final String? relationshipType; 
+  final String? relationshipType;
   final List<String> sharedTopics;
   final List<String> importantDates;
   final Map<String, dynamic> rawData;
@@ -96,10 +89,6 @@ class RelationshipMemory {
   }
 }
 
-
-
-
-
 enum AIBackendErrorType {
   networkError,
   authError,
@@ -121,50 +110,26 @@ class AIBackendException implements Exception {
       '${cause != null ? ' — $cause' : ''}';
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 class AIBackendService {
-  
   AIBackendService._internal();
   static final AIBackendService _instance = AIBackendService._internal();
   factory AIBackendService() => _instance;
 
-  
   final FirebaseFunctions _functions = FirebaseFunctions.instanceFor(
-    region: 'asia-southeast1', 
+    region: 'asia-southeast1',
   );
 
-  
   static const _kDefaultTimeout = Duration(seconds: 15);
   static const _kAnalysisTimeout = Duration(seconds: 20);
   static const _kBatchTimeout = Duration(seconds: 30);
 
-  
   static const _kAiMaskingConfig = MaskingConfig.piiOnly;
 
-  
-  
-  
-
-  
-  
   Future<ScamLevel> checkScam(String message) async {
     final result = await analyzeScamDetailed(message);
     return result.level;
   }
 
-  
   Future<ScamAnalysisResult> analyzeScamDetailed(String message) async {
     if (message.trim().isEmpty) return ScamAnalysisResult.safe();
 
@@ -188,14 +153,6 @@ class AIBackendService {
     }
   }
 
-  
-  
-  
-
-  
-  
-  
-  
   Future<void> analyzeDecryptedMessage({
     required String plainText,
     required String conversationId,
@@ -228,13 +185,6 @@ class AIBackendService {
     }
   }
 
-  
-  
-  
-
-  
-  
-  
   Future<String?> translateCommunication(
     String message,
     String targetAudience,
@@ -263,14 +213,6 @@ class AIBackendService {
     }
   }
 
-  
-  
-  
-
-  
-  
-  
-  
   Future<String?> analyzeChatContext(
     List<String> messages,
     String contextType,
@@ -284,7 +226,7 @@ class AIBackendService {
       final result = await _call(
         functionName: 'analyzeChatContext',
         params: {
-          'messages': safeMessages, 
+          'messages': safeMessages,
           'contextType': contextType,
           'action': action,
           'messageCount': messages.length,
@@ -299,11 +241,6 @@ class AIBackendService {
     }
   }
 
-  
-  
-  
-
-  
   Future<RelationshipMemory?> extractRelationshipMemory(
     List<String> messages, {
     String? conversationId,
@@ -330,14 +267,9 @@ class AIBackendService {
     }
   }
 
-  
-  
-  
-
-  
   Future<List<String>> suggestReplies(
     List<String> recentMessages, {
-    String tone = 'friendly', 
+    String tone = 'friendly',
   }) async {
     if (recentMessages.isEmpty) return [];
 
@@ -363,11 +295,6 @@ class AIBackendService {
     }
   }
 
-  
-  
-  
-
-  
   Future<String?> summarizeConversation(
     List<String> messages, {
     int maxSentences = 3,
@@ -395,12 +322,6 @@ class AIBackendService {
     }
   }
 
-  
-  
-  
-
-  
-  
   Future<Map<String, dynamic>?> analyzeSentiment(
     List<String> messages,
   ) async {
@@ -423,12 +344,6 @@ class AIBackendService {
     }
   }
 
-  
-  
-  
-
-  
-  
   Future<bool> detectHateSpeech(String message) async {
     if (message.trim().isEmpty) return false;
 
@@ -451,12 +366,6 @@ class AIBackendService {
     }
   }
 
-  
-  
-  
-
-  
-  
   Future<Map<dynamic, dynamic>?> _call({
     required String functionName,
     required Map<String, dynamic> params,
@@ -477,7 +386,6 @@ class AIBackendService {
       } on FirebaseFunctionsException catch (e) {
         final mapped = _mapFunctionsException(e);
 
-        
         if (mapped.type == AIBackendErrorType.quotaExceeded && attempt < maxRetries) {
           attempt++;
           await Future.delayed(Duration(seconds: 2 * attempt));
@@ -538,10 +446,6 @@ class AIBackendService {
         );
     }
   }
-
-  
-  
-  
 
   void _log(String msg) {
     if (kDebugMode) debugPrint('[AIBackendService] $msg');

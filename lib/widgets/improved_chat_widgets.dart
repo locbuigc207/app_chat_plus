@@ -8,10 +8,6 @@ import 'package:flutter_chat_demo/widgets/widgets.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-
-
-
-
 class ImprovedMessageBubble extends StatefulWidget {
   final String content;
   final bool isMe;
@@ -125,7 +121,6 @@ class _ImprovedMessageBubbleState extends State<ImprovedMessageBubble>
                     crossAxisAlignment:
                         widget.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                     children: [
-                      
                       if (_dragOffset.abs() > 12)
                         _SwipeReplyHint(
                           isMe: widget.isMe,
@@ -227,12 +222,11 @@ class _BubbleBody extends StatelessWidget {
     return isDark ? const Color(0xFFF0F2F8) : const Color(0xFF1A1D2E);
   }
 
-  
   Widget _buildRichText(String text, Color baseColor) {
     final RegExp urlExp = RegExp(
       r'(?:(?:https?|ftp):\/\/|www\.)'
       r'[\w\-]+(\.[\w\-]+)+'
-      r"(?:[\/\w\-._~:/?#\[\]@!$&'()*+,;=%]*)?", 
+      r"(?:[\/\w\-._~:/?#\[\]@!$&'()*+,;=%]*)?",
       caseSensitive: false,
     );
 
@@ -240,7 +234,6 @@ class _BubbleBody extends StatelessWidget {
     int lastEnd = 0;
 
     for (final match in urlExp.allMatches(text)) {
-      
       if (match.start > lastEnd) {
         spans.add(TextSpan(
           text: text.substring(lastEnd, match.start),
@@ -248,7 +241,6 @@ class _BubbleBody extends StatelessWidget {
         ));
       }
 
-      
       var rawUrl = text.substring(match.start, match.end);
       final linkUrl = rawUrl.startsWith('http') ? rawUrl : 'https://$rawUrl';
 
@@ -283,7 +275,6 @@ class _BubbleBody extends StatelessWidget {
       lastEnd = match.end;
     }
 
-    
     if (lastEnd < text.length) {
       spans.add(TextSpan(
         text: text.substring(lastEnd),
@@ -291,7 +282,6 @@ class _BubbleBody extends StatelessWidget {
       ));
     }
 
-    
     if (spans.isEmpty) {
       return Text(
         text,
@@ -304,7 +294,6 @@ class _BubbleBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    
     final RegExp urlExp = RegExp(r'(?:(?:https?|ftp):\/\/)?[\w/\-?=%.]+\.[\w/\-?=%.]+');
     final matches = urlExp.allMatches(content);
     String? firstUrl =
@@ -337,7 +326,6 @@ class _BubbleBody extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          
           if (isPinned) ...[
             Container(
               margin: const EdgeInsets.only(bottom: 6),
@@ -369,8 +357,6 @@ class _BubbleBody extends StatelessWidget {
               ),
             ),
           ],
-
-          
           if (replyToContent != null) ...[
             Container(
               margin: const EdgeInsets.only(bottom: 8),
@@ -414,8 +400,6 @@ class _BubbleBody extends StatelessWidget {
               ),
             ),
           ],
-
-          
           if (isDeleted)
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -437,7 +421,6 @@ class _BubbleBody extends StatelessWidget {
               ],
             )
           else ...[
-            
             _buildRichText(content, _textColor),
             if (firstUrl != null)
               Padding(
@@ -445,10 +428,7 @@ class _BubbleBody extends StatelessWidget {
                 child: LinkPreviewWidget(url: firstUrl, isMe: isMe),
               ),
           ],
-
           const SizedBox(height: 5),
-
-          
           Row(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.end,
@@ -499,10 +479,6 @@ class _BubbleBody extends StatelessWidget {
     }
   }
 }
-
-
-
-
 
 class DateSeparator extends StatelessWidget {
   final String label;
@@ -568,10 +544,6 @@ class DateSeparator extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class ImprovedChatInput extends StatefulWidget {
   final TextEditingController controller;
@@ -673,31 +645,23 @@ class _ImprovedChatInputState extends State<ImprovedChatInput> with SingleTicker
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            
             AnimatedSize(
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeOut,
               child: widget.replyingTo != null ? _buildReplyPreview() : const SizedBox.shrink(),
             ),
-
-            
             if (_showFull)
               SizeTransition(
                 sizeFactor: _featureAnim,
                 child: _buildFeatureTray(),
               ),
-
-            
             if (widget.isRecording) _buildRecordingBar(),
-
-            
             if (!widget.isRecording)
               Padding(
                 padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    
                     if (_showFull)
                       _InputIconBtn(
                         icon: widget.showFeatures
@@ -714,17 +678,11 @@ class _ImprovedChatInputState extends State<ImprovedChatInput> with SingleTicker
                         },
                         filled: widget.showFeatures,
                       ),
-
                     const SizedBox(width: 4),
-
-                    
                     Expanded(
                       child: _buildTextField(),
                     ),
-
                     const SizedBox(width: 6),
-
-                    
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 220),
                       transitionBuilder: (child, anim) => ScaleTransition(
@@ -794,7 +752,6 @@ class _ImprovedChatInputState extends State<ImprovedChatInput> with SingleTicker
               keyboardType: TextInputType.multiline,
             ),
           ),
-          
           if (_showFull)
             Padding(
               padding: const EdgeInsets.only(right: 8, bottom: 10),
@@ -1099,10 +1056,6 @@ class _SendButtonState extends State<_SendButton> with SingleTickerProviderState
   }
 }
 
-
-
-
-
 class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String peerName;
   final String peerAvatar;
@@ -1151,22 +1104,16 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
         padding: const EdgeInsets.symmetric(horizontal: 4),
         child: Row(
           children: [
-            
             IconButton(
               icon: Icon(Icons.arrow_back_ios_new_rounded,
                   size: 20, color: isDark ? Colors.white70 : ColorConstants.primaryColor),
               onPressed: onBackPressed ?? () => Navigator.pop(context),
             ),
-
-            
             GestureDetector(
               onTap: onAvatarTap,
               child: _buildAvatar(),
             ),
-
             const SizedBox(width: 10),
-
-            
             Expanded(
               child: GestureDetector(
                 onTap: onAvatarTap,
@@ -1191,8 +1138,6 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
                 ),
               ),
             ),
-
-            
             ...actions,
           ],
         ),
@@ -1301,10 +1246,6 @@ class _OnlineStatus extends StatelessWidget {
     return 'Truy cập ${diff.inDays} ngày trước';
   }
 }
-
-
-
-
 
 class ScrollToBottomButton extends StatelessWidget {
   final VoidCallback onTap;

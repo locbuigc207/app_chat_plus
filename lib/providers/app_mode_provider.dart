@@ -3,10 +3,6 @@ import 'package:flutter/services.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-
-
-
-
 enum AppMode { student, work, elder }
 
 extension AppModeExtension on AppMode {
@@ -66,12 +62,7 @@ extension AppModeExtension on AppMode {
   }
 }
 
-
-
-
-
 class AppModeTokens {
-  
   final Color primaryColor;
   final Color secondaryColor;
   final Color accentColor;
@@ -93,7 +84,6 @@ class AppModeTokens {
   final Color surfaceColor;
   final Color errorColor;
 
-  
   final double bubbleFontSize;
   final double inputFontSize;
   final double captionFontSize;
@@ -103,7 +93,6 @@ class AppModeTokens {
   final double lineHeightMultiplier;
   final double letterSpacing;
 
-  
   final double bubblePadding;
   final double bubbleRadius;
   final double avatarSize;
@@ -114,18 +103,15 @@ class AppModeTokens {
   final double messageSpacing;
   final double sectionSpacing;
 
-  
   final List<BoxShadow> bubbleShadow;
   final List<BoxShadow> inputShadow;
   final List<BoxShadow> appBarShadow;
   final double elevation;
 
-  
   final Duration animationDuration;
   final Duration longAnimationDuration;
   final Curve animationCurve;
 
-  
   final double minTouchTarget;
   final bool highContrast;
   final double focusRingWidth;
@@ -180,7 +166,6 @@ class AppModeTokens {
     required this.focusRingWidth,
   });
 
-  
   Gradient get myBubbleGradient => LinearGradient(
         colors: [myBubbleGradientStart, myBubbleGradientEnd],
         begin: Alignment.topLeft,
@@ -193,10 +178,6 @@ class AppModeTokens {
         0.5,
       )!;
 }
-
-
-
-
 
 class AppModeProvider with ChangeNotifier {
   AppMode _currentMode = AppMode.student;
@@ -216,10 +197,6 @@ class AppModeProvider with ChangeNotifier {
   AppModeProvider() {
     _loadPrefs();
   }
-
-  
-  
-  
 
   Future<void> setMode(AppMode mode) async {
     if (_currentMode == mode) return;
@@ -269,7 +246,6 @@ class AppModeProvider with ChangeNotifier {
     await prefs.setDouble('text_scale', _textScaleFactor);
   }
 
-  
   void _triggerHaptic(HapticFeedbackType type) {
     if (!_useHaptics) return;
     switch (type) {
@@ -293,10 +269,6 @@ class AppModeProvider with ChangeNotifier {
   void triggerErrorHaptic() => _triggerHaptic(HapticFeedbackType.heavyImpact);
   void triggerSuccessHaptic() => _triggerHaptic(HapticFeedbackType.mediumImpact);
 
-  
-  
-  
-
   Future<void> _loadPrefs() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -314,22 +286,14 @@ class AppModeProvider with ChangeNotifier {
       _reduceMotion = reduceMotion;
       _textScaleFactor = textScale.clamp(0.8, 2.0);
     } catch (_) {
-      
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  
-  
-  
-
   AppModeTokens get tokens {
     switch (_currentMode) {
-      
-      
-      
       case AppMode.student:
         return _isDark
             ? const AppModeTokens(
@@ -463,9 +427,6 @@ class AppModeProvider with ChangeNotifier {
                 focusRingWidth: 2.0,
               );
 
-      
-      
-      
       case AppMode.work:
         return _isDark
             ? const AppModeTokens(
@@ -603,9 +564,6 @@ class AppModeProvider with ChangeNotifier {
                 focusRingWidth: 2.0,
               );
 
-      
-      
-      
       case AppMode.elder:
         return _isDark
             ? const AppModeTokens(
@@ -739,19 +697,11 @@ class AppModeProvider with ChangeNotifier {
     }
   }
 
-  
-  
-  
-
   Duration get effectiveAnimationDuration =>
       _reduceMotion ? const Duration(milliseconds: 1) : tokens.animationDuration;
 
   Duration get effectiveLongAnimationDuration =>
       _reduceMotion ? const Duration(milliseconds: 1) : tokens.longAnimationDuration;
-
-  
-  
-  
 
   ThemeData get themeData {
     final t = tokens;
@@ -991,10 +941,6 @@ class AppModeProvider with ChangeNotifier {
     );
   }
 
-  
-  
-  
-
   String get _fontFamily {
     switch (_currentMode) {
       case AppMode.student:
@@ -1105,10 +1051,6 @@ class AppModeProvider with ChangeNotifier {
     );
   }
 
-  
-  
-  
-
   SystemUiOverlayStyle get systemOverlayStyle {
     final t = tokens;
     return SystemUiOverlayStyle(
@@ -1119,10 +1061,6 @@ class AppModeProvider with ChangeNotifier {
     );
   }
 
-  
-  
-  
-
   Map<String, dynamic> exportConfig() => {
         'mode': _currentMode.name,
         'isDark': _isDark,
@@ -1132,10 +1070,6 @@ class AppModeProvider with ChangeNotifier {
         'fontFamily': _fontFamily,
       };
 }
-
-
-
-
 
 enum HapticFeedbackType {
   selectionClick,

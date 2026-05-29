@@ -6,35 +6,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/game_match.dart';
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class GameFirebaseService {
-  
   static final GameFirebaseService _instance = GameFirebaseService._internal();
   factory GameFirebaseService() => _instance;
   GameFirebaseService._internal();
 
-  
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  
   CollectionReference<Map<String, dynamic>> get _matchesRef =>
       _db.collection(FirestoreConstants.pathGameMatchCollection);
 
@@ -43,12 +21,6 @@ class GameFirebaseService {
   CollectionReference<Map<String, dynamic>> _movesRef(String matchId) =>
       _matchDoc(matchId).collection(FirestoreConstants.pathGameMovesSubCollection);
 
-  
-  
-  
-
-  
-  
   Future<String> createMatch(GameMatch match) async {
     try {
       await _matchDoc(match.matchId).set(match.toJson());
@@ -60,11 +32,6 @@ class GameFirebaseService {
     }
   }
 
-  
-  
-  
-
-  
   Future<void> updateMatch(
     String matchId,
     Map<String, dynamic> data,
@@ -78,7 +45,6 @@ class GameFirebaseService {
     }
   }
 
-  
   Future<void> acceptMatch({
     required String matchId,
     required String player2Id,
@@ -96,7 +62,6 @@ class GameFirebaseService {
     _log('🎮 Match accepted by $player2Name: $matchId');
   }
 
-  
   Future<void> finishMatch({
     required String matchId,
     required GameResult result,
@@ -113,7 +78,6 @@ class GameFirebaseService {
     _log('🏁 Match finished: $matchId → ${result.value} ($endReason)');
   }
 
-  
   Future<void> abortMatch(String matchId, {String reason = 'timeout'}) async {
     final now = DateTime.now().millisecondsSinceEpoch.toString();
     await updateMatch(matchId, {
@@ -124,12 +88,6 @@ class GameFirebaseService {
     _log('🚫 Match aborted: $matchId ($reason)');
   }
 
-  
-  
-  
-
-  
-  
   Stream<GameMatch?> watchMatch(String matchId) {
     return _matchDoc(matchId).snapshots().map((doc) {
       if (!doc.exists) return null;
@@ -142,8 +100,6 @@ class GameFirebaseService {
     });
   }
 
-  
-  
   Stream<List<GameMatch>> watchLiveMatchesInGroup(String groupId) {
     return _matchesRef
         .where(FirestoreConstants.sourceGroupId, isEqualTo: groupId)
@@ -170,12 +126,6 @@ class GameFirebaseService {
         });
   }
 
-  
-  
-  
-
-  
-  
   Future<void> addMove(String matchId, GameMove move) async {
     try {
       await _movesRef(matchId).doc(move.moveIndex.toString()).set(move.toJson());
@@ -186,8 +136,6 @@ class GameFirebaseService {
     }
   }
 
-  
-  
   Stream<GameMove?> watchLatestMove(String matchId) {
     return _movesRef(matchId)
         .orderBy(FirestoreConstants.moveIndex, descending: true)
@@ -204,7 +152,6 @@ class GameFirebaseService {
     });
   }
 
-  
   Future<List<GameMove>> fetchAllMoves(String matchId) async {
     try {
       final snapshot = await _movesRef(matchId).orderBy(FirestoreConstants.moveIndex).get();
@@ -217,7 +164,6 @@ class GameFirebaseService {
     }
   }
 
-  
   Future<GameMove?> fetchMove(String matchId, int moveIndex) async {
     try {
       final doc = await _movesRef(matchId).doc(moveIndex.toString()).get();
@@ -229,11 +175,6 @@ class GameFirebaseService {
     }
   }
 
-  
-  
-  
-
-  
   Future<void> joinAsSpectator(String matchId, String userId) async {
     try {
       await _matchDoc(matchId).update({
@@ -242,11 +183,9 @@ class GameFirebaseService {
       _log('👀 $userId joined as spectator: $matchId');
     } catch (e) {
       _log('❌ joinAsSpectator error: $e');
-      
     }
   }
 
-  
   Future<void> leaveAsSpectator(String matchId, String userId) async {
     try {
       await _matchDoc(matchId).update({
@@ -258,12 +197,6 @@ class GameFirebaseService {
     }
   }
 
-  
-  
-  
-
-  
-  
   Future<void> markPlayerDisconnected(
     String matchId,
     String userId,
@@ -283,7 +216,6 @@ class GameFirebaseService {
     }
   }
 
-  
   Future<void> markPlayerReconnected(String matchId) async {
     try {
       await _matchDoc(matchId).update({
@@ -296,7 +228,6 @@ class GameFirebaseService {
     }
   }
 
-  
   Stream<Map<String, dynamic>?> watchDisconnectStatus(String matchId) {
     return _matchDoc(matchId).snapshots().map((doc) {
       if (!doc.exists) return null;
@@ -312,13 +243,6 @@ class GameFirebaseService {
     }).distinct();
   }
 
-  
-  
-  
-
-  
-  
-  
   Future<void> linkInviteMessage(
     String matchId,
     String inviteMessageId,
@@ -328,11 +252,6 @@ class GameFirebaseService {
     });
   }
 
-  
-  
-  
-
-  
   Future<GameMatch?> fetchMatch(String matchId) async {
     try {
       final doc = await _matchDoc(matchId).get();
@@ -343,10 +262,6 @@ class GameFirebaseService {
       return null;
     }
   }
-
-  
-  
-  
 
   void _log(String msg) {
     debugPrint('[GameFirebaseService] $msg');

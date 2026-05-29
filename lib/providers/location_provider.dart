@@ -41,8 +41,6 @@ class LocationData {
 class LocationProvider {
   static const _locationTimeout = Duration(seconds: 15);
 
-  
-
   Future<bool> requestLocationPermission() async {
     try {
       if (!await Geolocator.isLocationServiceEnabled()) {
@@ -68,8 +66,6 @@ class LocationProvider {
       return false;
     }
   }
-
-  
 
   Future<Position?> getCurrentLocation() async {
     try {
@@ -116,8 +112,6 @@ class LocationProvider {
       return null;
     }
   }
-
-  
 
   Future<Map<String, String>> _getAddressFromCoordinates(
     double latitude,
@@ -167,8 +161,6 @@ class LocationProvider {
     }
   }
 
-  
-
   String _coordString(double lat, double lng) =>
       'Lat: ${lat.toStringAsFixed(6)}, Lng: ${lng.toStringAsFixed(6)}';
 
@@ -189,8 +181,6 @@ class LocationProvider {
     if (meters < 10000) return '${(meters / 1000).toStringAsFixed(1)} km';
     return '${(meters / 1000).toStringAsFixed(0)} km';
   }
-
-  
 
   bool isLocationMessage(String message) =>
       message.contains('📍 Location') && message.contains('🗺️ View on map:');
@@ -228,8 +218,6 @@ class LocationProvider {
     }
   }
 
-  
-
   double calculateDistance(Position start, Position end) => Geolocator.distanceBetween(
         start.latitude,
         start.longitude,
@@ -245,8 +233,6 @@ class LocationProvider {
   ) =>
       Geolocator.distanceBetween(lat1, lng1, lat2, lng2);
 
-  
-
   Future<String?> getNearbyPlaceName(double latitude, double longitude) async {
     try {
       final placemarks = await placemarkFromCoordinates(latitude, longitude);
@@ -258,8 +244,6 @@ class LocationProvider {
       return null;
     }
   }
-
-  
 
   Stream<Position> getLocationStream({
     int distanceFilter = 10,

@@ -10,16 +10,6 @@ import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:flutter_chat_demo/services/unified_bubble_service.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
 
-
-
-
-
-
-
-
-
-
-
 class BubbleManager extends StatefulWidget {
   final Widget child;
   const BubbleManager({super.key, required this.child});
@@ -27,7 +17,6 @@ class BubbleManager extends StatefulWidget {
   @override
   State<BubbleManager> createState() => _BubbleManagerState();
 
-  
   static BubbleManagerController? of(BuildContext context) {
     return context.dependOnInheritedWidgetOfExactType<_BubbleManagerScope>()?.controller;
   }
@@ -39,7 +28,6 @@ class _BubbleManagerState extends State<BubbleManager> with WidgetsBindingObserv
 
   final List<StreamSubscription> _subs = [];
 
-  
   OverlayEntry? _miniOverlay;
   String? _miniUserId;
 
@@ -57,8 +45,6 @@ class _BubbleManagerState extends State<BubbleManager> with WidgetsBindingObserv
 
     _attachListeners();
   }
-
-  
 
   void _attachListeners() {
     if (kIsWeb || !Platform.isAndroid) return;
@@ -87,8 +73,6 @@ class _BubbleManagerState extends State<BubbleManager> with WidgetsBindingObserv
     );
   }
 
-  
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
@@ -98,7 +82,7 @@ class _BubbleManagerState extends State<BubbleManager> with WidgetsBindingObserv
         break;
       case AppLifecycleState.resumed:
         debugPrint('📱 App resumed');
-        _hideMiniChatOverlay(); 
+        _hideMiniChatOverlay();
         break;
       case AppLifecycleState.detached:
         _service.hideAllBubbles();
@@ -107,8 +91,6 @@ class _BubbleManagerState extends State<BubbleManager> with WidgetsBindingObserv
         break;
     }
   }
-
-  
 
   void _onBubbleClick(BubbleClickEvent event) {
     if (!mounted) return;
@@ -156,11 +138,9 @@ class _BubbleManagerState extends State<BubbleManager> with WidgetsBindingObserv
     );
   }
 
-  
-
   void _onMiniChatMessage(MiniChatMessage msg) {
     if (!mounted) return;
-    
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -186,15 +166,12 @@ class _BubbleManagerState extends State<BubbleManager> with WidgetsBindingObserv
     );
   }
 
-  
-
   Future<void> _showMiniChatOverlay({
     required String userId,
     required String userName,
     required String avatarUrl,
   }) async {
     if (_miniUserId == userId) {
-      
       return;
     }
     _hideMiniChatOverlay();
@@ -238,20 +215,15 @@ class _BubbleManagerState extends State<BubbleManager> with WidgetsBindingObserv
   }
 
   void _minimizeMiniChat() {
-    
     _hideMiniChatOverlay();
     debugPrint('⬇️ Mini-chat minimized');
   }
-
-  
 
   Route<T> _fadeRoute<T>(Widget page) => PageRouteBuilder(
         pageBuilder: (_, __, ___) => page,
         transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
         transitionDuration: const Duration(milliseconds: 250),
       );
-
-  
 
   @override
   Widget build(BuildContext context) {
@@ -272,11 +244,6 @@ class _BubbleManagerState extends State<BubbleManager> with WidgetsBindingObserv
     super.dispose();
   }
 }
-
-
-
-
-
 
 class BubbleManagerController {
   final UnifiedBubbleService _service;
@@ -334,10 +301,6 @@ class BubbleManagerController {
   Stream<Map<String, BubbleData>> get bubblesStream => _service.activeBubblesStream;
 }
 
-
-
-
-
 class _BubbleManagerScope extends InheritedWidget {
   final BubbleManagerController controller;
 
@@ -349,10 +312,6 @@ class _BubbleManagerScope extends InheritedWidget {
   @override
   bool updateShouldNotify(_BubbleManagerScope old) => controller != old.controller;
 }
-
-
-
-
 
 class _BubbleActionSheet extends StatelessWidget {
   final BubbleClickEvent event;
@@ -386,7 +345,6 @@ class _BubbleActionSheet extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          
           Center(
             child: Container(
               margin: const EdgeInsets.only(top: 12, bottom: 4),
@@ -398,8 +356,6 @@ class _BubbleActionSheet extends StatelessWidget {
               ),
             ),
           ),
-
-          
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             child: Row(
@@ -429,11 +385,8 @@ class _BubbleActionSheet extends StatelessWidget {
               ],
             ),
           ),
-
           Divider(height: 0, thickness: 0.5, color: theme.dividerColor),
           const SizedBox(height: 6),
-
-          
           _SheetAction(
             icon: Icons.chat_bubble_rounded,
             iconColor: const Color(0xFF2196F3),
@@ -456,7 +409,6 @@ class _BubbleActionSheet extends StatelessWidget {
             onTap: onDismiss,
             isDestructive: true,
           ),
-
           const SizedBox(height: 8),
         ],
       ),
@@ -557,12 +509,6 @@ class _SheetAction extends StatelessWidget {
     );
   }
 }
-
-
-
-
-
-
 
 class BubblePermissionGate extends StatefulWidget {
   final Widget child;
@@ -668,11 +614,6 @@ class _PermissionPrompt extends StatelessWidget {
     );
   }
 }
-
-
-
-
-
 
 class ActiveBubblesPanel extends StatelessWidget {
   final UnifiedBubbleService service;

@@ -4,8 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
 
-
-
 class SmartReplyWidget extends StatefulWidget {
   final List<SmartReply> replies;
   final Function(String) onReplySelected;
@@ -77,10 +75,8 @@ class _SmartReplyWidgetState extends State<SmartReplyWidget> with SingleTickerPr
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              
               _AIIconBadge(),
               const SizedBox(width: 10),
-              
               Expanded(
                 child: widget.isLoading
                     ? const _ShimmerChips()
@@ -109,8 +105,6 @@ class _SmartReplyWidgetState extends State<SmartReplyWidget> with SingleTickerPr
     );
   }
 }
-
-
 
 class _AIIconBadge extends StatefulWidget {
   @override
@@ -171,8 +165,6 @@ class _AIIconBadgeState extends State<_AIIconBadge> with SingleTickerProviderSta
     );
   }
 }
-
-
 
 class _ReplyChip extends StatefulWidget {
   final String text;
@@ -272,8 +264,6 @@ class _ReplyChipState extends State<_ReplyChip> with SingleTickerProviderStateMi
     );
   }
 }
-
-
 
 class _ShimmerChips extends StatefulWidget {
   const _ShimmerChips();

@@ -6,36 +6,23 @@ import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-
-
 enum PhoneAuthStatus {
-  
   uninitialized,
 
-  
   authenticating,
 
-  
   codeSent,
 
-  
   codeVerified,
 
-  
   authenticated,
 
-  
   authenticateError,
 
-  
   authenticateException,
 }
 
-
-
 class PhoneAuthProvider extends ChangeNotifier {
-  
-
   final firebase_auth.FirebaseAuth firebaseAuth;
   final FirebaseFirestore firebaseFirestore;
   final SharedPreferences prefs;
@@ -46,46 +33,30 @@ class PhoneAuthProvider extends ChangeNotifier {
     required this.prefs,
   });
 
-  
-
   PhoneAuthStatus _status = PhoneAuthStatus.uninitialized;
   String? _verificationId;
   int? _resendToken;
   String? _errorMessage;
   String? _lastPhoneNumber;
 
-  
-
   PhoneAuthStatus get status => _status;
   String? get verificationId => _verificationId;
   String? get errorMessage => _errorMessage;
 
-  
   bool get isLoading => _status == PhoneAuthStatus.authenticating;
 
-  
   bool get isCodeSent => _status == PhoneAuthStatus.codeSent;
 
-  
   bool get isAuthenticated => _status == PhoneAuthStatus.authenticated;
 
-  
   bool get hasError =>
       _status == PhoneAuthStatus.authenticateError ||
       _status == PhoneAuthStatus.authenticateException;
-
-  
 
   String _generateQRCode(String userId) {
     return 'CHATAPP_${userId}_${DateTime.now().millisecondsSinceEpoch}';
   }
 
-  
-
-  
-  
-  
-  
   Future<void> sendOTP(String phoneNumber) async {
     _status = PhoneAuthStatus.authenticating;
     _errorMessage = null;
@@ -95,22 +66,16 @@ class PhoneAuthProvider extends ChangeNotifier {
     try {
       await firebaseAuth.verifyPhoneNumber(
         phoneNumber: phoneNumber,
-
-        
         verificationCompleted: (firebase_auth.PhoneAuthCredential credential) async {
           debugPrint('📱 Auto-verified OTP on Android');
           await _signInWithCredential(credential, phoneNumber);
         },
-
-        
         verificationFailed: (firebase_auth.FirebaseAuthException e) {
           debugPrint('❌ Verification failed: ${e.code} – ${e.message}');
           _errorMessage = _mapFirebaseError(e.code);
           _status = PhoneAuthStatus.authenticateError;
           notifyListeners();
         },
-
-        
         codeSent: (String verificationId, int? resendToken) {
           debugPrint('✅ OTP sent. verificationId: $verificationId');
           _verificationId = verificationId;
@@ -118,15 +83,12 @@ class PhoneAuthProvider extends ChangeNotifier {
           _status = PhoneAuthStatus.codeSent;
           notifyListeners();
         },
-
-        
         codeAutoRetrievalTimeout: (String verificationId) {
           debugPrint('⏱️ Auto-retrieval timeout');
           _verificationId = verificationId;
         },
-
         timeout: const Duration(seconds: 60),
-        forceResendingToken: _resendToken, 
+        forceResendingToken: _resendToken,
       );
     } catch (e) {
       debugPrint('❌ sendOTP exception: $e');
@@ -136,20 +98,11 @@ class PhoneAuthProvider extends ChangeNotifier {
     }
   }
 
-  
-
-  
-  
   Future<void> resendOTP() async {
     if (_lastPhoneNumber == null) return;
     await sendOTP(_lastPhoneNumber!);
   }
 
-  
-
-  
-  
-  
   Future<bool> verifyOTP(String smsCode, String phoneNumber) async {
     if (_verificationId == null) {
       _errorMessage = 'Phiên xác minh hết hạn. Vui lòng gửi lại mã OTP.';
@@ -191,8 +144,6 @@ class PhoneAuthProvider extends ChangeNotifier {
     }
   }
 
-  
-
   Future<bool> _signInWithCredential(
     firebase_auth.PhoneAuthCredential credential,
     String phoneNumber,
@@ -210,7 +161,6 @@ class PhoneAuthProvider extends ChangeNotifier {
 
       debugPrint('✅ Firebase sign-in success: ${firebaseUser.uid}');
 
-      
       await _upsertUserProfile(firebaseUser, phoneNumber);
 
       _status = PhoneAuthStatus.authenticated;
@@ -231,9 +181,6 @@ class PhoneAuthProvider extends ChangeNotifier {
     }
   }
 
-  
-
-  
   Future<void> _upsertUserProfile(
     firebase_auth.User firebaseUser,
     String phoneNumber,
@@ -244,7 +191,6 @@ class PhoneAuthProvider extends ChangeNotifier {
     final snapshot = await userRef.get();
 
     if (!snapshot.exists) {
-      
       final qrCode = _generateQRCode(firebaseUser.uid);
 
       await userRef.set({
@@ -271,7 +217,6 @@ class PhoneAuthProvider extends ChangeNotifier {
 
       debugPrint('🆕 New phone user created: ${firebaseUser.uid}');
     } else {
-      
       final userChat = UserChat.fromDocument(snapshot);
 
       String qrCode = userChat.qrCode;
@@ -295,8 +240,6 @@ class PhoneAuthProvider extends ChangeNotifier {
     }
   }
 
-  
-
   Future<void> _savePrefs({
     required String id,
     required String nickname,
@@ -315,9 +258,6 @@ class PhoneAuthProvider extends ChangeNotifier {
     ]);
   }
 
-  
-
-  
   void resetStatus() {
     _status = PhoneAuthStatus.uninitialized;
     _errorMessage = null;
@@ -325,16 +265,11 @@ class PhoneAuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  
-
   void handleException() {
     _status = PhoneAuthStatus.authenticateException;
     notifyListeners();
   }
 
-  
-
-  
   String _mapFirebaseError(String code) {
     switch (code) {
       case 'invalid-phone-number':
@@ -362,10 +297,6 @@ class PhoneAuthProvider extends ChangeNotifier {
     }
   }
 
-  
-
-  
-  
   String _formatPhoneAsNickname(String phone) {
     if (phone.length < 4) return 'Người dùng';
     final last4 = phone.substring(phone.length - 4);

@@ -3,27 +3,25 @@ import 'package:flutter/services.dart';
 
 import 'package:flutter_chat_demo/models/bubble_models.dart';
 
-
 class _C {
-  
   static const blue500 = Color(0xFF2196F3);
   static const blue700 = Color(0xFF1976D2);
   static const blue900 = Color(0xFF0D47A1);
-  
+
   static const dark900 = Color(0xFF0D1B2A);
   static const dark800 = Color(0xFF162032);
   static const dark700 = Color(0xFF1E2D40);
-  
+
   static const green700 = Color(0xFF388E3C);
   static const green800 = Color(0xFF2E7D32);
   static const green900 = Color(0xFF1B5E20);
-  
+
   static const pink700 = Color(0xFFAD1457);
   static const pink900 = Color(0xFF880E4F);
-  
+
   static const purple700 = Color(0xFF5E35B1);
   static const purple900 = Color(0xFF311B92);
-  
+
   static const white = Colors.white;
   static const w70 = Color(0xB3FFFFFF);
   static const w50 = Color(0x80FFFFFF);
@@ -34,12 +32,6 @@ class _C {
   static const online = Color(0xFF69F0AE);
   static const borderR = BorderRadius.vertical(top: Radius.circular(16));
 }
-
-
-
-
-
-
 
 class BubbleAdaptiveHeader extends StatefulWidget {
   final BubbleContext bubbleCtx;
@@ -167,7 +159,6 @@ class _BubbleAdaptiveHeaderState extends State<BubbleAdaptiveHeader> with Ticker
   }
 }
 
-
 mixin _WindowActions {
   Widget buildButtons({
     required VoidCallback onMinimize,
@@ -247,7 +238,6 @@ class _Avatar extends StatelessWidget {
     );
   }
 }
-
 
 class _NormalHeader extends StatelessWidget with _WindowActions {
   final String peerName;
@@ -363,7 +353,6 @@ class _OnlineDotState extends State<_OnlineDot> with SingleTickerProviderStateMi
     );
   }
 }
-
 
 class _WorkHeader extends StatelessWidget with _WindowActions {
   final String peerName;
@@ -532,7 +521,6 @@ class _WorkActionBtnState extends State<_WorkActionBtn> with SingleTickerProvide
   }
 }
 
-
 class _MediaHeader extends StatelessWidget with _WindowActions {
   final String peerName;
   final String peerAvatar;
@@ -643,7 +631,6 @@ class _MediaHeader extends StatelessWidget with _WindowActions {
   }
 }
 
-
 class _LocationHeader extends StatelessWidget with _WindowActions {
   final String peerName;
   final String peerAvatar;
@@ -738,7 +725,6 @@ class _LocationHeader extends StatelessWidget with _WindowActions {
   }
 }
 
-
 class _SharedHeader extends StatelessWidget with _WindowActions {
   final String peerName;
   final String peerAvatar;
@@ -793,7 +779,6 @@ class _SharedHeader extends StatelessWidget with _WindowActions {
     );
   }
 }
-
 
 class _SecureHeader extends StatelessWidget with _WindowActions {
   final String peerName;

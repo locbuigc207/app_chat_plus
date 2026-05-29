@@ -7,12 +7,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/call_model.dart';
 
-
-
-
-
-
-
 class CallService {
   CallService._();
   static final CallService instance = CallService._();
@@ -24,7 +18,6 @@ class CallService {
   static const int _timeoutSeconds = 45;
   static const int _historyLimit = 50;
 
-  
   static const List<String> _activeStatuses = [
     'calling',
     'ringing',
@@ -33,17 +26,10 @@ class CallService {
     'accepted',
   ];
 
-  
-
   CollectionReference<Map<String, dynamic>> get _calls => _db.collection(_col);
 
   String? get _uid => _auth.currentUser?.uid;
 
-  
-  
-  
-
-  
   Stream<CallModel?> get incomingCallStream {
     final uid = _uid;
     if (uid == null) return Stream.value(null);
@@ -57,12 +43,10 @@ class CallService {
         .map((snap) => snap.docs.isEmpty ? null : _parseDoc(snap.docs.first));
   }
 
-  
   Stream<CallModel?> watchCall(String callId) => _calls.doc(callId).snapshots().map(
         (doc) => doc.exists ? _parseDoc(doc) : null,
       );
 
-  
   Stream<List<CallModel>> get callHistoryStream {
     final uid = _uid;
     if (uid == null) return Stream.value([]);
@@ -95,11 +79,6 @@ class CallService {
     });
   }
 
-  
-  
-  
-
-  
   Future<CallModel?> initiateCall({
     required String calleeId,
     required String calleeName,
@@ -113,14 +92,12 @@ class CallService {
     }
 
     try {
-      
       final callerSnap = await _db.collection('users').doc(uid).get();
       final callerData = callerSnap.data() ?? {};
       final callerName =
           callerData['nickname'] as String? ?? _auth.currentUser?.displayName ?? 'User';
       final callerAvatar = callerData['photoUrl'] as String? ?? '';
 
-      
       final busyCall = await _findActiveCallForUser(calleeId);
       if (busyCall != null) {
         debugPrint('⚠️ [CallService] Callee is busy (callId=${busyCall.callId})');
@@ -159,7 +136,6 @@ class CallService {
     }
   }
 
-  
   Future<bool> answerCall(String callId) async {
     try {
       await _calls.doc(callId).update({
@@ -174,7 +150,6 @@ class CallService {
     }
   }
 
-  
   Future<bool> declineCall(String callId) async {
     try {
       await _calls.doc(callId).update({'status': CallStatus.declined.name});
@@ -186,7 +161,6 @@ class CallService {
     }
   }
 
-  
   Future<bool> endCall(String callId, {int? durationSeconds}) async {
     try {
       final updates = <String, dynamic>{
@@ -203,7 +177,6 @@ class CallService {
     }
   }
 
-  
   Future<void> markCallMissed(String callId) async {
     try {
       final doc = await _calls.doc(callId).get();
@@ -218,7 +191,6 @@ class CallService {
     }
   }
 
-  
   Future<void> updateToken(String callId, String token) async {
     try {
       await _calls.doc(callId).update({'token': token});
@@ -227,7 +199,6 @@ class CallService {
     }
   }
 
-  
   Future<void> updateCallStatus(String callId, String status) async {
     try {
       await _calls.doc(callId).update({'status': status});
@@ -235,10 +206,6 @@ class CallService {
       debugPrint('❌ [CallService] updateCallStatus: $e');
     }
   }
-
-  
-  
-  
 
   Future<CallModel?> getCall(String callId) async {
     try {
@@ -280,10 +247,6 @@ class CallService {
     }
   }
 
-  
-  
-  
-
   CallModel? _parseDoc(DocumentSnapshot<Object?> doc) {
     try {
       return CallModel.fromDocument(doc);
@@ -321,7 +284,6 @@ class CallService {
 
   String _tsNow() => DateTime.now().millisecondsSinceEpoch.toString();
 
-  
   Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _mergeQuerySnapshots(
     List<Stream<QuerySnapshot<Map<String, dynamic>>>> streams,
   ) {

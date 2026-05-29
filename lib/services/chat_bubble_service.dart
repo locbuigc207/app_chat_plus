@@ -8,18 +8,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/models/bubble_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-
-
-
-
-
-
 class ChatBubbleService {
-  
   static const _method = MethodChannel('chat_bubble_overlay');
   static const _event = EventChannel('chat_bubble_events');
 
-  
   static final ChatBubbleService _instance = ChatBubbleService._internal();
   factory ChatBubbleService() => _instance;
 
@@ -29,34 +21,25 @@ class ChatBubbleService {
     }
   }
 
-  
   final Map<String, BubbleData> _activeBubbles = {};
   StreamSubscription<dynamic>? _eventSub;
   SharedPreferences? _prefs;
   bool _isInitialized = false;
 
-  
   DateTime? _lastOp;
   static const _minInterval = Duration(milliseconds: 300);
 
-  
   final _bubblesCtrl = StreamController<Map<String, BubbleData>>.broadcast();
   final _clickCtrl = StreamController<BubbleClickEvent>.broadcast();
   final _miniMsgCtrl = StreamController<MiniChatMessage>.broadcast();
 
-  
   final _gameChallengeCtrl = StreamController<GameChallengeEvent>.broadcast();
 
   Stream<Map<String, BubbleData>> get activeBubblesStream => _bubblesCtrl.stream;
   Stream<BubbleClickEvent> get bubbleClickStream => _clickCtrl.stream;
   Stream<MiniChatMessage> get miniChatMessageStream => _miniMsgCtrl.stream;
 
-  
   Stream<GameChallengeEvent> get gameChallengeStream => _gameChallengeCtrl.stream;
-
-  
-  
-  
 
   Future<void> _bootstrap() async {
     _setupEventListener();
@@ -127,7 +110,6 @@ class ChatBubbleService {
     }
   }
 
-  
   void _handleGameChallengeTap(Map<String, dynamic> e) {
     if (_gameChallengeCtrl.isClosed) return;
     final event = GameChallengeEvent(
@@ -139,10 +121,6 @@ class ChatBubbleService {
     _gameChallengeCtrl.add(event);
     debugPrint('🎮 Game challenge tapped: ${event.matchId}');
   }
-
-  
-  
-  
 
   Future<bool> hasOverlayPermission() async {
     if (kIsWeb || !Platform.isAndroid) return false;
@@ -168,10 +146,6 @@ class ChatBubbleService {
       return false;
     }
   }
-
-  
-  
-  
 
   Future<bool> showChatBubble({
     required String userId,
@@ -289,8 +263,6 @@ class ChatBubbleService {
     await _saveBubbles();
   }
 
-  
-
   Future<bool> showMiniChat({
     required String userId,
     required String userName,
@@ -323,25 +295,6 @@ class ChatBubbleService {
     }
   }
 
-  
-  
-  
-
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
   Future<void> sendGameChallengeNotification({
     required String targetUserId,
     required String challengerName,
@@ -351,8 +304,6 @@ class ChatBubbleService {
     required String gameType,
     String timeControlLabel = '',
   }) async {
-    
-    
     if (kIsWeb) return;
 
     final gameEmoji = gameType == 'chess' ? '♟️' : '⭕';
@@ -363,7 +314,6 @@ class ChatBubbleService {
 
     try {
       if (Platform.isAndroid) {
-        
         await _method.invokeMethod('showGameChallengeNotification', {
           'targetUserId': targetUserId,
           'title': title,
@@ -377,7 +327,6 @@ class ChatBubbleService {
         debugPrint('🔔 Game challenge notification sent to $targetUserId');
       }
 
-      
       if (_activeBubbles.containsKey(targetUserId)) {
         await updateBubbleMessage(
           userId: targetUserId,
@@ -385,7 +334,6 @@ class ChatBubbleService {
         );
       }
     } catch (e) {
-      
       debugPrint('⚠️ sendGameChallengeNotification error: $e');
     }
   }
@@ -399,10 +347,6 @@ class ChatBubbleService {
         return 'Caro';
     }
   }
-
-  
-  
-  
 
   static const _storageKey = 'active_bubbles_v1';
 
@@ -465,10 +409,6 @@ class ChatBubbleService {
     _prefs ??= await SharedPreferences.getInstance();
   }
 
-  
-  
-  
-
   Future<void> _waitRateLimit() async {
     if (_lastOp != null) {
       final elapsed = DateTime.now().difference(_lastOp!);
@@ -485,19 +425,11 @@ class ChatBubbleService {
     }
   }
 
-  
-  
-  
-
   bool isBubbleActive(String userId) => _activeBubbles.containsKey(userId);
   Map<String, BubbleData> get activeBubbles => Map.unmodifiable(_activeBubbles);
   int get activeBubbleCount => _activeBubbles.length;
   bool get isSupported => !kIsWeb && Platform.isAndroid;
   bool get isInitialized => _isInitialized;
-
-  
-  
-  
 
   void dispose() {
     _eventSub?.cancel();
@@ -510,12 +442,6 @@ class ChatBubbleService {
     debugPrint('✅ ChatBubbleService disposed');
   }
 }
-
-
-
-
-
-
 
 class GameChallengeEvent {
   final String matchId;

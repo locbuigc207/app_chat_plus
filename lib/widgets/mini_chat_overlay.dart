@@ -9,12 +9,7 @@ import 'package:flutter/services.dart';
 import '../models/bubble_models.dart';
 import '../pages/chat_page.dart';
 
-
-
-
-
 class _K {
-  
   static const double minW = 300.0;
   static const double maxW = 420.0;
   static const double minH = 420.0;
@@ -26,18 +21,15 @@ class _K {
   static const double edgePad = 10.0;
   static const double resizeHandleSize = 22.0;
 
-  
   static const double springStiffness = 400.0;
   static const double springDamping = 28.0;
   static const double snapVelocityThreshold = 600.0;
 
-  
   static const Duration openDur = Duration(milliseconds: 380);
   static const Duration closeDur = Duration(milliseconds: 260);
   static const Duration pipDur = Duration(milliseconds: 320);
   static const Duration modeDur = Duration(milliseconds: 280);
 
-  
   static const Color grad1 = Color(0xFF1565C0);
   static const Color grad2 = Color(0xFF0D47A1);
   static const Color grad3 = Color(0xFF1A237E);
@@ -46,20 +38,6 @@ class _K {
   static const Color handle = Color(0x40FFFFFF);
   static const Color shadow = Color(0x03300000);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 class MiniChatOverlayWidget extends StatefulWidget {
   final String peerId;
@@ -93,27 +71,22 @@ class MiniChatOverlayWidget extends StatefulWidget {
 
 class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
     with TickerProviderStateMixin {
-  
   late double _x;
   late double _y;
   late double _w;
   late double _h;
   bool _initialized = false;
 
-  
   Offset _dragStart = Offset.zero;
   Offset _posStart = Offset.zero;
 
-  
   double _resizeStartW = 0;
   double _resizeStartH = 0;
   Offset _resizeDragStart = Offset.zero;
 
-  
   bool _isPip = false;
   double _pipSwipeY = 0;
 
-  
   late AnimationController _openCtrl;
   late AnimationController _closeCtrl;
   late AnimationController _pipCtrl;
@@ -133,7 +106,6 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
   double _springTargetX = 0;
   double _springTargetY = 0;
 
-  
   List<Color> get _headerColors => switch (widget.bubbleCtx.mode) {
         BubbleMode.work => [
             const Color(0xFF0D1B2A),
@@ -158,15 +130,11 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
         _ => [_K.grad1, _K.grad3],
       };
 
-  
-  
-  
-
   @override
   void initState() {
     super.initState();
     _setupAnimations();
-    
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _initGeometry();
@@ -175,7 +143,6 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
   }
 
   void _setupAnimations() {
-    
     _openCtrl = AnimationController(vsync: this, duration: _K.openDur);
     _openScale = Tween<double>(begin: 0.72, end: 1.0)
         .animate(CurvedAnimation(parent: _openCtrl, curve: Curves.easeOutBack));
@@ -184,24 +151,19 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
     _openSlide = Tween<Offset>(begin: const Offset(0, 0.08), end: Offset.zero)
         .animate(CurvedAnimation(parent: _openCtrl, curve: Curves.easeOutCubic));
 
-    
     _closeCtrl = AnimationController(vsync: this, duration: _K.closeDur);
 
-    
     _pipCtrl = AnimationController(vsync: this, duration: _K.pipDur);
     _pipScale = Tween<double>(begin: 1.0, end: 0.0)
         .animate(CurvedAnimation(parent: _pipCtrl, curve: Curves.easeInOut));
     _pipFade = Tween<double>(begin: 1.0, end: 0.0)
         .animate(CurvedAnimation(parent: _pipCtrl, curve: Curves.easeIn));
 
-    
     _springCtrl = AnimationController(vsync: this);
 
-    
     _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))
       ..repeat(reverse: true);
 
-    
     _shakeCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 320));
   }
 
@@ -227,10 +189,6 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
     super.dispose();
   }
 
-  
-  
-  
-
   void _onDragStart(DragStartDetails d) {
     _dragStart = d.globalPosition;
     _posStart = Offset(_x, _y);
@@ -251,13 +209,11 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
     final screen = MediaQuery.of(context).size;
     final vel = d.velocity.pixelsPerSecond;
 
-    
     if (vel.dy > _K.snapVelocityThreshold && !_isPip) {
       _enterPip();
       return;
     }
 
-    
     final targetX = _x < (screen.width - _w) / 2 ? _K.edgePad : screen.width - _w - _K.edgePad;
     _springTo(targetX, _y, vel);
   }
@@ -293,10 +249,6 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
     HapticFeedback.lightImpact();
   }
 
-  
-  
-  
-
   void _onResizeStart(DragStartDetails d) {
     _resizeStartW = _w;
     _resizeStartH = _h;
@@ -316,10 +268,6 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
     });
   }
 
-  
-  
-  
-
   void _enterPip() {
     HapticFeedback.mediumImpact();
     _pipCtrl.forward().then((_) {
@@ -331,7 +279,7 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
     HapticFeedback.mediumImpact();
     setState(() => _isPip = false);
     _pipCtrl.reverse();
-    
+
     final screen = MediaQuery.of(context).size;
     _x = (screen.width - _w) / 2;
     _y = (screen.height - _h) * 0.12 + 40;
@@ -348,10 +296,6 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
     setState(() => _pipSwipeY = 0);
   }
 
-  
-  
-  
-
   Future<void> _handleClose() async {
     HapticFeedback.mediumImpact();
     await _openCtrl.reverse();
@@ -363,26 +307,18 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
     _enterPip();
   }
 
-  
-  
-  
-
   @override
   Widget build(BuildContext context) {
     if (!_initialized) return const SizedBox.shrink();
 
     return Stack(
       children: [
-        
         if (_isPip) _buildPip(),
-
-        
         if (!_isPip) _buildWindow(),
       ],
     );
   }
 
-  
   Widget _buildPip() {
     final screen = MediaQuery.of(context).size;
     return AnimatedPositioned(
@@ -425,7 +361,6 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
             child: Stack(
               alignment: Alignment.center,
               children: [
-                
                 CircleAvatar(
                   radius: 22,
                   backgroundImage:
@@ -444,16 +379,12 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
                         )
                       : null,
                 ),
-
-                
                 if (widget.unreadCount > 0)
                   Positioned(
                     top: 4,
                     right: 4,
                     child: _UnreadBadge(count: widget.unreadCount),
                   ),
-
-                
                 Positioned(
                   bottom: 6,
                   child: Column(
@@ -471,7 +402,6 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
     );
   }
 
-  
   Widget _buildWindow() {
     return Positioned(
       left: _x,
@@ -520,10 +450,6 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
     );
   }
 }
-
-
-
-
 
 class _WindowFrame extends StatelessWidget {
   final double width;
@@ -582,10 +508,8 @@ class _WindowFrame extends StatelessWidget {
           borderRadius: BorderRadius.circular(radius),
           child: Stack(
             children: [
-              
               Column(
                 children: [
-                  
                   GestureDetector(
                     onPanStart: onDragStart,
                     onPanUpdate: onDragUpdate,
@@ -593,12 +517,9 @@ class _WindowFrame extends StatelessWidget {
                     behavior: HitTestBehavior.opaque,
                     child: header,
                   ),
-                  
                   Expanded(child: body),
                 ],
               ),
-
-              
               Positioned(
                 right: 0,
                 bottom: 0,
@@ -611,10 +532,6 @@ class _WindowFrame extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _Header extends StatefulWidget {
   final String peerName;
@@ -690,7 +607,6 @@ class _HeaderState extends State<_Header> with SingleTickerProviderStateMixin {
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               children: [
-                
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: Column(
@@ -709,8 +625,6 @@ class _HeaderState extends State<_Header> with SingleTickerProviderStateMixin {
                     ),
                   ),
                 ),
-
-                
                 Stack(
                   children: [
                     Container(
@@ -774,10 +688,7 @@ class _HeaderState extends State<_Header> with SingleTickerProviderStateMixin {
                       ),
                   ],
                 ),
-
                 const SizedBox(width: 10),
-
-                
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -802,8 +713,6 @@ class _HeaderState extends State<_Header> with SingleTickerProviderStateMixin {
                     ],
                   ),
                 ),
-
-                
                 if (widget.onExpand != null)
                   _HBtn(
                     icon: Icons.open_in_full_rounded,
@@ -831,10 +740,6 @@ class _HeaderState extends State<_Header> with SingleTickerProviderStateMixin {
     );
   }
 }
-
-
-
-
 
 class _StatusLine extends StatelessWidget {
   final bool isOnline;
@@ -899,10 +804,6 @@ class _StatusLine extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _HBtn extends StatefulWidget {
   final IconData icon;
@@ -977,10 +878,6 @@ class _HBtnState extends State<_HBtn> with SingleTickerProviderStateMixin {
   }
 }
 
-
-
-
-
 class _Body extends StatelessWidget {
   final String peerId;
   final String peerNickname;
@@ -1009,10 +906,6 @@ class _Body extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _ResizeHandle extends StatefulWidget {
   final GestureDragStartCallback onStart;
@@ -1080,10 +973,6 @@ class _ResizePainter extends CustomPainter {
   bool shouldRepaint(_ResizePainter old) => old.active != active;
 }
 
-
-
-
-
 class _UnreadBadge extends StatelessWidget {
   final int count;
   const _UnreadBadge({required this.count});
@@ -1113,12 +1002,6 @@ class _UnreadBadge extends StatelessWidget {
     );
   }
 }
-
-
-
-
-
-
 
 class MiniChatOverlay extends StatelessWidget {
   final String peerId;

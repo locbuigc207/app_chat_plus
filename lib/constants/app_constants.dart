@@ -12,27 +12,20 @@ class AppConstants {
   static const String reminderChannelId = "reminder_channel";
   static const String callChannelId = "call_channel";
 
-  
-
-  
   static const String gameChannelId = "game_channel";
 
-  
-  static const int gameInviteTimeoutSeconds = 300; 
+  static const int gameInviteTimeoutSeconds = 300;
 
-  
   static const int gameDisconnectTimeoutSeconds = 60;
 
-  
   static const List<int> chessTimeControls = [
-    0, 
-    180, 
-    300, 
-    600, 
-    900, 
+    0,
+    180,
+    300,
+    600,
+    900,
   ];
 
-  
   static const List<String> chessTimeControlLabels = [
     'Không giới hạn',
     '3 phút',
@@ -41,10 +34,8 @@ class AppConstants {
     '15 phút',
   ];
 
-  
   static const List<int> caroTurnTimers = [0, 15, 30, 60];
 
-  
   static const List<String> caroTurnTimerLabels = [
     'Không giới hạn',
     '15 giây/nước',

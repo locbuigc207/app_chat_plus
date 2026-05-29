@@ -17,10 +17,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
-
-
-
-
 class StoryCreatorPage extends StatefulWidget {
   final String userId;
   final String userName;
@@ -115,10 +111,6 @@ class _StoryCreatorPageState extends State<StoryCreatorPage> with SingleTickerPr
   }
 }
 
-
-
-
-
 class _TabSelector extends StatelessWidget {
   final int index;
   final void Function(int) onSelect;
@@ -168,10 +160,6 @@ class _TabSelector extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _PhotoCreator extends StatefulWidget {
   final String userId;
@@ -266,10 +254,7 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          
           Image.file(_image!, fit: BoxFit.cover),
-
-          
           Positioned(
             bottom: 0,
             left: 0,
@@ -285,8 +270,6 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
               ),
             ),
           ),
-
-          
           Positioned(
             top: 16,
             right: 16,
@@ -313,8 +296,6 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
               ],
             ),
           ),
-
-          
           Positioned(
             bottom: bottomInset > 0 ? bottomInset + 16 : 96,
             left: 16,
@@ -340,8 +321,6 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
               ),
             ),
           ),
-
-          
           if (bottomInset == 0)
             Positioned(
               bottom: 32,
@@ -354,10 +333,6 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
     );
   }
 }
-
-
-
-
 
 class _PickerPrompt extends StatelessWidget {
   final void Function(ImageSource) onPick;
@@ -460,10 +435,6 @@ class _BigPickBtn extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _TextCreator extends StatefulWidget {
   final String userId;
@@ -570,7 +541,6 @@ class _TextCreatorState extends State<_TextCreator> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        
         AnimatedContainer(
           duration: const Duration(milliseconds: 350),
           decoration: BoxDecoration(
@@ -581,8 +551,6 @@ class _TextCreatorState extends State<_TextCreator> {
             ),
           ),
         ),
-
-        
         Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -611,8 +579,6 @@ class _TextCreatorState extends State<_TextCreator> {
             ),
           ),
         ),
-
-        
         Positioned(
           top: 16,
           right: 16,
@@ -662,8 +628,6 @@ class _TextCreatorState extends State<_TextCreator> {
             ],
           ),
         ),
-
-        
         Positioned(
           bottom: 96,
           left: 0,
@@ -671,7 +635,6 @@ class _TextCreatorState extends State<_TextCreator> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Row(
@@ -699,8 +662,6 @@ class _TextCreatorState extends State<_TextCreator> {
                 ),
               ),
               const SizedBox(height: 10),
-
-              
               SizedBox(
                 height: 48,
                 child: ListView.builder(
@@ -744,8 +705,6 @@ class _TextCreatorState extends State<_TextCreator> {
             ],
           ),
         ),
-
-        
         Positioned(
           bottom: 32,
           left: 16,
@@ -760,10 +719,6 @@ class _TextCreatorState extends State<_TextCreator> {
     );
   }
 }
-
-
-
-
 
 class _ArFilter {
   final String displayName;
@@ -802,10 +757,6 @@ class _ArFilter {
     }
   }
 }
-
-
-
-
 
 class _VideoCreator extends StatefulWidget {
   final String userId;
@@ -922,7 +873,6 @@ class _VideoCreatorState extends State<_VideoCreator> with SingleTickerProviderS
 
     await _deepArController.startVideoRecording();
 
-    
     _countUp();
   }
 
@@ -1033,10 +983,7 @@ class _VideoCreatorState extends State<_VideoCreator> with SingleTickerProviderS
     return Stack(
       fit: StackFit.expand,
       children: [
-        
         Positioned.fill(child: DeepArPreviewPlus(_deepArController)),
-
-        
         Positioned(
           top: 16,
           right: 16,
@@ -1051,8 +998,6 @@ class _VideoCreatorState extends State<_VideoCreator> with SingleTickerProviderS
             ],
           ),
         ),
-
-        
         if (_isRecording)
           Positioned(
             top: 16,
@@ -1091,8 +1036,6 @@ class _VideoCreatorState extends State<_VideoCreator> with SingleTickerProviderS
               ),
             ),
           ),
-
-        
         if (_isProcessing)
           Container(
             color: Colors.black87,
@@ -1107,8 +1050,6 @@ class _VideoCreatorState extends State<_VideoCreator> with SingleTickerProviderS
               ),
             ),
           ),
-
-        
         if (!_isProcessing)
           Positioned(
             bottom: 32,
@@ -1117,7 +1058,6 @@ class _VideoCreatorState extends State<_VideoCreator> with SingleTickerProviderS
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                
                 if (_filters.isNotEmpty)
                   SizedBox(
                     height: 80,
@@ -1165,10 +1105,7 @@ class _VideoCreatorState extends State<_VideoCreator> with SingleTickerProviderS
                       },
                     ),
                   ),
-
                 const SizedBox(height: 16),
-
-                
                 GestureDetector(
                   onLongPressStart: (_) => _startRecording(),
                   onLongPressEnd: (_) => _stopRecording(),
@@ -1200,7 +1137,6 @@ class _VideoCreatorState extends State<_VideoCreator> with SingleTickerProviderS
                         : const Icon(Icons.videocam, color: Colors.white, size: 36),
                   ),
                 ),
-
                 const SizedBox(height: 10),
                 Text(
                   _isRecording ? 'Release to stop' : 'Hold to record',
@@ -1213,10 +1149,6 @@ class _VideoCreatorState extends State<_VideoCreator> with SingleTickerProviderS
     );
   }
 }
-
-
-
-
 
 class _SideBtn extends StatelessWidget {
   final IconData icon;

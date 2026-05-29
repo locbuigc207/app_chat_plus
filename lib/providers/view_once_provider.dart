@@ -5,21 +5,13 @@ import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
-
-
-
-
 enum ViewOnceStatus {
-  
   unopened,
 
-  
   viewing,
 
-  
   expired,
 
-  
   revoked,
 }
 
@@ -90,24 +82,13 @@ class ViewOnceMessage {
   }
 }
 
-
-
-
-
 class ViewOnceProvider {
   final FirebaseFirestore firebaseFirestore;
 
-  
   final Map<String, Timer> _viewTimers = {};
 
   ViewOnceProvider({required this.firebaseFirestore});
 
-  
-  
-  
-
-  
-  
   Future<String?> sendViewOnceMessage({
     required String groupChatId,
     required String currentUserId,
@@ -149,19 +130,12 @@ class ViewOnceProvider {
     }
   }
 
-  
-  
-  
-
-  
-  
   Future<bool> openViewOnceMessage({
     required String groupChatId,
     required String messageId,
     required String userId,
   }) async {
     try {
-      
       final doc = await _getMessageDoc(groupChatId, messageId);
       if (doc == null) {
         debugPrint('⚠️ View-once message not found');
@@ -192,7 +166,6 @@ class ViewOnceProvider {
         'expiresAt': expiresAt.millisecondsSinceEpoch.toString(),
       });
 
-      
       _viewTimers[messageId]?.cancel();
       _viewTimers[messageId] = Timer(
         Duration(seconds: viewDuration),
@@ -211,7 +184,7 @@ class ViewOnceProvider {
     try {
       await _getMessageRef(groupChatId, messageId).update({
         'viewOnceStatus': ViewOnceStatus.expired.name,
-        FirestoreConstants.content: '', 
+        FirestoreConstants.content: '',
         'isDeleted': true,
         'deletedAt': DateTime.now().millisecondsSinceEpoch.toString(),
         'deletionReason': 'view_once_expired',
@@ -222,10 +195,6 @@ class ViewOnceProvider {
       debugPrint('❌ _expireViewOnceMessage error: $e');
     }
   }
-
-  
-  
-  
 
   Future<bool> revokeViewOnceMessage({
     required String groupChatId,
@@ -266,10 +235,6 @@ class ViewOnceProvider {
     }
   }
 
-  
-  
-  
-
   Future<bool> isMessageViewable({
     required String groupChatId,
     required String messageId,
@@ -302,7 +267,6 @@ class ViewOnceProvider {
     }
   }
 
-  
   Stream<ViewOnceMessage?> watchViewOnceMessage({
     required String groupChatId,
     required String messageId,
@@ -317,7 +281,6 @@ class ViewOnceProvider {
     });
   }
 
-  
   Future<List<ViewOnceMessage>> getSentViewOnceMessages({
     required String groupChatId,
     required String userId,
@@ -340,11 +303,6 @@ class ViewOnceProvider {
     }
   }
 
-  
-  
-  
-
-  
   Future<void> processExpiredOnAppResume(String groupChatId) async {
     try {
       final now = DateTime.now();
@@ -365,7 +323,6 @@ class ViewOnceProvider {
           if (expiresAt.isBefore(now)) {
             await _expireViewOnceMessage(groupChatId, doc.id);
           } else {
-            
             final remaining = expiresAt.difference(now);
             _viewTimers[doc.id]?.cancel();
             _viewTimers[doc.id] = Timer(
@@ -380,10 +337,6 @@ class ViewOnceProvider {
       debugPrint('❌ processExpiredOnAppResume error: $e');
     }
   }
-
-  
-  
-  
 
   DocumentReference _getMessageRef(String groupChatId, String messageId) => firebaseFirestore
       .collection(FirestoreConstants.pathMessageCollection)

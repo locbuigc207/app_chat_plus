@@ -7,26 +7,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/group_call_model.dart';
 
-
-
-
-
-
-
-
-
-
-
-
 class GroupCallService {
   GroupCallService._();
   static final GroupCallService instance = GroupCallService._();
 
-  
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  
   static const String _col = 'group_calls';
   static const int _timeoutSeconds = 45;
   static const int _historyLimit = 30;
@@ -37,11 +24,8 @@ class GroupCallService {
     'ongoing',
   ];
 
-  
-  
   final Map<String, Timer> _timeoutTimers = {};
 
-  
   String? get _uid => _auth.currentUser?.uid;
 
   CollectionReference<Map<String, dynamic>> get _calls => _db.collection(_col);
@@ -57,12 +41,6 @@ class GroupCallService {
     }
   }
 
-  
-  
-  
-
-  
-  
   Future<GroupCallModel?> initiateCall({
     required String groupId,
     required String groupName,
@@ -77,20 +55,17 @@ class GroupCallService {
     }
 
     try {
-      
       final initiatorSnap = await _db.collection('users').doc(uid).get();
       final initiatorData = initiatorSnap.data() ?? {};
       final initiatorName = initiatorData['nickname'] as String? ?? 'User';
       final initiatorAvatar = initiatorData['photoUrl'] as String? ?? '';
 
-      
       final existing = await _findActiveCallForGroup(groupId);
       if (existing != null) {
         debugPrint('⚠️ [GroupCallService] Group already has an active call');
         return null;
       }
 
-      
       final otherIds = memberIds.where((id) => id != uid).take(_maxParticipants - 1).toList();
 
       final callId = '${groupId}_${DateTime.now().millisecondsSinceEpoch}';
@@ -132,12 +107,6 @@ class GroupCallService {
     }
   }
 
-  
-  
-  
-
-  
-  
   Future<bool> joinCall(String callId) async {
     final uid = _uid;
     if (uid == null) return false;
@@ -152,19 +121,16 @@ class GroupCallService {
       final call = _parse(doc);
       if (call == null) return false;
 
-      
       if (call.status == GroupCallStatus.ended || call.status == GroupCallStatus.missed) {
         debugPrint('⚠️ [GroupCallService] joinCall: call already ended');
         return false;
       }
 
-      
       if (call.participants.length >= _maxParticipants) {
         debugPrint('⚠️ [GroupCallService] joinCall: call is full');
         return false;
       }
 
-      
       if (call.participants.any((p) => p.userId == uid)) {
         debugPrint('ℹ️ [GroupCallService] joinCall: already a participant');
         return true;
@@ -183,7 +149,6 @@ class GroupCallService {
         isCameraOff: false,
       );
 
-      
       await _db.runTransaction((tx) async {
         final fresh = await tx.get(_calls.doc(callId));
         if (!fresh.exists) return;
@@ -192,18 +157,16 @@ class GroupCallService {
         if (freshCall.participants.length >= _maxParticipants) return;
 
         final updated = List<GroupCallParticipant>.from(freshCall.participants)
-          ..removeWhere((p) => p.userId == uid) 
+          ..removeWhere((p) => p.userId == uid)
           ..add(participant);
 
         tx.update(_calls.doc(callId), {
           'participants': updated.map((p) => p.toJson()).toList(),
           'status': GroupCallStatus.ongoing.name,
-          
           'invitedUserIds': FieldValue.arrayRemove([uid]),
         });
       });
 
-      
       _cancelTimeout(callId);
 
       debugPrint('✅ [GroupCallService] Joined call: $callId');
@@ -214,12 +177,6 @@ class GroupCallService {
     }
   }
 
-  
-  
-  
-
-  
-  
   Future<void> leaveCall(String callId) async {
     final uid = _uid;
     if (uid == null) return;
@@ -234,7 +191,6 @@ class GroupCallService {
         final remaining = call.participants.where((p) => p.userId != uid).toList();
 
         if (remaining.isEmpty) {
-          
           final duration = DateTime.now().difference(call.createdAt).inSeconds;
           tx.update(_calls.doc(callId), {
             'status': GroupCallStatus.ended.name,
@@ -243,7 +199,6 @@ class GroupCallService {
             'participants': <Map<String, dynamic>>[],
           });
         } else {
-          
           final updatedList = remaining.map((p) {
             if (call.initiatorId == uid && p.userId == remaining.first.userId) {
               return p.copyWith(isAdmin: true);
@@ -264,11 +219,6 @@ class GroupCallService {
     }
   }
 
-  
-  
-  
-
-  
   Future<bool> endCallForAll(String callId, {DateTime? startTime}) async {
     try {
       final doc = await _calls.doc(callId).get();
@@ -295,11 +245,6 @@ class GroupCallService {
     }
   }
 
-  
-  
-  
-
-  
   Future<void> declineCall(String callId) async {
     final uid = _uid;
     if (uid == null) return;
@@ -313,11 +258,6 @@ class GroupCallService {
     }
   }
 
-  
-  
-  
-
-  
   Future<void> updateParticipantState({
     required String callId,
     required bool isMuted,
@@ -349,7 +289,6 @@ class GroupCallService {
     }
   }
 
-  
   Future<void> muteParticipant({
     required String callId,
     required String targetUserId,
@@ -365,7 +304,6 @@ class GroupCallService {
         final call = _parse(doc);
         if (call == null) return;
 
-        
         final self = call.participants.where((p) => p.userId == uid).firstOrNull;
         if (self == null || !self.isAdmin) return;
 
@@ -383,7 +321,6 @@ class GroupCallService {
     }
   }
 
-  
   Future<void> kickParticipant({
     required String callId,
     required String targetUserId,
@@ -414,16 +351,9 @@ class GroupCallService {
     }
   }
 
-  
-  
-
-  
   final Map<String, int> _lastReactionTimes = {};
-  static const int _reactionCooldownMs = 500; 
+  static const int _reactionCooldownMs = 500;
 
-  
-  
-  
   Future<void> toggleRaiseHand({
     required String callId,
     required String userId,
@@ -433,7 +363,6 @@ class GroupCallService {
       final docRef = _calls.doc(callId);
 
       if (raised) {
-        
         final handData = {
           'userId': userId,
           'raisedAt': FieldValue.serverTimestamp(),
@@ -442,7 +371,6 @@ class GroupCallService {
           'raisedHandsQueue': FieldValue.arrayUnion([handData]),
         });
       } else {
-        
         await _db.runTransaction((tx) async {
           final snap = await tx.get(docRef);
           if (!snap.exists) return;
@@ -459,8 +387,6 @@ class GroupCallService {
     }
   }
 
-  
-  
   Future<void> updateScreenShare({
     required String callId,
     required String userId,
@@ -478,18 +404,15 @@ class GroupCallService {
         final activeShares = List<Map<String, dynamic>>.from(data['activeScreenShares'] ?? []);
 
         if (isSharing) {
-          
           final shareData = {
             'userId': userId,
             'status': requiresApproval ? 'pending' : 'active',
             'startedAt': FieldValue.serverTimestamp(),
           };
 
-          
           activeShares.removeWhere((s) => s['userId'] == userId);
           activeShares.add(shareData);
         } else {
-          
           activeShares.removeWhere((s) => s['userId'] == userId);
         }
 
@@ -500,8 +423,6 @@ class GroupCallService {
     }
   }
 
-  
-  
   Future<void> sendReaction({
     required String callId,
     required String userId,
@@ -510,7 +431,6 @@ class GroupCallService {
   }) async {
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    
     final lastTime = _lastReactionTimes[userId] ?? 0;
     if (now - lastTime < _reactionCooldownMs) {
       debugPrint('⚠️ [GroupCallService] Reaction throttled (Anti-spam)');
@@ -528,8 +448,6 @@ class GroupCallService {
 
       final docRef = _calls.doc(callId);
 
-      
-      
       await _db.runTransaction((tx) async {
         final snap = await tx.get(docRef);
         if (!snap.exists) return;
@@ -539,12 +457,10 @@ class GroupCallService {
 
         recentReactions.add(r.toJson());
 
-        
         if (recentReactions.length > 30) {
           recentReactions = recentReactions.sublist(recentReactions.length - 30);
         }
 
-        
         tx.update(docRef, {
           'recentReactions': recentReactions,
           'totalReactionsCount': FieldValue.increment(1),
@@ -555,16 +471,10 @@ class GroupCallService {
     }
   }
 
-  
-  
-  
-
-  
   Stream<GroupCallModel?> watchCall(String callId) => _calls.doc(callId).snapshots().map(
         (doc) => doc.exists ? _parse(doc) : null,
       );
 
-  
   Stream<GroupCallModel?> incomingGroupCallStream(String userId) => _calls
       .where('invitedUserIds', arrayContains: userId)
       .where('status', isEqualTo: GroupCallStatus.calling.name)
@@ -573,7 +483,6 @@ class GroupCallService {
       .snapshots()
       .map((snap) => snap.docs.isNotEmpty ? _parse(snap.docs.first) : null);
 
-  
   Stream<GroupCallModel?> activeCallForGroup(String groupId) => _calls
       .where('groupId', isEqualTo: groupId)
       .where('status', whereIn: _activeStatuses)
@@ -582,8 +491,6 @@ class GroupCallService {
       .snapshots()
       .map((snap) => snap.docs.isNotEmpty ? _parse(snap.docs.first) : null);
 
-  
-  
   Stream<List<GroupCallModel>> myActiveCallsStream() {
     final uid = _uid;
     if (uid == null) return Stream.value([]);
@@ -606,11 +513,6 @@ class GroupCallService {
     });
   }
 
-  
-  
-  
-
-  
   Future<List<GroupCallModel>> getGroupCallHistory(
     String groupId, {
     int limit = 20,
@@ -629,7 +531,6 @@ class GroupCallService {
     }
   }
 
-  
   Future<GroupCallModel?> getCall(String callId) async {
     try {
       final doc = await _calls.doc(callId).get();
@@ -639,11 +540,6 @@ class GroupCallService {
     }
   }
 
-  
-  
-  
-
-  
   Future<GroupCallModel?> _findActiveCallForGroup(String groupId) async {
     try {
       final snap = await _calls
@@ -659,9 +555,8 @@ class GroupCallService {
     }
   }
 
-  
   void _scheduleTimeout(String callId) {
-    _cancelTimeout(callId); 
+    _cancelTimeout(callId);
     _timeoutTimers[callId] = Timer(
       Duration(seconds: _timeoutSeconds),
       () => _onTimeout(callId),
@@ -680,7 +575,6 @@ class GroupCallService {
       final call = _parse(doc);
       if (call == null) return;
 
-      
       if (call.status == GroupCallStatus.calling && call.participants.length <= 1) {
         await _calls.doc(callId).update({
           'status': GroupCallStatus.missed.name,
@@ -695,7 +589,6 @@ class GroupCallService {
     }
   }
 
-  
   void dispose() {
     for (final t in _timeoutTimers.values) {
       t.cancel();

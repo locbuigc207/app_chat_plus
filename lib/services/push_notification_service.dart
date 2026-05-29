@@ -12,10 +12,6 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'e2ee_service.dart';
 
-
-
-
-
 const _kChannelId = 'e2ee_chat_channel';
 const _kChannelName = 'Chat Notifications';
 const _kChannelDesc = 'Thông báo tin nhắn mã hóa đầu cuối';
@@ -23,15 +19,8 @@ const _kDefaultTitle = 'Tin nhắn mới';
 const _kLockedBody = '🔒 Bạn có một tin nhắn mã hóa mới';
 const _kIcon = '@mipmap/ic_launcher';
 
-
-
-
-
-
-
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  
   await Firebase.initializeApp();
 
   debugPrint('[PushNotif] 📲 Background message: ${message.messageId}');
@@ -47,7 +36,6 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   final data = _NotificationData.fromMap(message.data, currentUser.uid);
 
   try {
-    
     final e2ee = E2EEService();
     final keyLoaded = await e2ee.loadLocalKeys();
 
@@ -86,10 +74,6 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 }
 
-
-
-
-
 class _NotificationData {
   final String encryptedContent;
   final String conversationId;
@@ -98,7 +82,7 @@ class _NotificationData {
   final List<String> participantIds;
   final int notificationId;
   final String? avatarUrl;
-  final String? messageType; 
+  final String? messageType;
 
   const _NotificationData({
     required this.encryptedContent,
@@ -118,7 +102,6 @@ class _NotificationData {
     final senderId = data['senderId'] as String? ?? '';
     final conversationId = data['conversationId'] as String? ?? '';
 
-    
     List<String> participantIds = [currentUserId, senderId];
     final rawParticipants = data['participantIds'];
     if (rawParticipants is String && rawParticipants.isNotEmpty) {
@@ -130,7 +113,6 @@ class _NotificationData {
       } catch (_) {}
     }
 
-    
     final notificationId = conversationId.hashCode.abs() % 100000;
 
     return _NotificationData(
@@ -151,82 +133,56 @@ class _NotificationData {
       });
 }
 
-
-
-
-
 class PushNotificationService {
   PushNotificationService._();
 
-  
   static final FlutterLocalNotificationsPlugin _localPlugin = FlutterLocalNotificationsPlugin();
 
-  
   static final StreamController<Map<String, dynamic>> _notificationTapController =
       StreamController<Map<String, dynamic>>.broadcast();
 
-  
-  
   static Stream<Map<String, dynamic>> get onNotificationTapped => _notificationTapController.stream;
 
-  
   static final StreamController<String> _fcmTokenController = StreamController<String>.broadcast();
 
   static Stream<String> get onFcmTokenRefreshed => _fcmTokenController.stream;
 
-  
-  
-  
-
   static Future<void> initialize({
     void Function(Map<String, dynamic> payload)? onNotificationTap,
   }) async {
-    
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-    
     await _initLocalNotifications();
 
-    
     await _requestPermissions();
 
-    
     FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
 
-    
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
       _handleNotificationOpen(message.data);
       onNotificationTap?.call(message.data);
     });
 
-    
     final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
     if (initialMessage != null) {
-      
       await Future.delayed(const Duration(milliseconds: 500));
       _handleNotificationOpen(initialMessage.data);
       onNotificationTap?.call(initialMessage.data);
     }
 
-    
     FirebaseMessaging.instance.onTokenRefresh.listen((token) {
       debugPrint('[PushNotif] 🔄 FCM token refreshed');
       _fcmTokenController.add(token);
     });
 
-    
     await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
-      alert: false, 
+      alert: false,
       badge: true,
       sound: false,
     );
 
     debugPrint('[PushNotif] ✅ Khởi tạo Push Notification Service hoàn tất');
   }
-
-  
-  
-  
 
   static Future<void> _initLocalNotifications() async {
     const androidSettings = AndroidInitializationSettings(_kIcon);
@@ -256,7 +212,6 @@ class PushNotificationService {
       onDidReceiveBackgroundNotificationResponse: _backgroundNotificationResponseHandler,
     );
 
-    
     await _createNotificationChannel();
   }
 
@@ -281,10 +236,6 @@ class PushNotificationService {
         ?.createNotificationChannel(channel);
   }
 
-  
-  
-  
-
   static Future<NotificationSettings> _requestPermissions() async {
     final settings = await FirebaseMessaging.instance.requestPermission(
       alert: true,
@@ -297,15 +248,10 @@ class PushNotificationService {
     return settings;
   }
 
-  
-  
-  
-
   static Future<void> _handleForegroundMessage(RemoteMessage message) async {
     debugPrint('[PushNotif] 📩 Foreground message: ${message.messageId}');
 
     if (!message.data.containsKey('encryptedContent')) {
-      
       final notification = message.notification;
       if (notification != null) {
         await showLocalNotification(
@@ -352,10 +298,6 @@ class PushNotificationService {
     }
   }
 
-  
-  
-  
-
   static String _buildNotificationBody(String text, String? messageType) {
     switch (messageType) {
       case 'image':
@@ -369,14 +311,9 @@ class PushNotificationService {
       case 'sticker':
         return '😊 Sticker';
       default:
-        
         return text.length > 120 ? '${text.substring(0, 120)}…' : text;
     }
   }
-
-  
-  
-  
 
   static Future<void> showLocalNotification({
     required String title,
@@ -423,10 +360,6 @@ class PushNotificationService {
     );
   }
 
-  
-  
-  
-
   static Future<void> cancelNotification(int id) => _localPlugin.cancel(id);
 
   static Future<void> cancelAllNotifications() => _localPlugin.cancelAll();
@@ -435,10 +368,6 @@ class PushNotificationService {
     final id = conversationId.hashCode.abs() % 100000;
     await _localPlugin.cancel(id);
   }
-
-  
-  
-  
 
   static Future<String?> getFcmToken() async {
     try {
@@ -457,28 +386,16 @@ class PushNotificationService {
     }
   }
 
-  
-  
-  
-
   static Future<void> subscribeToTopic(String topic) =>
       FirebaseMessaging.instance.subscribeToTopic(topic);
 
   static Future<void> unsubscribeFromTopic(String topic) =>
       FirebaseMessaging.instance.unsubscribeFromTopic(topic);
 
-  
-  
-  
-
   static void _handleNotificationOpen(Map<String, dynamic> data) {
     debugPrint('[PushNotif] 🚀 App opened via notification: $data');
     _notificationTapController.add(data);
   }
-
-  
-  
-  
 
   static Future<void> dispose() async {
     await _notificationTapController.close();

@@ -1,4 +1,3 @@
-
 // ignore_for_file: use_super_parameters
 
 import 'dart:async';
@@ -11,17 +10,11 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-
-
-
-
-
 @immutable
 class DrawPoint {
   final double x;
   final double y;
 
-  
   final bool isStart;
   final int color;
   final double strokeWidth;
@@ -64,23 +57,17 @@ class DrawPoint {
       );
 }
 
-
-
-
-
 class WhiteboardPainter extends CustomPainter {
   final List<DrawPoint> points;
   const WhiteboardPainter({required this.points});
 
   @override
   void paint(Canvas canvas, Size size) {
-    
     canvas.drawRect(
       Offset.zero & size,
       Paint()..color = const Color(0xFFFBFCFF),
     );
 
-    
     final dotPaint = Paint()..color = const Color(0xFFCDD5E0);
     const step = 22.0;
     for (double x = step; x < size.width; x += step) {
@@ -89,7 +76,6 @@ class WhiteboardPainter extends CustomPainter {
       }
     }
 
-    
     Paint? paint;
     Path? path;
 
@@ -115,13 +101,6 @@ class WhiteboardPainter extends CustomPainter {
   bool shouldRepaint(WhiteboardPainter old) => old.points != points;
 }
 
-
-
-
-
-
-
-
 class SharedSpaceWidget extends StatefulWidget {
   final String conversationId;
   final String currentUserId;
@@ -139,12 +118,10 @@ class SharedSpaceWidget extends StatefulWidget {
 }
 
 class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProviderStateMixin {
-  
-  int _tab = 0; 
+  int _tab = 0;
 
-  
   final List<DrawPoint> _points = [];
-  final List<DrawPoint> _undoBuffer = []; 
+  final List<DrawPoint> _undoBuffer = [];
   Color _color = const Color(0xFF1E88E5);
   double _stroke = 3.5;
   bool _isEraser = false;
@@ -152,38 +129,29 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProvid
   StreamSubscription? _boardSub;
   final _boardKey = GlobalKey();
 
-  
   final List<DrawPoint> _pendingBatch = [];
   Timer? _batchTimer;
 
-  
   final _urlCtrl = TextEditingController();
   String? _sharedUrl;
   String? _sharedBy;
   StreamSubscription? _urlSub;
 
-  
   late final DocumentReference _docRef;
 
-  
   late AnimationController _tabSwitch;
   late AnimationController _entryAnim;
 
-  
   static const _palette = <Color>[
-    Color(0xFF1E88E5), 
-    Color(0xFFE53935), 
-    Color(0xFF43A047), 
-    Color(0xFFFF9800), 
-    Color(0xFF8E24AA), 
-    Color(0xFF00ACC1), 
-    Color(0xFF212121), 
-    Color(0xFFEC407A), 
+    Color(0xFF1E88E5),
+    Color(0xFFE53935),
+    Color(0xFF43A047),
+    Color(0xFFFF9800),
+    Color(0xFF8E24AA),
+    Color(0xFF00ACC1),
+    Color(0xFF212121),
+    Color(0xFFEC407A),
   ];
-
-  
-  
-  
 
   @override
   void initState() {
@@ -214,10 +182,6 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProvid
     _entryAnim.dispose();
     super.dispose();
   }
-
-  
-  
-  
 
   void _listenBoard() {
     _boardSub = _docRef.snapshots().listen((snap) {
@@ -250,10 +214,6 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProvid
       }
     }, onError: (_) {});
   }
-
-  
-  
-  
 
   void _addPoint(DrawPoint pt) {
     final stamped = pt.now();
@@ -312,10 +272,6 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProvid
     }
   }
 
-  
-  
-  
-
   Future<void> _shareUrl() async {
     final url = _urlCtrl.text.trim();
     if (url.isEmpty) return;
@@ -344,10 +300,6 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProvid
     }
   }
 
-  
-  
-  
-
   void _showSnack(String msg, Color color) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -365,10 +317,6 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProvid
     _tabSwitch.forward(from: 0);
     HapticFeedback.selectionClick();
   }
-
-  
-  
-  
 
   @override
   Widget build(BuildContext context) {
@@ -393,10 +341,6 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProvid
       ),
     );
   }
-
-  
-  
-  
 
   Widget _buildTabBar() {
     return Container(
@@ -424,10 +368,6 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProvid
       ),
     );
   }
-
-  
-  
-  
 
   Widget _buildWhiteboard({Key? key}) {
     return Column(
@@ -502,7 +442,6 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProvid
       ),
       child: Row(
         children: [
-          
           for (final c in _palette)
             _ColorDot(
               color: c,
@@ -512,21 +451,15 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProvid
                 _isEraser = false;
               }),
             ),
-
           const SizedBox(width: 4),
-          
           Container(width: 1, height: 20, color: const Color(0xFFDDE3EE)),
           const SizedBox(width: 4),
-
-          
           _ToolButton(
             icon: Icons.auto_fix_high_rounded,
             active: _isEraser,
             tooltip: 'Tẩy',
             onTap: () => setState(() => _isEraser = !_isEraser),
           ),
-
-          
           PopupMenuButton<double>(
             tooltip: 'Cỡ bút',
             icon: Icon(Icons.line_weight_rounded, size: 17, color: const Color(0xFF7B8499)),
@@ -543,10 +476,7 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProvid
                 ),
             ],
           ),
-
           const Spacer(),
-
-          
           if (_isSyncing)
             const SizedBox(
               width: 14,
@@ -554,10 +484,7 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProvid
               child: CircularProgressIndicator(
                   strokeWidth: 1.5, valueColor: AlwaysStoppedAnimation(Color(0xFF1E88E5))),
             ),
-
           const SizedBox(width: 4),
-
-          
           _ToolButton(
             icon: Icons.image_outlined,
             active: false,
@@ -565,8 +492,6 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProvid
             color: const Color(0xFF43A047),
             onTap: _saveAsImage,
           ),
-
-          
           _ToolButton(
             icon: Icons.delete_outline_rounded,
             active: false,
@@ -578,10 +503,6 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProvid
       ),
     );
   }
-
-  
-  
-  
 
   Widget _buildCoBrowse({Key? key}) {
     return Column(
@@ -666,7 +587,6 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProvid
       ),
       child: Column(
         children: [
-          
           Container(
             padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
             decoration: BoxDecoration(
@@ -704,8 +624,6 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProvid
               ],
             ),
           ),
-
-          
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -735,8 +653,6 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProvid
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 20),
-
-                
                 GestureDetector(
                   onTap: () {
                     HapticFeedback.lightImpact();
@@ -772,7 +688,6 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProvid
                     ),
                   ),
                 ),
-
                 if (_sharedBy != null) ...[
                   const SizedBox(height: 12),
                   Text(
@@ -828,7 +743,6 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProvid
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 20),
-            
             Wrap(
               spacing: 8,
               children: [
@@ -861,10 +775,6 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProvid
       ),
     );
   }
-
-  
-  
-  
 
   _UrlType _detectUrlType(String url) {
     final u = url.toLowerCase();
@@ -918,10 +828,6 @@ class _SharedSpaceWidgetState extends State<SharedSpaceWidget> with TickerProvid
     );
   }
 }
-
-
-
-
 
 class _TabItem extends StatelessWidget {
   final int index;
@@ -1130,10 +1036,6 @@ class _QuickChip extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _UrlType {
   final IconData icon;

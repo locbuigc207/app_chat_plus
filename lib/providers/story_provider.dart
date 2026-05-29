@@ -21,10 +21,6 @@ class StoryProvider extends ChangeNotifier {
     required this.firebaseStorage,
   });
 
-  
-  
-  
-
   Stream<List<UserStories>> getStoriesStream({
     required String currentUserId,
     required List<String> friendIds,
@@ -71,12 +67,12 @@ class StoryProvider extends ChangeNotifier {
       result.sort((a, b) {
         if (a.isCurrentUser) return -1;
         if (b.isCurrentUser) return 1;
-        
+
         final aUnseen = a.hasUnseenStoriesBy(currentUserId);
         final bUnseen = b.hasUnseenStoriesBy(currentUserId);
         if (aUnseen && !bUnseen) return -1;
         if (!aUnseen && bUnseen) return 1;
-        
+
         final aLatest = a.latestStory?.createdAt ?? DateTime(2000);
         final bLatest = b.latestStory?.createdAt ?? DateTime(2000);
         return bLatest.compareTo(aLatest);
@@ -85,10 +81,6 @@ class StoryProvider extends ChangeNotifier {
       return result;
     };
   }
-
-  
-  
-  
 
   Stream<List<Story>> getMyStoriesStream(String userId) {
     return firebaseFirestore
@@ -110,10 +102,6 @@ class StoryProvider extends ChangeNotifier {
             .where((s) => !s.isExpired)
             .toList());
   }
-
-  
-  
-  
 
   Future<String?> createImageStory({
     required String userId,
@@ -255,10 +243,6 @@ class StoryProvider extends ChangeNotifier {
     return doc.id;
   }
 
-  
-  
-  
-
   Future<void> markStoryViewed({
     required String storyId,
     required String viewerId,
@@ -289,10 +273,6 @@ class StoryProvider extends ChangeNotifier {
     }
   }
 
-  
-  
-  
-
   Future<void> reactToStory({
     required String storyId,
     required String reactorId,
@@ -307,7 +287,6 @@ class StoryProvider extends ChangeNotifier {
 
       final story = Story.fromDocument(snap);
 
-      
       final existingReaction =
           story.reactions.where((r) => r.userId == reactorId).map((r) => r.toJson()).toList();
 
@@ -333,10 +312,6 @@ class StoryProvider extends ChangeNotifier {
     }
   }
 
-  
-  
-  
-
   Future<void> replyToStory({
     required String storyId,
     required String senderId,
@@ -357,10 +332,6 @@ class StoryProvider extends ChangeNotifier {
     }
   }
 
-  
-  
-  
-
   Future<bool> deleteStory(String storyId) async {
     try {
       await firebaseFirestore.collection(_col).doc(storyId).update({'isDeleted': true});
@@ -370,10 +341,6 @@ class StoryProvider extends ChangeNotifier {
       return false;
     }
   }
-
-  
-  
-  
 
   Future<void> cleanupExpired(String userId) async {
     try {
@@ -402,10 +369,6 @@ class StoryProvider extends ChangeNotifier {
       debugPrint('❌ cleanupExpired: $e');
     }
   }
-
-  
-  
-  
 
   String formatTimeRemaining(Duration d) {
     if (d.inHours > 0) return '${d.inHours}h ${d.inMinutes % 60}m remaining';

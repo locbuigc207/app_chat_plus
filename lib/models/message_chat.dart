@@ -1,10 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
-
-
-
-
 class TypeMessage {
   const TypeMessage._();
 
@@ -13,38 +9,23 @@ class TypeMessage {
   static const int sticker = 2;
   static const int voice = 3;
   static const int video = 4;
-  static const int document = 5; 
-  static const int poll = 6; 
-  static const int game = 7; 
+  static const int document = 5;
+  static const int poll = 6;
+  static const int game = 7;
   static const int blow = 8;
   static const int shake = 9;
   static const int geoLocked = 10;
 
-  
-  
-  
-  
   static const int gameInvite = 11;
 
-  
-  
-  
   static const int gameResult = 12;
 
-  
-  
-  
   static const int gameLive = 13;
 }
 
-
-
-
-
-
 enum GameType {
-  caro, 
-  chess; 
+  caro,
+  chess;
 
   String get displayName {
     switch (this) {
@@ -75,18 +56,13 @@ enum GameType {
   }
 }
 
-
 enum MatchStatus {
-  
   waiting,
 
-  
   live,
 
-  
   finished,
 
-  
   aborted;
 
   static MatchStatus fromString(String value) {
@@ -117,12 +93,6 @@ enum MatchStatus {
   }
 }
 
-
-
-
-
-
-
 class GameInvitePayload {
   final String matchId;
   final GameType gameType;
@@ -130,17 +100,13 @@ class GameInvitePayload {
   final String challengerName;
   final String challengerAvatar;
 
-  
   final String? targetUserId;
   final String? targetUserName;
 
-  
   final int timeControlSeconds;
 
-  
   final int boardSize;
 
-  
   final int spectatorCount;
 
   const GameInvitePayload({
@@ -203,12 +169,10 @@ class GameInvitePayload {
       );
 }
 
-
 class GameResultPayload {
   final String matchId;
   final GameType gameType;
 
-  
   final String result;
 
   final String player1Id;
@@ -218,14 +182,10 @@ class GameResultPayload {
   final String player2Name;
   final String player2Avatar;
 
-  
-  
   final String endReason;
 
-  
   final int durationSeconds;
 
-  
   final int totalMoves;
 
   const GameResultPayload({
@@ -273,24 +233,18 @@ class GameResultPayload {
         totalMoves: json['totalMoves'] as int? ?? 0,
       );
 
-  
   String? get winnerId {
     if (result == 'player1_win') return player1Id;
     if (result == 'player2_win') return player2Id;
     return null;
   }
 
-  
   String resultLabel(String currentUserId) {
     if (result == 'draw') return '🤝 Hòa nhau!';
     if (winnerId == currentUserId) return '🏆 Bạn đã thắng!';
     return '💀 Bạn đã thua!';
   }
 }
-
-
-
-
 
 class MessageChat {
   final String idFrom;
@@ -299,32 +253,22 @@ class MessageChat {
   final String content;
   final int type;
 
-  
   final bool isDeleted;
 
-  
   final String? editedAt;
 
-  
   final bool isPinned;
 
-  
   final bool isRead;
 
-  
   final String? readAt;
 
-  
   final bool? scamWarning;
 
-  
-  
   final String? matchId;
 
-  
   final String? gameType;
 
-  
   final String? matchStatus;
 
   const MessageChat({
@@ -339,15 +283,10 @@ class MessageChat {
     this.isRead = false,
     this.readAt,
     this.scamWarning,
-    
     this.matchId,
     this.gameType,
     this.matchStatus,
   });
-
-  
-  
-  
 
   Map<String, dynamic> toJson() {
     return {
@@ -362,16 +301,11 @@ class MessageChat {
       'isRead': isRead,
       'readAt': readAt,
       'scamWarning': scamWarning,
-      
       if (matchId != null) FirestoreConstants.matchId: matchId,
       if (gameType != null) FirestoreConstants.gameType: gameType,
       if (matchStatus != null) FirestoreConstants.matchStatus: matchStatus,
     };
   }
-
-  
-  
-  
 
   factory MessageChat.fromDocument(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>?;
@@ -392,16 +326,11 @@ class MessageChat {
       isRead: data['isRead'] as bool? ?? false,
       readAt: _parseOptionalTimestamp(data['readAt']),
       scamWarning: data['scamWarning'] as bool?,
-      
       matchId: data[FirestoreConstants.matchId] as String?,
       gameType: data[FirestoreConstants.gameType] as String?,
       matchStatus: data[FirestoreConstants.matchStatus] as String?,
     );
   }
-
-  
-  
-  
 
   MessageChat copyWith({
     String? content,
@@ -433,42 +362,27 @@ class MessageChat {
     );
   }
 
-  
-  
-  
-
-  
   bool get isVideo => type == TypeMessage.video;
 
-  
   bool get isDocument => type == TypeMessage.document;
 
-  
   bool get isPoll => type == TypeMessage.poll;
 
-  
-  
   bool get isGameMessage =>
       type == TypeMessage.gameInvite ||
       type == TypeMessage.gameResult ||
       type == TypeMessage.gameLive;
 
-  
   bool get isGameInvite => type == TypeMessage.gameInvite;
 
-  
   bool get isGameResult => type == TypeMessage.gameResult;
 
-  
   bool get isGameLive => type == TypeMessage.gameLive;
 
-  
   MatchStatus get parsedMatchStatus => MatchStatus.fromString(matchStatus ?? 'waiting');
 
-  
   GameType get parsedGameType => GameType.fromString(gameType ?? 'caro');
 
-  
   String get videoUrl {
     if (!isVideo) return content;
     final parts = content.split('|');
@@ -480,10 +394,6 @@ class MessageChat {
     final parts = content.split('|');
     return parts.length > 1 ? parts[1] : '';
   }
-
-  
-  
-  
 
   static String _parseTimestamp(dynamic value) {
     if (value is String) return value;

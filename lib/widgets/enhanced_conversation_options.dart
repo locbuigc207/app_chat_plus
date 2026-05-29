@@ -94,7 +94,6 @@ class _EnhancedConversationOptionsState extends State<EnhancedConversationOption
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            
             Padding(
               padding: const EdgeInsets.only(top: 12, bottom: 4),
               child: Container(
@@ -106,8 +105,6 @@ class _EnhancedConversationOptionsState extends State<EnhancedConversationOption
                 ),
               ),
             ),
-
-            
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
               child: Row(
@@ -158,8 +155,6 @@ class _EnhancedConversationOptionsState extends State<EnhancedConversationOption
                 ],
               ),
             ),
-
-            
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -213,13 +208,10 @@ class _EnhancedConversationOptionsState extends State<EnhancedConversationOption
                 ],
               ),
             ),
-
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 20),
               child: Divider(height: 1, color: Color(0xFFF2F2F7)),
             ),
-
-            
             if (widget.onViewProfile != null)
               _buildListTile(
                 icon: Icons.account_circle_rounded,
@@ -231,7 +223,6 @@ class _EnhancedConversationOptionsState extends State<EnhancedConversationOption
                   widget.onViewProfile!();
                 },
               ),
-
             _buildListTile(
               icon: Icons.bubble_chart_rounded,
               label: 'Tạo Chat Bubble',
@@ -270,7 +261,6 @@ class _EnhancedConversationOptionsState extends State<EnhancedConversationOption
                 }
               },
             ),
-
             if (widget.onArchive != null)
               _buildListTile(
                 icon: widget.isArchived ? Icons.unarchive_rounded : Icons.archive_rounded,
@@ -283,12 +273,10 @@ class _EnhancedConversationOptionsState extends State<EnhancedConversationOption
                   widget.onArchive!();
                 },
               ),
-
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 20),
               child: Divider(height: 1, color: Color(0xFFF2F2F7)),
             ),
-
             _buildListTile(
               icon: Icons.delete_sweep_rounded,
               label: 'Xóa lịch sử chat',
@@ -299,7 +287,6 @@ class _EnhancedConversationOptionsState extends State<EnhancedConversationOption
                 widget.onClearHistory();
               },
             ),
-
             if (widget.onBlock != null)
               _buildListTile(
                 icon: widget.isBlocked ? Icons.block_rounded : Icons.block_rounded,
@@ -313,7 +300,6 @@ class _EnhancedConversationOptionsState extends State<EnhancedConversationOption
                   widget.onBlock!();
                 },
               ),
-
             SizedBox(height: MediaQuery.of(context).padding.bottom + 12),
           ],
         ),

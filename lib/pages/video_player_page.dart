@@ -5,33 +5,15 @@ import 'package:flutter/services.dart';
 
 import 'package:video_player/video_player.dart';
 
-
-
-
-
 const _kSeekSeconds = 10;
 const _kControlsTimeout = Duration(seconds: 3);
 const _kAnimDuration = Duration(milliseconds: 220);
 const _kLongPressSpeed = 2.0;
 
-
 const _kAccent = Color(0xFF00E5FF);
 const _kAccentDim = Color(0x4400E5FF);
 const _kSurface = Color(0xCC0A0A0F);
 const _kOverlayGrad = [Color(0xE0000000), Colors.transparent];
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 class VideoPlayerPage extends StatefulWidget {
   const VideoPlayerPage({
@@ -51,17 +33,11 @@ class VideoPlayerPage extends StatefulWidget {
   State<VideoPlayerPage> createState() => _VideoPlayerPageState();
 }
 
-
-
-
-
 class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderStateMixin {
-  
   late VideoPlayerController _ctrl;
   Timer? _hideTimer;
   Timer? _longPressTimer;
 
-  
   late final AnimationController _controlsAc;
   late final Animation<double> _controlsFade;
 
@@ -70,7 +46,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
 
   late final AnimationController _playPauseAc;
 
-  
   bool _initialized = false;
   bool _hasError = false;
   bool _showControls = true;
@@ -82,29 +57,23 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
   bool _showBrightnessBanner = false;
   bool _showVolumeBanner = false;
 
-  
   double? _dragSeekFraction;
   Duration? _dragSeekDuration;
 
-  
   double _volume = 1.0;
   double _brightness = 0.5;
   double _verticalDragStartY = 0;
   double _verticalDragStartValue = 0;
   bool _isVolumeDrag = false;
 
-  
   double _playbackSpeed = 1.0;
   static const _speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
-  
   String? _thumbnailUrl;
 
-  
   int _retryCount = 0;
   static const _maxRetries = 3;
 
-  
   @override
   void initState() {
     super.initState();
@@ -136,10 +105,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
     _applySystemUi(dark: false);
     super.dispose();
   }
-
-  
-  
-  
 
   void _setupAnimations() {
     _controlsAc = AnimationController(vsync: this, duration: _kAnimDuration);
@@ -187,10 +152,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
     );
   }
 
-  
-  
-  
-
   void _videoListener() {
     if (!mounted) return;
     final v = _ctrl.value;
@@ -200,10 +161,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
     }
     setState(() {});
   }
-
-  
-  
-  
 
   void _setControls(bool visible) {
     if (!mounted) return;
@@ -246,10 +203,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
     if (nowVisible) _scheduleHide();
   }
 
-  
-  
-  
-
   Future<void> _togglePlayPause() async {
     _cancelHide();
     if (_ctrl.value.isPlaying) {
@@ -257,7 +210,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
       _playPauseAc.reverse();
       _setControls(true);
     } else {
-      
       if (_ctrl.value.position >= _ctrl.value.duration && _ctrl.value.duration > Duration.zero) {
         await _ctrl.seekTo(Duration.zero);
       }
@@ -266,10 +218,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
       _scheduleHide();
     }
   }
-
-  
-  
-  
 
   Future<void> _seekRelative(int seconds) async {
     final pos = _ctrl.value.position + Duration(seconds: seconds);
@@ -283,10 +231,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
     await _ctrl.seekTo(Duration(milliseconds: ms.clamp(0, _ctrl.value.duration.inMilliseconds)));
   }
 
-  
-  
-  
-
   void _startFastForward() {
     _isLongPressFastForward = true;
     _ctrl.setPlaybackSpeed(_kLongPressSpeed);
@@ -298,10 +242,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
     _ctrl.setPlaybackSpeed(_playbackSpeed);
     setState(() {});
   }
-
-  
-  
-  
 
   void _toggleLock() {
     setState(() => _isLocked = !_isLocked);
@@ -315,10 +255,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
       _scheduleHide();
     }
   }
-
-  
-  
-  
 
   void _toggleFullscreen() {
     setState(() => _isFullscreen = !_isFullscreen);
@@ -337,10 +273,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
     _scheduleHide();
   }
 
-  
-  
-  
-
   Future<void> _setSpeed(double speed) async {
     setState(() {
       _playbackSpeed = speed;
@@ -349,10 +281,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
     await _ctrl.setPlaybackSpeed(speed);
     _scheduleHide();
   }
-
-  
-  
-  
 
   void _onVerticalDragStart(DragStartDetails d, bool isLeft) {
     _cancelHide();
@@ -386,10 +314,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
     _scheduleHide();
   }
 
-  
-  
-  
-
   String _fmt(Duration d) {
     final h = d.inHours;
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
@@ -419,10 +343,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
     return _ctrl.value.position;
   }
 
-  
-  
-  
-
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -431,7 +351,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
       body: Stack(
         fit: StackFit.expand,
         children: [
-          
           if (_initialized)
             IgnorePointer(
               child: AnimatedOpacity(
@@ -440,38 +359,22 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
                 child: Container(color: Colors.black),
               ),
             ),
-
-          
           _buildVideoOrState(),
-
-          
           if (_initialized) _buildGestureLayer(size),
-
-          
           if (_initialized) _buildSeekFeedback(),
-
-          
           if (_showVolumeBanner) _buildSideBanner(isVolume: true),
           if (_showBrightnessBanner) _buildSideBanner(isVolume: false),
-
-          
           if (_initialized)
             FadeTransition(
               opacity: _controlsFade,
               child: _buildControls(size),
             ),
-
-          
           if (_initialized && _isLocked) _buildLockOverlay(),
-
-          
           if (_isLongPressFastForward) _buildFastForwardBadge(),
         ],
       ),
     );
   }
-
-  
 
   Widget _buildVideoOrState() {
     if (_hasError) {
@@ -550,13 +453,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
     );
   }
 
-  
-
   Widget _buildGestureLayer(Size size) {
     return Positioned.fill(
       child: Row(
         children: [
-          
           Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
@@ -579,7 +479,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
               child: const SizedBox.expand(),
             ),
           ),
-          
           Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
@@ -632,11 +531,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
     }
   }
 
-  
-
   Widget _buildSeekFeedback() {
     return Stack(children: [
-      
       Positioned(
         left: 16,
         top: 0,
@@ -649,7 +545,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
           ),
         ),
       ),
-      
       Positioned(
         right: 16,
         top: 0,
@@ -662,7 +557,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
           ),
         ),
       ),
-      
       if (_isDragging && _dragSeekDuration != null)
         Center(
           child: _DragSeekBadge(
@@ -673,8 +567,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
         ),
     ]);
   }
-
-  
 
   Widget _buildSideBanner({required bool isVolume}) {
     final value = isVolume ? _volume : _brightness;
@@ -735,12 +627,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
     );
   }
 
-  
-
   Widget _buildControls(Size size) {
     if (_isLocked) return const SizedBox();
     return Stack(children: [
-      
       Positioned.fill(
         child: IgnorePointer(
           child: DecoratedBox(
@@ -760,17 +649,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
           ),
         ),
       ),
-
-      
       Positioned(top: 0, left: 0, right: 0, child: _buildTopBar()),
-
-      
       Center(child: _buildCenterControls()),
-
-      
       Positioned(bottom: 0, left: 0, right: 0, child: _buildBottomBar()),
-
-      
       if (_showSpeedPanel) Positioned(top: 0, right: 0, bottom: 0, child: _buildSpeedPanel()),
     ]);
   }
@@ -801,7 +682,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
               )
             else
               const Spacer(),
-            
             GestureDetector(
               onTap: () {
                 _cancelHide();
@@ -830,7 +710,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
               ),
             ),
             const SizedBox(width: 4),
-            
             IconButton(
               icon: Icon(
                 _isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
@@ -839,7 +718,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
               ),
               onPressed: _toggleLock,
             ),
-            
             IconButton(
               icon: Icon(
                 _isFullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded,
@@ -901,7 +779,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
                   ),
                 ),
                 const Spacer(),
-                
                 GestureDetector(
                   onTap: () {
                     setState(() => _volume = _volume > 0 ? 0 : 1.0);
@@ -971,7 +848,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
 
   Widget _buildSpeedPanel() {
     return GestureDetector(
-      onTap: () {}, 
+      onTap: () {},
       child: Container(
         width: 130,
         margin: const EdgeInsets.only(top: 60, bottom: 60, right: 8),
@@ -1004,8 +881,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
     );
   }
 
-  
-
   Widget _buildLockOverlay() {
     return AnimatedOpacity(
       opacity: _showControls ? 1.0 : 0.0,
@@ -1031,8 +906,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
     );
   }
 
-  
-
   Widget _buildFastForwardBadge() {
     return Center(
       child: Container(
@@ -1057,10 +930,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with TickerProviderSt
     );
   }
 }
-
-
-
-
 
 class _GlassButton extends StatelessWidget {
   final IconData icon;
@@ -1293,10 +1162,6 @@ class _SpeedTile extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _BufferedTrackShape extends RoundedRectSliderTrackShape {
   final double bufferFraction;
   const _BufferedTrackShape({required this.bufferFraction});
@@ -1312,8 +1177,8 @@ class _BufferedTrackShape extends RoundedRectSliderTrackShape {
     Offset? secondaryOffset,
     bool isDiscrete = false,
     bool isEnabled = false,
-    double additionalActiveTrackHeight = 2, 
-    TextDirection textDirection = TextDirection.ltr, 
+    double additionalActiveTrackHeight = 2,
+    TextDirection textDirection = TextDirection.ltr,
   }) {
     final trackRect = getPreferredRect(
       parentBox: parentBox,
@@ -1323,7 +1188,6 @@ class _BufferedTrackShape extends RoundedRectSliderTrackShape {
       isDiscrete: isDiscrete,
     );
 
-    
     final bufferPaint = Paint()
       ..color = Colors.white30
       ..style = PaintingStyle.fill;
@@ -1336,7 +1200,6 @@ class _BufferedTrackShape extends RoundedRectSliderTrackShape {
       bufferPaint,
     );
 
-    
     super.paint(
       context,
       offset,
@@ -1347,8 +1210,8 @@ class _BufferedTrackShape extends RoundedRectSliderTrackShape {
       secondaryOffset: secondaryOffset,
       isDiscrete: isDiscrete,
       isEnabled: isEnabled,
-      additionalActiveTrackHeight: additionalActiveTrackHeight, 
-      textDirection: textDirection, 
+      additionalActiveTrackHeight: additionalActiveTrackHeight,
+      textDirection: textDirection,
     );
   }
 }

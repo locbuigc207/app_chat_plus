@@ -7,10 +7,6 @@ import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-
-
-
-
 class GroupMediaPage extends StatefulWidget {
   const GroupMediaPage({
     super.key,
@@ -31,7 +27,6 @@ class _GroupMediaPageState extends State<GroupMediaPage> with SingleTickerProvid
   bool _isLoading = true;
   int _selectedImageIndex = -1;
 
-  
   static const _bg = Color(0xFF0D0F14);
   static const _surface = Color(0xFF181B24);
   static const _accent = Color(0xFF4F8EF7);
@@ -187,8 +182,6 @@ class _GroupMediaPageState extends State<GroupMediaPage> with SingleTickerProvid
     );
   }
 
-  
-
   Widget _buildImagesTab() {
     if (_images.isEmpty) {
       return _EmptyState(
@@ -260,7 +253,6 @@ class _GroupMediaPageState extends State<GroupMediaPage> with SingleTickerProvid
                     alignment: Alignment.center,
                     child: const Icon(Icons.check_circle_rounded, color: Colors.white, size: 28),
                   ),
-                
                 Positioned(
                   bottom: 4,
                   right: 4,
@@ -284,8 +276,6 @@ class _GroupMediaPageState extends State<GroupMediaPage> with SingleTickerProvid
       },
     );
   }
-
-  
 
   Widget _buildVoiceTab() {
     if (_voiceMessages.isEmpty) {
@@ -354,8 +344,6 @@ class _GroupMediaPageState extends State<GroupMediaPage> with SingleTickerProvid
     );
   }
 
-  
-
   Widget _buildLinksTab() {
     if (_links.isEmpty) {
       return _EmptyState(
@@ -402,7 +390,6 @@ class _GroupMediaPageState extends State<GroupMediaPage> with SingleTickerProvid
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  
                   Container(
                     width: 44,
                     height: 44,
@@ -415,7 +402,6 @@ class _GroupMediaPageState extends State<GroupMediaPage> with SingleTickerProvid
                     child: const Icon(Icons.public_rounded, color: Color(0xFF43C6AC), size: 22),
                   ),
                   const SizedBox(width: 12),
-                  
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -456,8 +442,6 @@ class _GroupMediaPageState extends State<GroupMediaPage> with SingleTickerProvid
     );
   }
 
-  
-
   DateTime _parseTimestamp(String ts) {
     try {
       return DateTime.fromMillisecondsSinceEpoch(int.parse(ts));
@@ -490,16 +474,12 @@ class _GroupMediaPageState extends State<GroupMediaPage> with SingleTickerProvid
   }
 }
 
-
-
 class _TabInfo {
   const _TabInfo({required this.icon, required this.label, required this.count});
   final IconData icon;
   final String label;
   final int count;
 }
-
-
 
 class _CountBadge extends StatelessWidget {
   const _CountBadge({required this.count});
@@ -520,8 +500,6 @@ class _CountBadge extends StatelessWidget {
     );
   }
 }
-
-
 
 class _EmptyState extends StatelessWidget {
   const _EmptyState({

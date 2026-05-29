@@ -22,7 +22,6 @@ class UserChat {
     this.twoFactorSecret = '',
   });
 
-  
   UserChat copyWith({
     String? id,
     String? photoUrl,

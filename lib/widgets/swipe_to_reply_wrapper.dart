@@ -2,17 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 
-
-
-
-
-
-
-
-
-
-
-
 class SwipeToReplyWrapper extends StatefulWidget {
   const SwipeToReplyWrapper({
     super.key,
@@ -27,17 +16,12 @@ class SwipeToReplyWrapper extends StatefulWidget {
   final Widget child;
   final VoidCallback onSwipe;
 
-  
-  
   final bool isMe;
 
-  
   final double swipeThreshold;
 
-  
   final double maxDragDistance;
 
-  
   final Color? iconColor;
 
   @override
@@ -49,11 +33,9 @@ class _SwipeToReplyWrapperState extends State<SwipeToReplyWrapper>
   late final AnimationController _spring = AnimationController(vsync: this);
 
   double _drag = 0.0;
-  bool _triggered = false; 
-  bool _fired = false; 
+  bool _triggered = false;
+  bool _fired = false;
 
-  
-  
   int get _sign => widget.isMe ? -1 : 1;
 
   @override
@@ -68,12 +50,9 @@ class _SwipeToReplyWrapperState extends State<SwipeToReplyWrapper>
     super.dispose();
   }
 
-  
-
   void _onDragUpdate(DragUpdateDetails d) {
     final delta = d.delta.dx;
 
-    
     if (widget.isMe && delta > 0 && _drag >= 0) return;
     if (!widget.isMe && delta < 0 && _drag <= 0) return;
 
@@ -82,20 +61,16 @@ class _SwipeToReplyWrapperState extends State<SwipeToReplyWrapper>
       final abs = raw.abs();
 
       if (abs <= widget.swipeThreshold) {
-        
         _drag = raw;
       } else if (abs <= widget.maxDragDistance) {
-        
         final over = abs - widget.swipeThreshold;
         final friction = 1.0 - (over / widget.maxDragDistance) * 0.85;
         _drag = raw.sign * (widget.swipeThreshold + over * friction.clamp(0.05, 1.0));
       } else {
-        
         _drag = _sign * widget.maxDragDistance;
       }
     });
 
-    
     if (_drag.abs() >= widget.swipeThreshold && !_triggered) {
       _triggered = true;
       HapticFeedback.lightImpact();
@@ -105,7 +80,6 @@ class _SwipeToReplyWrapperState extends State<SwipeToReplyWrapper>
   }
 
   void _onDragEnd(DragEndDetails d) {
-    
     if (_drag.abs() >= widget.swipeThreshold && !_fired) {
       _fired = true;
       HapticFeedback.mediumImpact();
@@ -127,20 +101,14 @@ class _SwipeToReplyWrapperState extends State<SwipeToReplyWrapper>
       spring,
       _drag,
       0.0,
-      velocityX * 0.25, 
+      velocityX * 0.25,
     );
     _spring.animateWith(simulation);
   }
 
-  
-
-  
   double get _progress => (_drag.abs() / widget.swipeThreshold).clamp(0.0, 1.0);
 
-  
   double get _iconRotation => (1 - _progress) * 0.4 * -_sign.toDouble();
-
-  
 
   @override
   Widget build(BuildContext context) {
@@ -155,7 +123,6 @@ class _SwipeToReplyWrapperState extends State<SwipeToReplyWrapper>
         alignment: widget.isMe ? Alignment.centerRight : Alignment.centerLeft,
         clipBehavior: Clip.none,
         children: [
-          
           Positioned(
             left: widget.isMe ? null : 0,
             right: widget.isMe ? 0 : null,
@@ -164,7 +131,7 @@ class _SwipeToReplyWrapperState extends State<SwipeToReplyWrapper>
               child: Opacity(
                 opacity: _progress,
                 child: Transform.scale(
-                  scale: 0.6 + _progress * 0.4, 
+                  scale: 0.6 + _progress * 0.4,
                   child: Transform.rotate(
                     angle: _iconRotation,
                     child: Container(
@@ -185,8 +152,6 @@ class _SwipeToReplyWrapperState extends State<SwipeToReplyWrapper>
               ),
             ),
           ),
-
-          
           Transform.translate(
             offset: Offset(_drag, 0),
             child: widget.child,

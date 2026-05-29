@@ -8,20 +8,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/models/bubble_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-
-
-
 class BubbleServiceV2 {
-  
   static const _method = MethodChannel('chat_bubbles_v2');
   static const _event = EventChannel('chat_bubble_events_v2');
 
-  
   static final BubbleServiceV2 _instance = BubbleServiceV2._internal();
   factory BubbleServiceV2() => _instance;
   BubbleServiceV2._internal();
 
-  
   bool _isInitialized = false;
   bool _isDisposing = false;
   bool _isBubbleApiSupported = false;
@@ -31,7 +25,6 @@ class BubbleServiceV2 {
 
   final Map<String, BubbleData> _activeBubbles = {};
 
-  
   StreamController<BubbleClickEvent>? _clickCtrl;
   StreamController<Map<String, BubbleData>>? _bubblesCtrl;
 
@@ -57,11 +50,6 @@ class BubbleServiceV2 {
     }
   }
 
-  
-  
-  
-
-  
   Future<void> initialize() async {
     if (_isInitialized || _isDisposing) return;
     try {
@@ -91,10 +79,6 @@ class BubbleServiceV2 {
       return false;
     }
   }
-
-  
-  
-  
 
   void _setupEventListener() {
     _eventSubscription?.cancel();
@@ -153,10 +137,6 @@ class BubbleServiceV2 {
     }
   }
 
-  
-  
-  
-
   Future<bool> showBubble({
     required String userId,
     required String userName,
@@ -167,7 +147,6 @@ class BubbleServiceV2 {
     if (!_isBubbleApiSupported) return false;
 
     try {
-      
       if (_activeBubbles.containsKey(userId)) {
         return await updateBubble(userId: userId, message: message);
       }
@@ -270,10 +249,6 @@ class BubbleServiceV2 {
     return true;
   }
 
-  
-  
-  
-
   Future<bool> sendMessage({
     required String userId,
     required String userName,
@@ -326,10 +301,6 @@ class BubbleServiceV2 {
       await _method.invokeMethod('logBubbleState');
     } catch (_) {}
   }
-
-  
-  
-  
 
   static const _prefKey = 'bubbles_v2';
 
@@ -388,10 +359,6 @@ class BubbleServiceV2 {
     _prefs ??= await SharedPreferences.getInstance();
   }
 
-  
-  
-  
-
   void _emitActiveBubbles() {
     _ensureBubblesCtrl();
     if (!(_bubblesCtrl?.isClosed ?? true)) {
@@ -399,20 +366,12 @@ class BubbleServiceV2 {
     }
   }
 
-  
-  
-  
-
   bool get isSupported => _isBubbleApiSupported;
   bool get isInitialized => _isInitialized;
   bool isBubbleActive(String userId) => _activeBubbles.containsKey(userId);
   Map<String, BubbleData> get activeBubbles => Map.unmodifiable(_activeBubbles);
   int get activeBubbleCount => _activeBubbles.length;
   BubbleData? getBubble(String userId) => _activeBubbles[userId];
-
-  
-  
-  
 
   void dispose() {
     if (_isDisposing) return;

@@ -5,10 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
-
-
-
-
 class UserPresence {
   final String userId;
   final bool isOnline;
@@ -22,7 +18,6 @@ class UserPresence {
     this.currentConversationId,
   });
 
-  
   String get lastSeenText {
     if (isOnline) return 'Online';
     if (lastSeen == null) return 'Last seen: unknown';
@@ -49,20 +44,14 @@ class TypingInfo {
   bool get isStillActive => isTyping && DateTime.now().difference(timestamp).inSeconds < 6;
 }
 
-
-
-
-
 class UserPresenceProvider {
   final FirebaseFirestore firebaseFirestore;
 
   Timer? _heartbeatTimer;
   String? _currentUserId;
 
-  
   final Map<String, Timer> _typingTimers = {};
 
-  
   final Set<String> _activeTypingConversations = {};
 
   static const Duration _heartbeatInterval = Duration(seconds: 30);
@@ -71,10 +60,6 @@ class UserPresenceProvider {
   static const String _typingCollection = 'typing_status';
 
   UserPresenceProvider({required this.firebaseFirestore});
-
-  
-  
-  
 
   Future<void> setUserOnline(String userId, {String? currentConversationId}) async {
     _currentUserId = userId;
@@ -103,7 +88,6 @@ class UserPresenceProvider {
       _heartbeatTimer?.cancel();
       _heartbeatTimer = null;
 
-      
       await _clearAllTypingStatuses(userId);
 
       debugPrint('✅ User offline: $userId');
@@ -112,7 +96,6 @@ class UserPresenceProvider {
     }
   }
 
-  
   Future<void> setCurrentConversation(String userId, String? conversationId) async {
     try {
       await firebaseFirestore.collection(FirestoreConstants.pathUserCollection).doc(userId).update({
@@ -137,10 +120,6 @@ class UserPresenceProvider {
     });
   }
 
-  
-  
-  
-
   Future<void> setTypingStatus({
     required String conversationId,
     required String userId,
@@ -163,7 +142,7 @@ class UserPresenceProvider {
 
       if (isTyping) {
         _activeTypingConversations.add(conversationId);
-        
+
         _typingTimers[conversationId] = Timer(_typingTimeout, () {
           setTypingStatus(
             conversationId: conversationId,
@@ -211,7 +190,6 @@ class UserPresenceProvider {
     });
   }
 
-  
   Stream<Set<String>> getTypingUsersStream(String conversationId) {
     return getTypingStatusStream(conversationId).map((map) => map.keys.toSet());
   }
@@ -229,10 +207,6 @@ class UserPresenceProvider {
       debugPrint('❌ _clearAllTypingStatuses error: $e');
     }
   }
-
-  
-  
-  
 
   Future<void> markMessagesAsRead({
     required String conversationId,
@@ -263,7 +237,6 @@ class UserPresenceProvider {
     }
   }
 
-  
   Future<void> markMessageDelivered({
     required String conversationId,
     required String messageId,
@@ -294,11 +267,8 @@ class UserPresenceProvider {
         .map((s) => s.size);
   }
 
-  
   Future<int> getTotalUnreadCount(String userId) async {
     try {
-      
-      
       final doc = await firebaseFirestore
           .collection(FirestoreConstants.pathUserCollection)
           .doc(userId)
@@ -314,10 +284,6 @@ class UserPresenceProvider {
     }
   }
 
-  
-  
-  
-
   Stream<UserPresence> getUserPresenceStream(String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathUserCollection)
@@ -332,7 +298,6 @@ class UserPresenceProvider {
       final lastSeenTs = data['lastSeen'] as Timestamp?;
       final lastSeen = lastSeenTs?.toDate();
 
-      
       bool effectiveOnline = isOnline;
       if (isOnline && lastSeen != null) {
         if (DateTime.now().difference(lastSeen) > _onlineGracePeriod) {
@@ -373,18 +338,12 @@ class UserPresenceProvider {
     }
   }
 
-  
-  
-  
-
   Stream<List<Map<String, dynamic>>> getOnlineFriendsStream(String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathUserCollection)
         .where('isOnline', isEqualTo: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-                .where((d) => d.id != userId) 
-                .map((doc) {
+        .map((snapshot) => snapshot.docs.where((d) => d.id != userId).map((doc) {
               final data = doc.data();
               return {
                 'id': doc.id,
@@ -396,14 +355,9 @@ class UserPresenceProvider {
             }).toList());
   }
 
-  
-  
-  
-
   Future<Map<String, UserPresence>> getMultipleUserPresences(List<String> userIds) async {
     if (userIds.isEmpty) return {};
     try {
-      
       final results = <String, UserPresence>{};
       for (int i = 0; i < userIds.length; i += 30) {
         final chunk = userIds.sublist(i, (i + 30).clamp(0, userIds.length));
@@ -428,10 +382,6 @@ class UserPresenceProvider {
       return {};
     }
   }
-
-  
-  
-  
 
   void dispose() {
     _heartbeatTimer?.cancel();

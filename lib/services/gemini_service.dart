@@ -9,20 +9,14 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 
 import '../constants/constants.dart';
 
-
-
-
-
-
 enum GeminiTaskType {
-  chat, 
-  scamAnalysis, 
-  summarize, 
-  translate, 
-  codeAssist, 
-  sentimentAnalysis, 
+  chat,
+  scamAnalysis,
+  summarize,
+  translate,
+  codeAssist,
+  sentimentAnalysis,
 }
-
 
 class GeminiResponse {
   final String text;
@@ -40,42 +34,19 @@ class GeminiResponse {
   factory GeminiResponse.error(String message) => GeminiResponse(text: message, isError: true);
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
 class GeminiService {
-  
   GeminiService._internal();
   static final GeminiService _instance = GeminiService._internal();
   factory GeminiService() => _instance;
 
-  
   static const String _modelId = 'gemini-2.0-flash';
   static const int _maxRetries = 3;
   static const Duration _baseRetryDelay = Duration(seconds: 2);
-  static const int _maxHistoryMessages = 20; 
+  static const int _maxHistoryMessages = 20;
 
-  
   GenerativeModel? _cachedModel;
   String? _cachedApiKey;
 
-  
-  
-  
-
-  
-  
-  
-  
   Future<String> sendMessage(
     String message,
     List<Map<String, dynamic>> historyRaw,
@@ -84,7 +55,6 @@ class GeminiService {
     return response.text;
   }
 
-  
   Future<GeminiResponse> sendMessageDetailed(
     String message,
     List<Map<String, dynamic>> historyRaw, {
@@ -106,12 +76,6 @@ class GeminiService {
     }
   }
 
-  
-  
-  
-
-  
-  
   Stream<String> sendMessageStream(
     String message,
     List<Map<String, dynamic>> historyRaw, {
@@ -137,12 +101,6 @@ class GeminiService {
     }
   }
 
-  
-  
-  
-
-  
-  
   Future<String> analyzeScam(String message) async {
     const prompt = '''
 Phân tích tin nhắn sau và đánh giá nguy cơ lừa đảo/scam.
@@ -161,7 +119,6 @@ Tin nhắn cần phân tích:
     return response.text;
   }
 
-  
   Future<String> summarizeMessages(
     List<String> messages, {
     int maxSentences = 3,
@@ -176,7 +133,6 @@ Tin nhắn cần phân tích:
     return response.text;
   }
 
-  
   Future<String> translateForAudience(
     String message,
     String targetAudience,
@@ -198,7 +154,6 @@ Tin nhắn cần phân tích:
     return response.text;
   }
 
-  
   Future<List<String>> suggestReplies(
     List<String> recentMessages, {
     String tone = 'friendly',
@@ -228,7 +183,6 @@ Tin nhắn cần phân tích:
         .toList();
   }
 
-  
   Future<String> analyzeSentiment(List<String> messages) async {
     if (messages.isEmpty) return 'neutral';
     final joined = messages.takeLast(10).join('\n');
@@ -241,15 +195,9 @@ Tin nhắn cần phân tích:
     return response.text;
   }
 
-  
-  
-  
-
-  
   GenerativeModel _getOrCreateModel(GeminiTaskType taskType) {
     final apiKey = _resolveApiKey();
 
-    
     if (_cachedModel != null && _cachedApiKey == apiKey && taskType == GeminiTaskType.chat) {
       return _cachedModel!;
     }
@@ -284,7 +232,7 @@ Tin nhắn cần phân tích:
       case GeminiTaskType.sentimentAnalysis:
         return GenerationConfig(
           maxOutputTokens: 512,
-          temperature: 0.1, 
+          temperature: 0.1,
           responseMimeType: 'application/json',
         );
       case GeminiTaskType.summarize:
@@ -354,23 +302,12 @@ Tin nhắn cần phân tích:
     }
   }
 
-  
-  
-  
-
-  
-  
-  
-  
-  
-  
   List<Content> _buildValidHistory(
     List<Map<String, dynamic>> historyRaw, {
     int maxMessages = 20,
   }) {
     final List<Content> contents = [];
 
-    
     final recentMessages = historyRaw.length > maxMessages
         ? historyRaw.sublist(historyRaw.length - maxMessages)
         : historyRaw;
@@ -382,28 +319,21 @@ Tin nhắn cần phân tích:
 
       if (content.isEmpty) continue;
 
-      
       if (contents.isNotEmpty && contents.last.role == role) continue;
 
       contents.add(Content(role, [TextPart(content)]));
     }
 
-    
     while (contents.isNotEmpty && contents.first.role == 'model') {
       contents.removeAt(0);
     }
 
-    
     while (contents.isNotEmpty && contents.last.role == 'model') {
       contents.removeLast();
     }
 
     return contents;
   }
-
-  
-  
-  
 
   Future<GeminiResponse> _sendWithRetry(
     GenerativeModel model,
@@ -419,7 +349,6 @@ Tin nhắn cần phân tích:
 
         final text = response.text;
         if (text == null || text.isEmpty) {
-          
           final candidate = response.candidates.firstOrNull;
           if (candidate?.finishReason == FinishReason.safety) {
             return GeminiResponse.error(
@@ -439,7 +368,7 @@ Tin nhắn cần phân tích:
       } catch (e) {
         if (_isRateLimitError(e) && attempt < _maxRetries) {
           attempt++;
-          
+
           final delay = _baseRetryDelay * (1 << attempt);
           debugPrint('[GeminiService] Rate limited, retry $attempt sau ${delay.inSeconds}s');
           await Future.delayed(delay);
@@ -461,10 +390,6 @@ Tin nhắn cần phân tích:
         msg.contains('rate') ||
         msg.contains('resource_exhausted');
   }
-
-  
-  
-  
 
   String _handleError(Object e) {
     if (e is _ApiKeyMissingException) {
@@ -495,30 +420,17 @@ Tin nhắn cần phân tích:
     return '❌ Có lỗi xảy ra. Vui lòng thử lại sau.';
   }
 
-  
-  
-  
-
-  
   void clearModelCache() {
     _cachedModel = null;
     _cachedApiKey = null;
   }
 }
 
-
-
-
-
 class _ApiKeyMissingException implements Exception {
   const _ApiKeyMissingException();
   @override
   String toString() => 'ApiKeyMissingException: GEMINI_API_KEY chưa được thiết lập';
 }
-
-
-
-
 
 extension _ListTakeLast<T> on List<T> {
   List<T> takeLast(int count) {

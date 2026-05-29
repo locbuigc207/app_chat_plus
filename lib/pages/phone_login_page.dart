@@ -201,7 +201,6 @@ class _PhoneLoginPageState extends State<PhoneLoginPage> with TickerProviderStat
       backgroundColor: const Color(0xFF0A0E1A),
       body: Stack(
         children: [
-          
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
@@ -215,8 +214,6 @@ class _PhoneLoginPageState extends State<PhoneLoginPage> with TickerProviderStat
               ),
             ),
           ),
-
-          
           Positioned(
             top: -100,
             right: -80,
@@ -234,11 +231,9 @@ class _PhoneLoginPageState extends State<PhoneLoginPage> with TickerProviderStat
               ),
             ),
           ),
-
           SafeArea(
             child: Column(
               children: [
-                
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Row(
@@ -261,7 +256,6 @@ class _PhoneLoginPageState extends State<PhoneLoginPage> with TickerProviderStat
                     ],
                   ),
                 ),
-
                 Expanded(
                   child: SlideTransition(
                     position: _entrySlide,
@@ -274,7 +268,6 @@ class _PhoneLoginPageState extends State<PhoneLoginPage> with TickerProviderStat
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              
                               Center(
                                 child: AnimatedSwitcher(
                                   duration: const Duration(milliseconds: 400),
@@ -292,10 +285,7 @@ class _PhoneLoginPageState extends State<PhoneLoginPage> with TickerProviderStat
                                         ),
                                 ),
                               ),
-
                               const SizedBox(height: 32),
-
-                              
                               AnimatedSwitcher(
                                 duration: const Duration(milliseconds: 300),
                                 child: Column(
@@ -325,10 +315,7 @@ class _PhoneLoginPageState extends State<PhoneLoginPage> with TickerProviderStat
                                   ],
                                 ),
                               ),
-
                               const SizedBox(height: 32),
-
-                              
                               if (!isCodeSent) ...[
                                 _PhoneInputField(
                                   controller: _phoneController,
@@ -345,7 +332,6 @@ class _PhoneLoginPageState extends State<PhoneLoginPage> with TickerProviderStat
                                   isLoading: isLoading,
                                 ),
                               ] else ...[
-                                
                                 AnimatedBuilder(
                                   animation: _shakeAnim,
                                   builder: (_, child) {
@@ -423,8 +409,6 @@ class _PhoneLoginPageState extends State<PhoneLoginPage> with TickerProviderStat
               ],
             ),
           ),
-
-          
           if (isLoading)
             Positioned.fill(
               child: BackdropFilter(
@@ -449,8 +433,6 @@ class _PhoneLoginPageState extends State<PhoneLoginPage> with TickerProviderStat
     );
   }
 }
-
-
 
 class _PhoneIllustration extends StatelessWidget {
   final bool isOtp;
@@ -487,8 +469,6 @@ class _PhoneIllustration extends StatelessWidget {
     );
   }
 }
-
-
 
 class _PhoneInputField extends StatelessWidget {
   final TextEditingController controller;
@@ -536,7 +516,6 @@ class _PhoneInputField extends StatelessWidget {
           ),
           child: Row(
             children: [
-              
               GestureDetector(
                 onTap: onCountryTap,
                 child: Container(
@@ -570,8 +549,6 @@ class _PhoneInputField extends StatelessWidget {
                   ),
                 ),
               ),
-
-              
               Expanded(
                 child: Focus(
                   onFocusChange: onFocusChange,
@@ -611,8 +588,6 @@ class _PhoneInputField extends StatelessWidget {
     );
   }
 }
-
-
 
 class _OtpInputRow extends StatelessWidget {
   final List<TextEditingController> controllers;
@@ -719,8 +694,6 @@ class _OtpBoxState extends State<_OtpBox> {
   }
 }
 
-
-
 class _PrimaryButton extends StatefulWidget {
   final String label;
   final VoidCallback? onTap;
@@ -815,8 +788,6 @@ class _PrimaryButtonState extends State<_PrimaryButton> with SingleTickerProvide
   }
 }
 
-
-
 class _GlassIconButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
@@ -848,8 +819,6 @@ class _GlassIconButton extends StatelessWidget {
     );
   }
 }
-
-
 
 typedef _Country = ({String code, String flag, String name});
 

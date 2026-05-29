@@ -7,26 +7,7 @@ import '../models/models.dart';
 import '../providers/providers.dart';
 import '../services/services.dart';
 
-
 enum MessageStatus { sending, sent, delivered, read, failed }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 class AdaptiveChatBubble extends StatefulWidget {
   final MessageChat message;
@@ -79,7 +60,6 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
   bool _showReactionBar = false;
   bool _isWarningExpanded = false;
 
-  
   double _dragOffset = 0;
   bool _replyTriggered = false;
 
@@ -124,8 +104,6 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
       idTo: widget.currentUserId,
     );
   }
-
-  
 
   @override
   Widget build(BuildContext context) {
@@ -206,7 +184,6 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
                 size: provider.currentMode == AppMode.elder ? 20 : 14,
               ),
             ],
-            
             if (_dragOffset > 0)
               Padding(
                 padding: const EdgeInsets.only(left: 6, right: 6),
@@ -257,10 +234,7 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
     );
   }
 
-  
-
   void _onDragUpdate(DragUpdateDetails d) {
-    
     final delta = _isMe ? -d.delta.dx : d.delta.dx;
     if (delta < 0 && _dragOffset == 0) return;
     setState(() {
@@ -279,8 +253,6 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
     _replyTriggered = false;
     setState(() => _dragOffset = 0);
   }
-
-  
 
   void _showContextMenu(
     BuildContext ctx,
@@ -320,10 +292,6 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
         AppMode.student => 16,
       };
 }
-
-
-
-
 
 class _TextBubble extends StatelessWidget {
   final MessageChat message;
@@ -444,10 +412,6 @@ class _TextBubble extends StatelessWidget {
     }
   }
 }
-
-
-
-
 
 class _VoiceBubble extends StatefulWidget {
   final MessageChat message;
@@ -575,10 +539,6 @@ class _WaveformBar extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _MediaBubble extends StatelessWidget {
   final MessageChat message;
   final bool isMe;
@@ -679,10 +639,6 @@ class _FileTile extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _ReplyPreview extends StatelessWidget {
   final MessageChat replyTo;
   final bool isMe;
@@ -718,10 +674,6 @@ class _ReplyPreview extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _StudyIndicator extends StatelessWidget {
   final bool isMe;
   const _StudyIndicator({required this.isMe});
@@ -749,10 +701,6 @@ class _StudyIndicator extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _ScamWarningBanner extends StatelessWidget {
   final bool isExpanded;
@@ -803,10 +751,6 @@ class _ScamWarningBanner extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _StatusTick extends StatelessWidget {
   final MessageStatus status;
@@ -859,10 +803,6 @@ class _DoubleCheck extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _PeerAvatar extends StatelessWidget {
   final String? url;
   final Color primaryColor;
@@ -901,10 +841,6 @@ class _PeerAvatar extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _ReactionRow extends StatelessWidget {
   final List<BubbleReaction> reactions;
@@ -954,10 +890,6 @@ class _ReactionRow extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _EmojiPickerBar extends StatelessWidget {
   final bool isMe;
   final void Function(String) onPick;
@@ -997,10 +929,6 @@ class _EmojiPickerBar extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _ContextMenu extends StatelessWidget {
   final bool isMe;

@@ -2,22 +2,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/message_chat.dart';
 
-
-
-
-
-
 enum GameMatchStatus {
-  
   waiting,
 
-  
   playing,
 
-  
   finished,
 
-  
   aborted;
 
   static GameMatchStatus fromString(String value) {
@@ -47,7 +38,6 @@ enum GameMatchStatus {
     }
   }
 }
-
 
 enum GameResult {
   player1Win,
@@ -79,7 +69,6 @@ enum GameResult {
   }
 }
 
-
 enum ChessSide {
   white,
   black,
@@ -109,27 +98,15 @@ enum ChessSide {
   }
 }
 
-
-
-
-
-
 class GameMove {
-  
   final int moveIndex;
 
-  
   final String movedBy;
 
-  
-  
-  
   final Map<String, dynamic> moveData;
 
-  
   final String movedAt;
 
-  
   final int remainingTimeMs;
 
   const GameMove({
@@ -171,61 +148,38 @@ class GameMove {
   }
 }
 
-
-
-
-
-
 class GameMatch {
-  
   final String matchId;
   final GameType gameType;
   final GameMatchStatus status;
 
-  
   final String player1Id;
   final String player1Name;
   final String player1Avatar;
 
-  
   final String? player2Id;
   final String? player2Name;
   final String? player2Avatar;
 
-  
-  
   final ChessSide player1Side;
 
-  
   final int timeControlSeconds;
 
-  
   final int turnTimerSeconds;
 
-  
   final int boardSize;
 
-  
   final GameResult? result;
   final String? endReason;
 
-  
-  
   final String sourceGroupId;
 
-  
   final String? inviteMessageId;
 
-  
-  
   final List<String> spectatorIds;
 
-  
-  
-  
   final List<GameMove> moveHistory;
 
-  
   final String createdAt;
   final String? startedAt;
   final String? endedAt;
@@ -255,10 +209,6 @@ class GameMatch {
     this.endedAt,
   });
 
-  
-  
-  
-
   bool get isWaiting => status == GameMatchStatus.waiting;
   bool get isPlaying => status == GameMatchStatus.playing;
   bool get isFinished => status == GameMatchStatus.finished;
@@ -268,17 +218,14 @@ class GameMatch {
   int get spectatorCount => spectatorIds.length;
   int get totalMoves => moveHistory.length;
 
-  
   String? get winnerId {
     if (result == GameResult.player1Win) return player1Id;
     if (result == GameResult.player2Win) return player2Id;
     return null;
   }
 
-  
   String get matchTitle => '$player1Name vs ${player2Name ?? "???"}';
 
-  
   int? get durationSeconds {
     if (startedAt == null || endedAt == null) return null;
     final start = int.tryParse(startedAt!) ?? 0;
@@ -286,10 +233,6 @@ class GameMatch {
     if (start == 0 || end == 0) return null;
     return ((end - start) / 1000).round();
   }
-
-  
-  
-  
 
   Map<String, dynamic> toJson() => {
         FirestoreConstants.matchId: matchId,
@@ -310,7 +253,6 @@ class GameMatch {
         FirestoreConstants.sourceGroupId: sourceGroupId,
         if (inviteMessageId != null) FirestoreConstants.inviteMessageId: inviteMessageId,
         FirestoreConstants.spectatorIds: spectatorIds,
-        
         FirestoreConstants.createdAt: createdAt,
         if (startedAt != null) FirestoreConstants.startedAt: startedAt,
         if (endedAt != null) FirestoreConstants.endedAt: endedAt,
@@ -350,16 +292,11 @@ class GameMatch {
         spectatorIds: List<String>.from(
           data[FirestoreConstants.spectatorIds] as List? ?? [],
         ),
-        
         moveHistory: const [],
         createdAt: _parseTs(data[FirestoreConstants.createdAt]),
         startedAt: _parseTsNullable(data[FirestoreConstants.startedAt]),
         endedAt: _parseTsNullable(data[FirestoreConstants.endedAt]),
       );
-
-  
-  
-  
 
   GameMatch copyWith({
     GameMatchStatus? status,
@@ -409,10 +346,6 @@ class GameMatch {
 
   @override
   String toString() => 'GameMatch(id: $matchId, type: ${gameType.name}, status: ${status.name})';
-
-  
-  
-  
 
   static String _parseTs(dynamic v) {
     if (v is String) return v;

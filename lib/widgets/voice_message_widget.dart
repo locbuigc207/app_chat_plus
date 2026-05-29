@@ -7,12 +7,6 @@ import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/providers/voice_message_provider.dart';
 
-
-
-
-
-
-
 class VoiceMessageWidget extends StatefulWidget {
   final String voiceUrl;
   final bool isMyMessage;
@@ -83,7 +77,6 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
         volume: 1.0,
       );
 
-      
       final ms = _playerController.maxDuration;
       if (ms > 0) {
         _totalDuration = Duration(milliseconds: ms);
@@ -186,7 +179,6 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            
             _PlayButton(
               isPlaying: _isPlaying,
               isLoading: _isLoading,
@@ -194,10 +186,7 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
               isMe: isMe,
               onTap: (_isLoading || _hasError) ? null : _togglePlay,
             ),
-
             const SizedBox(width: 10),
-
-            
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -224,10 +213,7 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
                       seekLineThickness: 1.5,
                     ),
                   ),
-
                 const SizedBox(height: 3),
-
-                
                 Text(
                   _isLoading
                       ? '--:--'
@@ -248,8 +234,6 @@ class _VoiceMessageWidgetState extends State<VoiceMessageWidget>
     );
   }
 }
-
-
 
 class _PlayButton extends StatefulWidget {
   final bool isPlaying;
@@ -344,8 +328,6 @@ class _PlayButtonState extends State<_PlayButton> with SingleTickerProviderState
   }
 }
 
-
-
 class _WaveformPlaceholder extends StatefulWidget {
   final bool isMe;
   const _WaveformPlaceholder({required this.isMe});
@@ -396,8 +378,6 @@ class _WaveformPlaceholderState extends State<_WaveformPlaceholder>
   }
 }
 
-
-
 class _ErrorWaveform extends StatelessWidget {
   final bool isMe;
   const _ErrorWaveform({required this.isMe});
@@ -423,12 +403,6 @@ class _ErrorWaveform extends StatelessWidget {
     );
   }
 }
-
-
-
-
-
-
 
 class VoiceRecordingIndicator extends StatefulWidget {
   final String duration;
@@ -507,7 +481,6 @@ class _VoiceRecordingIndicatorState extends State<VoiceRecordingIndicator>
         ),
         child: Row(
           children: [
-            
             AnimatedBuilder(
               animation: _dotCtrl,
               builder: (_, __) => Container(
@@ -525,10 +498,7 @@ class _VoiceRecordingIndicatorState extends State<VoiceRecordingIndicator>
                 ),
               ),
             ),
-
             const SizedBox(width: 10),
-
-            
             Text(
               widget.duration,
               style: const TextStyle(
@@ -538,25 +508,16 @@ class _VoiceRecordingIndicatorState extends State<VoiceRecordingIndicator>
                 fontFeatures: [FontFeature.tabularFigures()],
               ),
             ),
-
             const SizedBox(width: 12),
-
-            
             _AnimatedBars(controller: _barsCtrl),
-
             const Spacer(),
-
-            
             _IconBtn(
               icon: Icons.delete_rounded,
               color: Colors.red,
               tooltip: 'Huỷ',
               onTap: widget.onCancel,
             ),
-
             const SizedBox(width: 8),
-
-            
             _SendVoiceButton(onTap: widget.onSend),
           ],
         ),
@@ -564,8 +525,6 @@ class _VoiceRecordingIndicatorState extends State<VoiceRecordingIndicator>
     );
   }
 }
-
-
 
 class _AnimatedBars extends StatelessWidget {
   final AnimationController controller;
@@ -599,8 +558,6 @@ class _AnimatedBars extends StatelessWidget {
     );
   }
 }
-
-
 
 class _IconBtn extends StatelessWidget {
   final IconData icon;
@@ -637,8 +594,6 @@ class _IconBtn extends StatelessWidget {
     );
   }
 }
-
-
 
 class _SendVoiceButton extends StatefulWidget {
   final VoidCallback onTap;

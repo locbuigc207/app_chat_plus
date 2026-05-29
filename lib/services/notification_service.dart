@@ -9,8 +9,6 @@ import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-
-
 class NotificationPayload {
   final String senderId;
   final String senderName;
@@ -29,10 +27,7 @@ class NotificationPayload {
   });
 }
 
-
-
 class NotificationService {
-  
   final ChatBubbleService _bubbleService = ChatBubbleService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
@@ -41,18 +36,13 @@ class NotificationService {
   StreamSubscription<QuerySnapshot>? _messageSubscription;
   bool _isListening = false;
 
-  
   final Set<String> _processedIds = {};
   static const int _maxProcessedIds = 200;
 
-  
   final Set<String> _mutedConversations = {};
 
-  
   void Function(NotificationPayload)? onNotificationTapped;
   void Function(NotificationPayload)? onInAppNotification;
-
-  
 
   Future<void> initialize() async {
     await _initLocalNotifications();
@@ -79,7 +69,6 @@ class NotificationService {
       },
     );
 
-    
     const channel = AndroidNotificationChannel(
       'chat_messages',
       'Chat Messages',
@@ -106,12 +95,10 @@ class NotificationService {
   }
 
   void _setupFCMHandlers() {
-    
     FirebaseMessaging.onMessage.listen((message) {
       _handleFCMMessage(message, isBackground: false);
     });
 
-    
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
       _handleFCMTap(message);
     });
@@ -129,7 +116,6 @@ class NotificationService {
     if (_mutedConversations.contains(data['conversationId'])) return;
 
     if (!isBackground) {
-      
       await _showLocalNotification(
         title: data['senderName'] ?? 'New Message',
         body: data['content'] ?? '',
@@ -156,10 +142,7 @@ class NotificationService {
   void _onLocalNotificationTapped(String? payload) {
     if (payload == null || payload.isEmpty) return;
     debugPrint('🔔 Notification tapped, conversationId: $payload');
-    
   }
-
-  
 
   void listenForNewMessages(String currentUserId) {
     if (_isListening) return;
@@ -179,7 +162,6 @@ class NotificationService {
             .map((c) => c.doc)
             .toList();
 
-        
         for (final doc in newDocs) {
           await _handleNewMessage(doc, currentUserId);
         }
@@ -187,7 +169,7 @@ class NotificationService {
       onError: (Object error) {
         debugPrint('❌ Message listener error: $error');
         _isListening = false;
-        
+
         _retryListen(currentUserId);
       },
       cancelOnError: true,
@@ -223,36 +205,30 @@ class NotificationService {
       final senderId = data[FirestoreConstants.idFrom] as String?;
       if (senderId == null || senderId == currentUserId) return;
 
-      
       final payload = await _buildPayload(data, senderId, doc);
       if (payload == null) return;
 
-      
       if (_mutedConversations.contains(payload.conversationId)) return;
 
       final isResumed = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
 
       if (isResumed) {
-        
         onInAppNotification?.call(payload);
         await _showLocalNotification(
           title: payload.senderName,
           body: _formatPreview(payload.content),
           payload: payload.conversationId,
           senderId: senderId,
-          silent: true, 
+          silent: true,
         );
         _updateExistingBubble(senderId, payload.content);
       } else {
-        
         await _maybeCreateBubble(payload);
       }
     } catch (e) {
       debugPrint('❌ Error handling message: $e');
     }
   }
-
-  
 
   Future<void> _maybeCreateBubble(NotificationPayload payload) async {
     if (_bubbleService.isBubbleActive(payload.senderId)) {
@@ -324,8 +300,6 @@ class NotificationService {
     }
   }
 
-  
-
   Future<void> _showLocalNotification({
     required String title,
     required String body,
@@ -381,8 +355,6 @@ class NotificationService {
     await _localNotifications.cancelAll();
   }
 
-  
-
   Future<String?> getFCMToken() async {
     try {
       return await _messaging.getToken();
@@ -409,8 +381,6 @@ class NotificationService {
 
   Stream<String> get onTokenRefresh => _messaging.onTokenRefresh;
 
-  
-
   void muteConversation(String conversationId) {
     _mutedConversations.add(conversationId);
   }
@@ -420,8 +390,6 @@ class NotificationService {
   }
 
   bool isConversationMuted(String conversationId) => _mutedConversations.contains(conversationId);
-
-  
 
   Future<NotificationPayload?> _buildPayload(
     Map<String, dynamic> data,
@@ -436,8 +404,6 @@ class NotificationService {
     final senderData = senderDoc.data() as Map<String, dynamic>;
     final content = data[FirestoreConstants.content] as String? ?? '';
 
-    
-    
     final pathSegments = doc.reference.path.split('/');
     final conversationId = pathSegments.length >= 2 ? pathSegments[1] : senderId;
 
@@ -455,7 +421,6 @@ class NotificationService {
 
   void _trackProcessed(String id) {
     if (_processedIds.length >= _maxProcessedIds) {
-      
       final toRemove = (_maxProcessedIds * 0.2).ceil();
       final old = _processedIds.take(toRemove).toList();
       _processedIds.removeAll(old);
@@ -467,8 +432,6 @@ class NotificationService {
     if (content.length <= 80) return content;
     return '${content.substring(0, 77)}…';
   }
-
-  
 
   void stopListening() {
     _messageSubscription?.cancel();

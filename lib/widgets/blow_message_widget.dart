@@ -151,7 +151,6 @@ class _BlowMessageWidgetState extends State<BlowMessageWidget> with TickerProvid
               borderRadius: BorderRadius.circular(22),
               child: Stack(
                 children: [
-                  
                   Positioned.fill(
                     child: CustomPaint(
                       painter: _ShimmerPainter(
@@ -160,8 +159,6 @@ class _BlowMessageWidgetState extends State<BlowMessageWidget> with TickerProvid
                       ),
                     ),
                   ),
-
-                  
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
                     child: Column(
@@ -192,8 +189,6 @@ class _BlowMessageWidgetState extends State<BlowMessageWidget> with TickerProvid
                       ],
                     ),
                   ),
-
-                  
                   if (!_isRevealed || _blurAnim.value > 0.5)
                     Positioned.fill(
                       child: ClipRRect(
@@ -238,7 +233,6 @@ class _BlowMessageWidgetState extends State<BlowMessageWidget> with TickerProvid
                                     ),
                                   ),
                                   const SizedBox(height: 10),
-                                  
                                   SizedBox(
                                     width: 120,
                                     child: Stack(
@@ -275,8 +269,6 @@ class _BlowMessageWidgetState extends State<BlowMessageWidget> with TickerProvid
                         ),
                       ),
                     ),
-
-                  
                   if (_isRevealed)
                     Positioned.fill(
                       child: IgnorePointer(
@@ -297,8 +289,6 @@ class _BlowMessageWidgetState extends State<BlowMessageWidget> with TickerProvid
     );
   }
 }
-
-
 
 class _Particle {
   final double angle;

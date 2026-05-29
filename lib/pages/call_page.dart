@@ -19,10 +19,6 @@ import '../widgets/call_quality_indicator.dart';
 import '../widgets/call_timer_widget.dart';
 import '../widgets/live_caption_overlay.dart';
 
-
-
-
-
 class CallPage extends StatefulWidget {
   final CallModel call;
   final bool isOutgoing;
@@ -38,7 +34,6 @@ class CallPage extends StatefulWidget {
 }
 
 class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
-  
   final _callService = CallService.instance;
   final _pip = SimplePip();
   late final AgoraRtcManager _rtcManager;
@@ -57,7 +52,6 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
   String? _errorMessage;
   bool _isLiveCaptionEnabled = false;
 
-  
   Offset _localPipOffset = const Offset(double.infinity, double.infinity);
   bool _localPipDragging = false;
 
@@ -79,8 +73,6 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     _scheduleControlsHide();
   }
 
-  
-
   Future<void> _enterPiPMode() async {
     final available = await SimplePip.isPipAvailable;
     if (available) {
@@ -90,14 +82,10 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     }
   }
 
-  
-
   void _startAIProtection() {
     final peerId = widget.isOutgoing ? widget.call.calleeId : widget.call.callerId;
     RealtimeAIService().startProtection(peerId, widget.call.channelName);
   }
-
-  
 
   Future<void> _initCall() async {
     _errorSub = _rtcManager.errorStream.listen((error) {
@@ -249,10 +237,6 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  
-  
-  
-
   @override
   Widget build(BuildContext context) {
     if (widget.call.isVideoCall) {
@@ -285,8 +269,6 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
-  
-
   Widget _buildRemoteVideoOnly() {
     return ListenableBuilder(
       listenable: _rtcManager,
@@ -315,8 +297,6 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
       },
     );
   }
-
-  
 
   Widget _buildErrorState() {
     return Container(
@@ -370,18 +350,13 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
-  
-
   Widget _buildVideoCallUI() {
     return GestureDetector(
       onTap: _onTapScreen,
       behavior: HitTestBehavior.opaque,
       child: Stack(
         children: [
-          
           Positioned.fill(child: _buildRemoteVideoView()),
-
-          
           const Positioned(
             top: 0,
             left: 0,
@@ -399,8 +374,6 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
               ),
             ),
           ),
-
-          
           const Positioned(
             bottom: 0,
             left: 0,
@@ -418,27 +391,17 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
               ),
             ),
           ),
-
-          
           if (_isInitializing)
             const Positioned.fill(
               child: _ConnectingOverlay(),
             ),
-
-          
           if (_isConnected) _buildDraggableLocalPip(),
-
-          
           if (_showControls || !_isConnected) _buildVideoTopBar(),
-
-          
           Positioned(
             top: MediaQuery.of(context).padding.top + 64,
             left: 16,
             child: const AICallShield(),
           ),
-
-          
           Positioned(
             top: MediaQuery.of(context).padding.top + 64,
             right: 16,
@@ -447,8 +410,6 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
               builder: (_, __) => CallQualityIndicator(stats: _rtcManager.stats),
             ),
           ),
-
-          
           if (_isLiveCaptionEnabled)
             const Positioned(
               bottom: 140,
@@ -456,8 +417,6 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
               right: 16,
               child: LiveCaptionOverlay(),
             ),
-
-          
           AnimatedOpacity(
             opacity: _showControls ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 300),
@@ -479,7 +438,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
 
   Widget _buildDraggableLocalPip() {
     final size = MediaQuery.of(context).size;
-    
+
     if (_localPipOffset.dx == double.infinity) {
       _localPipOffset = Offset(size.width - 126, MediaQuery.of(context).padding.top + 110);
     }
@@ -651,8 +610,6 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
-  
-
   Widget _buildVoiceCallUI() {
     final name = widget.isOutgoing ? widget.call.calleeName : widget.call.callerName;
     final avatar = widget.isOutgoing ? widget.call.calleeAvatar : widget.call.callerAvatar;
@@ -660,7 +617,6 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     return Stack(
       fit: StackFit.expand,
       children: [
-        
         if (avatar.isNotEmpty)
           Image.network(avatar,
               fit: BoxFit.cover,
@@ -677,11 +633,9 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
             ),
           ),
         ),
-
         SafeArea(
           child: Column(
             children: [
-              
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                 child: Row(
@@ -696,8 +650,6 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
                 ),
               ),
               const Spacer(flex: 2),
-
-              
               _PulsingAvatar(
                 url: avatar,
                 name: name,
@@ -705,8 +657,6 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
                 isActive: _isConnected,
               ),
               const SizedBox(height: 32),
-
-              
               Text(name,
                   style: const TextStyle(
                       color: Colors.white,
@@ -714,8 +664,6 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
                       fontWeight: FontWeight.w700,
                       letterSpacing: -0.5)),
               const SizedBox(height: 12),
-
-              
               if (_isConnected && _callConnectedAt != null)
                 CallTimerWidget(
                   startTime: _callConnectedAt!,
@@ -729,21 +677,14 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
                 const _ConnectingText()
               else
                 _StatusDotsWidget(label: _statusLabel()),
-
               const Spacer(flex: 2),
-
-              
               if (_isLiveCaptionEnabled)
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 20),
                   child: LiveCaptionOverlay(),
                 ),
               const Spacer(),
-
-              
               _buildCaptionToggle(),
-
-              
               _buildControlBar(),
             ],
           ),
@@ -751,8 +692,6 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
       ],
     );
   }
-
-  
 
   Widget _buildCaptionToggle() {
     return Padding(
@@ -881,10 +820,6 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     }
   }
 }
-
-
-
-
 
 class _TimerBadge extends StatelessWidget {
   final DateTime startTime;

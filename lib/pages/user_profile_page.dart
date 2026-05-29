@@ -157,7 +157,6 @@ class _UserProfilePageState extends State<UserProfilePage> with SingleTickerProv
         children: [
           CustomScrollView(
             slivers: [
-              
               SliverAppBar(
                 expandedHeight: 280,
                 pinned: true,
@@ -172,18 +171,14 @@ class _UserProfilePageState extends State<UserProfilePage> with SingleTickerProv
                   background: _buildHeroBackground(isDark, user),
                 ),
               ),
-
-              
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      
                       _buildInfoSection(isDark, user),
                       const SizedBox(height: 20),
-                      
                       _buildActionsSection(isDark),
                     ],
                   ),
@@ -191,8 +186,6 @@ class _UserProfilePageState extends State<UserProfilePage> with SingleTickerProv
               ),
             ],
           ),
-
-          
           Positioned(
             bottom: 24,
             left: 24,
@@ -223,8 +216,6 @@ class _UserProfilePageState extends State<UserProfilePage> with SingleTickerProv
               ),
             ),
           ),
-
-          
           if (_isLoading) Positioned.fill(child: LoadingView()),
         ],
       ),
@@ -246,7 +237,6 @@ class _UserProfilePageState extends State<UserProfilePage> with SingleTickerProv
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const SizedBox(height: 40),
-          
           Stack(
             alignment: Alignment.bottomRight,
             children: [

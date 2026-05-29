@@ -204,7 +204,6 @@ class _ShakeMessageWidgetState extends State<ShakeMessageWidget> with TickerProv
             ),
           ),
           const SizedBox(height: 8),
-          
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(5, (i) {
@@ -299,8 +298,6 @@ class _ShakeMessageWidgetState extends State<ShakeMessageWidget> with TickerProv
               ],
             ),
           ),
-
-          
           Positioned.fill(
             child: IgnorePointer(
               child: AnimatedBuilder(
@@ -319,8 +316,6 @@ class _ShakeMessageWidgetState extends State<ShakeMessageWidget> with TickerProv
     );
   }
 }
-
-
 
 class _ConfettiPiece {
   final double angle;

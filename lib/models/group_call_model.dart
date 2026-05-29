@@ -1,10 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-
-
-
-
-enum GroupCallStatus { calling, ongoing, ended, missed } 
+enum GroupCallStatus { calling, ongoing, ended, missed }
 
 enum GroupCallType { video, voice }
 
@@ -37,10 +33,6 @@ extension CallReactionEmoji on CallReactionType {
   }
 }
 
-
-
-
-
 class CallReaction {
   final String userId;
   final String userName;
@@ -70,10 +62,6 @@ class CallReaction {
       );
 }
 
-
-
-
-
 class GroupCallParticipant {
   final String userId;
   final String userName;
@@ -82,10 +70,10 @@ class GroupCallParticipant {
   final bool isCameraOff;
   final bool isScreenSharing;
   final bool hasRaisedHand;
-  final bool isAdmin; 
-  final bool isSpeaking; 
+  final bool isAdmin;
+  final bool isSpeaking;
   final DateTime joinedAt;
-  final int networkQuality; 
+  final int networkQuality;
 
   const GroupCallParticipant({
     required this.userId,
@@ -95,7 +83,7 @@ class GroupCallParticipant {
     this.isCameraOff = false,
     this.isScreenSharing = false,
     this.hasRaisedHand = false,
-    required this.isAdmin, 
+    required this.isAdmin,
     this.isSpeaking = false,
     required this.joinedAt,
     this.networkQuality = 0,
@@ -109,7 +97,7 @@ class GroupCallParticipant {
         'isCameraOff': isCameraOff,
         'isScreenSharing': isScreenSharing,
         'hasRaisedHand': hasRaisedHand,
-        'isAdmin': isAdmin, 
+        'isAdmin': isAdmin,
         'joinedAt': joinedAt.millisecondsSinceEpoch.toString(),
         'networkQuality': networkQuality,
       };
@@ -122,7 +110,7 @@ class GroupCallParticipant {
         isCameraOff: j['isCameraOff'] ?? false,
         isScreenSharing: j['isScreenSharing'] ?? false,
         hasRaisedHand: j['hasRaisedHand'] ?? false,
-        isAdmin: j['isAdmin'] ?? false, 
+        isAdmin: j['isAdmin'] ?? false,
         joinedAt: DateTime.fromMillisecondsSinceEpoch(
             int.tryParse(j['joinedAt']?.toString() ?? '0') ?? 0),
         networkQuality: (j['networkQuality'] as int?) ?? 0,
@@ -133,7 +121,7 @@ class GroupCallParticipant {
     bool? isCameraOff,
     bool? isScreenSharing,
     bool? hasRaisedHand,
-    bool? isAdmin, 
+    bool? isAdmin,
     bool? isSpeaking,
     int? networkQuality,
   }) =>
@@ -145,7 +133,7 @@ class GroupCallParticipant {
         isCameraOff: isCameraOff ?? this.isCameraOff,
         isScreenSharing: isScreenSharing ?? this.isScreenSharing,
         hasRaisedHand: hasRaisedHand ?? this.hasRaisedHand,
-        isAdmin: isAdmin ?? this.isAdmin, 
+        isAdmin: isAdmin ?? this.isAdmin,
         isSpeaking: isSpeaking ?? this.isSpeaking,
         joinedAt: joinedAt,
         networkQuality: networkQuality ?? this.networkQuality,
@@ -159,10 +147,6 @@ class GroupCallParticipant {
   @override
   int get hashCode => userId.hashCode;
 }
-
-
-
-
 
 class GroupCallModel {
   final String callId;
@@ -180,7 +164,7 @@ class GroupCallModel {
   final DateTime createdAt;
   final DateTime? endedAt;
   final int? durationSeconds;
-  final String? screenShareUserId; 
+  final String? screenShareUserId;
   final List<CallReaction> recentReactions;
   final List<String> raisedHandUserIds;
 
@@ -204,8 +188,6 @@ class GroupCallModel {
     this.recentReactions = const [],
     this.raisedHandUserIds = const [],
   });
-
-  
 
   bool get isVideo => callType == GroupCallType.video;
   bool get isVoice => callType == GroupCallType.voice;
@@ -235,8 +217,6 @@ class GroupCallModel {
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return h > 0 ? '$h:$m:$s' : '$m:$s';
   }
-
-  
 
   Map<String, dynamic> toJson() => {
         'callId': callId,
@@ -302,7 +282,7 @@ class GroupCallModel {
         return GroupCallStatus.ongoing;
       case 'ended':
         return GroupCallStatus.ended;
-      case 'missed': 
+      case 'missed':
         return GroupCallStatus.missed;
       default:
         return GroupCallStatus.calling;

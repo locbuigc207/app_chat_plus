@@ -7,26 +7,11 @@ import 'package:flutter/foundation.dart';
 
 import '../models/models.dart';
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 class ContextualBubbleService extends ChangeNotifier {
-  
   static final ContextualBubbleService _instance = ContextualBubbleService._internal();
   factory ContextualBubbleService() => _instance;
   ContextualBubbleService._internal();
 
-  
   BubbleContext _ctx = BubbleContext(
     mode: BubbleMode.normal,
     updatedAt: DateTime.now(),
@@ -35,22 +20,18 @@ class ContextualBubbleService extends ChangeNotifier {
   BubbleContext get currentContext => _ctx;
   BubbleMode get currentMode => _ctx.mode;
 
-  
   final _streamCtrl = StreamController<BubbleContext>.broadcast();
   Stream<BubbleContext> get contextStream => _streamCtrl.stream;
 
-  
   int _recentMediaCount = 0;
   Timer? _mediaResetTimer;
   static const _mediaThreshold = 2;
   static const _mediaResetWindow = Duration(minutes: 5);
 
-  
   Timer? _normalResetTimer;
   static const _autoResetDelay = Duration(minutes: 15);
   static const _locationResetDelay = Duration(minutes: 30);
 
-  
   static const _typeText = 0;
   static const _typeImage = 1;
   static const _typeVideo = 2;
@@ -60,24 +41,67 @@ class ContextualBubbleService extends ChangeNotifier {
   static const _typeSticker = 6;
   static const _typeGif = 7;
 
-  
   static const _workKeywords = <String>[
-    
-    'task', 'tasks', 'deadline', 'deadlines', 'meeting', 'meetings',
-    'project', 'projects', 'report', 'reports', 'review', 'reviews',
-    'sprint', 'ticket', 'tickets', 'jira', 'trello', 'asana', 'figma',
-    'notion', 'pr ', 'pull request', 'deploy', 'deployment', 'release',
-    'bug', 'fix', 'hotfix', 'issue', 'issues', 'milestone',
-    'urgent', 'asap', 'priority', 'schedule', 'calendar', 'action item',
-    'follow up', 'follow-up', 'deliverable', 'okr', 'kpi',
-    
-    'công việc', 'nhiệm vụ', 'họp', 'dự án', 'báo cáo',
-    'kế hoạch', 'tiến độ', 'gửi file', 'nộp báo cáo',
-    'hạn chót', 'khẩn', 'quan trọng', 'cần làm ngay',
-    'lịch họp', 'tài liệu', 'trình bày',
+    'task',
+    'tasks',
+    'deadline',
+    'deadlines',
+    'meeting',
+    'meetings',
+    'project',
+    'projects',
+    'report',
+    'reports',
+    'review',
+    'reviews',
+    'sprint',
+    'ticket',
+    'tickets',
+    'jira',
+    'trello',
+    'asana',
+    'figma',
+    'notion',
+    'pr ',
+    'pull request',
+    'deploy',
+    'deployment',
+    'release',
+    'bug',
+    'fix',
+    'hotfix',
+    'issue',
+    'issues',
+    'milestone',
+    'urgent',
+    'asap',
+    'priority',
+    'schedule',
+    'calendar',
+    'action item',
+    'follow up',
+    'follow-up',
+    'deliverable',
+    'okr',
+    'kpi',
+    'công việc',
+    'nhiệm vụ',
+    'họp',
+    'dự án',
+    'báo cáo',
+    'kế hoạch',
+    'tiến độ',
+    'gửi file',
+    'nộp báo cáo',
+    'hạn chót',
+    'khẩn',
+    'quan trọng',
+    'cần làm ngay',
+    'lịch họp',
+    'tài liệu',
+    'trình bày',
   ];
 
-  
   static const _locationKeywords = <String>[
     'where are you',
     'your location',
@@ -104,20 +128,10 @@ class ContextualBubbleService extends ChangeNotifier {
     'nơi này',
   ];
 
-  
   static final _googleMapsPattern =
       RegExp(r'https?://(?:www\.)?(?:google\.com/maps|goo\.gl/maps|maps\.app\.goo\.gl)[^\s]*');
   static final _locationEmojiPattern = RegExp(r'📍');
 
-  
-  
-  
-
-  
-  
-  
-  
-  
   void analyzeMessage({
     required String content,
     required int messageType,
@@ -136,17 +150,13 @@ class ContextualBubbleService extends ChangeNotifier {
     }
   }
 
-  
   void activateSharedMode({Map<String, dynamic>? extraData}) =>
       _transition(BubbleMode.shared, extraData: extraData);
 
-  
   void activateSecureMode() => _transition(BubbleMode.secure);
 
-  
   void resetToNormal() => _transition(BubbleMode.normal);
 
-  
   void updateLocationData({
     required double myLat,
     required double myLng,
@@ -169,7 +179,6 @@ class ContextualBubbleService extends ChangeNotifier {
     });
   }
 
-  
   static String labelFor(BubbleMode mode) {
     switch (mode) {
       case BubbleMode.work:
@@ -187,17 +196,12 @@ class ContextualBubbleService extends ChangeNotifier {
     }
   }
 
-  
-  
-  
-
   void _analyzeInternal({
     required String content,
     required int messageType,
     required bool isFromCurrentUser,
     Map<String, dynamic>? extra,
   }) {
-    
     if (messageType == _typeLocation) {
       final mapsUrl = extra?['mapsUrl'] as String? ?? _extractMapsUrl(content);
       _transition(BubbleMode.location, extraData: {
@@ -207,7 +211,6 @@ class ContextualBubbleService extends ChangeNotifier {
       return;
     }
 
-    
     if (messageType == _typeImage ||
         messageType == _typeVideo ||
         messageType == _typeAudio ||
@@ -227,17 +230,14 @@ class ContextualBubbleService extends ChangeNotifier {
       }
     }
 
-    
     if (messageType == _typeFile) {
       _transition(BubbleMode.work,
           detectedTopic: 'file', extraData: {'fileName': extra?['fileName']});
       return;
     }
 
-    
     if (messageType != _typeText) return;
 
-    
     if (_isLocationContent(content)) {
       _transition(BubbleMode.location, extraData: {
         'mapsUrl': _extractMapsUrl(content),
@@ -245,13 +245,11 @@ class ContextualBubbleService extends ChangeNotifier {
       return;
     }
 
-    
     if (_hasWorkKeyword(content)) {
       _transition(BubbleMode.work, detectedTopic: _extractWorkTopic(content));
       return;
     }
 
-    
     if (_ctx.mode != BubbleMode.secure && _ctx.mode != BubbleMode.shared) {
       _scheduleAutoReset(_autoResetDelay);
     }
@@ -262,7 +260,6 @@ class ContextualBubbleService extends ChangeNotifier {
     String? detectedTopic,
     Map<String, dynamic>? extraData,
   }) {
-    
     if (mode != BubbleMode.secure && _ctx.mode == BubbleMode.secure) return;
     if (mode != BubbleMode.shared && _ctx.mode == BubbleMode.shared && mode != BubbleMode.normal) {
       return;
@@ -273,7 +270,7 @@ class ContextualBubbleService extends ChangeNotifier {
       detectedTopic: detectedTopic,
       extraData: extraData,
     );
-    if (newCtx == _ctx) return; 
+    if (newCtx == _ctx) return;
 
     _normalResetTimer?.cancel();
     _ctx = newCtx;
@@ -283,7 +280,6 @@ class ContextualBubbleService extends ChangeNotifier {
     debugPrint('🎯 BubbleMode → ${mode.name}'
         '${detectedTopic != null ? " ($detectedTopic)" : ""}');
 
-    
     if (mode == BubbleMode.location) {
       _scheduleAutoReset(_locationResetDelay);
     }
@@ -297,8 +293,6 @@ class ContextualBubbleService extends ChangeNotifier {
       }
     });
   }
-
-  
 
   bool _isLocationContent(String content) {
     if (_locationEmojiPattern.hasMatch(content)) return true;
@@ -340,8 +334,6 @@ class ContextualBubbleService extends ChangeNotifier {
     return 'work';
   }
 
-  
-
   static double _haversineKm(double lat1, double lon1, double lat2, double lon2) {
     const R = 6371.0;
     final dLat = _rad(lat2 - lat1);
@@ -353,10 +345,6 @@ class ContextualBubbleService extends ChangeNotifier {
   }
 
   static double _rad(double deg) => deg * math.pi / 180;
-
-  
-  
-  
 
   @override
   void dispose() {

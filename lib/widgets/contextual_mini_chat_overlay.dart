@@ -9,9 +9,6 @@ import 'bubble_adaptive_ui.dart';
 import 'secure_view_once_widget.dart';
 import 'shared_space_widget.dart';
 
-
-
-
 const _kOverlayWidth = 348.0;
 const _kCollapsedHeight = 56.0;
 const _kExpandedHeight = 540.0;
@@ -21,14 +18,6 @@ const _kShadowBlur = 32.0;
 const _kDefaultTopOffset = 90.0;
 const _kDefaultLeftOffset = 18.0;
 
-
-
-
-
-
-
-
-
 class ContextualMiniChatOverlay extends StatefulWidget {
   final String userId;
   final String userName;
@@ -36,7 +25,6 @@ class ContextualMiniChatOverlay extends StatefulWidget {
   final String conversationId;
   final String currentUserId;
 
-  
   final Widget chatContent;
 
   final VoidCallback onMinimize;
@@ -60,32 +48,24 @@ class ContextualMiniChatOverlay extends StatefulWidget {
 
 class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     with TickerProviderStateMixin {
-  
   final _ctxSvc = ContextualBubbleService();
   BubbleContext _ctx = BubbleContext(mode: BubbleMode.normal, updatedAt: DateTime.now());
   StreamSubscription<BubbleContext>? _ctxSub;
 
-  
   Offset _pos = const Offset(_kDefaultLeftOffset, _kDefaultTopOffset);
   bool _dragging = false;
 
-  
   bool _isExpanded = true;
   bool _isSharedOpen = false;
   bool _isSecureOn = false;
-  int _activeTab = 0; 
+  int _activeTab = 0;
 
-  
   late AnimationController _slideIn;
   late AnimationController _expandAnim;
   late AnimationController _sharedAnim;
   late AnimationController _dragScale;
   late Animation<double> _expandCurve;
   late Animation<double> _dragScaleCurve;
-
-  
-  
-  
 
   @override
   void initState() {
@@ -121,10 +101,6 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     _dragScale.dispose();
     super.dispose();
   }
-
-  
-  
-  
 
   double get _targetHeight {
     if (!_isExpanded) return _kCollapsedHeight;
@@ -175,10 +151,6 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     HapticFeedback.selectionClick();
   }
 
-  
-  
-  
-
   void _onPanStart(DragStartDetails _) {
     setState(() => _dragging = true);
     _dragScale.forward();
@@ -199,7 +171,6 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     _snapIfNeeded();
   }
 
-  
   void _snapIfNeeded() {
     final screenWidth = _lastScreenWidth;
     if (screenWidth <= 0) return;
@@ -212,10 +183,6 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
   }
 
   double _lastScreenWidth = 0;
-
-  
-  
-  
 
   @override
   Widget build(BuildContext context) {
@@ -276,32 +243,20 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
       decoration: const BoxDecoration(color: Color(0xFFF5F7FD)),
       child: Column(
         children: [
-          
           BubbleAdaptiveHeader(
-            bubbleCtx: _ctx, 
+            bubbleCtx: _ctx,
             peerName: widget.userName,
             peerAvatar: widget.avatarUrl,
-            
             onMinimize: widget.onMinimize,
             onClose: widget.onClose,
           ),
-
-          
           if (_isExpanded) _buildFeatureBar(),
-
-          
           Expanded(child: _buildContent()),
-
-          
           if (_isExpanded) _buildBottomBar(),
         ],
       ),
     );
   }
-
-  
-  
-  
 
   Widget _buildFeatureBar() {
     return Container(
@@ -338,10 +293,6 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
       ),
     );
   }
-
-  
-  
-  
 
   Widget _buildContent() {
     if (!_isExpanded) {
@@ -380,10 +331,6 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     );
   }
 
-  
-  
-  
-
   Widget _buildBottomBar() {
     return Container(
       height: 38,
@@ -394,14 +341,12 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         children: [
-          
           _BottomBarBtn(
             icon: _isExpanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_up_rounded,
             label: _isExpanded ? 'Thu gọn' : 'Mở rộng',
             onTap: _toggleExpand,
           ),
           const Spacer(),
-          
           _QuickModeBtn(
             icon: Icons.work_outline_rounded,
             mode: BubbleMode.work,
@@ -425,10 +370,6 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     );
   }
 }
-
-
-
-
 
 class _FeatureTab extends StatelessWidget {
   final IconData icon;

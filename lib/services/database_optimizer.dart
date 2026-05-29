@@ -4,8 +4,6 @@ import 'package:flutter/foundation.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-
-
 class CachedData<T> {
   final T data;
   final DateTime timestamp;
@@ -98,43 +96,32 @@ class CacheStats {
       };
 }
 
-
-
 class DatabaseOptimizer {
   static final DatabaseOptimizer _instance = DatabaseOptimizer._internal();
   factory DatabaseOptimizer() => _instance;
   DatabaseOptimizer._internal();
 
-  
   final Map<String, CachedData<DocumentSnapshot>> _cache = {};
 
-  
   final Map<String, Duration> _collectionTTL = {};
   static const Duration _defaultCacheDuration = Duration(minutes: 5);
   static const Duration _shortCacheDuration = Duration(minutes: 1);
   static const Duration _longCacheDuration = Duration(minutes: 15);
 
-  
   int _hitCount = 0;
   int _missCount = 0;
 
-  
   final Map<String, Timer> _debounceTimers = {};
 
-  
   final Map<String, Map<String, dynamic>> _writeBehindQueue = {};
   Timer? _writeBehindFlushTimer;
   static const Duration _writeBehindDelay = Duration(seconds: 2);
-
-  
 
   void setCollectionTTL(String collection, Duration ttl) {
     _collectionTTL[collection] = ttl;
   }
 
   Duration _getTTL(String collection) => _collectionTTL[collection] ?? _defaultCacheDuration;
-
-  
 
   Future<DocumentSnapshot?> getCached({
     required String collection,
@@ -169,15 +156,11 @@ class DatabaseOptimizer {
       return doc;
     } catch (e) {
       debugPrint('❌ Error fetching document $cacheKey: $e');
-      
+
       return _cache[cacheKey]?.data;
     }
   }
 
-  
-
-  
-  
   Future<List<DocumentSnapshot>> batchGet({
     required String collection,
     required List<String> docIds,
@@ -207,7 +190,6 @@ class DatabaseOptimizer {
 
     debugPrint('🔄 Fetching ${toFetch.length}/${docIds.length} docs');
 
-    
     const chunkSize = 30;
     final fetchFutures = <Future<QuerySnapshot>>[];
 
@@ -238,11 +220,8 @@ class DatabaseOptimizer {
       }
     }
 
-    
     return docIds.map((id) => results[id]).whereType<DocumentSnapshot>().toList();
   }
-
-  
 
   Future<PaginatedResult> queryPaginated({
     required String collection,
@@ -303,7 +282,6 @@ class DatabaseOptimizer {
 
       final snapshot = await query.get();
 
-      
       for (final doc in snapshot.docs) {
         final cacheKey = '$collection/${doc.id}';
         _cache[cacheKey] = CachedData(
@@ -329,9 +307,6 @@ class DatabaseOptimizer {
     }
   }
 
-  
-
-  
   Future<void> updateOptimistic({
     required String collection,
     required String docId,
@@ -340,7 +315,6 @@ class DatabaseOptimizer {
     final cacheKey = '$collection/$docId';
     _clearCacheKey(cacheKey);
 
-    
     _writeBehindQueue['$collection/$docId'] = {
       'collection': collection,
       'docId': docId,
@@ -369,15 +343,13 @@ class DatabaseOptimizer {
             .update(item['data'] as Map<String, dynamic>);
       } catch (e) {
         debugPrint('❌ Write-behind flush error: $e');
-        
+
         _writeBehindQueue['${item['collection']}/${item['docId']}'] = item;
       }
     });
 
     await Future.wait(futures, eagerError: false);
   }
-
-  
 
   void debouncedWrite({
     required String key,
@@ -394,8 +366,6 @@ class DatabaseOptimizer {
       }
     });
   }
-
-  
 
   void clearCache() {
     _cache.clear();
@@ -432,8 +402,6 @@ class DatabaseOptimizer {
     debugPrint('🗑️ Evicted ${keys.length} expired entries');
   }
 
-  
-
   CacheStats getCacheStatsObject() {
     final now = DateTime.now();
     int valid = 0, expired = 0;
@@ -463,15 +431,13 @@ class DatabaseOptimizer {
     _missCount = 0;
   }
 
-  
-
   void dispose() {
     for (final t in _debounceTimers.values) {
       t.cancel();
     }
     _debounceTimers.clear();
     _writeBehindFlushTimer?.cancel();
-    _flushWriteBehind(); 
+    _flushWriteBehind();
     clearCache();
     debugPrint('✅ DatabaseOptimizer disposed');
   }

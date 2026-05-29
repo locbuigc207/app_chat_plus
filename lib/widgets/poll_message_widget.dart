@@ -5,15 +5,10 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-
-
-
-
-
 class PollOption {
   final String id;
   final String text;
-  final List<String> votes; 
+  final List<String> votes;
 
   const PollOption({
     required this.id,
@@ -35,7 +30,6 @@ class PollOption {
         votes: votes ?? this.votes,
       );
 }
-
 
 class PollData {
   final String question;
@@ -77,35 +71,15 @@ class PollData {
   }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class PollMessageWidget extends StatefulWidget {
-  
   final String content;
 
-  
   final String messageId;
 
-  
   final String currentUserId;
 
-  
   final Future<void> Function(String messageId, String optionId) onVote;
 
-  
   final bool isSentByMe;
 
   const PollMessageWidget({
@@ -122,29 +96,20 @@ class PollMessageWidget extends StatefulWidget {
 }
 
 class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProviderStateMixin {
-  
-
   late PollData _poll;
   bool _isVoting = false;
   bool _showResults = false;
   Timer? _expiryTimer;
 
-  
-
-  
   late AnimationController _entranceController;
   late Animation<double> _entranceFade;
   late Animation<Offset> _entranceSlide;
 
-  
   final List<AnimationController> _barControllers = [];
   final List<Animation<double>> _barAnims = [];
 
-  
   late AnimationController _confettiController;
   final List<_Particle> _particles = [];
-
-  
 
   static const _optionPalette = [
     Color(0xFF6C63FF),
@@ -158,8 +123,6 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
     Color(0xFFEC4899),
     Color(0xFFFF7849),
   ];
-
-  
 
   @override
   void initState() {
@@ -190,8 +153,6 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
     super.dispose();
   }
 
-  
-
   void _parsePoll() {
     try {
       _poll = PollData.fromJson(jsonDecode(widget.content) as Map<String, dynamic>);
@@ -205,7 +166,6 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
   }
 
   void _initAnimations() {
-    
     _entranceController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
@@ -222,16 +182,13 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
       curve: Curves.easeOutCubic,
     ));
 
-    
     _confettiController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
 
-    
     _rebuildBarAnimations();
 
-    
     if (_showResults) {
       for (final c in _barControllers) {
         c.forward();
@@ -258,7 +215,6 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
   }
 
   void _syncBarAnimations() {
-    
     if (_barControllers.length != _poll.options.length) {
       _rebuildBarAnimations();
     }
@@ -283,7 +239,6 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
       if (mounted) setState(() => _showResults = true);
     });
 
-    
     Timer.periodic(const Duration(minutes: 1), (t) {
       if (!mounted) {
         t.cancel();
@@ -293,12 +248,10 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
         t.cancel();
         setState(() => _showResults = true);
       } else {
-        setState(() {}); 
+        setState(() {});
       }
     });
   }
-
-  
 
   bool _hasVotedFor(PollOption opt) => opt.votes.contains(widget.currentUserId);
 
@@ -313,7 +266,6 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
     try {
       await widget.onVote(widget.messageId, optionId);
 
-      
       if (mounted) {
         setState(() => _showResults = true);
         for (final c in _barControllers) {
@@ -359,8 +311,6 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
       ..reset()
       ..forward();
   }
-
-  
 
   @override
   Widget build(BuildContext context) {
@@ -410,7 +360,6 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
                     ),
                   ],
                 ),
-                
                 if (_particles.isNotEmpty)
                   Positioned.fill(
                     child: IgnorePointer(
@@ -442,8 +391,6 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
     );
   }
 
-  
-
   Widget _buildHeader() {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -457,7 +404,6 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          
           Row(
             children: [
               const Icon(Icons.poll_rounded, color: Colors.white70, size: 14),
@@ -479,7 +425,6 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
                 _HeaderChip(label: 'Ẩn danh'),
               ],
               const Spacer(),
-              
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 decoration: BoxDecoration(
@@ -505,7 +450,6 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
             ],
           ),
           const SizedBox(height: 7),
-          
           Text(
             _poll.question,
             style: const TextStyle(
@@ -516,7 +460,6 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
               letterSpacing: -0.2,
             ),
           ),
-          
           if (_poll.expiresAt != null) ...[
             const SizedBox(height: 6),
             _ExpiryBadge(
@@ -529,15 +472,12 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
     );
   }
 
-  
-
   Widget _buildOption(int index, PollOption opt) {
     final hasVoted = _hasVotedFor(opt);
     final color = _optionPalette[index % _optionPalette.length];
     final pct = _poll.percentageFor(opt);
     final canTap = !_poll.isExpired && !_isVoting;
 
-    
     final semanticsLabel = '${opt.text}: ${(pct * 100).round()}% (${opt.votes.length} phiếu)'
         '${hasVoted ? ', đã bình chọn' : ''}';
 
@@ -562,7 +502,6 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
             borderRadius: BorderRadius.circular(12),
             child: Stack(
               children: [
-                
                 if (_showResults && index < _barAnims.length)
                   AnimatedBuilder(
                     animation: _barAnims[index],
@@ -580,13 +519,10 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
                       );
                     },
                   ),
-
-                
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 11),
                   child: Row(
                     children: [
-                      
                       _VoteIndicator(
                         hasVoted: hasVoted,
                         isMultiple: _poll.isMultipleChoice,
@@ -594,8 +530,6 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
                         color: color,
                       ),
                       const SizedBox(width: 8),
-
-                      
                       Expanded(
                         child: Text(
                           opt.text,
@@ -608,8 +542,6 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
                           ),
                         ),
                       ),
-
-                      
                       if (_isVoting && canTap) ...[
                         const SizedBox(width: 8),
                         SizedBox(
@@ -621,8 +553,6 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
                           ),
                         ),
                       ],
-
-                      
                       if (_showResults) ...[
                         const SizedBox(width: 6),
                         _ResultStats(
@@ -633,8 +563,6 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
                           color: color,
                         ),
                       ],
-
-                      
                       if (_poll.isExpired &&
                           opt.votes.length == _getMaxVotes() &&
                           _poll.totalVotes > 0) ...[
@@ -658,12 +586,9 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
     return _poll.options.map((o) => o.votes.length).reduce(math.max);
   }
 
-  
-
   Widget _buildFooter() {
     return Row(
       children: [
-        
         if (!_hasVotedAny && !_poll.isExpired) ...[
           GestureDetector(
             onTap: () => setState(() {
@@ -686,8 +611,6 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
             ),
           ),
         ],
-
-        
         if (_hasVotedAny && !_poll.isExpired && !_poll.isMultipleChoice) ...[
           GestureDetector(
             onTap: () {
@@ -704,10 +627,7 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
             ),
           ),
         ],
-
         const Spacer(),
-
-        
         Text(
           _pollStatusText(),
           style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
@@ -722,10 +642,6 @@ class _PollMessageWidgetState extends State<PollMessageWidget> with TickerProvid
     return '${_poll.totalVotes} lượt';
   }
 }
-
-
-
-
 
 class _VoteIndicator extends StatelessWidget {
   final bool hasVoted;
@@ -757,10 +673,6 @@ class _VoteIndicator extends StatelessWidget {
         : Icon(Icons.radio_button_unchecked_rounded, size: 18, color: Colors.grey.shade400);
   }
 }
-
-
-
-
 
 class _ResultStats extends StatelessWidget {
   final double pct;
@@ -801,10 +713,6 @@ class _ResultStats extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _HeaderChip extends StatelessWidget {
   final String label;
 
@@ -830,10 +738,6 @@ class _HeaderChip extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _ExpiryBadge extends StatefulWidget {
   final DateTime expiresAt;
@@ -905,14 +809,10 @@ class _ExpiryBadgeState extends State<_ExpiryBadge> {
   }
 }
 
-
-
-
-
 class _Particle {
   final Color color;
-  final double x; 
-  final double delay; 
+  final double x;
+  final double delay;
   final double size;
   final double angle;
 
@@ -927,7 +827,7 @@ class _Particle {
 
 class _ConfettiPainter extends CustomPainter {
   final List<_Particle> particles;
-  final double progress; 
+  final double progress;
 
   const _ConfettiPainter({
     required this.particles,
@@ -952,7 +852,6 @@ class _ConfettiPainter extends CustomPainter {
       canvas.translate(dx, dy);
       canvas.rotate(p.angle + t * math.pi * 2);
 
-      
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromCenter(

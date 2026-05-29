@@ -9,10 +9,6 @@ import '../models/call_model.dart';
 import '../pages/outgoing_call_page.dart';
 import '../services/call_service.dart';
 
-
-
-
-
 class CallHistoryPage extends StatefulWidget {
   final String currentUserId;
 
@@ -157,10 +153,6 @@ class _CallHistoryPageState extends State<CallHistoryPage> with SingleTickerProv
   }
 }
 
-
-
-
-
 class _CallList extends StatelessWidget {
   final List<CallModel> calls;
   final String currentUserId;
@@ -171,7 +163,6 @@ class _CallList extends StatelessWidget {
   Widget build(BuildContext context) {
     if (calls.isEmpty) return const _EmptyState();
 
-    
     final grouped = <String, List<CallModel>>{};
     for (final c in calls) {
       final key = _dateKey(c.createdAt);
@@ -226,10 +217,6 @@ class _CallList extends StatelessWidget {
     return DateFormat('dd MMMM yyyy', 'vi').format(dt).toUpperCase();
   }
 }
-
-
-
-
 
 class _CallTile extends StatelessWidget {
   final CallModel call;
@@ -370,10 +357,6 @@ class _CallTile extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _CallbackSheet extends StatelessWidget {
   final String peerName;
@@ -518,10 +501,6 @@ class _SheetCallBtn extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _Avatar extends StatelessWidget {
   final String url;
   final String name;
@@ -561,10 +540,6 @@ class _Avatar extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _LoadingState extends StatelessWidget {
   const _LoadingState();
@@ -636,10 +611,6 @@ class _ErrorState extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _StatusInfo {
   final IconData icon;

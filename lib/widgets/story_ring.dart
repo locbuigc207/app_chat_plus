@@ -4,10 +4,6 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_chat_demo/models/story_model.dart';
 
-
-
-
-
 class StoryRing extends StatefulWidget {
   final Widget child;
   final bool hasUnseenStories;
@@ -15,13 +11,10 @@ class StoryRing extends StatefulWidget {
   final int totalSegments;
   final int seenSegments;
 
-  
   final double ringWidth;
 
-  
   final double gap;
 
-  
   final double segmentGap;
 
   const StoryRing({
@@ -86,10 +79,6 @@ class _StoryRingState extends State<StoryRing> with SingleTickerProviderStateMix
   }
 }
 
-
-
-
-
 class _SegmentedRingPainter extends CustomPainter {
   final double progress;
   final double ringWidth;
@@ -132,7 +121,6 @@ class _SegmentedRingPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..isAntiAlias = true;
 
-    
     if (totalSegments <= 1) {
       if (isCurrentUser) {
         paint.color = _currentUserColor;
@@ -145,7 +133,6 @@ class _SegmentedRingPainter extends CustomPainter {
         return;
       }
 
-      
       paint.shader = SweepGradient(
         startAngle: -math.pi / 2 + progress * 2 * math.pi,
         endAngle: 3 * math.pi / 2 + progress * 2 * math.pi,
@@ -155,7 +142,6 @@ class _SegmentedRingPainter extends CustomPainter {
       return;
     }
 
-    
     final total = totalSegments;
     final gapRad = segmentGapDeg * math.pi / 180;
     final segSweep = (2 * math.pi - gapRad * total) / total;
@@ -173,7 +159,6 @@ class _SegmentedRingPainter extends CustomPainter {
           ..shader = null
           ..color = _currentUserColor;
       } else {
-        
         paint.shader = SweepGradient(
           startAngle: -math.pi / 2 + progress * 2 * math.pi,
           endAngle: 3 * math.pi / 2 + progress * 2 * math.pi,
@@ -193,10 +178,6 @@ class _SegmentedRingPainter extends CustomPainter {
       old.seenSegments != seenSegments ||
       old.totalSegments != totalSegments;
 }
-
-
-
-
 
 class StoriesBar extends StatelessWidget {
   final List<UserStories> storiesList;
@@ -264,10 +245,6 @@ class StoriesBar extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _MyStatusTile extends StatelessWidget {
   final UserStories? myStories;
@@ -357,10 +334,6 @@ class _MyStatusTile extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _FriendTile extends StatelessWidget {
   final UserStories userStories;
   final String viewerId;
@@ -418,10 +391,6 @@ class _FriendTile extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _AvatarImage extends StatelessWidget {
   final String photoUrl;

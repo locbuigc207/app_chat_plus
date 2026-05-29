@@ -12,10 +12,6 @@ import 'package:flutter_chat_demo/services/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
-
-
-
-
 abstract class MessageStatus {
   static const String pending = 'pending';
   static const String sent = 'sent';
@@ -28,36 +24,7 @@ abstract class SyncJobType {
   static const String aiResponse = 'ai_response';
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class ChatProvider {
-  
-  
-  
-
   final SharedPreferences prefs;
   final FirebaseFirestore firebaseFirestore;
   final FirebaseStorage firebaseStorage;
@@ -74,13 +41,6 @@ class ChatProvider {
     required this.firebaseStorage,
   });
 
-  
-  
-  
-
-  
-  
-  
   static Map<String, dynamic> _toStringMap(dynamic raw) {
     if (raw == null) return {};
     if (raw is Map<String, dynamic>) return raw;
@@ -90,8 +50,6 @@ class ChatProvider {
     return {};
   }
 
-  
-  
   static List<Map<String, dynamic>> _toOptionList(dynamic raw) {
     if (raw is! List) return [];
     return raw.map((e) => _toStringMap(e)).toList();
@@ -101,10 +59,6 @@ class ChatProvider {
     // ignore: avoid_print
     debugPrint('[ChatProvider] $message');
   }
-
-  
-  
-  
 
   UploadTask uploadFile(File image, String fileName) {
     return firebaseStorage.ref().child(fileName).putFile(image);
@@ -150,10 +104,6 @@ class ChatProvider {
     return mimeMap[ext] ?? 'application/octet-stream';
   }
 
-  
-  
-  
-
   Stream<QuerySnapshot> getChatStream(String groupChatId, int limit) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathMessageCollection)
@@ -164,10 +114,6 @@ class ChatProvider {
         .snapshots();
   }
 
-  
-  
-  
-
   Future<void> updateDataFirestore(
     String collectionPath,
     String docPath,
@@ -175,10 +121,6 @@ class ChatProvider {
   ) {
     return firebaseFirestore.collection(collectionPath).doc(docPath).update(dataNeedUpdate);
   }
-
-  
-  
-  
 
   Future<void> sendMessage(
     String content,
@@ -234,10 +176,6 @@ class ChatProvider {
     _syncManager.startListening();
   }
 
-  
-  
-  
-
   Future<void> sendPollMessage({
     required String question,
     required List<String> optionTexts,
@@ -279,17 +217,6 @@ class ChatProvider {
     );
   }
 
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-
   Future<void> votePoll({
     required String groupChatId,
     required String messageId,
@@ -302,7 +229,6 @@ class ChatProvider {
         .collection(groupChatId)
         .doc(messageId);
 
-    
     const maxAttempts = 5;
     const baseDelayMs = 500;
     bool docExists = false;
@@ -318,7 +244,7 @@ class ChatProvider {
         _log('⚠️ votePoll check attempt $attempt error: $e');
       }
 
-      final delayMs = baseDelayMs * (attempt + 1); 
+      final delayMs = baseDelayMs * (attempt + 1);
       _log(
         '⏳ votePoll: message $messageId chưa tồn tại trên Firestore, '
         'thử lại sau ${delayMs}ms (${attempt + 1}/$maxAttempts)',
@@ -333,7 +259,6 @@ class ChatProvider {
       );
     }
 
-    
     try {
       await firebaseFirestore.runTransaction((transaction) async {
         final snapshot = await transaction.get(messageRef);
@@ -342,10 +267,8 @@ class ChatProvider {
           throw Exception('Poll message $messageId không tồn tại.');
         }
 
-        
         final data = _toStringMap(snapshot.data());
 
-        
         final contentStr = data[FirestoreConstants.content] as String? ?? '{}';
         Map<String, dynamic> pollData;
         try {
@@ -354,7 +277,6 @@ class ChatProvider {
           pollData = {};
         }
 
-        
         final expiresAtStr = pollData['expiresAt'] as String?;
         if (expiresAtStr != null) {
           final expiresAt = DateTime.tryParse(expiresAtStr);
@@ -363,7 +285,6 @@ class ChatProvider {
           }
         }
 
-        
         final List<Map<String, dynamic>> options;
         if (pollData['options'] is List && (pollData['options'] as List).isNotEmpty) {
           options = _toOptionList(pollData['options']);
@@ -373,18 +294,15 @@ class ChatProvider {
           throw Exception('Dữ liệu options không hợp lệ.');
         }
 
-        
         final targetIndex = options.indexWhere((o) => o['id'].toString() == optionId);
         if (targetIndex == -1) {
           final ids = options.map((e) => e['id']).toList();
           throw Exception('Option $optionId không tồn tại. Hiện có: $ids');
         }
 
-        
         final isMultipleChoice =
             (pollData['isMultipleChoice'] ?? data['isMultipleChoice'] ?? false) as bool;
 
-        
         if (!isMultipleChoice) {
           for (final opt in options) {
             final votes = List<dynamic>.from(opt['votes'] as List? ?? []);
@@ -393,7 +311,6 @@ class ChatProvider {
           }
         }
 
-        
         final targetVotes = List<dynamic>.from(options[targetIndex]['votes'] as List? ?? []);
         if (targetVotes.contains(userId)) {
           targetVotes.remove(userId);
@@ -402,7 +319,6 @@ class ChatProvider {
         }
         options[targetIndex]['votes'] = targetVotes;
 
-        
         pollData['options'] = options;
 
         transaction.update(messageRef, {
@@ -419,17 +335,6 @@ class ChatProvider {
       rethrow;
     }
   }
-
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
 
   void listenToFirebaseChanges(
     String groupChatId,
@@ -454,7 +359,6 @@ class ChatProvider {
               peerId: peerId,
             );
           } catch (e) {
-            
             _log('❌ _processIncomingDoc error [${doc.id}]: $e');
           }
         }
@@ -465,26 +369,20 @@ class ChatProvider {
     );
   }
 
-  
-  
   Future<void> _processIncomingDoc({
     required QueryDocumentSnapshot<Map<String, dynamic>> doc,
     required String groupChatId,
     required String currentUserId,
     required String peerId,
   }) async {
-    
-    
     final data = _toStringMap(doc.data());
     final messageId = doc.id;
     final isFromMe = data['idFrom'] == currentUserId;
     final type = data['type'] as int? ?? TypeMessage.text;
 
-    
     if (isFromMe) {
       final key = '${groupChatId}_$messageId';
       if (_localDb.messagesBox.containsKey(key)) {
-        
         final existingRaw = _localDb.messagesBox.get(key);
         final existing = _toStringMap(existingRaw);
         if (existing.isNotEmpty && existing['status'] == MessageStatus.pending) {
@@ -498,8 +396,6 @@ class ChatProvider {
       return;
     }
 
-    
-    
     String content = data[FirestoreConstants.content] as String? ?? '';
 
     if (type == TypeMessage.text && content.isNotEmpty) {
@@ -512,7 +408,6 @@ class ChatProvider {
         );
       } catch (e) {
         _log('⚠️ Decrypt failed for $messageId: $e');
-        
       }
     }
 
@@ -524,7 +419,6 @@ class ChatProvider {
       'content': content,
       'type': type,
       'status': MessageStatus.sent,
-      
       if (data.containsKey('options')) 'options': _toOptionList(data['options']),
       if (data.containsKey('isViewOnce')) 'isViewOnce': data['isViewOnce'],
       if (data.containsKey('isPinned')) 'isPinned': data['isPinned'],
@@ -533,7 +427,6 @@ class ChatProvider {
       if (data.containsKey('scamReason')) 'scamReason': data['scamReason'],
       if (data.containsKey('hasReminder')) 'hasReminder': data['hasReminder'],
       if (data.containsKey('lastVotedAt')) 'lastVotedAt': data['lastVotedAt']?.toString(),
-      
       if (data.containsKey(FirestoreConstants.matchId))
         FirestoreConstants.matchId: data[FirestoreConstants.matchId],
       if (data.containsKey(FirestoreConstants.gameType))
@@ -544,10 +437,6 @@ class ChatProvider {
 
     await _localDb.saveMessage(groupChatId, messageId, updatedMessage);
   }
-
-  
-  
-  
 
   Future<bool> sendMediaMessage({
     required File originalFile,
@@ -615,10 +504,6 @@ class ChatProvider {
     }
   }
 
-  
-  
-  
-
   Future<int> sendImageBatch({
     required List<File> files,
     required String groupChatId,
@@ -668,35 +553,10 @@ class ChatProvider {
     return successCount;
   }
 
-  
-  
-  
-
   Future<void> cancelMediaCompression() async {
     await _compressionService.cancelCompression();
   }
 
-  
-  
-  
-
-  
-  
-  
-
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
   Future<String> sendGameInviteMessage({
     required String groupChatId,
     required String currentUserId,
@@ -720,7 +580,6 @@ class ChatProvider {
     };
 
     try {
-      
       await firebaseFirestore
           .collection(FirestoreConstants.pathMessageCollection)
           .doc(groupChatId)
@@ -728,14 +587,12 @@ class ChatProvider {
           .doc(timestamp)
           .set(messageData);
 
-      
       await _localDb.saveMessage(
         groupChatId,
         timestamp,
         {...messageData, 'messageId': timestamp, 'status': MessageStatus.sent},
       );
 
-      
       await _localDb.updateConversationPreview(
         conversationId: groupChatId,
         lastMessage:
@@ -752,21 +609,6 @@ class ChatProvider {
     }
   }
 
-  
-  
-  
-
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
   Future<String> sendGameResultMessage({
     required String groupChatId,
     required String currentUserId,
@@ -775,7 +617,6 @@ class ChatProvider {
     final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
     final content = jsonEncode(payload.toJson());
 
-    
     final winner = payload.winnerId == currentUserId
         ? payload.player1Name
         : (payload.result == 'draw' ? null : payload.player2Name);
@@ -826,23 +667,6 @@ class ChatProvider {
     }
   }
 
-  
-  
-  
-
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
   Future<void> updateGameMessageStatus({
     required String groupChatId,
     required String messageId,
@@ -862,11 +686,9 @@ class ChatProvider {
         return;
       }
 
-      
       final data = _toStringMap(doc.data());
       final currentContent = data[FirestoreConstants.content] as String? ?? '';
 
-      
       String updatedContent = currentContent;
       try {
         final payloadMap = _toStringMap(jsonDecode(currentContent));
@@ -877,7 +699,6 @@ class ChatProvider {
         updatedContent = jsonEncode(payloadMap);
       } catch (e) {
         _log('⚠️ updateGameMessageStatus: failed to parse content: $e');
-        
       }
 
       await docRef.update({
@@ -885,7 +706,6 @@ class ChatProvider {
         FirestoreConstants.content: updatedContent,
       });
 
-      
       final localKey = '${groupChatId}_$messageId';
       final existingRaw = _localDb.messagesBox.get(localKey);
       final existing = _toStringMap(existingRaw);
@@ -904,7 +724,6 @@ class ChatProvider {
       _log('🔄 Game message status updated: $messageId → ${newStatus.name}');
     } catch (e) {
       _log('❌ updateGameMessageStatus error: $e');
-      
     }
   }
 }

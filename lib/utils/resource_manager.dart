@@ -5,15 +5,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-
-
-
-
-
-
-
 class ResourceManager {
-  
   final List<_SubEntry> _subscriptions = [];
   final List<_TimerEntry> _timers = [];
   final List<_DisposerEntry> _disposers = [];
@@ -21,13 +13,8 @@ class ResourceManager {
   bool _isDisposed = false;
   final String? _debugName;
 
-  
-
   ResourceManager({String? debugName}) : _debugName = debugName;
 
-  
-
-  
   StreamSubscription<T> addSubscription<T>(
     StreamSubscription<T> sub, {
     String? tag,
@@ -40,7 +27,6 @@ class ResourceManager {
     return sub;
   }
 
-  
   StreamSubscription<T> listen<T>(
     Stream<T> stream,
     void Function(T data) onData, {
@@ -58,7 +44,6 @@ class ResourceManager {
     return addSubscription(sub, tag: tag);
   }
 
-  
   Future<void> cancelSubscription(String tag) async {
     final entries = _subscriptions.where((e) => e.tag == tag).toList();
     for (final e in entries) {
@@ -69,9 +54,6 @@ class ResourceManager {
     }
   }
 
-  
-
-  
   Timer addTimer(Timer timer, {String? tag}) {
     if (_isDisposed) {
       timer.cancel();
@@ -81,7 +63,6 @@ class ResourceManager {
     return timer;
   }
 
-  
   Timer addPeriodicTimer(
     Duration period,
     void Function(Timer) callback, {
@@ -89,7 +70,6 @@ class ResourceManager {
   }) =>
       addTimer(Timer.periodic(period, callback), tag: tag);
 
-  
   Timer addDelayedTimer(
     Duration delay,
     VoidCallback callback, {
@@ -97,7 +77,6 @@ class ResourceManager {
   }) =>
       addTimer(Timer(delay, callback), tag: tag);
 
-  
   void cancelTimer(String tag) {
     final entries = _timers.where((e) => e.tag == tag).toList();
     for (final e in entries) {
@@ -108,9 +87,6 @@ class ResourceManager {
     }
   }
 
-  
-
-  
   void addDisposer(VoidCallback disposer, {String? tag}) {
     if (_isDisposed) {
       try {
@@ -121,41 +97,29 @@ class ResourceManager {
     _disposers.add(_DisposerEntry(disposer, tag: tag));
   }
 
-  
-
-  
   void addNotifier(ChangeNotifier notifier, {String? tag}) =>
       addDisposer(notifier.dispose, tag: tag);
 
-  
   void addController(TextEditingController controller, {String? tag}) =>
       addDisposer(controller.dispose, tag: tag);
 
-  
   void addAnimationController(AnimationController controller, {String? tag}) =>
       addDisposer(controller.dispose, tag: tag);
 
-  
   void addScrollController(ScrollController controller, {String? tag}) =>
       addDisposer(controller.dispose, tag: tag);
 
-  
   void addFocusNode(FocusNode node, {String? tag}) => addDisposer(node.dispose, tag: tag);
 
-  
   void addDisposable(Disposable disposable, {String? tag}) =>
       addDisposer(disposable.dispose, tag: tag);
 
-  
-
-  
   Future<void> dispose() async {
     if (_isDisposed) return;
     _isDisposed = true;
 
     _debugLog('Disposing...');
 
-    
     final subs = List.of(_subscriptions);
     _subscriptions.clear();
     for (final e in subs) {
@@ -166,7 +130,6 @@ class ResourceManager {
       }
     }
 
-    
     final timers = List.of(_timers);
     _timers.clear();
     for (final e in timers) {
@@ -177,7 +140,6 @@ class ResourceManager {
       }
     }
 
-    
     final disposers = List.of(_disposers).reversed.toList();
     _disposers.clear();
     for (final e in disposers) {
@@ -191,14 +153,10 @@ class ResourceManager {
     _debugLog('Disposed.');
   }
 
-  
-
   bool get isDisposed => _isDisposed;
   int get subscriptionCount => _subscriptions.length;
   int get timerCount => _timers.length;
   int get disposerCount => _disposers.length;
-
-  
 
   void _debugLog(String msg) {
     if (kDebugMode) {
@@ -216,10 +174,6 @@ class ResourceManager {
       'disposers: ${_disposers.length}'
       ')';
 }
-
-
-
-
 
 class _SubEntry {
   final StreamSubscription sub;
@@ -239,15 +193,9 @@ class _DisposerEntry {
   const _DisposerEntry(this.disposer, {this.tag});
 }
 
-
-
-
-
-
 mixin ResourceManagerMixin<T extends StatefulWidget> on State<T> {
   late final ResourceManager _resourceManager = ResourceManager(debugName: T.toString());
 
-  
   ResourceManager get resourceManager => _resourceManager;
 
   @override
@@ -255,8 +203,6 @@ mixin ResourceManagerMixin<T extends StatefulWidget> on State<T> {
     _resourceManager.dispose();
     super.dispose();
   }
-
-  
 
   StreamSubscription<E> listenStream<E>(
     Stream<E> stream,
@@ -289,11 +235,6 @@ mixin ResourceManagerMixin<T extends StatefulWidget> on State<T> {
   }) =>
       _resourceManager.addDelayedTimer(delay, callback, tag: tag);
 }
-
-
-
-
-
 
 mixin ResourceManagerNotifierMixin on ChangeNotifier {
   late final ResourceManager _resourceManager = ResourceManager(debugName: runtimeType.toString());
@@ -336,10 +277,6 @@ mixin ResourceManagerNotifierMixin on ChangeNotifier {
       _resourceManager.addDelayedTimer(delay, callback, tag: tag);
 }
 
-
-
-
-
 abstract interface class Disposable {
   void dispose();
 }
@@ -348,21 +285,11 @@ extension DisposableExtension on ResourceManager {
   void addDisposableObject(Disposable d) => addDisposer(d.dispose);
 }
 
-
-
-
-
-
 class ManagedValueNotifier<T> extends ValueNotifier<T> {
   ManagedValueNotifier(super.value);
 
-  
   void attachTo(ResourceManager rm, {String? tag}) => rm.addDisposer(dispose, tag: tag);
 }
-
-
-
-
 
 class AutoDisposeStream<T> implements Disposable {
   StreamSubscription<T>? _subscription;

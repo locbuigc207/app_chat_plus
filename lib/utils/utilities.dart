@@ -4,11 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-
 class Utilities {
   Utilities._();
-
-  
 
   static bool isKeyboardShowing(BuildContext context) =>
       MediaQuery.of(context).viewInsets.bottom > 0;
@@ -17,9 +14,6 @@ class Utilities {
 
   static void closeKeyboardForContext(BuildContext context) => FocusScope.of(context).unfocus();
 
-  
-
-  
   static String getInitials(String name, {int maxLength = 2}) {
     if (name.trim().isEmpty) return '?';
     final parts = name.trim().split(RegExp(r'\s+'));
@@ -29,13 +23,11 @@ class Utilities {
     return parts.take(maxLength).map((p) => p[0].toUpperCase()).join();
   }
 
-  
   static String truncate(String text, int maxLength, {String ellipsis = '…'}) {
     if (text.length <= maxLength) return text;
     return '${text.substring(0, maxLength)}$ellipsis';
   }
 
-  
   static List<TextSpan> highlightText(
     String text,
     String query, {
@@ -74,11 +66,9 @@ class Utilities {
     return spans;
   }
 
-  
   static int wordCount(String text) =>
       text.trim().isEmpty ? 0 : text.trim().split(RegExp(r'\s+')).length;
 
-  
   static bool containsEmoji(String text) {
     final emojiRegex = RegExp(
       r'[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]',
@@ -87,7 +77,6 @@ class Utilities {
     return emojiRegex.hasMatch(text);
   }
 
-  
   static bool isEmojiOnly(String text) {
     final stripped = text.replaceAll(
       RegExp(
@@ -100,7 +89,6 @@ class Utilities {
     return stripped.isEmpty && text.trim().isNotEmpty;
   }
 
-  
   static String formatNumber(int number) {
     if (number >= 1000000) {
       return '${(number / 1000000).toStringAsFixed(1)}M';
@@ -110,7 +98,6 @@ class Utilities {
     return number.toString();
   }
 
-  
   static String formatFileSize(int bytes) {
     if (bytes <= 0) return '0 B';
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -119,18 +106,12 @@ class Utilities {
     return '${size.toStringAsFixed(i == 0 ? 0 : 1)} ${units[i]}';
   }
 
-  
-
-  
   static Size screenSize(BuildContext context) => MediaQuery.sizeOf(context);
 
-  
   static bool isTablet(BuildContext context) => MediaQuery.sizeOf(context).shortestSide >= 600;
 
-  
   static EdgeInsets safePadding(BuildContext context) => MediaQuery.paddingOf(context);
 
-  
   static Color colorFromName(String name) {
     const colors = [
       Color(0xFF5B8DEF),
@@ -154,8 +135,6 @@ class Utilities {
     return colors[hash % colors.length];
   }
 
-  
-
   static Future<void> copyToClipboard(
     String text,
     BuildContext context, {
@@ -178,8 +157,6 @@ class Utilities {
     return data?.text;
   }
 
-  
-
   static bool isValidEmail(String email) {
     return RegExp(
       r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$',
@@ -197,8 +174,6 @@ class Utilities {
     ).hasMatch(url.trim());
   }
 
-  
-
   static Future<void> lightHaptic() => HapticFeedback.lightImpact();
 
   static Future<void> mediumHaptic() => HapticFeedback.mediumImpact();
@@ -206,8 +181,6 @@ class Utilities {
   static Future<void> heavyHaptic() => HapticFeedback.heavyImpact();
 
   static Future<void> selectionHaptic() => HapticFeedback.selectionClick();
-
-  
 
   static void showSnackbar(
     BuildContext context,
@@ -248,9 +221,6 @@ class Utilities {
     );
   }
 
-  
-
-  
   static Future<bool> showConfirmDialog(
     BuildContext context, {
     required String title,
@@ -282,8 +252,6 @@ class Utilities {
     return result ?? false;
   }
 
-  
-
   static bool get isAndroid => defaultTargetPlatform == TargetPlatform.android;
 
   static bool get isIOS => defaultTargetPlatform == TargetPlatform.iOS;
@@ -295,8 +263,6 @@ class Utilities {
       defaultTargetPlatform == TargetPlatform.windows ||
       defaultTargetPlatform == TargetPlatform.linux;
 }
-
-
 
 extension StringUtilsExtension on String {
   String get initials => Utilities.getInitials(this);

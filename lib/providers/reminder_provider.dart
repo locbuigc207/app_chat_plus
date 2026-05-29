@@ -1,15 +1,10 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
-
-
-
-
 
 enum ReminderRepeat { none, daily, weekly, monthly }
 
@@ -135,17 +130,12 @@ class MessageReminder {
   }
 }
 
-
-
-
-
 class ReminderProvider {
   final FirebaseFirestore firebaseFirestore;
   final FlutterLocalNotificationsPlugin notificationsPlugin;
 
   static const String _collection = 'reminders';
 
-  
   static const String _channelId = 'message_reminders';
   static const String _channelName = 'Message Reminders';
   static const String _urgentChannelId = 'urgent_reminders';
@@ -156,11 +146,6 @@ class ReminderProvider {
     required this.notificationsPlugin,
   });
 
-  
-  
-  
-
-  
   Future<MessageReminder?> scheduleReminder({
     required String userId,
     required String messageId,
@@ -179,7 +164,7 @@ class ReminderProvider {
       }
 
       final data = MessageReminder(
-        id: '', 
+        id: '',
         userId: userId,
         messageId: messageId,
         conversationId: conversationId,
@@ -213,7 +198,6 @@ class ReminderProvider {
     }
   }
 
-  
   Future<bool> updateReminder({
     required String reminderId,
     required DateTime newReminderTime,
@@ -232,7 +216,6 @@ class ReminderProvider {
 
       await firebaseFirestore.collection(_collection).doc(reminderId).update(updates);
 
-      
       final oldId = reminderId.hashCode.abs() % 2147483647;
       await notificationsPlugin.cancel(oldId);
 
@@ -260,10 +243,6 @@ class ReminderProvider {
       return false;
     }
   }
-
-  
-  
-  
 
   Future<void> _scheduleNotification({
     required int id,
@@ -318,10 +297,6 @@ class ReminderProvider {
     }
   }
 
-  
-  
-  
-
   Future<bool> completeReminder(String reminderId) async {
     try {
       await firebaseFirestore.collection(_collection).doc(reminderId).update({
@@ -351,7 +326,6 @@ class ReminderProvider {
     }
   }
 
-  
   Future<bool> snoozeReminder(
     String reminderId, {
     Duration snoozeDuration = const Duration(minutes: 10),
@@ -368,11 +342,6 @@ class ReminderProvider {
     }
   }
 
-  
-  
-  
-
-  
   Stream<List<MessageReminder>> getUserRemindersStream(String userId) {
     return firebaseFirestore
         .collection(_collection)
@@ -383,7 +352,6 @@ class ReminderProvider {
         .map((snapshot) => snapshot.docs.map(MessageReminder.fromDocument).toList());
   }
 
-  
   Stream<List<MessageReminder>> getCompletedRemindersStream(
     String userId, {
     int limit = 50,
@@ -398,7 +366,6 @@ class ReminderProvider {
         .map((snapshot) => snapshot.docs.map(MessageReminder.fromDocument).toList());
   }
 
-  
   Future<List<MessageReminder>> getUpcomingReminders(
     String userId, {
     int minutes = 60,
@@ -424,7 +391,6 @@ class ReminderProvider {
     }
   }
 
-  
   Stream<int> getActiveReminderCount(String userId) {
     return firebaseFirestore
         .collection(_collection)
@@ -434,11 +400,6 @@ class ReminderProvider {
         .map((s) => s.size);
   }
 
-  
-  
-  
-
-  
   Future<void> checkExpiredReminders(String userId) async {
     try {
       final now = DateTime.now();
@@ -484,7 +445,6 @@ class ReminderProvider {
     }
   }
 
-  
   Future<void> cleanupOldReminders(
     String userId, {
     Duration olderThan = const Duration(days: 30),
@@ -518,7 +478,6 @@ class ReminderProvider {
     }
   }
 
-  
   Future<void> cancelAllNotifications() async {
     await notificationsPlugin.cancelAll();
     debugPrint('✅ All notifications cancelled');

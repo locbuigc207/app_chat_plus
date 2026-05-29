@@ -2,17 +2,9 @@ import 'dart:ui' show Color;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-
-
-
-
 enum StoryType { image, text, video }
 
 enum StoryPrivacy { everyone, friends }
-
-
-
-
 
 class StoryView {
   final String userId;
@@ -41,10 +33,6 @@ class StoryView {
         'viewedAt': viewedAt.millisecondsSinceEpoch.toString(),
       };
 }
-
-
-
-
 
 class StoryReaction {
   final String userId;
@@ -77,10 +65,6 @@ class StoryReaction {
         'reactedAt': reactedAt.millisecondsSinceEpoch.toString(),
       };
 }
-
-
-
-
 
 class Story {
   final String id;
@@ -127,8 +111,6 @@ class Story {
     this.videoDuration,
   });
 
-  
-
   bool get isExpired => DateTime.now().isAfter(expiresAt);
   bool get isActive => !isExpired && !isDeleted;
   int get viewCount => views.length;
@@ -138,7 +120,6 @@ class Story {
     return r.isNegative ? Duration.zero : r;
   }
 
-  
   Duration get displayDuration {
     if (type == StoryType.video && videoDuration != null) {
       return videoDuration!.clamp(
@@ -158,8 +139,6 @@ class Story {
       return null;
     }
   }
-
-  
 
   Map<String, dynamic> toJson() => {
         'userId': userId,
@@ -281,10 +260,6 @@ class Story {
       );
 }
 
-
-
-
-
 class UserStories {
   final String userId;
   final String userName;
@@ -312,10 +287,6 @@ class UserStories {
 
   int unseenCountBy(String viewerId) => activeStories.where((s) => !s.isViewedBy(viewerId)).length;
 }
-
-
-
-
 
 DateTime _parseDate(dynamic value) {
   if (value == null) return DateTime.now();

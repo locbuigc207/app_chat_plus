@@ -4,10 +4,6 @@ import 'package:flutter/foundation.dart';
 
 import 'package:http/http.dart' as http;
 
-
-
-
-
 enum ReplyCategory {
   greeting,
   farewell,
@@ -40,41 +36,22 @@ class SmartReply {
   String toString() => 'SmartReply(text: $text, confidence: $confidence)';
 }
 
-
-
-
-
 class SmartReplyProvider {
-  
   static const int maxReplies = 3;
 
-  
-  
-  
-
-  
-  
-  
-  
-  
-  
-  
   Future<List<SmartReply>> getSmartReplies({
     required String message,
     List<String>? conversationHistory,
     String? anthropicApiKey,
   }) async {
-    
     final ruleReplies = getRuleBasedReplies(message);
     if (ruleReplies.isNotEmpty) return ruleReplies;
 
-    
     if (conversationHistory != null && conversationHistory.isNotEmpty) {
       final contextReplies = getContextAwareReplies(message, conversationHistory);
       if (contextReplies.isNotEmpty) return contextReplies;
     }
 
-    
     if (anthropicApiKey != null && anthropicApiKey.isNotEmpty) {
       final aiReplies = await getAnthropicReplies(
         message: message,
@@ -84,19 +61,13 @@ class SmartReplyProvider {
       if (aiReplies.isNotEmpty) return aiReplies;
     }
 
-    
     return _fallbackReplies;
   }
-
-  
-  
-  
 
   List<SmartReply> getRuleBasedReplies(String message) {
     final lower = message.toLowerCase().trim();
     final List<SmartReply> replies = [];
 
-    
     if (_matchesAny(
         lower, ['hello', 'hi ', 'hey', 'greetings', 'howdy', 'sup', 'what\'s up', 'hiya'])) {
       replies.addAll([
@@ -111,7 +82,6 @@ class SmartReplyProvider {
       ]);
     }
 
-    
     if (_matchesAny(lower, [
       'how are you',
       'how r u',
@@ -137,7 +107,6 @@ class SmartReplyProvider {
       ]);
     }
 
-    
     if (_matchesAny(
         lower, ['thank you', 'thanks', 'thx', 'ty ', 'appreciate', 'grateful', 'cheers', 'thnx'])) {
       replies.addAll([
@@ -150,7 +119,6 @@ class SmartReplyProvider {
       ]);
     }
 
-    
     if (_matchesAny(
         lower, ['sorry', 'apologize', 'my bad', 'excuse me', 'forgive', 'pardon', 'oops'])) {
       replies.addAll([
@@ -167,7 +135,6 @@ class SmartReplyProvider {
       ]);
     }
 
-    
     if (_matchesAny(lower, [
       'bye',
       'goodbye',
@@ -190,7 +157,6 @@ class SmartReplyProvider {
       ]);
     }
 
-    
     if (lower.endsWith('?') ||
         _matchesAny(lower, ['can you', 'could you', 'would you', 'is it', 'are you', 'do you'])) {
       replies.addAll([
@@ -209,7 +175,6 @@ class SmartReplyProvider {
       ]);
     }
 
-    
     if (_matchesAny(lower, [
       ' yes',
       'yeah',
@@ -235,7 +200,6 @@ class SmartReplyProvider {
       ]);
     }
 
-    
     if (_matchesAny(lower, [
       ' no ',
       'nope',
@@ -259,7 +223,6 @@ class SmartReplyProvider {
       ]);
     }
 
-    
     if (_matchesAny(lower, [
       'when',
       'what time',
@@ -286,7 +249,6 @@ class SmartReplyProvider {
       ]);
     }
 
-    
     if (_matchesAny(
         lower, ['where', 'location', 'address', 'place', 'directions', 'map', 'how to get'])) {
       replies.addAll([
@@ -305,7 +267,6 @@ class SmartReplyProvider {
       ]);
     }
 
-    
     if (_matchesAny(lower, [
       'urgent',
       'emergency',
@@ -330,7 +291,6 @@ class SmartReplyProvider {
       ]);
     }
 
-    
     if (_matchesAny(lower, [
       'work',
       'project',
@@ -351,7 +311,6 @@ class SmartReplyProvider {
       ]);
     }
 
-    
     if (_matchesAny(lower, [
       'happy',
       'sad',
@@ -385,10 +344,6 @@ class SmartReplyProvider {
     replies.sort((a, b) => b.confidence.compareTo(a.confidence));
     return replies.take(maxReplies).toList();
   }
-
-  
-  
-  
 
   List<SmartReply> getContextAwareReplies(
     String currentMessage,
@@ -484,10 +439,6 @@ class SmartReplyProvider {
     return 'general';
   }
 
-  
-  
-  
-
   Future<List<SmartReply>> getAnthropicReplies({
     required String message,
     required String apiKey,
@@ -566,15 +517,9 @@ class SmartReplyProvider {
       debugPrint('⚠️ Anthropic API unavailable: $e');
     }
 
-    
     return getRuleBasedReplies(message);
   }
 
-  
-  
-  
-
-  
   Future<String?> generateReplyDraft({
     required String message,
     required String apiKey,
@@ -626,10 +571,6 @@ class SmartReplyProvider {
     }
     return null;
   }
-
-  
-  
-  
 
   bool _matchesAny(String text, List<String> keywords) => keywords.any((k) => text.contains(k));
 

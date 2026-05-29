@@ -4,10 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:intl/intl.dart';
 
-
-
-
-
 enum RepeatOption { none, daily, weekly, monthly }
 
 class ScheduleMessageResult {
@@ -26,15 +22,9 @@ class ScheduleMessageResult {
   });
 }
 
-
-
-
-
 class ScheduleMessageDialog extends StatelessWidget {
-  
   final String? initialMessage;
 
-  
   final DateTime? minDate;
 
   const ScheduleMessageDialog({
@@ -43,7 +33,6 @@ class ScheduleMessageDialog extends StatelessWidget {
     this.minDate,
   });
 
-  
   static Future<ScheduleMessageResult?> show(
     BuildContext context, {
     String? initialMessage,
@@ -63,10 +52,6 @@ class ScheduleMessageDialog extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _ScheduleMessageContent extends StatefulWidget {
   final String? initialMessage;
@@ -98,7 +83,6 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
   late final AnimationController _confirmController;
   late final Animation<double> _confirmScale;
 
-  
   static const _quickPresets = [
     (label: '30 min', duration: Duration(minutes: 30)),
     (label: '1 hour', duration: Duration(hours: 1)),
@@ -144,10 +128,6 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     super.dispose();
   }
 
-  
-  
-  
-
   Future<void> _pickDateTime() async {
     final now = DateTime.now();
     final minDate = widget.minDate ?? now;
@@ -184,7 +164,7 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
   void _applyQuickPreset(Duration offset) {
     setState(() {
       _scheduledTime = DateTime.now().add(offset);
-      
+
       final extra = _scheduledTime!.minute % 5;
       if (extra != 0) {
         _scheduledTime =
@@ -213,14 +193,9 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
   }
 
-  
-  
-  
-
   Future<void> _handleSchedule() async {
     if (_isConfirming) return;
 
-    
     final text = _messageController.text.trim();
     if (text.isEmpty) {
       _showError('Message cannot be empty.');
@@ -271,10 +246,6 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
       ));
   }
 
-  
-  
-  
-
   String get _timeUntilText {
     if (_scheduledTime == null) return '';
     final diff = _scheduledTime!.difference(DateTime.now());
@@ -288,10 +259,6 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
   }
 
   Color get _primaryColor => ColorConstants.primaryColor;
-
-  
-  
-  
 
   @override
   Widget build(BuildContext context) {
@@ -363,10 +330,6 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
   }
 
-  
-  
-  
-
   Widget _buildHeader() {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 16, 16),
@@ -437,10 +400,6 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
   }
 
-  
-  
-  
-
   Widget _buildMessageField() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -486,10 +445,6 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
   }
 
-  
-  
-  
-
   Widget _buildQuickPresets() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -521,10 +476,6 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
       ],
     );
   }
-
-  
-  
-  
 
   Widget _buildDateTimeSelector() {
     return Column(
@@ -615,10 +566,6 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
   }
 
-  
-  
-  
-
   Widget _buildTimeBadge() {
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
@@ -655,10 +602,6 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
       ),
     );
   }
-
-  
-  
-  
 
   Widget _buildRepeatSelector() {
     return Column(
@@ -712,10 +655,6 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
       ],
     );
   }
-
-  
-  
-  
 
   Widget _buildNotifyToggle() {
     return GestureDetector(
@@ -778,10 +717,6 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
   }
 
-  
-  
-  
-
   Widget _buildRemindSlider() {
     final options = [2, 5, 10, 15, 30, 60];
     return TweenAnimationBuilder<double>(
@@ -822,10 +757,6 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
       ),
     );
   }
-
-  
-  
-  
 
   Widget _buildActions() {
     return Row(
@@ -918,10 +849,6 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
   }
 
-  
-  
-  
-
   Widget _sectionLabel(String text, IconData icon) {
     return Row(
       children: [
@@ -940,10 +867,6 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
   }
 }
-
-
-
-
 
 class _QuickChip extends StatefulWidget {
   final String label;
@@ -1025,8 +948,6 @@ class _QuickChipState extends State<_QuickChip> with SingleTickerProviderStateMi
     );
   }
 }
-
-
 
 class _AnimatedSwitch extends StatelessWidget {
   final bool value;

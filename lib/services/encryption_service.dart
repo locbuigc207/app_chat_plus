@@ -9,10 +9,6 @@ import 'package:encrypt/encrypt.dart' as enc;
 
 import 'e2ee_service.dart';
 
-
-
-
-
 enum PayloadType { e2eeGcm, legacyCbc, plain }
 
 class _PayloadInfo {
@@ -21,34 +17,16 @@ class _PayloadInfo {
   const _PayloadInfo(this.type, this.raw);
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
 class EncryptionService {
-  
   EncryptionService._internal();
   static final EncryptionService _instance = EncryptionService._internal();
   factory EncryptionService() => _instance;
 
-  
   final E2EEService _e2ee = E2EEService();
 
   static const String _legacySalt = 'APP_CHAT_PLUS_SECURE_SALT_2026';
 
   static final _legacyPayloadRegex = RegExp(r'^[A-Za-z0-9+/=]+=*:[A-Za-z0-9+/=]+=*$');
-
-  
-  
-  
 
   enc.Key _generateLegacyKey(String conversationId) {
     final bytes = utf8.encode(conversationId + _legacySalt);
@@ -85,10 +63,6 @@ class EncryptionService {
     }
   }
 
-  
-  
-  
-
   Future<String> encryptPayload(
     String plainText,
     String conversationId,
@@ -123,8 +97,6 @@ class EncryptionService {
     return encryptMessageLegacy(plainText, conversationId);
   }
 
-  
-  
   Future<String> decryptPayload(
     String encryptedText,
     String conversationId,
@@ -175,7 +147,6 @@ class EncryptionService {
         currentUserId,
       );
     } on E2EEException catch (e) {
-      
       debugPrint(
         '[EncryptionService] ❌ E2EE decrypt error (${e.type.name}): $e',
       );
@@ -185,20 +156,17 @@ class EncryptionService {
           return '🔒 [Thiết bị chưa có khóa — không thể giải mã]';
 
         case E2EEErrorType.invalidPayload:
-          
           debugPrint(
             '[EncryptionService] 🔄 Invalid payload, thử Legacy-CBC fallback...',
           );
           final legacyResult = decryptMessageLegacy(encryptedText, conversationId);
-          
+
           if (legacyResult.startsWith('🔒')) {
             return '⚠️ [Dữ liệu tin nhắn bị hỏng]';
           }
           return legacyResult;
 
         case E2EEErrorType.decryptionFailed:
-          
-          
           debugPrint(
             '[EncryptionService] 🔄 decryptionFailed — evict cache và thử lại...',
           );
@@ -226,10 +194,6 @@ class EncryptionService {
       return '🔒 [Tin nhắn được mã hóa — không thể giải mã]';
     }
   }
-
-  
-  
-  
 
   Future<List<String>> decryptBatch(
     List<String> encryptedMessages,
@@ -270,10 +234,6 @@ class EncryptionService {
 
   PayloadType detectPayloadType(String text) => _detectPayloadType(text).type;
 
-  
-  
-  
-
   _PayloadInfo _detectPayloadType(String text) {
     final trimmed = text.trim();
 
@@ -285,7 +245,6 @@ class EncryptionService {
       try {
         final decoded = jsonDecode(trimmed);
         if (decoded is Map && decoded.containsKey('iv') && decoded.containsKey('data')) {
-          
           final iv = decoded['iv']?.toString() ?? '';
           final data = decoded['data']?.toString() ?? '';
           if (iv.isNotEmpty && data.isNotEmpty) {

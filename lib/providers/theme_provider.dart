@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 enum AppThemeMode { light, dark, system }
 
 enum ThemeColor {
+  
   blue,
   green,
   purple,
@@ -17,12 +18,22 @@ enum ThemeColor {
   pink,
   teal,
   red,
+  
   indigo,
+  violet,
+  rose,
+  amber,
+  emerald,
+  sky,
+  coral,
+  slate,
 }
 
-enum BubbleStyle { modern, classic, minimal, rounded }
+enum BubbleStyle { modern, classic, minimal, rounded, sharp }
 
 enum FontSize { small, medium, large, extraLarge }
+
+enum ChatWallpaper { none, dots, grid, waves, diagonal, circuit }
 
 
 
@@ -32,57 +43,249 @@ class ThemePalette {
   final Color primary;
   final Color primaryLight;
   final Color primaryDark;
+  final Color primaryContainer;
   final Color accent;
   final Color background;
   final Color surface;
   final Color surfaceVariant;
+  final Color surfaceElevated;
   final Color onPrimary;
   final Color onBackground;
   final Color onSurface;
   final Color textPrimary;
   final Color textSecondary;
   final Color textHint;
+  final Color textOnBubble;
   final Color divider;
   final Color outgoingBubble;
   final Color incomingBubble;
   final Color outgoingText;
   final Color incomingText;
   final Color inputBackground;
+  final Color inputBorder;
   final Color navBarBackground;
   final Color appBarBackground;
   final Color shadow;
+  final Color shadowStrong;
   final Color unreadBadge;
   final Color onlineIndicator;
   final Color typingIndicator;
+  final Color reactionBackground;
+  final Color pinnedBackground;
+  final Color scamWarning;
+  final Color reminderAccent;
+  final Color successColor;
+  final Color dangerColor;
+  final Color warningColor;
+  final Color infoColor;
+  final bool isDark;
 
   const ThemePalette({
     required this.primary,
     required this.primaryLight,
     required this.primaryDark,
+    required this.primaryContainer,
     required this.accent,
     required this.background,
     required this.surface,
     required this.surfaceVariant,
+    required this.surfaceElevated,
     required this.onPrimary,
     required this.onBackground,
     required this.onSurface,
     required this.textPrimary,
     required this.textSecondary,
     required this.textHint,
+    required this.textOnBubble,
     required this.divider,
     required this.outgoingBubble,
     required this.incomingBubble,
     required this.outgoingText,
     required this.incomingText,
     required this.inputBackground,
+    required this.inputBorder,
     required this.navBarBackground,
     required this.appBarBackground,
     required this.shadow,
+    required this.shadowStrong,
     required this.unreadBadge,
     required this.onlineIndicator,
     required this.typingIndicator,
+    required this.reactionBackground,
+    required this.pinnedBackground,
+    required this.scamWarning,
+    required this.reminderAccent,
+    required this.successColor,
+    required this.dangerColor,
+    required this.warningColor,
+    required this.infoColor,
+    required this.isDark,
   });
 }
+
+
+
+
+
+class _ColorSwatch {
+  final String name;
+  final String nameVi;
+  final Color base;
+  final Color light;
+  final Color dark;
+  final Color container;
+  final Color accent;
+
+  const _ColorSwatch({
+    required this.name,
+    required this.nameVi,
+    required this.base,
+    required this.light,
+    required this.dark,
+    required this.container,
+    required this.accent,
+  });
+}
+
+const _swatches = <ThemeColor, _ColorSwatch>{
+  
+  ThemeColor.blue: _ColorSwatch(
+    name: 'Blue',
+    nameVi: 'Xanh dương',
+    base: Color(0xFF2196F3),
+    light: Color(0xFF64B5F6),
+    dark: Color(0xFF1565C0),
+    container: Color(0xFFE3F2FD),
+    accent: Color(0xFFFF6D00),
+  ),
+  ThemeColor.green: _ColorSwatch(
+    name: 'Green',
+    nameVi: 'Xanh lá',
+    base: Color(0xFF43A047),
+    light: Color(0xFF81C784),
+    dark: Color(0xFF1B5E20),
+    container: Color(0xFFE8F5E9),
+    accent: Color(0xFFFF6D00),
+  ),
+  ThemeColor.purple: _ColorSwatch(
+    name: 'Purple',
+    nameVi: 'Tím cổ điển',
+    base: Color(0xFF8E24AA),
+    light: Color(0xFFCE93D8),
+    dark: Color(0xFF4A148C),
+    container: Color(0xFFF3E5F5),
+    accent: Color(0xFFFFD600),
+  ),
+  ThemeColor.orange: _ColorSwatch(
+    name: 'Orange',
+    nameVi: 'Cam',
+    base: Color(0xFFEF6C00),
+    light: Color(0xFFFFB74D),
+    dark: Color(0xFFBF360C),
+    container: Color(0xFFFFF3E0),
+    accent: Color(0xFF0288D1),
+  ),
+  ThemeColor.pink: _ColorSwatch(
+    name: 'Pink',
+    nameVi: 'Hồng phấn',
+    base: Color(0xFFE91E63),
+    light: Color(0xFFF48FB1),
+    dark: Color(0xFF880E4F),
+    container: Color(0xFFFCE4EC),
+    accent: Color(0xFF1DE9B6),
+  ),
+  ThemeColor.teal: _ColorSwatch(
+    name: 'Teal',
+    nameVi: 'Xanh cổ vịt',
+    base: Color(0xFF009688),
+    light: Color(0xFF80CBC4),
+    dark: Color(0xFF004D40),
+    container: Color(0xFFE0F2F1),
+    accent: Color(0xFFFF4081),
+  ),
+  ThemeColor.red: _ColorSwatch(
+    name: 'Red',
+    nameVi: 'Đỏ',
+    base: Color(0xFFE53935),
+    light: Color(0xFFEF9A9A),
+    dark: Color(0xFFB71C1C),
+    container: Color(0xFFFFEBEE),
+    accent: Color(0xFF00B0FF),
+  ),
+  
+  ThemeColor.indigo: _ColorSwatch(
+    name: 'Indigo',
+    nameVi: 'Chàm',
+    base: Color(0xFF5A67D8),
+    light: Color(0xFF7F8CF7),
+    dark: Color(0xFF3D4DB7),
+    container: Color(0xFFEEF0FD),
+    accent: Color(0xFFFF6B6B),
+  ),
+  ThemeColor.violet: _ColorSwatch(
+    name: 'Violet',
+    nameVi: 'Tím',
+    base: Color(0xFF7C3AED),
+    light: Color(0xFFA78BFA),
+    dark: Color(0xFF5B21B6),
+    container: Color(0xFFF3EEFF),
+    accent: Color(0xFFFFB347),
+  ),
+  ThemeColor.rose: _ColorSwatch(
+    name: 'Rose',
+    nameVi: 'Hồng',
+    base: Color(0xFFE11D48),
+    light: Color(0xFFFB7185),
+    dark: Color(0xFF9F1239),
+    container: Color(0xFFFFF1F3),
+    accent: Color(0xFF06B6D4),
+  ),
+  ThemeColor.amber: _ColorSwatch(
+    name: 'Amber',
+    nameVi: 'Hổ phách',
+    base: Color(0xFFD97706),
+    light: Color(0xFFFBBF24),
+    dark: Color(0xFF92400E),
+    container: Color(0xFFFFFBEB),
+    accent: Color(0xFF8B5CF6),
+  ),
+  ThemeColor.emerald: _ColorSwatch(
+    name: 'Emerald',
+    nameVi: 'Xanh ngọc',
+    base: Color(0xFF059669),
+    light: Color(0xFF34D399),
+    dark: Color(0xFF064E3B),
+    container: Color(0xFFECFDF5),
+    accent: Color(0xFFEC4899),
+  ),
+  ThemeColor.sky: _ColorSwatch(
+    name: 'Sky',
+    nameVi: 'Xanh trời',
+    base: Color(0xFF0284C7),
+    light: Color(0xFF38BDF8),
+    dark: Color(0xFF0C4A6E),
+    container: Color(0xFFF0F9FF),
+    accent: Color(0xFFF97316),
+  ),
+  ThemeColor.coral: _ColorSwatch(
+    name: 'Coral',
+    nameVi: 'San hô',
+    base: Color(0xFFEA580C),
+    light: Color(0xFFFB923C),
+    dark: Color(0xFF7C2D12),
+    container: Color(0xFFFFF7ED),
+    accent: Color(0xFF14B8A6),
+  ),
+  ThemeColor.slate: _ColorSwatch(
+    name: 'Slate',
+    nameVi: 'Xám xanh',
+    base: Color(0xFF475569),
+    light: Color(0xFF94A3B8),
+    dark: Color(0xFF1E293B),
+    container: Color(0xFFF8FAFC),
+    accent: Color(0xFFEF4444),
+  ),
+};
 
 
 
@@ -99,23 +302,28 @@ class ThemeProvider extends ChangeNotifier {
   late bool _showAvatarsInChat;
   late bool _compactMode;
   late double _chatWallpaperOpacity;
+  late ChatWallpaper _chatWallpaper;
+  late bool _useGradientBubble;
+  late bool _showTimestampAlways;
+  late bool _enableBlurEffects;
 
-  
-  static const _kThemeMode = 'theme_mode';
-  static const _kThemeColor = 'theme_color';
-  static const _kBubbleStyle = 'bubble_style';
-  static const _kFontSize = 'font_size';
-  static const _kDynamicColor = 'dynamic_color';
-  static const _kShowAvatars = 'show_avatars_chat';
-  static const _kCompactMode = 'compact_mode';
-  static const _kWallpaperOpacity = 'wallpaper_opacity';
+  static const _kThemeMode = 'theme_mode_v2';
+  static const _kThemeColor = 'theme_color_v2';
+  static const _kBubbleStyle = 'bubble_style_v2';
+  static const _kFontSize = 'font_size_v2';
+  static const _kDynamicColor = 'dynamic_color_v2';
+  static const _kShowAvatars = 'show_avatars_chat_v2';
+  static const _kCompactMode = 'compact_mode_v2';
+  static const _kWallpaperOpacity = 'wallpaper_opacity_v2';
+  static const _kChatWallpaper = 'chat_wallpaper_v2';
+  static const _kGradientBubble = 'gradient_bubble_v2';
+  static const _kTimestampAlways = 'timestamp_always_v2';
+  static const _kBlurEffects = 'blur_effects_v2';
 
   ThemeProvider({required this.prefs}) {
     _load();
   }
 
-  
-  
   
 
   AppThemeMode get themeMode => _themeMode;
@@ -126,6 +334,10 @@ class ThemeProvider extends ChangeNotifier {
   bool get showAvatarsInChat => _showAvatarsInChat;
   bool get compactMode => _compactMode;
   double get chatWallpaperOpacity => _chatWallpaperOpacity;
+  ChatWallpaper get chatWallpaper => _chatWallpaper;
+  bool get useGradientBubble => _useGradientBubble;
+  bool get showTimestampAlways => _showTimestampAlways;
+  bool get enableBlurEffects => _enableBlurEffects;
 
   bool get isDark {
     if (_themeMode == AppThemeMode.system) {
@@ -146,12 +358,16 @@ class ThemeProvider extends ChangeNotifier {
     }
   }
 
-  Color get primaryColor => _primaryColorFor(_themeColor);
-  Color get primaryLightColor => _primaryLightFor(_themeColor);
-  Color get primaryDarkColor => _primaryDarkFor(_themeColor);
-  Color get accentColor => _accentColorFor(_themeColor);
+  _ColorSwatch get _swatch => _swatches[_themeColor] ?? _swatches[ThemeColor.blue]!;
 
-  ThemePalette get palette => isDark ? _darkPalette : _lightPalette;
+  Color get primaryColor => _swatch.base;
+  Color get primaryLightColor => _swatch.light;
+  Color get primaryDarkColor => _swatch.dark;
+  Color get primaryContainerColor => _swatch.container;
+  Color get accentColor => _swatch.accent;
+  String get colorName => _swatch.nameVi;
+
+  ThemePalette get palette => isDark ? _buildDarkPalette() : _buildLightPalette();
 
   double get fontSizeMultiplier {
     switch (_fontSize) {
@@ -166,13 +382,11 @@ class ThemeProvider extends ChangeNotifier {
     }
   }
 
-  BorderRadius get bubbleBorderRadiusOutgoing => _bubbleBROutgoing(_bubbleStyle);
-  BorderRadius get bubbleBorderRadiusIncoming => _bubbleBRIncoming(_bubbleStyle);
-  EdgeInsets get bubblePadding => _bubblePadding(_bubbleStyle);
-  double get bubbleElevation => _bubbleElevation(_bubbleStyle);
+  double get bubbleMaxWidthFactor => _compactMode ? 0.65 : 0.72;
+  EdgeInsets get bubblePadding => _getBubblePadding();
+  BorderRadius outgoingRadius(bool isLastInGroup) => _getOutgoingRadius(isLastInGroup);
+  BorderRadius incomingRadius(bool isLastInGroup) => _getIncomingRadius(isLastInGroup);
 
-  
-  
   
 
   Future<void> setThemeMode(AppThemeMode mode) async {
@@ -232,26 +446,72 @@ class ThemeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> resetToDefaults() async {
-    await setThemeMode(AppThemeMode.system);
-    await setThemeColor(ThemeColor.blue);
-    await setBubbleStyle(BubbleStyle.modern);
-    await setFontSize(FontSize.medium);
-    await setUseDynamicColor(false);
-    await setShowAvatarsInChat(true);
-    await setCompactMode(false);
-    await setChatWallpaperOpacity(0.05);
+  Future<void> setChatWallpaper(ChatWallpaper wallpaper) async {
+    if (_chatWallpaper == wallpaper) return;
+    _chatWallpaper = wallpaper;
+    await prefs.setString(_kChatWallpaper, wallpaper.name);
+    notifyListeners();
   }
 
-  
-  
+  Future<void> setUseGradientBubble(bool value) async {
+    if (_useGradientBubble == value) return;
+    _useGradientBubble = value;
+    await prefs.setBool(_kGradientBubble, value);
+    notifyListeners();
+  }
+
+  Future<void> setShowTimestampAlways(bool value) async {
+    if (_showTimestampAlways == value) return;
+    _showTimestampAlways = value;
+    await prefs.setBool(_kTimestampAlways, value);
+    notifyListeners();
+  }
+
+  Future<void> setEnableBlurEffects(bool value) async {
+    if (_enableBlurEffects == value) return;
+    _enableBlurEffects = value;
+    await prefs.setBool(_kBlurEffects, value);
+    notifyListeners();
+  }
+
+  Future<void> resetToDefaults() async {
+    _themeMode = AppThemeMode.system;
+    _themeColor = ThemeColor.blue; 
+    _bubbleStyle = BubbleStyle.modern;
+    _fontSize = FontSize.medium;
+    _useDynamicColor = false;
+    _showAvatarsInChat = true;
+    _compactMode = false;
+    _chatWallpaperOpacity = 0.06;
+    _chatWallpaper = ChatWallpaper.none;
+    _useGradientBubble = true;
+    _showTimestampAlways = false;
+    _enableBlurEffects = true;
+
+    
+    await prefs.remove(_kThemeMode);
+    await prefs.remove(_kThemeColor);
+    await prefs.remove(_kBubbleStyle);
+    await prefs.remove(_kFontSize);
+    await prefs.remove(_kDynamicColor);
+    await prefs.remove(_kShowAvatars);
+    await prefs.remove(_kCompactMode);
+    await prefs.remove(_kWallpaperOpacity);
+    await prefs.remove(_kChatWallpaper);
+    await prefs.remove(_kGradientBubble);
+    await prefs.remove(_kTimestampAlways);
+    await prefs.remove(_kBlurEffects);
+
+    notifyListeners();
+  }
+
   
 
   ThemeData get lightTheme => _buildThemeData(isLight: true);
   ThemeData get darkTheme => _buildThemeData(isLight: false);
 
   ThemeData _buildThemeData({required bool isLight}) {
-    final p = isLight ? _lightPalette : _darkPalette;
+    final p = isLight ? _buildLightPalette() : _buildDarkPalette();
     final base = isLight ? ThemeData.light() : ThemeData.dark();
     final scheme = ColorScheme.fromSeed(
       seedColor: primaryColor,
@@ -274,9 +534,9 @@ class ThemeProvider extends ChangeNotifier {
         centerTitle: false,
         titleTextStyle: TextStyle(
           color: p.textPrimary,
-          fontSize: 18 * fontSizeMultiplier,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.3,
+          fontSize: 17 * fontSizeMultiplier,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.4,
         ),
       ),
       textTheme: _buildTextTheme(base.textTheme, p),
@@ -294,14 +554,13 @@ class ThemeProvider extends ChangeNotifier {
         style: ElevatedButton.styleFrom(
           backgroundColor: primaryColor,
           foregroundColor: p.onPrimary,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           textStyle: TextStyle(
             fontSize: 15 * fontSizeMultiplier,
             fontWeight: FontWeight.w600,
           ),
+          elevation: 0,
         ),
       ),
       cardTheme: CardThemeData(
@@ -323,9 +582,7 @@ class ThemeProvider extends ChangeNotifier {
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: primaryColor,
         foregroundColor: p.onPrimary,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
       iconTheme: IconThemeData(color: p.textSecondary),
       dividerTheme: DividerThemeData(
@@ -336,8 +593,36 @@ class ThemeProvider extends ChangeNotifier {
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith(
             (s) => s.contains(WidgetState.selected) ? primaryColor : p.textHint),
-        trackColor: WidgetStateProperty.resolveWith(
-            (s) => s.contains(WidgetState.selected) ? primaryLightColor : p.divider),
+        trackColor: WidgetStateProperty.resolveWith((s) =>
+            s.contains(WidgetState.selected) ? primaryColor.withValues(alpha: 0.3) : p.divider),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: p.surface,
+        elevation: 8,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        textStyle: TextStyle(color: p.textPrimary, fontSize: 14),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: p.surface,
+        contentTextStyle: TextStyle(color: p.textPrimary),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        behavior: SnackBarBehavior.floating,
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: p.surface,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: p.surface,
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        titleTextStyle: TextStyle(
+          color: p.textPrimary,
+          fontSize: 18 * fontSizeMultiplier,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
@@ -371,205 +656,167 @@ class ThemeProvider extends ChangeNotifier {
   }
 
   
-  
-  
 
-  ThemePalette get _lightPalette => ThemePalette(
+  ThemePalette _buildLightPalette() => ThemePalette(
         primary: primaryColor,
         primaryLight: primaryLightColor,
         primaryDark: primaryDarkColor,
+        primaryContainer: primaryContainerColor,
         accent: accentColor,
-        background: const Color(0xFFF5F5F5),
+        background: const Color(0xFFF6F7FB),
         surface: Colors.white,
-        surfaceVariant: const Color(0xFFF0F0F0),
+        surfaceVariant: const Color(0xFFF0F1F7),
+        surfaceElevated: Colors.white,
         onPrimary: Colors.white,
-        onBackground: const Color(0xFF1A1A1A),
-        onSurface: const Color(0xFF1A1A1A),
-        textPrimary: const Color(0xFF1A1A1A),
-        textSecondary: const Color(0xFF6E6E6E),
-        textHint: const Color(0xFFAAAAAA),
-        divider: const Color(0xFFE0E0E0),
+        onBackground: const Color(0xFF1A1D2E),
+        onSurface: const Color(0xFF1A1D2E),
+        textPrimary: const Color(0xFF1A1D2E),
+        textSecondary: const Color(0xFF6B7280),
+        textHint: const Color(0xFFB0B7C3),
+        textOnBubble: Colors.white,
+        divider: const Color(0xFFE8EAF0),
         outgoingBubble: primaryColor,
         incomingBubble: Colors.white,
         outgoingText: Colors.white,
-        incomingText: const Color(0xFF1A1A1A),
-        inputBackground: const Color(0xFFEEEEEE),
+        incomingText: const Color(0xFF1A1D2E),
+        inputBackground: const Color(0xFFF0F1F7),
+        inputBorder: const Color(0xFFE8EAF0),
         navBarBackground: Colors.white,
         appBarBackground: Colors.white,
-        shadow: Colors.black.withValues(alpha: 0.08),
+        shadow: Colors.black.withValues(alpha: 0.05),
+        shadowStrong: Colors.black.withValues(alpha: 0.12),
         unreadBadge: primaryColor,
-        onlineIndicator: const Color(0xFF4CAF50),
+        onlineIndicator: const Color(0xFF22C55E),
         typingIndicator: primaryColor,
+        reactionBackground: const Color(0xFFF0F1F7),
+        pinnedBackground: primaryContainerColor,
+        scamWarning: const Color(0xFFFEF2F2),
+        reminderAccent: const Color(0xFF3B82F6),
+        successColor: const Color(0xFF22C55E),
+        dangerColor: const Color(0xFFEF4444),
+        warningColor: const Color(0xFFF59E0B),
+        infoColor: const Color(0xFF3B82F6),
+        isDark: false,
       );
 
-  ThemePalette get _darkPalette => ThemePalette(
+  ThemePalette _buildDarkPalette() => ThemePalette(
         primary: primaryLightColor,
         primaryLight: primaryLightColor,
-        primaryDark: primaryDarkColor,
+        primaryDark: primaryColor,
+        primaryContainer: primaryColor.withValues(alpha: 0.15),
         accent: accentColor,
-        background: const Color(0xFF121212),
-        surface: const Color(0xFF1E1E1E),
-        surfaceVariant: const Color(0xFF2A2A2A),
+        background: const Color(0xFF0D0F14),
+        surface: const Color(0xFF181B24),
+        surfaceVariant: const Color(0xFF1E2233),
+        surfaceElevated: const Color(0xFF252A3A),
         onPrimary: Colors.white,
-        onBackground: const Color(0xFFF5F5F5),
-        onSurface: const Color(0xFFF5F5F5),
-        textPrimary: const Color(0xFFF5F5F5),
-        textSecondary: const Color(0xFFB0B0B0),
-        textHint: const Color(0xFF707070),
-        divider: const Color(0xFF2E2E2E),
+        onBackground: const Color(0xFFEEF2FF),
+        onSurface: const Color(0xFFEEF2FF),
+        textPrimary: const Color(0xFFEEF2FF),
+        textSecondary: const Color(0xFF8B93B0),
+        textHint: const Color(0xFF4B5568),
+        textOnBubble: Colors.white,
+        divider: const Color(0xFF252A3A),
         outgoingBubble: primaryDarkColor,
-        incomingBubble: const Color(0xFF2A2A2A),
+        incomingBubble: const Color(0xFF1E2233),
         outgoingText: Colors.white,
-        incomingText: const Color(0xFFF5F5F5),
-        inputBackground: const Color(0xFF2A2A2A),
-        navBarBackground: const Color(0xFF1A1A1A),
-        appBarBackground: const Color(0xFF1A1A1A),
-        shadow: Colors.black.withValues(alpha: 0.4),
+        incomingText: const Color(0xFFEEF2FF),
+        inputBackground: const Color(0xFF1E2233),
+        inputBorder: const Color(0xFF252A3A),
+        navBarBackground: const Color(0xFF181B24),
+        appBarBackground: const Color(0xFF0D0F14),
+        shadow: Colors.black.withValues(alpha: 0.3),
+        shadowStrong: Colors.black.withValues(alpha: 0.5),
         unreadBadge: primaryLightColor,
-        onlineIndicator: const Color(0xFF66BB6A),
+        onlineIndicator: const Color(0xFF34D399),
         typingIndicator: primaryLightColor,
+        reactionBackground: const Color(0xFF252A3A),
+        pinnedBackground: primaryColor.withValues(alpha: 0.12),
+        scamWarning: const Color(0xFF3B0E0E),
+        reminderAccent: const Color(0xFF60A5FA),
+        successColor: const Color(0xFF34D399),
+        dangerColor: const Color(0xFFF87171),
+        warningColor: const Color(0xFFFBBF24),
+        infoColor: const Color(0xFF60A5FA),
+        isDark: true,
       );
 
   
-  
-  
 
-  Color _primaryColorFor(ThemeColor c) {
-    switch (c) {
-      case ThemeColor.blue:
-        return const Color(0xFF2196F3);
-      case ThemeColor.green:
-        return const Color(0xFF43A047);
-      case ThemeColor.purple:
-        return const Color(0xFF8E24AA);
-      case ThemeColor.orange:
-        return const Color(0xFFEF6C00);
-      case ThemeColor.pink:
-        return const Color(0xFFE91E63);
-      case ThemeColor.teal:
-        return const Color(0xFF009688);
-      case ThemeColor.red:
-        return const Color(0xFFE53935);
-      case ThemeColor.indigo:
-        return const Color(0xFF3949AB);
-    }
-  }
-
-  Color _primaryLightFor(ThemeColor c) {
-    switch (c) {
-      case ThemeColor.blue:
-        return const Color(0xFF64B5F6);
-      case ThemeColor.green:
-        return const Color(0xFF81C784);
-      case ThemeColor.purple:
-        return const Color(0xFFCE93D8);
-      case ThemeColor.orange:
-        return const Color(0xFFFFB74D);
-      case ThemeColor.pink:
-        return const Color(0xFFF48FB1);
-      case ThemeColor.teal:
-        return const Color(0xFF80CBC4);
-      case ThemeColor.red:
-        return const Color(0xFFEF9A9A);
-      case ThemeColor.indigo:
-        return const Color(0xFF9FA8DA);
-    }
-  }
-
-  Color _primaryDarkFor(ThemeColor c) {
-    switch (c) {
-      case ThemeColor.blue:
-        return const Color(0xFF1565C0);
-      case ThemeColor.green:
-        return const Color(0xFF1B5E20);
-      case ThemeColor.purple:
-        return const Color(0xFF4A148C);
-      case ThemeColor.orange:
-        return const Color(0xFFBF360C);
-      case ThemeColor.pink:
-        return const Color(0xFF880E4F);
-      case ThemeColor.teal:
-        return const Color(0xFF004D40);
-      case ThemeColor.red:
-        return const Color(0xFFB71C1C);
-      case ThemeColor.indigo:
-        return const Color(0xFF1A237E);
-    }
-  }
-
-  Color _accentColorFor(ThemeColor c) {
-    switch (c) {
-      case ThemeColor.blue:
-        return const Color(0xFFFF6D00);
-      case ThemeColor.green:
-        return const Color(0xFFFF6D00);
-      case ThemeColor.purple:
-        return const Color(0xFFFFD600);
-      case ThemeColor.orange:
-        return const Color(0xFF0288D1);
-      case ThemeColor.pink:
-        return const Color(0xFF1DE9B6);
-      case ThemeColor.teal:
-        return const Color(0xFFFF4081);
-      case ThemeColor.red:
-        return const Color(0xFF00B0FF);
-      case ThemeColor.indigo:
-        return const Color(0xFFFF6E40);
-    }
-  }
-
-  
-  
-  
-
-  BorderRadius _bubbleBROutgoing(BubbleStyle s) {
-    switch (s) {
+  BorderRadius _getOutgoingRadius(bool isLastInGroup) {
+    final tail = isLastInGroup ? 4.0 : 18.0;
+    switch (_bubbleStyle) {
       case BubbleStyle.modern:
-        return const BorderRadius.only(
-          topLeft: Radius.circular(18),
-          topRight: Radius.circular(18),
-          bottomLeft: Radius.circular(18),
-          bottomRight: Radius.circular(4),
+        return BorderRadius.only(
+          topLeft: const Radius.circular(20),
+          topRight: const Radius.circular(20),
+          bottomLeft: const Radius.circular(20),
+          bottomRight: Radius.circular(tail),
         );
       case BubbleStyle.classic:
-        return const BorderRadius.only(
-          topLeft: Radius.circular(12),
-          topRight: Radius.circular(2),
-          bottomLeft: Radius.circular(12),
-          bottomRight: Radius.circular(12),
+        return BorderRadius.only(
+          topLeft: const Radius.circular(14),
+          topRight: const Radius.circular(2),
+          bottomLeft: const Radius.circular(14),
+          bottomRight: const Radius.circular(14),
         );
       case BubbleStyle.minimal:
-        return BorderRadius.circular(8);
+        return BorderRadius.circular(10);
       case BubbleStyle.rounded:
-        return BorderRadius.circular(24);
+        return BorderRadius.only(
+          topLeft: const Radius.circular(28),
+          topRight: const Radius.circular(28),
+          bottomLeft: const Radius.circular(28),
+          bottomRight: Radius.circular(tail),
+        );
+      case BubbleStyle.sharp:
+        return BorderRadius.only(
+          topLeft: const Radius.circular(16),
+          topRight: const Radius.circular(16),
+          bottomLeft: const Radius.circular(16),
+          bottomRight: const Radius.circular(2),
+        );
     }
   }
 
-  BorderRadius _bubbleBRIncoming(BubbleStyle s) {
-    switch (s) {
+  BorderRadius _getIncomingRadius(bool isLastInGroup) {
+    final tail = isLastInGroup ? 4.0 : 18.0;
+    switch (_bubbleStyle) {
       case BubbleStyle.modern:
-        return const BorderRadius.only(
-          topLeft: Radius.circular(4),
-          topRight: Radius.circular(18),
-          bottomLeft: Radius.circular(18),
-          bottomRight: Radius.circular(18),
+        return BorderRadius.only(
+          topLeft: const Radius.circular(20),
+          topRight: const Radius.circular(20),
+          bottomLeft: Radius.circular(tail),
+          bottomRight: const Radius.circular(20),
         );
       case BubbleStyle.classic:
-        return const BorderRadius.only(
-          topLeft: Radius.circular(2),
-          topRight: Radius.circular(12),
-          bottomLeft: Radius.circular(12),
-          bottomRight: Radius.circular(12),
+        return BorderRadius.only(
+          topLeft: const Radius.circular(2),
+          topRight: const Radius.circular(14),
+          bottomLeft: const Radius.circular(14),
+          bottomRight: const Radius.circular(14),
         );
       case BubbleStyle.minimal:
-        return BorderRadius.circular(8);
+        return BorderRadius.circular(10);
       case BubbleStyle.rounded:
-        return BorderRadius.circular(24);
+        return BorderRadius.only(
+          topLeft: const Radius.circular(28),
+          topRight: const Radius.circular(28),
+          bottomLeft: Radius.circular(tail),
+          bottomRight: const Radius.circular(28),
+        );
+      case BubbleStyle.sharp:
+        return BorderRadius.only(
+          topLeft: const Radius.circular(2),
+          topRight: const Radius.circular(16),
+          bottomLeft: const Radius.circular(16),
+          bottomRight: const Radius.circular(16),
+        );
     }
   }
 
-  EdgeInsets _bubblePadding(BubbleStyle s) {
-    switch (s) {
+  EdgeInsets _getBubblePadding() {
+    switch (_bubbleStyle) {
       case BubbleStyle.modern:
         return const EdgeInsets.symmetric(horizontal: 14, vertical: 10);
       case BubbleStyle.classic:
@@ -577,44 +824,79 @@ class ThemeProvider extends ChangeNotifier {
       case BubbleStyle.minimal:
         return const EdgeInsets.symmetric(horizontal: 10, vertical: 7);
       case BubbleStyle.rounded:
-        return const EdgeInsets.symmetric(horizontal: 16, vertical: 11);
+        return const EdgeInsets.symmetric(horizontal: 18, vertical: 12);
+      case BubbleStyle.sharp:
+        return const EdgeInsets.symmetric(horizontal: 13, vertical: 9);
     }
   }
 
-  double _bubbleElevation(BubbleStyle s) {
-    switch (s) {
-      case BubbleStyle.modern:
-        return 1.0;
-      case BubbleStyle.classic:
-        return 0.5;
-      case BubbleStyle.minimal:
-        return 0.0;
-      case BubbleStyle.rounded:
-        return 2.0;
-    }
-  }
-
-  
-  
   
 
   LinearGradient get primaryGradient => LinearGradient(
-        colors: [primaryColor, primaryDarkColor],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-
-  LinearGradient get outgoingBubbleGradient => LinearGradient(
         colors: [primaryLightColor, primaryColor],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       );
 
+  LinearGradient outgoingBubbleGradient(bool isDark) => LinearGradient(
+        colors: isDark
+            ? [primaryDarkColor, primaryDarkColor.withBlue(primaryDarkColor.blue + 20)]
+            : [primaryLightColor.withValues(alpha: 0.9), primaryColor],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      );
+
   
-  
+
+  static String wallpaperName(ChatWallpaper w) {
+    switch (w) {
+      case ChatWallpaper.none:
+        return 'Không có';
+      case ChatWallpaper.dots:
+        return 'Chấm bi';
+      case ChatWallpaper.grid:
+        return 'Lưới';
+      case ChatWallpaper.waves:
+        return 'Sóng';
+      case ChatWallpaper.diagonal:
+        return 'Chéo';
+      case ChatWallpaper.circuit:
+        return 'Mạch in';
+    }
+  }
+
+  static String bubbleStyleName(BubbleStyle s) {
+    switch (s) {
+      case BubbleStyle.modern:
+        return 'Hiện đại';
+      case BubbleStyle.classic:
+        return 'Cổ điển';
+      case BubbleStyle.minimal:
+        return 'Tối giản';
+      case BubbleStyle.rounded:
+        return 'Bo tròn';
+      case BubbleStyle.sharp:
+        return 'Góc cạnh';
+    }
+  }
+
+  static String fontSizeName(FontSize s) {
+    switch (s) {
+      case FontSize.small:
+        return 'Nhỏ';
+      case FontSize.medium:
+        return 'Vừa';
+      case FontSize.large:
+        return 'Lớn';
+      case FontSize.extraLarge:
+        return 'Rất lớn';
+    }
+  }
+
   
 
   void _load() {
+    
     _themeMode = AppThemeMode.values.firstWhere(
       (e) => e.name == (prefs.getString(_kThemeMode) ?? 'system'),
       orElse: () => AppThemeMode.system,
@@ -634,6 +916,13 @@ class ThemeProvider extends ChangeNotifier {
     _useDynamicColor = prefs.getBool(_kDynamicColor) ?? false;
     _showAvatarsInChat = prefs.getBool(_kShowAvatars) ?? true;
     _compactMode = prefs.getBool(_kCompactMode) ?? false;
-    _chatWallpaperOpacity = prefs.getDouble(_kWallpaperOpacity) ?? 0.05;
+    _chatWallpaperOpacity = prefs.getDouble(_kWallpaperOpacity) ?? 0.06;
+    _chatWallpaper = ChatWallpaper.values.firstWhere(
+      (e) => e.name == (prefs.getString(_kChatWallpaper) ?? 'none'),
+      orElse: () => ChatWallpaper.none,
+    );
+    _useGradientBubble = prefs.getBool(_kGradientBubble) ?? true;
+    _showTimestampAlways = prefs.getBool(_kTimestampAlways) ?? false;
+    _enableBlurEffects = prefs.getBool(_kBlurEffects) ?? true;
   }
 }

@@ -3,8 +3,6 @@ import 'package:flutter/services.dart';
 
 import 'package:flutter_chat_demo/services/ai_backend_service.dart';
 
-
-
 class TranslationDialog extends StatefulWidget {
   final String originalMessage;
 
@@ -133,30 +131,18 @@ class _TranslationDialogState extends State<TranslationDialog> with SingleTicker
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                
                 _buildHeader(),
-
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      
                       _buildModeSelector(),
-
                       const SizedBox(height: 16),
-
-                      
                       _buildOriginalCard(),
-
                       const SizedBox(height: 12),
-
-                      
                       _buildResultCard(info),
-
                       const SizedBox(height: 20),
-
-                      
                       _buildActions(info),
                     ],
                   ),
@@ -556,8 +542,6 @@ class _TranslationDialogState extends State<TranslationDialog> with SingleTicker
   }
 }
 
-
-
 class _ModeInfo {
   final String label;
   final String subtitle;
@@ -571,8 +555,6 @@ class _ModeInfo {
     required this.color,
   });
 }
-
-
 
 class _DotsLoader extends StatefulWidget {
   final Color color;

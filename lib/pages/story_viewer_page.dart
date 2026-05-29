@@ -6,10 +6,6 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
-
-
-
-
 class StoryViewerPage extends StatefulWidget {
   final List<UserStories> allUserStories;
   final int initialUserIndex;
@@ -38,7 +34,6 @@ class _StoryViewerPageState extends State<StoryViewerPage> with TickerProviderSt
   late int _storyIndex;
   bool _isPaused = false;
 
-  
   final _replyCtrl = TextEditingController();
   bool _replyVisible = false;
   final _replyFocus = FocusNode();
@@ -77,17 +72,9 @@ class _StoryViewerPageState extends State<StoryViewerPage> with TickerProviderSt
     super.dispose();
   }
 
-  
-  
-  
-
   UserStories get _currentUser => widget.allUserStories[_userIndex];
   List<Story> get _stories => _currentUser.activeStories;
   Story get _currentStory => _stories[_storyIndex.clamp(0, _stories.length - 1)];
-
-  
-  
-  
 
   void _onProgressStatus(AnimationStatus status) {
     if (status == AnimationStatus.completed) _advance();
@@ -168,10 +155,6 @@ class _StoryViewerPageState extends State<StoryViewerPage> with TickerProviderSt
     _startCurrentStory();
   }
 
-  
-  
-  
-
   Future<void> _deleteStory() async {
     _pause();
     final ok = await showDialog<bool>(
@@ -201,10 +184,6 @@ class _StoryViewerPageState extends State<StoryViewerPage> with TickerProviderSt
       _resume();
     }
   }
-
-  
-  
-  
 
   void _openReply() {
     _pause();
@@ -242,10 +221,6 @@ class _StoryViewerPageState extends State<StoryViewerPage> with TickerProviderSt
     }
   }
 
-  
-  
-  
-
   void _showReactions() {
     _pause();
     showModalBottomSheet(
@@ -268,10 +243,6 @@ class _StoryViewerPageState extends State<StoryViewerPage> with TickerProviderSt
       ),
     ).then((_) => _resume());
   }
-
-  
-  
-  
 
   @override
   Widget build(BuildContext context) {
@@ -312,8 +283,6 @@ class _StoryViewerPageState extends State<StoryViewerPage> with TickerProviderSt
                 );
               },
             ),
-
-            
             if (_replyVisible)
               Positioned(
                 bottom: 0,
@@ -337,10 +306,6 @@ class _StoryViewerPageState extends State<StoryViewerPage> with TickerProviderSt
     );
   }
 }
-
-
-
-
 
 class _UserStoryView extends StatelessWidget {
   final UserStories userStories;
@@ -384,13 +349,8 @@ class _UserStoryView extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        
         _StoryContent(story: story, onPause: onHoldStart, onResume: onHoldEnd),
-
-        
         const _Gradients(),
-
-        
         Positioned(
           top: MediaQuery.of(context).padding.top + 8,
           left: 10,
@@ -401,8 +361,6 @@ class _UserStoryView extends StatelessWidget {
             controller: progressCtrl,
           ),
         ),
-
-        
         Positioned(
           top: MediaQuery.of(context).padding.top + 26,
           left: 10,
@@ -414,8 +372,6 @@ class _UserStoryView extends StatelessWidget {
             onDelete: onDelete,
           ),
         ),
-
-        
         Row(
           children: [
             Expanded(
@@ -436,8 +392,6 @@ class _UserStoryView extends StatelessWidget {
             ),
           ],
         ),
-
-        
         Positioned(
           bottom: 0,
           left: 0,
@@ -454,10 +408,6 @@ class _UserStoryView extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _StoryContent extends StatefulWidget {
   final Story story;
@@ -509,7 +459,6 @@ class _StoryContentState extends State<_StoryContent> {
   Widget build(BuildContext context) {
     final story = widget.story;
 
-    
     if (story.type == StoryType.video) {
       if (_videoReady && _videoCtrl != null) {
         return Center(
@@ -527,7 +476,6 @@ class _StoryContentState extends State<_StoryContent> {
       );
     }
 
-    
     if (story.type == StoryType.image && story.mediaUrl != null) {
       return Image.network(
         story.mediaUrl!,
@@ -551,7 +499,6 @@ class _StoryContentState extends State<_StoryContent> {
       );
     }
 
-    
     final bg = story.backgroundColor ?? const Color(0xFF1A1A2E);
     return Container(
       decoration: BoxDecoration(
@@ -578,10 +525,6 @@ class _StoryContentState extends State<_StoryContent> {
     );
   }
 }
-
-
-
-
 
 class _Gradients extends StatelessWidget {
   const _Gradients();
@@ -619,10 +562,6 @@ class _Gradients extends StatelessWidget {
         ],
       );
 }
-
-
-
-
 
 class _ProgressBars extends StatelessWidget {
   final int total;
@@ -673,10 +612,6 @@ class _ProgressBars extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _Header extends StatelessWidget {
   final Story story;
@@ -766,10 +701,6 @@ class _Header extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _Footer extends StatelessWidget {
   final Story story;
   final bool isCurrentUser;
@@ -794,7 +725,6 @@ class _Footer extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            
             if (story.caption?.isNotEmpty == true) ...[
               Text(
                 story.caption!,
@@ -808,8 +738,6 @@ class _Footer extends StatelessWidget {
               ),
               const SizedBox(height: 10),
             ],
-
-            
             if (isCurrentUser) ...[
               if (story.viewCount > 0)
                 GestureDetector(
@@ -838,12 +766,9 @@ class _Footer extends StatelessWidget {
                 style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
               ),
             ],
-
-            
             if (!isCurrentUser) ...[
               Row(
                 children: [
-                  
                   if (story.reactionBy(currentUserId) != null)
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -858,8 +783,6 @@ class _Footer extends StatelessWidget {
                         style: const TextStyle(fontSize: 20),
                       ),
                     ),
-
-                  
                   GestureDetector(
                     onTap: onReact,
                     child: Container(
@@ -879,10 +802,7 @@ class _Footer extends StatelessWidget {
                       ),
                     ),
                   ),
-
                   const SizedBox(width: 10),
-
-                  
                   Expanded(
                     child: GestureDetector(
                       onTap: onReply,
@@ -925,10 +845,6 @@ class _Footer extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _ReplyBar extends StatelessWidget {
   final TextEditingController ctrl;
@@ -1003,10 +919,6 @@ class _ReplyBar extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _ReactionsSheet extends StatelessWidget {
   final String storyId;
   final String senderId;
@@ -1073,10 +985,6 @@ class _ReactionsSheet extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _ViewersSheet extends StatelessWidget {
   final Story story;

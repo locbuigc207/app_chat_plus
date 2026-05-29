@@ -8,10 +8,6 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:video_compress/video_compress.dart';
 
-
-
-
-
 class MediaCompressionConfig {
   final int imageQuality;
   final int imageMaxDimension;
@@ -54,10 +50,6 @@ class MediaCompressionConfig {
   );
 }
 
-
-
-
-
 class CompressionResult {
   final File file;
   final int originalSizeBytes;
@@ -85,10 +77,6 @@ class CompressionResult {
   }
 }
 
-
-
-
-
 class MediaCompressionException implements Exception {
   final String message;
   final Object? cause;
@@ -99,45 +87,24 @@ class MediaCompressionException implements Exception {
       '${cause != null ? ' (caused by: $cause)' : ''}';
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
 class MediaCompressionService {
   MediaCompressionService._internal();
   static final MediaCompressionService _instance = MediaCompressionService._internal();
   factory MediaCompressionService() => _instance;
 
-  
   Subscription? _progressSub;
 
-  
   StreamController<double>? _progressController;
 
-  
-  
-  
-  
-  
   Stream<double> get compressionProgressStream =>
       _progressController?.stream ?? const Stream.empty();
 
-  
   void _startProgressBridge(void Function(double)? externalCallback) {
-    _stopProgressBridge(); 
+    _stopProgressBridge();
 
     _progressController = StreamController<double>.broadcast();
 
     _progressSub = VideoCompress.compressProgress$.subscribe((progress) {
-      
       final normalized = ((progress as num) / 100.0).clamp(0.0, 1.0);
       if (!(_progressController?.isClosed ?? true)) {
         _progressController?.add(normalized);
@@ -146,17 +113,12 @@ class MediaCompressionService {
     });
   }
 
-  
   void _stopProgressBridge() {
     _progressSub?.unsubscribe();
     _progressSub = null;
     _progressController?.close();
     _progressController = null;
   }
-
-  
-  
-  
 
   Future<CompressionResult> compressImage(
     File file, {
@@ -245,7 +207,6 @@ class MediaCompressionService {
     }
   }
 
-  
   Future<File> compressImageFile(
     File file, {
     MediaCompressionConfig config = MediaCompressionConfig.chat,
@@ -253,10 +214,6 @@ class MediaCompressionService {
     final result = await compressImage(file, config: config);
     return result.file;
   }
-
-  
-  
-  
 
   Future<CompressionResult> compressVideo(
     File file, {
@@ -278,7 +235,6 @@ class MediaCompressionService {
       );
     }
 
-    
     _startProgressBridge(onProgress);
 
     try {
@@ -343,7 +299,6 @@ class MediaCompressionService {
     }
   }
 
-  
   Future<File> compressVideoFile(
     File file, {
     MediaCompressionConfig config = MediaCompressionConfig.chat,
@@ -352,10 +307,6 @@ class MediaCompressionService {
     final result = await compressVideo(file, config: config, onProgress: onProgress);
     return result.file;
   }
-
-  
-  
-  
 
   Future<File?> getVideoThumbnail(
     File file, {
@@ -385,10 +336,6 @@ class MediaCompressionService {
     }
   }
 
-  
-  
-  
-
   Future<List<CompressionResult>> compressImageBatch(
     List<File> files, {
     MediaCompressionConfig config = MediaCompressionConfig.chat,
@@ -410,10 +357,6 @@ class MediaCompressionService {
     return results;
   }
 
-  
-  
-  
-
   static bool isImageFile(String path) {
     final ext = p.extension(path).toLowerCase().replaceAll('.', '');
     return {'jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'gif'}.contains(ext);
@@ -423,10 +366,6 @@ class MediaCompressionService {
     final ext = p.extension(path).toLowerCase().replaceAll('.', '');
     return {'mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v', '3gp'}.contains(ext);
   }
-
-  
-  
-  
 
   Future<void> cancelCompression() async {
     _stopProgressBridge();
@@ -476,10 +415,6 @@ class MediaCompressionService {
     } catch (_) {}
     return total;
   }
-
-  
-  
-  
 
   String _resolveImageExt(String path) {
     final ext = p.extension(path).toLowerCase().replaceAll('.', '');

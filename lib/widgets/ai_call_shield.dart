@@ -2,18 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/realtime_ai_service.dart';
 
-
-
-
-
-
-
-
-
-
-
 class AICallShield extends StatefulWidget {
-  
   final bool alignRight;
 
   const AICallShield({super.key, this.alignRight = true});
@@ -23,7 +12,6 @@ class AICallShield extends StatefulWidget {
 }
 
 class _AICallShieldState extends State<AICallShield> with TickerProviderStateMixin {
-  
   late AnimationController _pulseCtrl;
   late Animation<double> _pulseAnim;
 
@@ -44,13 +32,11 @@ class _AICallShieldState extends State<AICallShield> with TickerProviderStateMix
   void initState() {
     super.initState();
 
-    
     _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))
       ..repeat(reverse: true);
     _pulseAnim = Tween<double>(begin: 0.6, end: 1.0)
         .animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
 
-    
     _shakeCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
     _shakeAnim = TweenSequence<double>([
       TweenSequenceItem(tween: Tween(begin: 0, end: -6), weight: 1),
@@ -60,13 +46,11 @@ class _AICallShieldState extends State<AICallShield> with TickerProviderStateMix
       TweenSequenceItem(tween: Tween(begin: 4, end: 0), weight: 1),
     ]).animate(CurvedAnimation(parent: _shakeCtrl, curve: Curves.easeOut));
 
-    
     _panelCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 280));
     _panelFade = CurvedAnimation(parent: _panelCtrl, curve: Curves.easeOut);
     _panelSlide = Tween<Offset>(begin: const Offset(0, -0.12), end: Offset.zero)
         .animate(CurvedAnimation(parent: _panelCtrl, curve: Curves.easeOutCubic));
 
-    
     _scanCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))
       ..repeat();
     _scanAnim = Tween<double>(begin: 0, end: 1).animate(_scanCtrl);
@@ -98,8 +82,6 @@ class _AICallShieldState extends State<AICallShield> with TickerProviderStateMix
       _panelCtrl.reverse();
     }
   }
-
-  
 
   _ShieldTheme get _theme => _shieldThemeFor(_currentEvent.status);
 
@@ -136,8 +118,6 @@ class _AICallShieldState extends State<AICallShield> with TickerProviderStateMix
     }
   }
 
-  
-
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<SecurityEvent>(
@@ -157,7 +137,6 @@ class _AICallShieldState extends State<AICallShield> with TickerProviderStateMix
                 widget.alignRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              
               _WarningPanel(
                 event: _currentEvent,
                 theme: _theme,
@@ -165,7 +144,6 @@ class _AICallShieldState extends State<AICallShield> with TickerProviderStateMix
                 slideAnim: _panelSlide,
               ),
               const SizedBox(height: 6),
-              
               _ShieldBadge(
                 theme: _theme,
                 event: _currentEvent,
@@ -179,10 +157,6 @@ class _AICallShieldState extends State<AICallShield> with TickerProviderStateMix
     );
   }
 }
-
-
-
-
 
 class _WarningPanel extends StatelessWidget {
   final SecurityEvent event;
@@ -272,10 +246,6 @@ class _WarningPanel extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _RiskBar extends StatelessWidget {
   final double score;
   final Color color;
@@ -306,10 +276,6 @@ class _RiskBar extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _ShieldBadge extends StatelessWidget {
   final _ShieldTheme theme;
@@ -389,10 +355,6 @@ class _ShieldBadge extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _ShieldTheme {
   final Color primary;

@@ -7,10 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
 
-
-
-
-
 class EnhancedPhotoViewer extends StatefulWidget {
   final List<String> imageUrls;
   final int initialIndex;
@@ -93,7 +89,6 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
         onTap: _toggleControls,
         child: Stack(
           children: [
-            
             PhotoViewGallery.builder(
               pageController: _pageController,
               itemCount: widget.imageUrls.length,
@@ -140,8 +135,6 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
                 );
               },
             ),
-
-            
             FadeTransition(
               opacity: _controlsFade,
               child: Positioned(
@@ -206,8 +199,6 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
                 ),
               ),
             ),
-
-            
             if (widget.imageUrls.length > 1)
               FadeTransition(
                 opacity: _controlsFade,
@@ -293,8 +284,6 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
                   ),
                 ),
               ),
-
-            
             if (widget.imageUrls.length > 1) ...[
               if (_currentIndex > 0)
                 FadeTransition(
@@ -340,12 +329,10 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
   }
 
   void _onShare(String url) {
-    
     HapticFeedback.lightImpact();
   }
 
   void _onDownload(String url) {
-    
     HapticFeedback.lightImpact();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -357,10 +344,6 @@ class _EnhancedPhotoViewerState extends State<EnhancedPhotoViewer>
     );
   }
 }
-
-
-
-
 
 class _TopBarBtn extends StatelessWidget {
   final IconData icon;

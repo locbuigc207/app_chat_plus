@@ -1,9 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-
-
-
-
 enum CallType { voice, video }
 
 enum CallStatus {
@@ -18,10 +14,6 @@ enum CallStatus {
   missed,
   failed,
 }
-
-
-
-
 
 extension CallStatusX on CallStatus {
   bool get isActive => const {
@@ -72,10 +64,6 @@ extension CallTypeX on CallType {
   String get label => isVideo ? 'video' : 'voice';
 }
 
-
-
-
-
 class CallModel {
   final String callId;
   final String callerId;
@@ -91,7 +79,7 @@ class CallModel {
   final DateTime createdAt;
   final DateTime? connectedAt;
   final DateTime? endedAt;
-  final DateTime? expiresAt; 
+  final DateTime? expiresAt;
   final int? durationSeconds;
 
   const CallModel({
@@ -109,11 +97,9 @@ class CallModel {
     this.token,
     this.connectedAt,
     this.endedAt,
-    this.expiresAt, 
+    this.expiresAt,
     this.durationSeconds,
   });
-
-  
 
   bool get isVideoCall => callType.isVideo;
   bool get isVoiceCall => callType.isVoice;
@@ -130,8 +116,6 @@ class CallModel {
     }
     return '$m:${s.toString().padLeft(2, '0')}';
   }
-
-  
 
   factory CallModel.fromDocument(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
@@ -155,14 +139,12 @@ class CallModel {
           _parseDate(d['createdAt']) ?? _parseDateFromMillis(d['timestamp']) ?? DateTime.now(),
       connectedAt: _parseDateNullable(d['connectedAt']),
       endedAt: _parseDateNullable(d['endedAt']),
-      expiresAt: _parseDateNullable(d['expiresAt']), 
+      expiresAt: _parseDateNullable(d['expiresAt']),
       durationSeconds: d['durationSeconds'] as int?,
     );
   }
 
   factory CallModel.fromMap(Map<String, dynamic> map) => CallModel.fromJson(map);
-
-  
 
   Map<String, dynamic> toJson() => {
         'callId': callId,
@@ -181,13 +163,11 @@ class CallModel {
         'timestamp': createdAt.millisecondsSinceEpoch,
         'connectedAt': connectedAt?.millisecondsSinceEpoch.toString(),
         'endedAt': endedAt?.millisecondsSinceEpoch.toString(),
-        'expiresAt': expiresAt?.millisecondsSinceEpoch.toString(), 
+        'expiresAt': expiresAt?.millisecondsSinceEpoch.toString(),
         'durationSeconds': durationSeconds,
       };
 
   Map<String, dynamic> toMap() => toJson();
-
-  
 
   CallModel copyWith({
     String? callId,
@@ -204,7 +184,7 @@ class CallModel {
     DateTime? createdAt,
     DateTime? connectedAt,
     DateTime? endedAt,
-    DateTime? expiresAt, 
+    DateTime? expiresAt,
     int? durationSeconds,
   }) {
     return CallModel(
@@ -222,7 +202,7 @@ class CallModel {
       createdAt: createdAt ?? this.createdAt,
       connectedAt: connectedAt ?? this.connectedAt,
       endedAt: endedAt ?? this.endedAt,
-      expiresAt: expiresAt ?? this.expiresAt, 
+      expiresAt: expiresAt ?? this.expiresAt,
       durationSeconds: durationSeconds ?? this.durationSeconds,
     );
   }
@@ -238,15 +218,13 @@ class CallModel {
   @override
   String toString() => 'CallModel(id: $callId, status: ${status.label}, type: ${callType.label})';
 
-  
-
   static CallType _parseCallType(Map<String, dynamic> d) {
     final raw = d['callType'];
     if (raw == 'video') return CallType.video;
     if (raw == 'voice') return CallType.voice;
     final isVideo = d['isVideo'];
     if (isVideo is bool) return isVideo ? CallType.video : CallType.voice;
-    return CallType.video; 
+    return CallType.video;
   }
 
   static CallStatus _parseStatus(dynamic s) {

@@ -3,17 +3,13 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-
-
-
-
 enum ReplyType { text, emoji, quick }
 
 class SwipeReply {
   final String text;
   final ReplyType type;
   final List<Color> gradient;
-  final String? emoji; 
+  final String? emoji;
 
   const SwipeReply({
     required this.text,
@@ -22,7 +18,6 @@ class SwipeReply {
     this.emoji,
   });
 
-  
   factory SwipeReply.fromString(String text, int index) {
     final gradients = _kCardGradients;
     return SwipeReply(
@@ -43,17 +38,11 @@ const List<List<Color>> _kCardGradients = [
 
 const List<String> _kCardEmojis = ['💬', '✨', '🔥', '👍', '😄'];
 
-
-
-
-
 class SwipeReplyCards extends StatefulWidget {
-  
   final List<String> replies;
   final Future<void> Function(String reply) onSend;
   final VoidCallback onCancel;
 
-  
   final String? incomingMessage;
 
   const SwipeReplyCards({
@@ -73,25 +62,21 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
   int _currentIndex = 0;
   bool _isSending = false;
 
-  
   Offset _dragOffset = Offset.zero;
   double _dragAngle = 0;
   bool _isDragging = false;
 
-  
   late AnimationController _overlayController;
   late Animation<double> _overlayAnim;
 
-  
   late AnimationController _entryController;
   late Animation<double> _entryAnim;
 
-  
   late AnimationController _feedbackController;
   _SwipeFeedback _feedback = _SwipeFeedback.none;
 
   static const double _swipeThreshold = 100.0;
-  static const double _maxAngle = 0.15; 
+  static const double _maxAngle = 0.15;
 
   @override
   void initState() {
@@ -120,8 +105,6 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
     _feedbackController.dispose();
     super.dispose();
   }
-
-  
 
   void _onPanStart(DragStartDetails d) {
     setState(() => _isDragging = true);
@@ -169,7 +152,6 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
   Future<void> _commitSwipe({required bool right}) async {
     HapticFeedback.mediumImpact();
 
-    
     final targetX = right ? 500.0 : -500.0;
     final targetAngle = right ? _maxAngle * 2 : -_maxAngle * 2;
 
@@ -250,8 +232,6 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
     });
   }
 
-  
-
   void _tapSkip() {
     setState(() {
       _dragOffset = const Offset(-10, 0);
@@ -267,8 +247,6 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
     });
     Future.delayed(const Duration(milliseconds: 80), () => _commitSwipe(right: true));
   }
-
-  
 
   @override
   Widget build(BuildContext context) {
@@ -345,7 +323,6 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
               ],
             ),
           ),
-          
           _buildProgressDots(),
           const SizedBox(width: 4),
           GestureDetector(
@@ -419,10 +396,8 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
         alignment: Alignment.center,
         clipBehavior: Clip.none,
         children: [
-          
           for (int i = stackCount - 1; i >= 1; i--)
             _buildBackCard(i, _cards[(_currentIndex + i) % _cards.length]),
-          
           _buildTopCard(_cards[_currentIndex]),
         ],
       ),
@@ -463,7 +438,6 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
           alignment: Alignment.center,
           children: [
             _CardFace(reply: reply, opacity: 1),
-            
             if (_feedback == _SwipeFeedback.send)
               AnimatedBuilder(
                 animation: _overlayAnim,
@@ -474,7 +448,6 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
                   opacity: _overlayAnim.value,
                 ),
               ),
-            
             if (_feedback == _SwipeFeedback.skip)
               AnimatedBuilder(
                 animation: _overlayAnim,
@@ -486,7 +459,6 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
                   alignRight: false,
                 ),
               ),
-            
             if (_isSending)
               Container(
                 width: double.infinity,
@@ -511,7 +483,6 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          
           _ActionButton(
             onTap: _tapSkip,
             icon: Icons.close_rounded,
@@ -519,12 +490,10 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
             color: const Color(0xFFEF4444),
             backgroundColor: const Color(0xFFEF4444).withValues(alpha: 0.12),
           ),
-          
           Text(
             '${_currentIndex + 1} / ${_cards.length}',
             style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13),
           ),
-          
           _ActionButton(
             onTap: _tapSend,
             icon: Icons.send_rounded,
@@ -537,10 +506,6 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
     );
   }
 }
-
-
-
-
 
 class _CardFace extends StatelessWidget {
   final SwipeReply reply;
@@ -572,7 +537,6 @@ class _CardFace extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            
             Positioned(
               top: -20,
               right: -20,
@@ -597,7 +561,6 @@ class _CardFace extends StatelessWidget {
                 ),
               ),
             ),
-            
             Center(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -625,7 +588,6 @@ class _CardFace extends StatelessWidget {
                 ),
               ),
             ),
-            
             Positioned(
               left: 12,
               top: 0,
@@ -656,10 +618,6 @@ class _CardFace extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _CardOverlay extends StatelessWidget {
   final String label;
@@ -712,10 +670,6 @@ class _CardOverlay extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _ActionButton extends StatefulWidget {
   final VoidCallback onTap;
@@ -786,10 +740,6 @@ class _ActionButtonState extends State<_ActionButton> with SingleTickerProviderS
     );
   }
 }
-
-
-
-
 
 enum _SwipeFeedback { none, send, skip }
 

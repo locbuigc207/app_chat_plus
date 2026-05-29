@@ -18,14 +18,10 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-
-
 @pragma('vm:entry-point')
 void _onNotificationResponse(NotificationResponse response) {
   debugPrint('🔔 Notification tapped: id=${response.id}, payload=${response.payload}');
 }
-
-
 
 class HomePage extends StatefulWidget {
   final bool isWebSidebar;
@@ -42,40 +38,33 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> with TickerProviderStateMixin, WidgetsBindingObserver {
-  
   final _firebaseMessaging = FirebaseMessaging.instance;
   final _localNotifications = FlutterLocalNotificationsPlugin();
 
-  
   final _scrollController = ScrollController();
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
   final _btnClearController = StreamController<bool>.broadcast();
   final _searchDebouncer = Debouncer(milliseconds: 280);
 
-  
   late final AuthProvider _authProvider;
   late final HomeProvider _homeProvider;
   late final FriendProvider _friendProvider;
   late final ConversationProvider _conversationProvider;
   late final String _currentUserId;
 
-  
   String _textSearch = '';
   bool _isSearchFocused = false;
   bool _isLoading = false;
   int _limit = 20;
   static const int _limitIncrement = 20;
 
-  
-  int _activeFilterIndex = 0; 
+  int _activeFilterIndex = 0;
   static const List<String> _filterLabels = ['All', 'Unread', 'Groups'];
 
-  
   List<String> _myFriendIds = [];
   StreamSubscription<QuerySnapshot>? _friendIdsSub;
 
-  
   late AnimationController _fabAnimCtrl;
   late Animation<double> _fabScaleAnim;
   late AnimationController _filterAnimCtrl;
@@ -84,13 +73,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
   late Animation<double> _headerFadeAnim;
   late Animation<Offset> _headerSlideAnim;
 
-  
   late final List<MenuSetting> _menus;
 
-  
   bool _showScrollToTop = false;
 
-  
   @override
   void initState() {
     super.initState();
@@ -99,7 +85,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
     _authProvider = context.read<AuthProvider>();
     _homeProvider = context.read<HomeProvider>();
 
-    
     if (_authProvider.userFirebaseId?.isNotEmpty != true) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _redirectToLogin());
       return;
@@ -130,10 +115,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
     _initE2EE();
   }
 
-  
-
   void _initAnimations() {
-    
     _fabAnimCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
@@ -143,14 +125,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
       curve: Curves.elasticOut,
     );
 
-    
     _filterAnimCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 200),
     );
     _filterAnim = CurvedAnimation(parent: _filterAnimCtrl, curve: Curves.easeOut);
 
-    
     _headerAnimCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
@@ -164,7 +144,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
       curve: Curves.easeOutCubic,
     ));
 
-    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _headerAnimCtrl.forward();
@@ -178,12 +157,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
     });
   }
 
-  
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      
       _homeProvider.updateDataFirestore(
         FirestoreConstants.pathUserCollection,
         _currentUserId,
@@ -192,13 +168,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
     }
   }
 
-  
-
   Future<void> _initE2EE() async {
     await E2EEService().generateAndStoreUserKeys(_currentUserId);
   }
-
-  
 
   void _registerNotification() {
     _firebaseMessaging.requestPermission(
@@ -280,8 +252,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
     );
   }
 
-  
-
   void _listenToFriendIds() {
     final fs =
         _homeProvider.firebaseFirestore.collection(FirestoreConstants.pathFriendshipCollection);
@@ -301,8 +271,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
       if (mounted) setState(() => _myFriendIds = ids.take(9).toList());
     });
   }
-
-  
 
   void _onScroll() {
     if (_scrollController.offset >= _scrollController.position.maxScrollExtent - 200 &&
@@ -324,13 +292,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
     );
   }
 
-  
-
   void _onSearchFocusChanged() {
     if (mounted) setState(() => _isSearchFocused = _searchFocusNode.hasFocus);
   }
-
-  
 
   void _redirectToLogin() {
     Navigator.of(context).pushAndRemoveUntil(
@@ -398,8 +362,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
 
   void _push(Widget page) => Navigator.push(context, _slideRoute(page));
 
-  
-
   void _showConversationOptions(Conversation conversation) {
     HapticFeedback.mediumImpact();
     showModalBottomSheet(
@@ -424,8 +386,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
       ),
     );
   }
-
-  
 
   String _lastMessagePreview(String msg, int? type) {
     if (type == TypeMessage.image) return '📷 Photo';
@@ -463,8 +423,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
         transitionDuration: const Duration(milliseconds: 280),
       );
 
-  
-
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -483,10 +441,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
     super.dispose();
   }
 
-  
-  
-  
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -500,17 +454,14 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
       backgroundColor: bgColor,
       body: Stack(
         children: [
-          
           Positioned(
             top: -80,
             right: -60,
             child: _GradientOrb(isDark: isDark),
           ),
-
           SafeArea(
             child: Column(
               children: [
-                
                 SlideTransition(
                   position: _headerSlideAnim,
                   child: FadeTransition(
@@ -518,21 +469,16 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
                     child: _buildHeader(isDark, surfaceColor),
                   ),
                 ),
-
-                
                 if (_textSearch.isEmpty)
                   FadeTransition(
                     opacity: _filterAnim,
                     child: _buildFilterTabs(isDark),
                   ),
-
-                
                 Expanded(
                   child: CustomScrollView(
                     controller: _scrollController,
                     physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
                     slivers: [
-                      
                       if (_textSearch.isEmpty) ...[
                         SliverToBoxAdapter(
                           child: _buildStoriesSection(storyProvider, isDark),
@@ -541,21 +487,16 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
                           child: _buildOnlineFriendsSection(isDark),
                         ),
                       ],
-
-                      
                       if (_textSearch.isEmpty)
                         SliverToBoxAdapter(
                           child: _buildSectionLabel(isDark),
                         ),
-
-                      
                       SliverPadding(
                         padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
                         sliver: SliverToBoxAdapter(
                           child: _buildListCard(isDark, surfaceColor, storyProvider),
                         ),
                       ),
-
                       const SliverToBoxAdapter(child: SizedBox(height: 100)),
                     ],
                   ),
@@ -563,11 +504,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
               ],
             ),
           ),
-
-          
           if (_isLoading) LoadingView(),
-
-          
           AnimatedPositioned(
             duration: const Duration(milliseconds: 250),
             curve: Curves.easeOut,
@@ -577,8 +514,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
           ),
         ],
       ),
-
-      
       floatingActionButton: ScaleTransition(
         scale: _fabScaleAnim,
         child: _PremiumFAB(onTap: () {
@@ -588,8 +523,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
       ),
     );
   }
-
-  
 
   Widget _buildHeader(bool isDark, Color surfaceColor) {
     return Container(
@@ -601,7 +534,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -636,8 +568,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
                   ],
                 ),
               ),
-
-              
               _buildNotificationBadge(isDark),
               const SizedBox(width: 6),
               _HeaderIconButton(
@@ -650,17 +580,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
               _buildMenuButton(isDark),
             ],
           ),
-
           const SizedBox(height: 12),
-
-          
           _buildSearchBar(isDark),
         ],
       ),
     );
   }
-
-  
 
   Widget _buildSearchBar(bool isDark) {
     return AnimatedContainer(
@@ -755,8 +680,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
     );
   }
 
-  
-
   Widget _buildFilterTabs(bool isDark) {
     return Container(
       color: isDark ? ColorConstants.surfaceDark : Colors.white,
@@ -806,8 +729,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
     );
   }
 
-  
-
   Widget _buildSectionLabel(bool isDark) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
@@ -841,8 +762,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
     );
   }
 
-  
-
   Widget _buildListCard(bool isDark, Color surfaceColor, StoryProvider storyProvider) {
     return Container(
       decoration: BoxDecoration(
@@ -862,8 +781,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
       ),
     );
   }
-
-  
 
   Widget _buildStoriesSection(StoryProvider provider, bool isDark) {
     return Container(
@@ -913,8 +830,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
     ));
   }
 
-  
-
   Widget _buildOnlineFriendsSection(bool isDark) {
     return Container(
       color: isDark ? ColorConstants.surfaceDark : Colors.white,
@@ -959,8 +874,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
     );
   }
 
-  
-
   Widget _buildNotificationBadge(bool isDark) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -990,8 +903,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
       },
     );
   }
-
-  
 
   Widget _buildMenuButton(bool isDark) {
     return PopupMenuButton<MenuSetting>(
@@ -1025,18 +936,16 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
     );
   }
 
-  
-
   Widget _buildConversationList(bool isDark) {
     Stream<List<QueryDocumentSnapshot>> stream;
 
     switch (_activeFilterIndex) {
-      case 1: 
+      case 1:
         stream = _conversationProvider.getUnreadConversations(_currentUserId);
-      case 2: 
+      case 2:
         stream = _conversationProvider.getConversationsWithPinned(_currentUserId).map((docs) =>
             docs.where((d) => (d.data() as Map<String, dynamic>)['isGroup'] == true).toList());
-      default: 
+      default:
         stream = _conversationProvider.getConversationsWithPinned(_currentUserId);
     }
 
@@ -1067,7 +976,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           padding: const EdgeInsets.symmetric(vertical: 8),
-          itemCount: activeDocs.length + 1, 
+          itemCount: activeDocs.length + 1,
           separatorBuilder: (_, i) => i == 0
               ? const SizedBox.shrink()
               : Divider(
@@ -1084,8 +993,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
       },
     );
   }
-
-  
 
   Widget _buildAiAssistantTile(bool isDark) {
     return _ConversationTile(
@@ -1125,8 +1032,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
       },
     );
   }
-
-  
 
   Widget _buildConversationItem(DocumentSnapshot doc, bool isDark) {
     final conversation = Conversation.fromDocument(doc);
@@ -1220,8 +1125,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
     );
   }
 
-  
-
   Widget _buildSearchResults(bool isDark) {
     final query = _textSearch.trim();
     final isPhone = RegExp(r'^[+\d][\d\s-]*$').hasMatch(query);
@@ -1313,8 +1216,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
     );
   }
 
-  
-
   Widget _buildEmptyState(bool isDark) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(32, 32, 32, 48),
@@ -1383,8 +1284,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
     );
   }
 
-  
-
   Widget _buildSkeleton(bool isDark) {
     return ListView.builder(
       shrinkWrap: true,
@@ -1395,12 +1294,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin, Widg
     );
   }
 }
-
-
-
-
-
-
 
 class _GradientOrb extends StatelessWidget {
   final bool isDark;
@@ -1423,8 +1316,6 @@ class _GradientOrb extends StatelessWidget {
     );
   }
 }
-
-
 
 class _UnreadBadge extends StatelessWidget {
   final String userId;
@@ -1462,8 +1353,6 @@ class _UnreadBadge extends StatelessWidget {
   }
 }
 
-
-
 class _HeaderIconButton extends StatelessWidget {
   final IconData icon;
   final bool isDark;
@@ -1496,8 +1385,6 @@ class _HeaderIconButton extends StatelessWidget {
     );
   }
 }
-
-
 
 class _AnimatedBadge extends StatefulWidget {
   final int count;
@@ -1552,8 +1439,6 @@ class _AnimatedBadgeState extends State<_AnimatedBadge> with SingleTickerProvide
   }
 }
 
-
-
 class _MenuItemRow extends StatelessWidget {
   final MenuSetting menu;
   final bool isLogout;
@@ -1589,8 +1474,6 @@ class _MenuItemRow extends StatelessWidget {
     );
   }
 }
-
-
 
 class _ConversationTile extends StatelessWidget {
   final String id;
@@ -1646,7 +1529,6 @@ class _ConversationTile extends StatelessWidget {
           ),
           child: Row(
             children: [
-              
               Stack(
                 clipBehavior: Clip.none,
                 children: [
@@ -1685,8 +1567,6 @@ class _ConversationTile extends StatelessWidget {
                 ],
               ),
               const SizedBox(width: 14),
-
-              
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1773,8 +1653,6 @@ class _ConversationTile extends StatelessWidget {
   }
 }
 
-
-
 class _UnreadCountChip extends StatelessWidget {
   final int count;
   const _UnreadCountChip({required this.count});
@@ -1798,8 +1676,6 @@ class _UnreadCountChip extends StatelessWidget {
     );
   }
 }
-
-
 
 class _Avatar extends StatelessWidget {
   final String photoUrl;
@@ -1882,8 +1758,6 @@ class _Avatar extends StatelessWidget {
   }
 }
 
-
-
 class _OnlineDot extends StatelessWidget {
   final String userId;
   const _OnlineDot({required this.userId});
@@ -1892,9 +1766,8 @@ class _OnlineDot extends StatelessWidget {
   Widget build(BuildContext context) {
     final presenceProvider = context.read<UserPresenceProvider>();
     return StreamBuilder<UserPresence>(
-      stream: presenceProvider.getUserPresenceStream(userId), 
+      stream: presenceProvider.getUserPresenceStream(userId),
       builder: (_, snap) {
-        
         if (snap.data?.isOnline != true) return const SizedBox.shrink();
         return Container(
           width: 14,
@@ -1909,8 +1782,6 @@ class _OnlineDot extends StatelessWidget {
     );
   }
 }
-
-
 
 class _SearchResultTile extends StatelessWidget {
   final UserChat userChat;
@@ -1998,8 +1869,6 @@ class _SearchResultTile extends StatelessWidget {
   }
 }
 
-
-
 class _ScrollToTopButton extends StatelessWidget {
   final VoidCallback onTap;
   const _ScrollToTopButton({required this.onTap});
@@ -2027,8 +1896,6 @@ class _ScrollToTopButton extends StatelessWidget {
     );
   }
 }
-
-
 
 class _PremiumFAB extends StatelessWidget {
   final VoidCallback onTap;
@@ -2064,8 +1931,6 @@ class _PremiumFAB extends StatelessWidget {
     );
   }
 }
-
-
 
 class _SkeletonTile extends StatefulWidget {
   final bool isDark;

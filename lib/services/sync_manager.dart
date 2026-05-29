@@ -10,10 +10,6 @@ import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 
-
-
-
-
 abstract class MessageStatus {
   static const String pending = 'pending';
   static const String sent = 'sent';
@@ -26,73 +22,43 @@ abstract class SyncJobType {
   static const String aiResponse = 'ai_response';
 }
 
-
-
-
-
 class _SyncResult {
   final int success;
   final int failed;
   const _SyncResult({required this.success, required this.failed});
 }
 
-
-
-
-
-
-
-
-
-
-
-
 class SyncManager {
-  
   SyncManager._internal();
   static final SyncManager _instance = SyncManager._internal();
   factory SyncManager() => _instance;
 
-  
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   bool _isSyncing = false;
   bool _isStarted = false;
 
-  
   static const int _maxRetries = 3;
   static const Duration _baseDelay = Duration(seconds: 2);
-  static const int _maxQueueBatch = 20; 
+  static const int _maxQueueBatch = 20;
 
-  
   final LocalDbService _localDb = LocalDbService();
   final EncryptionService _encryption = EncryptionService();
   final GeminiService _gemini = GeminiService();
 
-  
-  
-  
-
-  
-  
   void startListening() {
     if (!_isStarted) {
       _isStarted = true;
       _connectivitySub = Connectivity().onConnectivityChanged.listen(_onConnectivityChanged);
     }
-    
+
     _trySync();
   }
 
-  
   void stopListening() {
     _connectivitySub?.cancel();
     _connectivitySub = null;
     _isStarted = false;
   }
-
-  
-  
-  
 
   void _onConnectivityChanged(List<ConnectivityResult> results) {
     final online = results.any((r) =>
@@ -106,10 +72,6 @@ class SyncManager {
       debugPrint('[SyncManager] 📵 Offline — tạm dừng sync');
     }
   }
-
-  
-  
-  
 
   Future<void> _trySync() async {
     if (_isSyncing) return;
@@ -154,7 +116,7 @@ class SyncManager {
             break;
           default:
             debugPrint('[SyncManager] ⚠️ Unknown job type: $jobType — removing');
-            ok = true; 
+            ok = true;
         }
       } catch (e) {
         debugPrint('[SyncManager] ❌ Job $key error: $e');
@@ -172,23 +134,16 @@ class SyncManager {
           await _localDb.removeFromSyncQueue(key as int);
           failed++;
         } else {
-          
           await box.put(key, {...task, 'retries': retries});
 
-          
-          
           debugPrint('[SyncManager] ⚠️ Tạm dừng batch do phát hiện lỗi mạng/server.');
-          break; 
+          break;
         }
       }
     }
 
     return _SyncResult(success: success, failed: failed);
   }
-
-  
-  
-  
 
   Future<bool> _processSendMessageJob(Map<String, dynamic> payload) async {
     final conversationId = payload['conversationId'] as String? ?? '';
@@ -201,7 +156,6 @@ class SyncManager {
 
     if (conversationId.isEmpty || messageId.isEmpty) return false;
 
-    
     String encryptedContent;
     try {
       encryptedContent = await _encryption.encryptPayload(
@@ -215,7 +169,6 @@ class SyncManager {
       return false;
     }
 
-    
     await FirebaseFirestore.instance
         .collection('messages')
         .doc(conversationId)
@@ -230,7 +183,6 @@ class SyncManager {
       'status': MessageStatus.sent,
     });
 
-    
     final localKey = '${conversationId}_$messageId';
     final local = _localDb.messagesBox.get(localKey);
     if (local != null) {
@@ -242,10 +194,6 @@ class SyncManager {
     return true;
   }
 
-  
-  
-  
-
   Future<bool> _processAiResponseJob(Map<String, dynamic> payload) async {
     final conversationId = payload['conversationId'] as String? ?? '';
     final currentUserId = payload['currentUserId'] as String? ?? '';
@@ -253,7 +201,6 @@ class SyncManager {
 
     if (conversationId.isEmpty || userMessage.isEmpty) return false;
 
-    
     final history = _localDb
         .getMessages(conversationId)
         .take(30)
@@ -265,11 +212,9 @@ class SyncManager {
         .reversed
         .toList();
 
-    
     final aiText = await _gemini.sendMessage(userMessage, history);
     if (aiText.isEmpty) return false;
 
-    
     final aiTimestamp = (DateTime.now().millisecondsSinceEpoch + 1).toString();
     final aiMessage = <String, dynamic>{
       'messageId': aiTimestamp,
@@ -283,7 +228,6 @@ class SyncManager {
 
     await _localDb.saveMessage(conversationId, aiTimestamp, aiMessage);
 
-    
     await FirebaseFirestore.instance
         .collection('messages')
         .doc(conversationId)
@@ -300,10 +244,6 @@ class SyncManager {
     debugPrint('[SyncManager] 🤖 AI response synced for $conversationId');
     return true;
   }
-
-  
-  
-  
 
   Future<void> _markMessageFailed(Map<String, dynamic> payload) async {
     final conversationId = payload['conversationId'] as String? ?? '';

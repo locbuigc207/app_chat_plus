@@ -96,10 +96,8 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar> with SingleTicker
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          
           Row(
             children: [
-              
               Expanded(
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
@@ -169,7 +167,6 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar> with SingleTicker
                 ),
               ),
               const SizedBox(width: 8),
-              
               GestureDetector(
                 onTap: _toggleFilters,
                 child: AnimatedContainer(
@@ -209,8 +206,6 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar> with SingleTicker
               ),
             ],
           ),
-
-          
           SizeTransition(
             sizeFactor: _filterAnim,
             child: Padding(

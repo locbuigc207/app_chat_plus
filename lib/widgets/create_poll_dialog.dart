@@ -1,32 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class CreatePollDialog extends StatefulWidget {
   final void Function(
     String question,
@@ -43,8 +17,6 @@ class CreatePollDialog extends StatefulWidget {
 }
 
 class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerProviderStateMixin {
-  
-
   final _questionController = TextEditingController();
   final List<TextEditingController> _optionControllers = [
     TextEditingController(),
@@ -53,8 +25,6 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
   final List<FocusNode> _optionFocusNodes = [FocusNode(), FocusNode()];
   final _scrollController = ScrollController();
 
-  
-
   bool _isMultipleChoice = false;
   bool _isAnonymous = false;
   bool _hasExpiry = false;
@@ -62,13 +32,9 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
   bool _questionHasError = false;
   bool _optionHasError = false;
 
-  
-
   late AnimationController _animController;
   late Animation<double> _scaleAnim;
   late Animation<double> _fadeAnim;
-
-  
 
   static const int _maxOptions = 10;
   static const _primary = Color(0xFF6C63FF);
@@ -77,8 +43,6 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
   static const _textMuted = Color(0xFF6B7280);
   static const _border = Color(0xFFE5E7EB);
   static const _surface = Color(0xFFF9FAFB);
-
-  
 
   @override
   void initState() {
@@ -108,8 +72,6 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
     super.dispose();
   }
 
-  
-
   void _addOption() {
     if (_optionControllers.length >= _maxOptions) {
       _showSnack('Tối đa $_maxOptions lựa chọn', isError: true);
@@ -119,7 +81,7 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
       _optionControllers.add(TextEditingController());
       _optionFocusNodes.add(FocusNode());
     });
-    
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent + 80,
@@ -234,7 +196,6 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
     final options =
         _optionControllers.map((c) => c.text.trim()).where((t) => t.isNotEmpty).toList();
 
-    
     bool hasError = false;
     if (question.isEmpty) {
       setState(() => _questionHasError = true);
@@ -264,8 +225,6 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
     await _animController.reverse();
     if (mounted) Navigator.of(context).pop();
   }
-
-  
 
   @override
   Widget build(BuildContext context) {
@@ -344,8 +303,6 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
     );
   }
 
-  
-
   Widget _buildHeader() {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 18, 12, 16),
@@ -407,8 +364,6 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
     );
   }
 
-  
-
   Widget _buildSectionLabel({required IconData icon, required String label}) {
     return Row(
       children: [
@@ -426,8 +381,6 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
       ],
     );
   }
-
-  
 
   Widget _buildQuestionField() {
     return TextField(
@@ -474,8 +427,6 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
     );
   }
 
-  
-
   Widget _buildOptionsSectionHeader() {
     final count = _optionControllers.length;
     return Row(
@@ -515,8 +466,6 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
       ],
     );
   }
-
-  
 
   Widget _buildOptionsList() {
     return ReorderableListView.builder(
@@ -560,8 +509,6 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
     );
   }
 
-  
-
   Widget _buildAddOptionButton() {
     if (_optionControllers.length >= _maxOptions) {
       return const SizedBox.shrink();
@@ -598,8 +545,6 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
       ),
     );
   }
-
-  
 
   Widget _buildSettingsCard() {
     return Container(
@@ -650,7 +595,7 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
               setState(() => _hasExpiry = v);
               if (v) {
                 await _pickExpiryDate();
-                
+
                 if (_expiresAt == null && mounted) {
                   setState(() => _hasExpiry = false);
                 }
@@ -670,8 +615,6 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
         endIndent: 14,
         color: _border,
       );
-
-  
 
   Widget _buildFooter() {
     return Container(
@@ -711,8 +654,6 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
     );
   }
 
-  
-
   String _formatExpiry(DateTime dt) {
     final weekdays = ['', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
     return '${weekdays[dt.weekday]}, '
@@ -722,10 +663,6 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
         '${dt.minute.toString().padLeft(2, '0')}';
   }
 }
-
-
-
-
 
 class _OptionTile extends StatefulWidget {
   final int index;
@@ -757,18 +694,17 @@ class _OptionTileState extends State<_OptionTile> {
   static const _primary = Color(0xFF6C63FF);
   static const _primaryLight = Color(0xFFEEEDFE);
 
-  
   static const _indexColors = [
-    Color(0xFF6C63FF), 
-    Color(0xFF0EA5E9), 
-    Color(0xFF10B981), 
-    Color(0xFFF59E0B), 
-    Color(0xFFEF4444), 
-    Color(0xFF8B5CF6), 
-    Color(0xFF06B6D4), 
-    Color(0xFF84CC16), 
-    Color(0xFFEC4899), 
-    Color(0xFFFF7849), 
+    Color(0xFF6C63FF),
+    Color(0xFF0EA5E9),
+    Color(0xFF10B981),
+    Color(0xFFF59E0B),
+    Color(0xFFEF4444),
+    Color(0xFF8B5CF6),
+    Color(0xFF06B6D4),
+    Color(0xFF84CC16),
+    Color(0xFFEC4899),
+    Color(0xFFFF7849),
   ];
 
   Color get _indexColor => _indexColors[widget.index % _indexColors.length];
@@ -779,7 +715,6 @@ class _OptionTileState extends State<_OptionTile> {
       margin: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          
           ReorderableDragStartListener(
             index: widget.index,
             child: Padding(
@@ -791,8 +726,6 @@ class _OptionTileState extends State<_OptionTile> {
               ),
             ),
           ),
-
-          
           Container(
             width: 28,
             height: 28,
@@ -811,8 +744,6 @@ class _OptionTileState extends State<_OptionTile> {
               ),
             ),
           ),
-
-          
           Expanded(
             child: TextField(
               controller: widget.controller,
@@ -872,8 +803,6 @@ class _OptionTileState extends State<_OptionTile> {
               ),
             ),
           ),
-
-          
           if (widget.totalOptions > 2) ...[
             const SizedBox(width: 4),
             IconButton(
@@ -893,10 +822,6 @@ class _OptionTileState extends State<_OptionTile> {
     );
   }
 }
-
-
-
-
 
 class _SettingTile extends StatelessWidget {
   final IconData icon;
@@ -975,10 +900,6 @@ class _SettingTile extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _CreateButton extends StatefulWidget {
   final VoidCallback onTap;

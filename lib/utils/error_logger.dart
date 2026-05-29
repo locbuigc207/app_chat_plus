@@ -5,8 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
-
-
 class ErrorLogger {
   ErrorLogger._();
 
@@ -15,9 +13,6 @@ class ErrorLogger {
 
   static bool _initialized = false;
 
-  
-
-  
   static Future<void> initialize() async {
     if (_initialized) return;
 
@@ -25,7 +20,6 @@ class ErrorLogger {
       try {
         await _crashlytics.setCrashlyticsCollectionEnabled(!kDebugMode);
 
-        
         FlutterError.onError = (FlutterErrorDetails details) {
           if (kDebugMode) {
             FlutterError.presentError(details);
@@ -33,7 +27,6 @@ class ErrorLogger {
           _crashlytics.recordFlutterFatalError(details);
         };
 
-        
         PlatformDispatcher.instance.onError = (error, stack) {
           _crashlytics.recordError(error, stack, fatal: true);
           return true;
@@ -49,9 +42,6 @@ class ErrorLogger {
     debugPrint('✅ ErrorLogger initialized');
   }
 
-  
-
-  
   static Future<void> logError(
     dynamic error,
     StackTrace? stackTrace, {
@@ -59,7 +49,6 @@ class ErrorLogger {
     Map<String, dynamic>? additionalInfo,
     bool fatal = false,
   }) async {
-    
     if (kDebugMode) {
       debugPrint('❌ [${context ?? "Unknown"}] $error');
       if (stackTrace != null) debugPrint('$stackTrace');
@@ -76,7 +65,7 @@ class ErrorLogger {
       if (additionalInfo != null) {
         for (final entry in additionalInfo.entries) {
           final value = entry.value;
-          
+
           if (value is String || value is int || value is double || value is bool) {
             await _crashlytics.setCustomKey(entry.key, value);
           } else {
@@ -97,7 +86,6 @@ class ErrorLogger {
     }
   }
 
-  
   static Future<void> logFatalError(
     dynamic error,
     StackTrace? stackTrace, {
@@ -105,7 +93,6 @@ class ErrorLogger {
   }) =>
       logError(error, stackTrace, context: context, fatal: true);
 
-  
   static Future<T?> guardAsync<T>(
     Future<T> Function() action, {
     String? context,
@@ -119,15 +106,11 @@ class ErrorLogger {
     }
   }
 
-  
-
-  
   static Future<void> logEvent(
     String name,
     Map<String, dynamic>? params,
   ) async {
     try {
-      
       final sanitizedName = _sanitizeEventName(name);
 
       final Map<String, Object>? converted = params?.map(
@@ -148,8 +131,6 @@ class ErrorLogger {
     }
   }
 
-  
-
   static Future<void> logScreenView(String screenName) async {
     if (kDebugMode) debugPrint('📱 Screen: $screenName');
     try {
@@ -158,8 +139,6 @@ class ErrorLogger {
       debugPrint('⚠️ Failed to log screen view: $e');
     }
   }
-
-  
 
   static Future<void> setUserId(String userId) async {
     try {
@@ -187,11 +166,9 @@ class ErrorLogger {
     }
   }
 
-  
-
   static Future<void> logMessageSent({
     required String conversationId,
-    required int messageType, 
+    required int messageType,
     int? characterCount,
     bool hasReply = false,
     bool hasMention = false,
@@ -250,14 +227,14 @@ class ErrorLogger {
   }
 
   static Future<void> logMediaViewed({
-    required String type, 
-    required String source, 
+    required String type,
+    required String source,
   }) async {
     await logEvent('media_viewed', {'type': type, 'source': source});
   }
 
   static Future<void> logSearchUsed({
-    required String searchType, 
+    required String searchType,
     int? resultCount,
   }) async {
     await logEvent('search_used', {
@@ -266,9 +243,6 @@ class ErrorLogger {
     });
   }
 
-  
-
-  
   static Future<void> addBreadcrumb(String message, {String? category}) async {
     if (kDebugMode) debugPrint('🍞 [${category ?? "app"}] $message');
     if (kIsWeb) return;
@@ -276,8 +250,6 @@ class ErrorLogger {
       await _crashlytics.log('${category != null ? "[$category] " : ""}$message');
     } catch (_) {}
   }
-
-  
 
   static String _sanitizeEventName(String name) {
     return name.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_').substring(0, name.length.clamp(0, 40));

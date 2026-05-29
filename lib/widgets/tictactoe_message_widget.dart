@@ -69,7 +69,6 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
       ));
     }
 
-    
     final state = jsonDecode(widget.content) as Map<String, dynamic>;
     final board = List<String>.from(state['board'] ?? List.filled(9, ''));
     final line = _getWinningLine(board);
@@ -92,8 +91,6 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
     super.dispose();
   }
 
-  
-
   Future<void> _onCellTapped(int index, Map<String, dynamic> gameState) async {
     List<dynamic> board = List.from(gameState['board']);
     String turn = gameState['turn'] ?? '';
@@ -103,7 +100,6 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
 
     if (winner.isNotEmpty || board[index].toString().isNotEmpty) return;
 
-    
     if (playerX.isEmpty) {
       playerX = widget.currentUserId;
       turn = widget.currentUserId;
@@ -116,7 +112,6 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
     final mySymbol = (widget.currentUserId == playerX) ? 'X' : 'O';
     board[index] = mySymbol;
 
-    
     if (index < _cellControllers.length) {
       _cellControllers[index].forward(from: 0);
     }
@@ -184,8 +179,6 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
     if (state['playerO'] == widget.currentUserId) return 'O';
     return '';
   }
-
-  
 
   @override
   Widget build(BuildContext context) {
@@ -335,8 +328,6 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
               );
             }),
           ),
-
-          
           if (_winningLine.isNotEmpty)
             Positioned.fill(
               child: IgnorePointer(
@@ -515,8 +506,6 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
   }
 }
 
-
-
 class _XPainter extends CustomPainter {
   final Color color;
   final double strokeWidth;
@@ -572,7 +561,6 @@ class _WinLinePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (winLine.isEmpty || progress <= 0) return;
 
-    
     final cellW = size.width / 3;
     final cellH = size.height / 3;
 

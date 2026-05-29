@@ -21,13 +21,11 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMixin {
-  
   late final TextEditingController _nicknameCtrl;
   late final TextEditingController _aboutMeCtrl;
   final FocusNode _nicknameFocus = FocusNode();
   final FocusNode _aboutMeFocus = FocusNode();
 
-  
   String _userId = '';
   String _nickname = '';
   String _aboutMe = '';
@@ -37,20 +35,16 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
   bool _is2FAEnabled = false;
   String _twoFactorSecret = '';
 
-  
   bool _isSaving = false;
   bool _isUploadingAvatar = false;
   File? _avatarFile;
   bool _hasUnsavedChanges = false;
 
-  
   late AnimationController _entryCtrl;
   late Animation<double> _entryFade;
   late Animation<Offset> _entrySlide;
 
   late final SettingProvider _settingProvider = context.read<SettingProvider>();
-
-  
 
   @override
   void initState() {
@@ -79,8 +73,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
     super.dispose();
   }
 
-  
-
   void _readLocal() {
     setState(() {
       _userId = _settingProvider.getPref(FirestoreConstants.id) ?? '';
@@ -107,8 +99,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
       setState(() => _hasUnsavedChanges = changed);
     }
   }
-
-  
 
   Future<void> _pickAndUploadAvatar() async {
     try {
@@ -160,8 +150,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
     }
   }
 
-  
-
   Future<void> _saveProfile() async {
     _nicknameFocus.unfocus();
     _aboutMeFocus.unfocus();
@@ -207,8 +195,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
       _showError('Không thể lưu: ${e.toString()}');
     }
   }
-
-  
 
   void _on2FAToggle(bool val) {
     if (val) {
@@ -272,8 +258,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
     );
   }
 
-  
-
   UserChat _buildUserChat({
     String? nickname,
     String? aboutMe,
@@ -319,15 +303,12 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
         transitionDuration: const Duration(milliseconds: 350),
       );
 
-  
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0A0E1A),
       body: Stack(
         children: [
-          
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
@@ -341,8 +322,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
               ),
             ),
           ),
-
-          
           Positioned(
             top: -100,
             right: -60,
@@ -358,7 +337,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
               ),
             ),
           ),
-
           SafeArea(
             child: Column(
               children: [
@@ -388,8 +366,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
               ],
             ),
           ),
-
-          
           if (_isSaving)
             Positioned.fill(
               child: BackdropFilter(
@@ -430,8 +406,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
     );
   }
 
-  
-
   Widget _buildAppBar() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -467,8 +441,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
     );
   }
 
-  
-
   Widget _buildAvatarSection() {
     final initial = _nickname.isNotEmpty ? _nickname[0].toUpperCase() : '?';
 
@@ -479,7 +451,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
             onTap: _isUploadingAvatar ? null : _pickAndUploadAvatar,
             child: Stack(
               children: [
-                
                 Container(
                   width: 106,
                   height: 106,
@@ -505,8 +476,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
                     ),
                   ),
                 ),
-
-                
                 Positioned(
                   right: 0,
                   bottom: 2,
@@ -597,8 +566,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
     );
   }
 
-  
-
   Widget _buildProfileCard() {
     return _SectionCard(
       title: 'Thông tin cá nhân',
@@ -671,8 +638,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
       ],
     );
   }
-
-  
 
   Widget _buildSecurityCard() {
     return _SectionCard(
@@ -808,8 +773,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
     );
   }
 
-  
-
   Widget _buildAccountCard() {
     return _SectionCard(
       title: 'Tài khoản',
@@ -927,8 +890,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
         color: Colors.white.withValues(alpha: 0.06),
       );
 }
-
-
 
 class _SectionCard extends StatelessWidget {
   final String title;

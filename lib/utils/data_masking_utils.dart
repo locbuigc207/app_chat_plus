@@ -1,30 +1,14 @@
 // ignore_for_file: avoid_print
 
-
-
-
-
-
-
-
 library;
 
-
-
-
-
-
 class MaskingResult {
-  
   final String maskedText;
 
-  
   final List<MaskingHit> hits;
 
-  
   int get totalReplaced => hits.fold(0, (sum, h) => sum + h.count);
 
-  
   bool get hasSensitiveData => hits.isNotEmpty;
 
   const MaskingResult({
@@ -37,7 +21,6 @@ class MaskingResult {
       'MaskingResult(replaced=$totalReplaced, text="${maskedText.length > 40 ? "${maskedText.substring(0, 40)}..." : maskedText}")';
 }
 
-
 class MaskingHit {
   final SensitiveDataType type;
   final int count;
@@ -45,33 +28,26 @@ class MaskingHit {
   const MaskingHit(this.type, this.count);
 }
 
-
 enum SensitiveDataType {
   phoneNumber,
   email,
   bankAccount,
   creditCard,
-  nationalId, 
+  nationalId,
   passport,
   ipAddress,
   jwtToken,
-  privateKey, 
-  otp, 
-  url, 
-  coordinates, 
+  privateKey,
+  otp,
+  url,
+  coordinates,
 }
-
-
-
-
-
 
 class MaskingConfig {
   final Set<SensitiveDataType> enabledTypes;
 
   const MaskingConfig({required this.enabledTypes});
 
-  
   static const all = MaskingConfig(
     enabledTypes: {
       SensitiveDataType.phoneNumber,
@@ -89,7 +65,6 @@ class MaskingConfig {
     },
   );
 
-  
   static const piiOnly = MaskingConfig(
     enabledTypes: {
       SensitiveDataType.phoneNumber,
@@ -101,7 +76,6 @@ class MaskingConfig {
     },
   );
 
-  
   static const financialOnly = MaskingConfig(
     enabledTypes: {
       SensitiveDataType.bankAccount,
@@ -109,7 +83,6 @@ class MaskingConfig {
     },
   );
 
-  
   static const securityOnly = MaskingConfig(
     enabledTypes: {
       SensitiveDataType.jwtToken,
@@ -119,11 +92,6 @@ class MaskingConfig {
     },
   );
 }
-
-
-
-
-
 
 class _MaskingRule {
   final SensitiveDataType type;
@@ -137,90 +105,64 @@ class _MaskingRule {
   });
 }
 
-
-
-
-
 class DataMaskingUtils {
   DataMaskingUtils._();
 
-  
   static final List<_MaskingRule> _rules = [
-    
     _MaskingRule(
       type: SensitiveDataType.phoneNumber,
       pattern: RegExp(r'(?<!\d)(\+84|0)(3[2-9]|5[6-9]|7[0|6-9]|8[0-9]|9[0-9])\d{7}(?!\d)'),
       replacement: '[SĐT_ĐÃ_ẨN]',
     ),
-
-    
     _MaskingRule(
       type: SensitiveDataType.email,
       pattern: RegExp(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}', caseSensitive: false),
       replacement: '[EMAIL_ĐÃ_ẨN]',
     ),
-
-    
     _MaskingRule(
       type: SensitiveDataType.creditCard,
       pattern: RegExp(r'(?<!\d)(?:4\d{3}|5[1-5]\d{2}|3[47]\d{2}|6(?:011|5\d{2}))'
           r'[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{3,4}(?!\d)'),
       replacement: '[THẺ_ĐÃ_ẨN]',
     ),
-
-    
     _MaskingRule(
       type: SensitiveDataType.bankAccount,
       pattern: RegExp(r'(?<!\d)\d{9,14}(?!\d)'),
       replacement: '[STK_ĐÃ_ẨN]',
     ),
-
-    
     _MaskingRule(
       type: SensitiveDataType.nationalId,
       pattern: RegExp(r'(?<!\d)(?:\d{9}|\d{12})(?!\d)'),
       replacement: '[CMND_ĐÃ_ẨN]',
     ),
-
-    
     _MaskingRule(
       type: SensitiveDataType.passport,
       pattern: RegExp(r'\b[A-Z]{1,2}\d{7}\b'),
       replacement: '[HỘ_CHIẾU_ĐÃ_ẨN]',
     ),
-
-    
     _MaskingRule(
       type: SensitiveDataType.ipAddress,
       pattern: RegExp(r'\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}'
           r'(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b'),
       replacement: '[IP_ĐÃ_ẨN]',
     ),
-
-    
     _MaskingRule(
       type: SensitiveDataType.jwtToken,
       pattern: RegExp(r'eyJ[A-Za-z0-9_\-]+\.eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+'),
       replacement: '[JWT_ĐÃ_ẨN]',
     ),
-
-    
     _MaskingRule(
       type: SensitiveDataType.privateKey,
       pattern: RegExp(r'-----BEGIN[^-]+PRIVATE KEY-----[\s\S]+?-----END[^-]+PRIVATE KEY-----',
           multiLine: true),
       replacement: '[PRIVATE_KEY_ĐÃ_ẨN]',
     ),
-
-    
     _MaskingRule(
       type: SensitiveDataType.otp,
       pattern: RegExp(r'(?:otp|mã\s*otp|mã\s*xác\s*nhận|verification\s*code|code)[:\s]+(\d{4,6})',
           caseSensitive: false),
       replacement: '[OTP_ĐÃ_ẨN]',
     ),
-
-    
     _MaskingRule(
       type: SensitiveDataType.url,
       pattern: RegExp(
@@ -228,8 +170,6 @@ class DataMaskingUtils {
           caseSensitive: false),
       replacement: '[URL_NHẠY_CẢM_ĐÃ_ẨN]',
     ),
-
-    
     _MaskingRule(
       type: SensitiveDataType.coordinates,
       pattern: RegExp(
@@ -239,14 +179,6 @@ class DataMaskingUtils {
     ),
   ];
 
-  
-  
-  
-
-  
-  
-  
-  
   static MaskingResult mask(
     String input, {
     MaskingConfig config = MaskingConfig.all,
@@ -270,41 +202,28 @@ class DataMaskingUtils {
     return MaskingResult(maskedText: output, hits: hits);
   }
 
-  
   static String maskText(
     String input, {
     MaskingConfig config = MaskingConfig.all,
   }) =>
       mask(input, config: config).maskedText;
 
-  
-  
-  
-
-  
   static List<String> maskList(
     List<String> messages, {
     MaskingConfig config = MaskingConfig.all,
   }) =>
       messages.map((msg) => maskText(msg, config: config)).toList();
 
-  
   static List<MaskingResult> maskListDetailed(
     List<String> messages, {
     MaskingConfig config = MaskingConfig.all,
   }) =>
       messages.map((msg) => mask(msg, config: config)).toList();
 
-  
-  
-  
-
-  
-  
   static Map<String, dynamic> maskMap(
     Map<String, dynamic> data, {
     MaskingConfig config = MaskingConfig.all,
-    Set<String>? skipKeys, 
+    Set<String>? skipKeys,
   }) {
     return data.map((key, value) {
       if (skipKeys != null && skipKeys.contains(key)) {
@@ -326,11 +245,6 @@ class DataMaskingUtils {
     });
   }
 
-  
-  
-  
-
-  
   static bool containsSensitiveData(
     String input, {
     MaskingConfig config = MaskingConfig.all,
@@ -341,7 +255,6 @@ class DataMaskingUtils {
         .any((r) => r.pattern.hasMatch(input));
   }
 
-  
   static Set<SensitiveDataType> detectTypes(
     String input, {
     MaskingConfig config = MaskingConfig.all,
@@ -353,18 +266,12 @@ class DataMaskingUtils {
         .toSet();
   }
 
-  
-  
-  
-
-  
   static String maskPhonePartial(String phone) {
     final digits = phone.replaceAll(RegExp(r'\D'), '');
     if (digits.length < 7) return '[SĐT_ĐÃ_ẨN]';
     return '${digits.substring(0, 3)}${'*' * (digits.length - 6)}${digits.substring(digits.length - 3)}';
   }
 
-  
   static String maskEmailPartial(String email) {
     final atIndex = email.indexOf('@');
     if (atIndex <= 1) return '[EMAIL_ĐÃ_ẨN]';
@@ -374,7 +281,6 @@ class DataMaskingUtils {
     return '${local.substring(0, visibleChars)}${'*' * (local.length - visibleChars)}$domain';
   }
 
-  
   static String maskBankAccountPartial(String account) {
     final digits = account.replaceAll(RegExp(r'\D'), '');
     if (digits.length < 8) return '[STK_ĐÃ_ẨN]';
@@ -383,28 +289,14 @@ class DataMaskingUtils {
     return '${'*' * visibleEnd}${digits.substring(visibleEnd, digits.length - visibleEnd)}${'*' * visibleEnd}';
   }
 
-  
-  
-  
-
-  
-  
   static List<String> prepareForAI(List<String> messages) =>
       maskList(messages, config: MaskingConfig.piiOnly);
 
-  
   static String prepareMessageForAI(String message) =>
       maskText(message, config: MaskingConfig.piiOnly);
 
-  
-  
-  
-
-  
-  
   static String sanitizeForLog(String message) => maskText(message, config: MaskingConfig.all);
 
-  
   static String summarizeForLog(String message, {int maxLength = 80}) {
     final masked = sanitizeForLog(message);
     if (masked.length <= maxLength) return masked;

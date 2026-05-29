@@ -4,21 +4,9 @@ import 'package:flutter/material.dart';
 
 import '../services/realtime_ai_service.dart';
 
-
-
-
-
-
-
-
-
-
-
 class LiveCaptionOverlay extends StatefulWidget {
-  
   final double bottomOffset;
 
-  
   final int maxLines;
 
   const LiveCaptionOverlay({
@@ -32,7 +20,6 @@ class LiveCaptionOverlay extends StatefulWidget {
 }
 
 class _LiveCaptionOverlayState extends State<LiveCaptionOverlay> with TickerProviderStateMixin {
-  
   late AnimationController _entryCtrl;
   late Animation<double> _fadeAnim;
   late Animation<Offset> _slideAnim;
@@ -43,7 +30,6 @@ class _LiveCaptionOverlayState extends State<LiveCaptionOverlay> with TickerProv
   late AnimationController _securityBorderCtrl;
   late Animation<double> _securityBorderAnim;
 
-  
   String _text = '';
   bool _visible = false;
   SecurityStatus _securityStatus = SecurityStatus.safe;
@@ -53,7 +39,6 @@ class _LiveCaptionOverlayState extends State<LiveCaptionOverlay> with TickerProv
   void initState() {
     super.initState();
 
-    
     _entryCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 320));
     _fadeAnim =
         CurvedAnimation(parent: _entryCtrl, curve: Curves.easeOut, reverseCurve: Curves.easeIn);
@@ -62,7 +47,6 @@ class _LiveCaptionOverlayState extends State<LiveCaptionOverlay> with TickerProv
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _entryCtrl, curve: Curves.easeOutCubic));
 
-    
     _pulseCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -71,7 +55,6 @@ class _LiveCaptionOverlayState extends State<LiveCaptionOverlay> with TickerProv
     )..repeat(reverse: true);
     _pulseAnim = CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut);
 
-    
     _securityBorderCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
@@ -89,13 +72,10 @@ class _LiveCaptionOverlayState extends State<LiveCaptionOverlay> with TickerProv
     super.dispose();
   }
 
-  
-
   void _onCaptionData(String text) {
     _hideTimer?.cancel();
 
     if (text.isEmpty) {
-      
       _hideTimer = Timer(const Duration(seconds: 2), () {
         if (!mounted) return;
         _entryCtrl.reverse().then((_) {
@@ -121,8 +101,6 @@ class _LiveCaptionOverlayState extends State<LiveCaptionOverlay> with TickerProv
     setState(() => _securityStatus = event.status);
   }
 
-  
-
   Color _accentColor() {
     switch (_securityStatus) {
       case SecurityStatus.warning:
@@ -135,8 +113,6 @@ class _LiveCaptionOverlayState extends State<LiveCaptionOverlay> with TickerProv
         return const Color(0xFF34D399);
     }
   }
-
-  
 
   @override
   Widget build(BuildContext context) {
@@ -180,10 +156,6 @@ class _LiveCaptionOverlayState extends State<LiveCaptionOverlay> with TickerProv
     );
   }
 }
-
-
-
-
 
 class _CaptionBubble extends StatelessWidget {
   final String text;
@@ -237,7 +209,6 @@ class _CaptionBubble extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          
           Padding(
             padding: const EdgeInsets.only(top: 5, right: 10),
             child: AnimatedBuilder(
@@ -263,8 +234,6 @@ class _CaptionBubble extends StatelessWidget {
               ),
             ),
           ),
-
-          
           Expanded(
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 180),
@@ -288,8 +257,6 @@ class _CaptionBubble extends StatelessWidget {
               ),
             ),
           ),
-
-          
           Padding(
             padding: const EdgeInsets.only(left: 8, top: 1),
             child: _StatusBadge(status: securityStatus, accentColor: accentColor),
@@ -299,10 +266,6 @@ class _CaptionBubble extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _StatusBadge extends StatelessWidget {
   final SecurityStatus status;

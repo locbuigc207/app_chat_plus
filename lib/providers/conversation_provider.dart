@@ -56,9 +56,6 @@ class ConversationProvider {
 
   ConversationProvider({required this.firebaseFirestore});
 
-  
-
-  
   Stream<List<QueryDocumentSnapshot>> getConversationsWithPinned(String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathConversationCollection)
@@ -87,7 +84,6 @@ class ConversationProvider {
     });
   }
 
-  
   Stream<List<QueryDocumentSnapshot>> getArchivedConversations(String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathConversationCollection)
@@ -97,7 +93,6 @@ class ConversationProvider {
         .map((s) => s.docs);
   }
 
-  
   Stream<List<QueryDocumentSnapshot>> getUnreadConversations(String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathConversationCollection)
@@ -113,8 +108,6 @@ class ConversationProvider {
         .doc(conversationId)
         .snapshots();
   }
-
-  
 
   Future<bool> togglePinConversation(String conversationId, bool currentStatus) async {
     try {
@@ -134,8 +127,6 @@ class ConversationProvider {
     }
   }
 
-  
-
   Future<bool> toggleMuteConversation(String conversationId, bool currentStatus) async {
     try {
       await firebaseFirestore
@@ -149,7 +140,6 @@ class ConversationProvider {
     }
   }
 
-  
   Future<bool> muteUntil(String conversationId, Duration? duration) async {
     try {
       final update = duration == null
@@ -169,8 +159,6 @@ class ConversationProvider {
       return false;
     }
   }
-
-  
 
   Future<bool> toggleArchiveConversation(
     String conversationId,
@@ -192,8 +180,6 @@ class ConversationProvider {
       return false;
     }
   }
-
-  
 
   Future<bool> markAsRead(String conversationId, String userId) async {
     try {
@@ -223,8 +209,6 @@ class ConversationProvider {
       return false;
     }
   }
-
-  
 
   Future<bool> clearConversationHistory(String conversationId) async {
     try {
@@ -268,9 +252,6 @@ class ConversationProvider {
     }
   }
 
-  
-
-  
   Future<bool> deleteConversationForUser(String conversationId, String userId) async {
     try {
       await firebaseFirestore
@@ -285,8 +266,6 @@ class ConversationProvider {
       return false;
     }
   }
-
-  
 
   Future<void> setTypingStatus(
     String conversationId,
@@ -316,7 +295,6 @@ class ConversationProvider {
       if (data == null) return {};
       final typingUsers = data['typingUsers'] as Map<String, dynamic>? ?? {};
 
-      
       final now = DateTime.now().millisecondsSinceEpoch;
       return Map.fromEntries(
         typingUsers.entries.where((e) {

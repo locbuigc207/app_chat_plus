@@ -1,14 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-
-
-
-
-
-
-
-
 class BouncingWrapper extends StatefulWidget {
   const BouncingWrapper({
     super.key,
@@ -29,16 +21,12 @@ class BouncingWrapper extends StatefulWidget {
   final VoidCallback? onLongPress;
   final VoidCallback? onDoubleTap;
 
-  
   final double scaleFactor;
 
-  
   final Duration duration;
 
-  
   final Duration reverseDuration;
 
-  
   final bool enabled;
 
   final bool hapticOnTap;
@@ -69,8 +57,6 @@ class _BouncingWrapperState extends State<BouncingWrapper> with SingleTickerProv
     _ac.dispose();
     super.dispose();
   }
-
-  
 
   void _onTapDown(TapDownDetails _) {
     if (!widget.enabled) return;
@@ -103,8 +89,6 @@ class _BouncingWrapperState extends State<BouncingWrapper> with SingleTickerProv
     HapticFeedback.lightImpact();
     widget.onDoubleTap?.call();
   }
-
-  
 
   @override
   Widget build(BuildContext context) {

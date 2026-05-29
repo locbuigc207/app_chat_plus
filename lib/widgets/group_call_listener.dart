@@ -11,17 +11,6 @@ import '../pages/incoming_group_call_page.dart';
 import '../providers/providers.dart';
 import '../services/group_call_service.dart';
 
-
-
-
-
-
-
-
-
-
-
-
 class GroupCallListener extends StatefulWidget {
   final Widget child;
 
@@ -37,10 +26,9 @@ class _GroupCallListenerState extends State<GroupCallListener> with WidgetsBindi
   StreamSubscription<User?>? _authSub;
   StreamSubscription<GroupCallModel?>? _callSub;
 
-  String? _displayedCallId; 
+  String? _displayedCallId;
   bool _isShowingIncoming = false;
 
-  
   final Map<String, DateTime> _seenCallIds = {};
 
   @override
@@ -57,10 +45,6 @@ class _GroupCallListenerState extends State<GroupCallListener> with WidgetsBindi
     _callSub?.cancel();
     super.dispose();
   }
-
-  
-  
-  
 
   void _startAuthListener() {
     _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
@@ -87,21 +71,17 @@ class _GroupCallListenerState extends State<GroupCallListener> with WidgetsBindi
   void _handleIncomingCall(GroupCallModel call, String uid) {
     if (!mounted) return;
 
-    
     if (_displayedCallId == call.callId) return;
 
-    
     final lastSeen = _seenCallIds[call.callId];
     if (lastSeen != null && DateTime.now().difference(lastSeen).inSeconds < 5) {
       return;
     }
     _seenCallIds[call.callId] = DateTime.now();
 
-    
     if (call.status == GroupCallStatus.ended) return;
     if (call.participants.any((p) => p.userId == uid)) return;
 
-    
     if (_isShowingIncoming) {
       _dismissCurrentIncoming();
     }
@@ -160,10 +140,6 @@ class _GroupCallListenerState extends State<GroupCallListener> with WidgetsBindi
   Widget build(BuildContext context) => widget.child;
 }
 
-
-
-
-
 class _IncomingCallRoute<T> extends PageRouteBuilder<T> {
   final WidgetBuilder builder;
 
@@ -190,13 +166,6 @@ class _IncomingCallRoute<T> extends PageRouteBuilder<T> {
           },
         );
 }
-
-
-
-
-
-
-
 
 class CallNotificationOverlay extends StatefulWidget {
   final GroupCallModel call;
@@ -275,7 +244,6 @@ class _CallNotificationOverlayState extends State<CallNotificationOverlay>
             ),
             child: Row(
               children: [
-                
                 Container(
                   width: 44,
                   height: 44,
@@ -295,8 +263,6 @@ class _CallNotificationOverlayState extends State<CallNotificationOverlay>
                   ),
                 ),
                 const SizedBox(width: 12),
-
-                
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -318,15 +284,12 @@ class _CallNotificationOverlayState extends State<CallNotificationOverlay>
                     ],
                   ),
                 ),
-
-                
                 _circleBtn(
                   icon: Icons.call_end_rounded,
                   color: const Color(0xFFEF4444),
                   onTap: widget.onDecline,
                 ),
                 const SizedBox(width: 8),
-                
                 _circleBtn(
                   icon: isVideo ? Icons.videocam_rounded : Icons.call_rounded,
                   color: const Color(0xFF22C55E),

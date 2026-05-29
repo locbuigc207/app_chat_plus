@@ -145,7 +145,6 @@ class _PINInputDialogState extends State<PINInputDialog> with TickerProviderStat
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          
           TweenAnimationBuilder<double>(
             tween: Tween(begin: 0, end: 1),
             duration: const Duration(milliseconds: 400),
@@ -182,10 +181,7 @@ class _PINInputDialogState extends State<PINInputDialog> with TickerProviderStat
               ),
             ),
           ),
-
           const SizedBox(height: 20),
-
-          
           Text(
             widget.title,
             style: const TextStyle(
@@ -196,7 +192,6 @@ class _PINInputDialogState extends State<PINInputDialog> with TickerProviderStat
             ),
             textAlign: TextAlign.center,
           ),
-
           if (widget.subtitle != null) ...[
             const SizedBox(height: 6),
             Text(
@@ -208,8 +203,6 @@ class _PINInputDialogState extends State<PINInputDialog> with TickerProviderStat
               textAlign: TextAlign.center,
             ),
           ],
-
-          
           if (widget.errorMessage != null) ...[
             const SizedBox(height: 14),
             AnimatedContainer(
@@ -235,8 +228,6 @@ class _PINInputDialogState extends State<PINInputDialog> with TickerProviderStat
               ),
             ),
           ],
-
-          
           if (widget.remainingAttempts != null) ...[
             const SizedBox(height: 8),
             AnimatedDefaultTextStyle(
@@ -251,10 +242,7 @@ class _PINInputDialogState extends State<PINInputDialog> with TickerProviderStat
               ),
             ),
           ],
-
           const SizedBox(height: 30),
-
-          
           AnimatedBuilder(
             animation: _shakeAnim,
             builder: (_, child) =>
@@ -302,10 +290,7 @@ class _PINInputDialogState extends State<PINInputDialog> with TickerProviderStat
               }),
             ),
           ),
-
           const SizedBox(height: 30),
-
-          
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -328,10 +313,7 @@ class _PINInputDialogState extends State<PINInputDialog> with TickerProviderStat
               }
             },
           ),
-
           const SizedBox(height: 24),
-
-          
           AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             width: double.infinity,
@@ -386,10 +368,7 @@ class _PINInputDialogState extends State<PINInputDialog> with TickerProviderStat
               ),
             ),
           ),
-
           const SizedBox(height: 12),
-
-          
           TextButton(
             onPressed: _isLoading ? null : () => Navigator.pop(context),
             style: TextButton.styleFrom(

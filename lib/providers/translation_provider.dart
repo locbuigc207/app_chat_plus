@@ -4,10 +4,6 @@ import 'package:flutter/foundation.dart';
 
 import 'package:translator/translator.dart';
 
-
-
-
-
 class TranslationResult {
   final String originalText;
   final String translatedText;
@@ -29,28 +25,18 @@ class TranslationResult {
   String toString() => 'TranslationResult($sourceLanguage→$targetLanguage: "$translatedText")';
 }
 
-
-
-
-
 class TranslationProvider {
   GoogleTranslator? _translator;
   bool _isInitialized = false;
 
-  
   final _cache = <String, TranslationResult>{};
   static const int _maxCacheSize = 200;
 
-  
   final _pending = <String, Future<TranslationResult?>>{};
 
   TranslationProvider() {
     _initialize();
   }
-
-  
-  
-  
 
   void _initialize() {
     try {
@@ -65,12 +51,6 @@ class TranslationProvider {
 
   bool get isAvailable => _isInitialized;
 
-  
-  
-  
-
-  
-  
   Future<TranslationResult?> translate({
     required String text,
     required String targetLanguage,
@@ -88,15 +68,13 @@ class TranslationProvider {
 
     final cacheKey = '$sourceLanguage|$targetLanguage|${text.trim()}';
 
-    
     if (_cache.containsKey(cacheKey)) {
       final cached = _cache[cacheKey]!;
       _cache.remove(cacheKey);
-      _cache[cacheKey] = cached; 
+      _cache[cacheKey] = cached;
       return cached.copyWith(fromCache: true);
     }
 
-    
     if (_pending.containsKey(cacheKey)) {
       return _pending[cacheKey];
     }
@@ -157,16 +135,11 @@ class TranslationProvider {
 
   void _cacheResult(String key, TranslationResult result) {
     if (_cache.length >= _maxCacheSize) {
-      _cache.remove(_cache.keys.first); 
+      _cache.remove(_cache.keys.first);
     }
     _cache[key] = result;
   }
 
-  
-  
-  
-
-  
   Future<String?> translateText({
     required String text,
     required String targetLanguage,
@@ -180,7 +153,6 @@ class TranslationProvider {
     return result?.translatedText;
   }
 
-  
   Future<TranslationResult?> translateWithRetry({
     required String text,
     required String targetLanguage,
@@ -203,7 +175,6 @@ class TranslationProvider {
     return null;
   }
 
-  
   Future<List<TranslationResult?>> translateBatch({
     required List<String> texts,
     required String targetLanguage,
@@ -229,11 +200,6 @@ class TranslationProvider {
     return results;
   }
 
-  
-  
-  
-
-  
   Future<String?> detectLanguage(String text) async {
     if (!_isInitialized || _translator == null || text.trim().isEmpty) {
       return null;
@@ -251,16 +217,11 @@ class TranslationProvider {
     }
   }
 
-  
   bool isSameLanguage(String textLanguage, String targetLanguage) {
     final tl = textLanguage.toLowerCase().split('-').first;
     final target = targetLanguage.toLowerCase().split('-').first;
     return tl == target || (tl == 'en' && target == 'en');
   }
-
-  
-  
-  
 
   void clearCache() {
     _cache.clear();
@@ -268,10 +229,6 @@ class TranslationProvider {
   }
 
   int get cacheSize => _cache.length;
-
-  
-  
-  
 
   static const Map<String, String> languages = {
     'en': 'English',
@@ -361,10 +318,6 @@ class TranslationProvider {
         MapEntry('id', 'Bahasa Indonesia'),
       ];
 }
-
-
-
-
 
 extension TranslationResultCopy on TranslationResult {
   TranslationResult copyWith({

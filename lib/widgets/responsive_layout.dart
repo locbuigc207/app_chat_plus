@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
 
-
 class Breakpoints {
   static const double mobile = 600;
   static const double tablet = 900;
   static const double desktop = 1280;
 }
 
-
 enum ScreenSize { mobile, tablet, desktop }
-
 
 extension ScreenSizeContext on BuildContext {
   double get screenWidth => MediaQuery.of(this).size.width;
@@ -23,16 +20,12 @@ extension ScreenSizeContext on BuildContext {
     return ScreenSize.desktop;
   }
 
-  
   int get chatListColumns {
     if (isMobile) return 1;
     if (isTablet) return 2;
     return 3;
   }
 }
-
-
-
 
 class ResponsiveLayout extends StatelessWidget {
   final Widget mobileLayout;
@@ -46,7 +39,6 @@ class ResponsiveLayout extends StatelessWidget {
     required this.desktopLayout,
   });
 
-  
   static ResponsiveLayout withWeb({
     Key? key,
     required Widget mobileLayout,
@@ -58,7 +50,6 @@ class ResponsiveLayout extends StatelessWidget {
         desktopLayout: webLayout,
       );
 
-  
   static bool isMobile(BuildContext context) =>
       MediaQuery.of(context).size.width < Breakpoints.mobile;
 
@@ -70,7 +61,6 @@ class ResponsiveLayout extends StatelessWidget {
   static bool isWeb(BuildContext context) =>
       MediaQuery.of(context).size.width >= Breakpoints.tablet;
 
-  
   static T value<T>(
     BuildContext context, {
     required T mobile,
@@ -99,8 +89,6 @@ class ResponsiveLayout extends StatelessWidget {
   }
 }
 
-
-
 class TwoPaneLayout extends StatelessWidget {
   final Widget sidePanel;
   final Widget mainContent;
@@ -120,11 +108,9 @@ class TwoPaneLayout extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < Breakpoints.tablet) {
-          
           return mainContent;
         }
 
-        
         return Row(
           children: [
             SizedBox(
@@ -143,7 +129,6 @@ class TwoPaneLayout extends StatelessWidget {
     );
   }
 }
-
 
 class ResponsivePadding extends StatelessWidget {
   final Widget child;
@@ -170,7 +155,6 @@ class ResponsivePadding extends StatelessWidget {
     return Padding(padding: padding, child: child);
   }
 }
-
 
 class ResponsiveSizedBox extends StatelessWidget {
   final double mobileSize;

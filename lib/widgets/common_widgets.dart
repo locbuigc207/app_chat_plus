@@ -6,10 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
 
-
-
-
-
 class LoadingView extends StatefulWidget {
   final String? message;
 
@@ -163,10 +159,6 @@ class _SpinnerPainter extends CustomPainter {
   bool shouldRepaint(_SpinnerPainter old) => old.progress != progress;
 }
 
-
-
-
-
 class ReactionPicker extends StatelessWidget {
   final Function(String emoji) onEmojiSelected;
 
@@ -278,10 +270,6 @@ class _EmojiBtnState extends State<_EmojiBtn> with SingleTickerProviderStateMixi
   }
 }
 
-
-
-
-
 class MessageReactionsDisplay extends StatelessWidget {
   final Map<String, int> reactions;
   final String currentUserId;
@@ -349,10 +337,6 @@ class MessageReactionsDisplay extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class SmartReplyWidget extends StatelessWidget {
   final List<SmartReply> replies;
@@ -494,10 +478,6 @@ class _SmartReplyChipState extends State<_SmartReplyChip> with SingleTickerProvi
   }
 }
 
-
-
-
-
 class TypingIndicator extends StatefulWidget {
   final String userName;
   final String? avatarUrl;
@@ -549,7 +529,6 @@ class _TypingIndicatorState extends State<TypingIndicator> with SingleTickerProv
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            
             Container(
               width: 28,
               height: 28,
@@ -567,7 +546,6 @@ class _TypingIndicatorState extends State<TypingIndicator> with SingleTickerProv
                     : _initials(widget.userName),
               ),
             ),
-            
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
@@ -631,10 +609,6 @@ class _TypingIndicatorState extends State<TypingIndicator> with SingleTickerProv
   }
 }
 
-
-
-
-
 class ReadReceiptWidget extends StatelessWidget {
   final bool isRead;
   final bool isSent;
@@ -663,10 +637,6 @@ class ReadReceiptWidget extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class UserAvatarWidget extends StatelessWidget {
   final String photoUrl;
@@ -757,10 +727,6 @@ class UserAvatarWidget extends StatelessWidget {
   }
 }
 
-
-
-
-
 class PulsingDot extends StatefulWidget {
   final Color color;
   final double size;
@@ -821,10 +787,6 @@ class _PulsingDotState extends State<PulsingDot> with SingleTickerProviderStateM
     );
   }
 }
-
-
-
-
 
 class EmptyStateWidget extends StatelessWidget {
   final IconData icon;

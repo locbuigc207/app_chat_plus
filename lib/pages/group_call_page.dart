@@ -22,14 +22,10 @@ import '../widgets/call_quality_indicator.dart';
 import '../widgets/call_timer_widget.dart';
 import '../widgets/live_caption_overlay.dart';
 
-
-
-
-
 class _FloatingReaction {
   final String emoji;
   final String senderName;
-  final double xFraction; 
+  final double xFraction;
   final DateTime createdAt;
   final AnimationController ctrl;
   final Animation<double> opacity;
@@ -45,10 +41,6 @@ class _FloatingReaction {
     required this.translateY,
   });
 }
-
-
-
-
 
 class GroupCallPage extends StatefulWidget {
   final GroupCallModel call;
@@ -72,12 +64,10 @@ class GroupCallPage extends StatefulWidget {
 
 class _GroupCallPageState extends State<GroupCallPage>
     with TickerProviderStateMixin, WidgetsBindingObserver {
-  
   final _callService = GroupCallService.instance;
   final _pip = SimplePip();
   late RtcEngine _engine;
 
-  
   bool _engineInitialized = false;
   bool _isMuted = false;
   bool _isCameraOff = false;
@@ -93,32 +83,25 @@ class _GroupCallPageState extends State<GroupCallPage>
   bool _aiProtectionStarted = false;
   bool _showReactionPicker = false;
 
-  
   final Set<int> _remoteUids = {};
   final Map<int, bool> _remoteAudioMuted = {};
   final Map<int, bool> _remoteVideoMuted = {};
 
-  
   late GroupCallModel _callModel;
   DateTime? _connectedAt;
 
-  
   StreamSubscription? _callSub;
   Timer? _controlsHideTimer;
 
-  
   RtcCallStats _stats = const RtcCallStats();
 
-  
   int? _spotlightUid;
 
-  
   late AnimationController _controlsAnimCtrl;
   late Animation<double> _controlsAnim;
   late AnimationController _raisedHandCtrl;
   late Animation<double> _raisedHandAnim;
 
-  
   final List<_FloatingReaction> _floatingReactions = [];
   final _random = math.Random();
 
@@ -149,10 +132,6 @@ class _GroupCallPageState extends State<GroupCallPage>
     _scheduleControlsHide();
   }
 
-  
-  
-  
-
   Future<void> _enterPiPMode() async {
     final available = await SimplePip.isPipAvailable;
     if (available) {
@@ -162,10 +141,6 @@ class _GroupCallPageState extends State<GroupCallPage>
     }
   }
 
-  
-  
-  
-
   void _startAIProtection() {
     if (_aiProtectionStarted) return;
     _aiProtectionStarted = true;
@@ -174,10 +149,6 @@ class _GroupCallPageState extends State<GroupCallPage>
       widget.call.channelName,
     );
   }
-
-  
-  
-  
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -202,10 +173,6 @@ class _GroupCallPageState extends State<GroupCallPage>
     _cleanup();
     super.dispose();
   }
-
-  
-  
-  
 
   Future<void> _initCall() async {
     await _requestPermissions();
@@ -317,7 +284,6 @@ class _GroupCallPageState extends State<GroupCallPage>
       if (mounted) setState(() => _callModel = call);
       if (call.status == GroupCallStatus.ended) _handleCallEnded();
 
-      
       for (final r in call.recentReactions) {
         if (r.sentAt.isAfter(DateTime.now().subtract(const Duration(seconds: 3)))) {
           _showFloatingReaction(r.type.emoji, r.userName);
@@ -345,8 +311,8 @@ class _GroupCallPageState extends State<GroupCallPage>
         participantCount: _callModel.participantCount,
         onDismiss: () {
           Navigator.of(context)
-            ..pop() 
-            ..pop(); 
+            ..pop()
+            ..pop();
         },
       ),
     );
@@ -373,10 +339,6 @@ class _GroupCallPageState extends State<GroupCallPage>
     _controlsAnimCtrl.forward();
     _scheduleControlsHide();
   }
-
-  
-  
-  
 
   Future<void> _toggleMute() async {
     final next = !_isMuted;
@@ -434,8 +396,8 @@ class _GroupCallPageState extends State<GroupCallPage>
     }
     await _callService.updateScreenShare(
       callId: widget.call.callId,
-      userId: widget.currentUserId, 
-      isSharing: next, 
+      userId: widget.currentUserId,
+      isSharing: next,
     );
     _showToast(next ? '📺 Đang chia sẻ màn hình' : 'Đã dừng chia sẻ');
   }
@@ -529,10 +491,6 @@ class _GroupCallPageState extends State<GroupCallPage>
         toastLength: Toast.LENGTH_SHORT,
       );
 
-  
-  
-  
-
   @override
   Widget build(BuildContext context) {
     if (widget.call.isVideo) {
@@ -562,10 +520,6 @@ class _GroupCallPageState extends State<GroupCallPage>
       ),
     );
   }
-
-  
-  
-  
 
   Widget _buildPipContent() {
     if (!_engineInitialized) {
@@ -603,10 +557,6 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
-  
-  
-  
-
   Widget _buildVideoUI() {
     return GestureDetector(
       onTap: _onTapScreen,
@@ -614,25 +564,14 @@ class _GroupCallPageState extends State<GroupCallPage>
       child: Stack(
         fit: StackFit.expand,
         children: [
-          
           _remoteUids.isEmpty ? _buildWaitingScreen() : _buildVideoGrid(),
-
-          
           _buildGradients(),
-
-          
           ..._floatingReactions.map(_buildFloatingReaction),
-
-          
           if (_showReactionPicker) _buildReactionPicker(),
-
-          
           FadeTransition(
             opacity: _controlsAnim,
             child: _buildVideoTopBar(),
           ),
-
-          
           Positioned(
             top: MediaQuery.of(context).padding.top + 64,
             left: 12,
@@ -643,8 +582,6 @@ class _GroupCallPageState extends State<GroupCallPage>
             right: 12,
             child: CallQualityIndicator(stats: _stats),
           ),
-
-          
           if (_hasRaisedHand)
             Positioned(
               top: MediaQuery.of(context).padding.top + 120,
@@ -652,11 +589,7 @@ class _GroupCallPageState extends State<GroupCallPage>
               right: 0,
               child: Center(child: _buildRaisedHandBadge()),
             ),
-
-          
           if (_showParticipantsList) _buildParticipantsPanel(),
-
-          
           if (_isLiveCaptionEnabled)
             Positioned(
               bottom: 150,
@@ -664,8 +597,6 @@ class _GroupCallPageState extends State<GroupCallPage>
               right: 16,
               child: const LiveCaptionOverlay(),
             ),
-
-          
           FadeTransition(
             opacity: _controlsAnim,
             child: _buildBottomControls(),
@@ -798,8 +729,6 @@ class _GroupCallPageState extends State<GroupCallPage>
           );
   }
 
-  
-
   Widget _buildVideoGrid() {
     if (!_engineInitialized) {
       return const Center(child: CircularProgressIndicator(color: Colors.white));
@@ -876,8 +805,6 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
-  
-
   Widget _buildRemoteVideoTile(int uid, {bool big = false}) {
     final participant = _callModel.participants.cast<GroupCallParticipant?>().firstWhere(
           (p) => p != null,
@@ -905,7 +832,6 @@ class _GroupCallPageState extends State<GroupCallPage>
                   ),
                 ),
         ),
-        
         Positioned(
           bottom: 8,
           left: 8,
@@ -920,14 +846,12 @@ class _GroupCallPageState extends State<GroupCallPage>
             ],
           ),
         ),
-        
         if (participant?.userName != null)
           Positioned(
             bottom: 8,
             right: 8,
             child: _nameBadge(participant!.userName),
           ),
-        
         if (participant != null && _callModel.hasRaisedHand(participant.userId))
           Positioned(
             top: 8,
@@ -1113,8 +1037,6 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
-  
-
   Widget _buildGradients() {
     return Positioned.fill(
       child: IgnorePointer(
@@ -1152,8 +1074,6 @@ class _GroupCallPageState extends State<GroupCallPage>
       ),
     );
   }
-
-  
 
   Widget _buildVideoTopBar() {
     return Positioned(
@@ -1272,8 +1192,6 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
-  
-
   Widget _buildParticipantsPanel() {
     return Positioned(
       top: 0,
@@ -1380,8 +1298,6 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
-  
-
   Widget _buildReactionPicker() {
     return Positioned(
       bottom: 170,
@@ -1416,8 +1332,6 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
-  
-
   Widget _buildBottomControls() {
     return Positioned(
       bottom: 0,
@@ -1429,7 +1343,6 @@ class _GroupCallPageState extends State<GroupCallPage>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
@@ -1458,7 +1371,6 @@ class _GroupCallPageState extends State<GroupCallPage>
                 ],
               ),
               const SizedBox(height: 12),
-              
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
@@ -1474,7 +1386,6 @@ class _GroupCallPageState extends State<GroupCallPage>
                     active: _isSpeakerOn,
                     onTap: _toggleSpeaker,
                   ),
-                  
                   GestureDetector(
                     onTap: _hangUp,
                     child: Container(
@@ -1550,10 +1461,6 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 
-  
-  
-  
-
   Widget _buildVoiceUI() {
     return Container(
       decoration: const BoxDecoration(
@@ -1566,7 +1473,6 @@ class _GroupCallPageState extends State<GroupCallPage>
       child: SafeArea(
         child: Column(
           children: [
-            
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
@@ -1577,7 +1483,6 @@ class _GroupCallPageState extends State<GroupCallPage>
                 ],
               ),
             ),
-
             const SizedBox(height: 12),
             Text(
               widget.call.groupName,
@@ -1599,12 +1504,9 @@ class _GroupCallPageState extends State<GroupCallPage>
                   letterSpacing: 1,
                 ),
               ),
-
             const Spacer(),
             _buildVoiceParticipantsGrid(),
             const Spacer(),
-
-            
             if (_floatingReactions.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
@@ -1615,15 +1517,11 @@ class _GroupCallPageState extends State<GroupCallPage>
                       .toList(),
                 ),
               ),
-
-            
             if (_isLiveCaptionEnabled)
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 child: LiveCaptionOverlay(),
               ),
-
-            
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
               child: Row(
@@ -1654,13 +1552,11 @@ class _GroupCallPageState extends State<GroupCallPage>
                 ],
               ),
             ),
-
             if (_showReactionPicker)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: _buildVoiceReactionRow(),
               ),
-
             _buildVoiceControls(),
             const SizedBox(height: 28),
           ],
@@ -1800,7 +1696,6 @@ class _GroupCallPageState extends State<GroupCallPage>
             active: _isMuted,
             onTap: _toggleMute,
           ),
-          
           GestureDetector(
             onTap: _hangUp,
             child: Container(
@@ -1830,10 +1725,6 @@ class _GroupCallPageState extends State<GroupCallPage>
       ),
     );
   }
-
-  
-  
-  
 
   Widget _controlBtn({
     required IconData icon,
@@ -1877,10 +1768,6 @@ class _GroupCallPageState extends State<GroupCallPage>
     );
   }
 }
-
-
-
-
 
 class _CallEndedSheet extends StatelessWidget {
   final int duration;

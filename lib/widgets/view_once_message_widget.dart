@@ -7,23 +7,15 @@ import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
 
-
-
-
-
 enum ViewOnceState {
-  locked, 
-  revealing, 
-  expiring, 
-  viewed, 
+  locked,
+  revealing,
+  expiring,
+  viewed,
 }
 
-
-
-
-
 class CountdownRingPainter extends CustomPainter {
-  final double progress; 
+  final double progress;
   final Color foreColor;
   final Color trackColor;
   final double strokeWidth;
@@ -44,10 +36,8 @@ class CountdownRingPainter extends CustomPainter {
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round;
 
-    
     canvas.drawCircle(center, radius, paint..color = trackColor);
 
-    
     if (progress > 0) {
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
@@ -64,10 +54,6 @@ class CountdownRingPainter extends CustomPainter {
       old.progress != progress || old.foreColor != foreColor || old.trackColor != trackColor;
 }
 
-
-
-
-
 class ViewOnceMessageWidget extends StatefulWidget {
   final String groupChatId;
   final String messageId;
@@ -77,7 +63,6 @@ class ViewOnceMessageWidget extends StatefulWidget {
   final bool isViewed;
   final ViewOnceProvider provider;
 
-  
   final int viewDurationSeconds;
 
   const ViewOnceMessageWidget({
@@ -100,12 +85,10 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
     with TickerProviderStateMixin {
   ViewOnceState _state = ViewOnceState.locked;
 
-  
   Timer? _countdownTimer;
   int _remainingSeconds = 0;
   double _countdownProgress = 1.0;
 
-  
   late AnimationController _lockPulseCtrl;
   late AnimationController _revealCtrl;
   late AnimationController _expiringCtrl;
@@ -126,7 +109,6 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
     if (widget.isViewed) _state = ViewOnceState.viewed;
     _remainingSeconds = widget.viewDurationSeconds;
 
-    
     _lockPulseCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2000),
@@ -135,7 +117,6 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
       CurvedAnimation(parent: _lockPulseCtrl, curve: Curves.easeInOut),
     );
 
-    
     _revealCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 480),
@@ -147,7 +128,6 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
       CurvedAnimation(parent: _revealCtrl, curve: Curves.easeOut),
     );
 
-    
     _expiringCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
@@ -156,7 +136,6 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
       CurvedAnimation(parent: _expiringCtrl, curve: Curves.easeInOut),
     );
 
-    
     _shakeCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
@@ -165,7 +144,6 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
         .chain(CurveTween(curve: _ShakeCurve()))
         .animate(_shakeCtrl);
 
-    
     _viewedCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 350),
@@ -186,10 +164,6 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
     super.dispose();
   }
 
-  
-  
-  
-
   Future<void> _reveal() async {
     if (_state != ViewOnceState.locked) return;
     HapticFeedback.heavyImpact();
@@ -203,7 +177,6 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
     _revealCtrl.forward();
     _startCountdown();
 
-    
     await widget.provider.openViewOnceMessage(
       groupChatId: widget.groupChatId,
       messageId: widget.messageId,
@@ -224,7 +197,6 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
         _countdownProgress = (_remainingSeconds / widget.viewDurationSeconds).clamp(0.0, 1.0);
       });
 
-      
       if (_remainingSeconds == 3 && _state == ViewOnceState.revealing) {
         setState(() => _state = ViewOnceState.expiring);
         HapticFeedback.mediumImpact();
@@ -248,10 +220,6 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
     }
   }
 
-  
-  
-  
-
   @override
   Widget build(BuildContext context) {
     return switch (_state) {
@@ -261,8 +229,6 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
       ViewOnceState.viewed => _buildViewed(),
     };
   }
-
-  
 
   Widget _buildLocked() {
     return AnimatedBuilder(
@@ -292,7 +258,6 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              
               Container(
                 width: 40,
                 height: 40,
@@ -311,7 +276,6 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
                 ),
               ),
               const SizedBox(width: 12),
-              
               Flexible(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -338,7 +302,6 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
                 ),
               ),
               const SizedBox(width: 8),
-              
               Container(
                 padding: const EdgeInsets.all(5),
                 decoration: BoxDecoration(
@@ -358,11 +321,9 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
     );
   }
 
-  
-
   Widget _buildRevealing({required bool isExpiring}) {
-    const activeColor = Color(0xFF34C759); 
-    const expiringColor = Color(0xFFFF6B35); 
+    const activeColor = Color(0xFF34C759);
+    const expiringColor = Color(0xFFFF6B35);
     final borderColor = isExpiring ? expiringColor : activeColor;
 
     return AnimatedBuilder(
@@ -399,7 +360,6 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 300),
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
@@ -415,7 +375,6 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
                       ),
                       child: Row(
                         children: [
-                          
                           SizedBox(
                             width: 30,
                             height: 30,
@@ -464,7 +423,6 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
                               ),
                             ),
                           ),
-                          
                           Icon(
                             Icons.visibility_rounded,
                             size: 14,
@@ -473,8 +431,6 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
                         ],
                       ),
                     ),
-
-                    
                     Padding(
                       padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
                       child: _buildContent(),
@@ -542,8 +498,6 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
     return const SizedBox.shrink();
   }
 
-  
-
   Widget _buildViewed() {
     return FadeTransition(
       opacity: _viewedOpacity,
@@ -601,18 +555,10 @@ class _ViewOnceMessageWidgetState extends State<ViewOnceMessageWidget>
   }
 }
 
-
-
-
-
 class _ShakeCurve extends Curve {
   @override
   double transformInternal(double t) => math.sin(t * math.pi * 4) * (1 - t);
 }
-
-
-
-
 
 class SendViewOnceDialog extends StatefulWidget {
   final Function(String content, int type, int durationSeconds) onSend;
@@ -1009,8 +955,6 @@ class _SendViewOnceDialogState extends State<SendViewOnceDialog>
     );
   }
 }
-
-
 
 class _TabBtn extends StatelessWidget {
   final String label;

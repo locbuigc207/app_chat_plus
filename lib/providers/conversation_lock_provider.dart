@@ -75,14 +75,10 @@ class ConversationLockProvider {
 
   ConversationLockProvider({required this.firebaseFirestore});
 
-  
-
   String _hashPIN(String pin) {
     final bytes = utf8.encode(pin);
     return sha256.convert(bytes).toString();
   }
-
-  
 
   Future<bool> setConversationPIN({
     required String conversationId,
@@ -176,8 +172,6 @@ class ConversationLockProvider {
     }
   }
 
-  
-
   Future<VerifyResult> verifyPIN({
     required String conversationId,
     required String enteredPin,
@@ -199,7 +193,6 @@ class ConversationLockProvider {
       final failedAttempts = data['failedAttempts'] as int? ?? 0;
       final lockedUntil = data['lockedUntil'] as Timestamp?;
 
-      
       if (lockedUntil != null) {
         final now = DateTime.now();
         final unlockTime = lockedUntil.toDate();
@@ -213,7 +206,6 @@ class ConversationLockProvider {
             locked: true,
           );
         } else {
-          
           await firebaseFirestore
               .collection(_locksCollection)
               .doc(conversationId)
@@ -252,7 +244,6 @@ class ConversationLockProvider {
 
         await firebaseFirestore.collection(_locksCollection).doc(conversationId).update(update);
 
-        
         if (willLock) {
           await autoDeleteMessagesAfterFailedAttempts(conversationId: conversationId);
         }
@@ -276,8 +267,6 @@ class ConversationLockProvider {
       );
     }
   }
-
-  
 
   Future<void> autoDeleteMessagesAfterFailedAttempts({
     required String conversationId,
@@ -319,7 +308,6 @@ class ConversationLockProvider {
         'autoDeletedAt': FieldValue.serverTimestamp(),
       });
 
-      
       await firebaseFirestore
           .collection(FirestoreConstants.pathConversationCollection)
           .doc(conversationId)
@@ -334,8 +322,6 @@ class ConversationLockProvider {
       rethrow;
     }
   }
-
-  
 
   Future<LockStatus?> getConversationLockStatus(String conversationId) async {
     try {

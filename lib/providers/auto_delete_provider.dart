@@ -106,8 +106,6 @@ class AutoDeleteProvider {
     _startCleanupTimer();
   }
 
-  
-
   void _startCleanupTimer() {
     _cleanupTimer?.cancel();
     _cleanupTimer = Timer.periodic(_cleanupInterval, (_) => _runGlobalCleanup());
@@ -133,8 +131,6 @@ class AutoDeleteProvider {
       _isRunning = false;
     }
   }
-
-  
 
   Future<bool> setAutoDelete({
     required String conversationId,
@@ -185,8 +181,6 @@ class AutoDeleteProvider {
     }
   }
 
-  
-
   Future<void> scheduleMessageDeletion({
     required String groupChatId,
     required String messageId,
@@ -204,7 +198,6 @@ class AutoDeleteProvider {
         deleteAfterMillis: settings.effectiveMilliseconds!,
       );
 
-      
       Timer(
         Duration(milliseconds: settings.effectiveMilliseconds! + 5000),
         () => deleteExpiredMessages(groupChatId),
@@ -233,15 +226,10 @@ class AutoDeleteProvider {
     }
   }
 
-  
-
   Future<int> deleteExpiredMessages(String groupChatId) async {
     try {
       final now = DateTime.now().millisecondsSinceEpoch;
 
-      
-      
-      
       final expiredMessages = await firebaseFirestore
           .collection(FirestoreConstants.pathMessageCollection)
           .doc(groupChatId)
@@ -291,7 +279,6 @@ class AutoDeleteProvider {
         'autoDeleteUpdatedAt': DateTime.now().millisecondsSinceEpoch.toString(),
       });
 
-      
       final messages = await firebaseFirestore
           .collection(FirestoreConstants.pathMessageCollection)
           .doc(conversationId)
@@ -317,8 +304,6 @@ class AutoDeleteProvider {
       debugPrint('❌ Error cancelling auto-delete: $e');
     }
   }
-
-  
 
   void dispose() {
     _cleanupTimer?.cancel();

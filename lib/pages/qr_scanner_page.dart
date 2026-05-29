@@ -24,7 +24,6 @@ class _QRScannerPageState extends State<QRScannerPage> with SingleTickerProvider
   bool _torchOn = false;
   bool _isFrontCamera = false;
 
-  
   late AnimationController _scanLineCtrl;
   late Animation<double> _scanLineAnim;
 
@@ -115,14 +114,11 @@ class _QRScannerPageState extends State<QRScannerPage> with SingleTickerProvider
       ),
       body: Stack(
         children: [
-          
           MobileScanner(
             controller: _controller,
             onDetect: _onDetect,
             errorBuilder: (context, error) => _buildError(error),
           ),
-
-          
           AnimatedBuilder(
             animation: _scanLineAnim,
             builder: (context, child) {
@@ -136,8 +132,6 @@ class _QRScannerPageState extends State<QRScannerPage> with SingleTickerProvider
               );
             },
           ),
-
-          
           Positioned(
             top: kToolbarHeight + MediaQuery.of(context).padding.top + 16,
             left: 0,
@@ -156,8 +150,6 @@ class _QRScannerPageState extends State<QRScannerPage> with SingleTickerProvider
               ),
             ),
           ),
-
-          
           if (_isScanned)
             Positioned.fill(
               child: AnimatedOpacity(
@@ -190,8 +182,6 @@ class _QRScannerPageState extends State<QRScannerPage> with SingleTickerProvider
                 ),
               ),
             ),
-
-          
           Positioned(
             bottom: 0,
             left: 0,
@@ -315,7 +305,6 @@ class _ScannerOverlayPainter extends CustomPainter {
     final scanRect = Rect.fromLTWH(left, top, scanAreaSize, scanAreaSize);
     const r = Radius.circular(20);
 
-    
     canvas.drawPath(
       Path()
         ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
@@ -324,7 +313,6 @@ class _ScannerOverlayPainter extends CustomPainter {
       Paint()..color = Colors.black.withValues(alpha: 0.65),
     );
 
-    
     final cornerPaint = Paint()
       ..color = isScanned ? Colors.green : Colors.white
       ..strokeWidth = 3.5
@@ -350,7 +338,6 @@ class _ScannerOverlayPainter extends CustomPainter {
     drawCorner(left, top + scanAreaSize, 1, -1);
     drawCorner(left + scanAreaSize, top + scanAreaSize, -1, -1);
 
-    
     if (!isScanned) {
       final lineY = top + scanAreaSize * scanLineProgress;
       final linePaint = Paint()

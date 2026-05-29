@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-
-
 class EnhancedMessageOptionsDialog extends StatefulWidget {
   final bool isOwnMessage;
   final bool isPinned;
@@ -104,7 +102,6 @@ class _EnhancedMessageOptionsDialogState extends State<EnhancedMessageOptionsDia
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            
             Padding(
               padding: const EdgeInsets.only(top: 10, bottom: 4),
               child: Container(
@@ -116,8 +113,6 @@ class _EnhancedMessageOptionsDialogState extends State<EnhancedMessageOptionsDia
                 ),
               ),
             ),
-
-            
             if (!widget.isDeleted && widget.messageContent.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
@@ -142,8 +137,6 @@ class _EnhancedMessageOptionsDialogState extends State<EnhancedMessageOptionsDia
                   ),
                 ),
               ),
-
-            
             if (!widget.isDeleted && widget.onReact != null) ...[
               const SizedBox(height: 14),
               Padding(
@@ -171,8 +164,6 @@ class _EnhancedMessageOptionsDialogState extends State<EnhancedMessageOptionsDia
               ),
             ] else
               const SizedBox(height: 8),
-
-            
             if (widget.isOwnMessage && !widget.isDeleted) ...[
               _buildOption(
                 icon: Icons.edit_rounded,
@@ -196,7 +187,6 @@ class _EnhancedMessageOptionsDialogState extends State<EnhancedMessageOptionsDia
                 child: Divider(height: 1, color: Color(0xFFF2F2F7)),
               ),
             ],
-
             if (!widget.isDeleted) ...[
               _buildOption(
                 icon: Icons.reply_rounded,
@@ -267,7 +257,6 @@ class _EnhancedMessageOptionsDialogState extends State<EnhancedMessageOptionsDia
                 ),
               ],
             ],
-
             const SizedBox(height: 8),
           ],
         ),
@@ -324,7 +313,6 @@ class _EnhancedMessageOptionsDialogState extends State<EnhancedMessageOptionsDia
     );
   }
 }
-
 
 class _EmojiButton extends StatefulWidget {
   final String emoji;

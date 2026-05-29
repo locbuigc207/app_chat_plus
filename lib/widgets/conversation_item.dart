@@ -39,12 +39,9 @@ class ConversationItem extends StatelessWidget {
             ),
             child: Row(
               children: [
-                
                 _buildAvatar(isDark),
                 const SizedBox(width: 12),
-                
                 Expanded(child: _buildContent(isDark, hasUnread)),
-                
                 _buildMeta(isDark, hasUnread),
               ],
             ),
@@ -75,7 +72,6 @@ class ConversationItem extends StatelessWidget {
                 : _avatarFallback(),
           ),
         ),
-        
         if (conversation.isOnline ?? false)
           Positioned(
             right: 2,
@@ -91,7 +87,6 @@ class ConversationItem extends StatelessWidget {
               ),
             ),
           ),
-        
         if (conversation.isMuted && !(conversation.isOnline ?? false))
           Positioned(
             right: 2,
@@ -133,7 +128,6 @@ class ConversationItem extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        
         Row(
           children: [
             if (conversation.isPinned)
@@ -156,7 +150,6 @@ class ConversationItem extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 4),
-        
         Row(
           children: [
             if (conversation.isTyping ?? false)
@@ -208,7 +201,6 @@ class ConversationItem extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
       children: [
-        
         Text(
           _formatTimestamp(conversation.lastMessageTime),
           style: TextStyle(
@@ -220,10 +212,8 @@ class ConversationItem extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 6),
-        
         if (hasUnread)
           Container(
-            
             constraints: const BoxConstraints(minWidth: 20),
             height: 20,
             padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -248,7 +238,6 @@ class ConversationItem extends StatelessWidget {
     );
   }
 
-  
   String _formatTimestamp(String? timestampStr) {
     if (timestampStr == null || timestampStr.isEmpty || timestampStr == '0') {
       return '';

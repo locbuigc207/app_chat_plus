@@ -37,7 +37,6 @@ class ConversationOptionsDialog extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          
           Container(
             margin: const EdgeInsets.only(top: 12),
             width: 40,
@@ -48,8 +47,6 @@ class ConversationOptionsDialog extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-
-          
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
@@ -77,12 +74,9 @@ class ConversationOptionsDialog extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-
           Divider(
               height: 1,
               color: isDark ? Colors.white.withValues(alpha: 0.07) : Colors.grey.shade100),
-
-          
           _buildListOption(
             context: context,
             isDark: isDark,
@@ -135,12 +129,9 @@ class ConversationOptionsDialog extends StatelessWidget {
               onMarkAsRead();
             },
           ),
-
           Divider(
               height: 1,
               color: isDark ? Colors.white.withValues(alpha: 0.07) : Colors.grey.shade100),
-
-          
           _buildListOption(
             context: context,
             isDark: isDark,
@@ -154,7 +145,6 @@ class ConversationOptionsDialog extends StatelessWidget {
               _confirmClearHistory(context, isDark);
             },
           ),
-
           const SizedBox(height: 8),
           SafeArea(child: const SizedBox(height: 8)),
         ],

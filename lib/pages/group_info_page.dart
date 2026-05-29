@@ -12,10 +12,6 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
-
-
-
-
 class GroupInfoPage extends StatefulWidget {
   const GroupInfoPage({
     super.key,
@@ -43,7 +39,6 @@ class _GroupInfoPageState extends State<GroupInfoPage> with TickerProviderStateM
   late Animation<double> _headerFadeAnim;
   late Animation<Offset> _headerSlideAnim;
 
-  
   static const _bg = Color(0xFF0D0F14);
   static const _surface = Color(0xFF181B24);
   static const _surfaceHigh = Color(0xFF1E2233);
@@ -75,8 +70,6 @@ class _GroupInfoPageState extends State<GroupInfoPage> with TickerProviderStateM
     super.dispose();
   }
 
-  
-
   void _checkRoles() {
     String myRole = _group.roles[widget.currentUserId] ?? 'member';
     if (_group.adminId == widget.currentUserId && myRole == 'member') {
@@ -92,8 +85,6 @@ class _GroupInfoPageState extends State<GroupInfoPage> with TickerProviderStateM
     return role;
   }
 
-  
-
   Future<void> _loadMemberData() async {
     final data = <String, UserChat>{};
     for (final uid in _group.memberIds) {
@@ -107,8 +98,6 @@ class _GroupInfoPageState extends State<GroupInfoPage> with TickerProviderStateM
     }
     if (mounted) setState(() => _memberData = data);
   }
-
-  
 
   Future<void> _changeGroupPhoto() async {
     if (!_isAdmin) return;
@@ -189,8 +178,6 @@ class _GroupInfoPageState extends State<GroupInfoPage> with TickerProviderStateM
       ),
     );
   }
-
-  
 
   Future<void> _addMembers() async {
     if (!_isAdmin) return;
@@ -337,8 +324,6 @@ class _GroupInfoPageState extends State<GroupInfoPage> with TickerProviderStateM
     }
   }
 
-  
-
   Future<bool?> _showConfirmDialog({
     required String title,
     required String message,
@@ -373,8 +358,6 @@ class _GroupInfoPageState extends State<GroupInfoPage> with TickerProviderStateM
     );
   }
 
-  
-
   @override
   Widget build(BuildContext context) {
     return Theme(
@@ -396,8 +379,6 @@ class _GroupInfoPageState extends State<GroupInfoPage> with TickerProviderStateM
       ),
     );
   }
-
-  
 
   Widget _buildSliverAppBar() {
     return SliverAppBar(
@@ -444,7 +425,6 @@ class _GroupInfoPageState extends State<GroupInfoPage> with TickerProviderStateM
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const SizedBox(height: 16),
-                
                 GestureDetector(
                   onTap: _isAdmin ? _changeGroupPhoto : null,
                   child: Stack(
@@ -497,7 +477,6 @@ class _GroupInfoPageState extends State<GroupInfoPage> with TickerProviderStateM
                   ),
                 ),
                 const SizedBox(height: 14),
-                
                 GestureDetector(
                   onTap: _isAdmin ? _editGroupName : null,
                   child: Row(
@@ -556,8 +535,6 @@ class _GroupInfoPageState extends State<GroupInfoPage> with TickerProviderStateM
       ),
     );
   }
-
-  
 
   Widget _buildBody() {
     return Column(
@@ -866,10 +843,6 @@ class _GroupInfoPageState extends State<GroupInfoPage> with TickerProviderStateM
   }
 }
 
-
-
-
-
 class _AddMembersDialog extends StatefulWidget {
   const _AddMembersDialog({required this.friends});
   final List<UserChat> friends;
@@ -896,7 +869,6 @@ class _AddMembersDialogState extends State<_AddMembersDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            
             Row(
               children: [
                 const Icon(Icons.person_add_rounded, color: Color(0xFF4F8EF7), size: 22),
@@ -919,7 +891,6 @@ class _AddMembersDialogState extends State<_AddMembersDialog> {
               ],
             ),
             const SizedBox(height: 14),
-            
             Container(
               decoration: BoxDecoration(
                 color: const Color(0xFF0D0F14),
@@ -938,7 +909,6 @@ class _AddMembersDialogState extends State<_AddMembersDialog> {
               ),
             ),
             const SizedBox(height: 12),
-            
             SizedBox(
               height: 280,
               child: widget.friends.isEmpty
@@ -967,7 +937,6 @@ class _AddMembersDialogState extends State<_AddMembersDialog> {
                         ),
             ),
             const SizedBox(height: 16),
-            
             Row(
               children: [
                 Expanded(
@@ -992,10 +961,6 @@ class _AddMembersDialogState extends State<_AddMembersDialog> {
     );
   }
 }
-
-
-
-
 
 class _FriendTile extends StatelessWidget {
   const _FriendTile({
@@ -1370,7 +1335,6 @@ class _FullScreenLoader extends StatelessWidget {
     );
   }
 }
-
 
 extension GroupCopy on Group {
   Group copyWith({

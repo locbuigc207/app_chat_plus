@@ -29,12 +29,11 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage> with TickerProv
 
   bool _isLoading = false;
   bool _isVerifying = false;
-  int _currentStep = 0; 
+  int _currentStep = 0;
 
   late AnimationController _fadeCtrl;
   late Animation<double> _fadeAnim;
 
-  
   late Timer _timer;
   int _secondsLeft = 30;
 
@@ -189,8 +188,6 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage> with TickerProv
     );
   }
 
-  
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -287,8 +284,6 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage> with TickerProv
     );
   }
 
-  
-
   Widget _buildScanStep() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -316,7 +311,6 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage> with TickerProv
             ),
             child: Column(
               children: [
-                
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -461,8 +455,6 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage> with TickerProv
     );
   }
 
-  
-
   Widget _buildVerifyStep() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final progress = _secondsLeft / 30.0;
@@ -473,7 +465,6 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage> with TickerProv
       child: Column(
         children: [
           const SizedBox(height: 16),
-          
           Stack(
             alignment: Alignment.center,
             children: [
@@ -526,7 +517,6 @@ class _TwoFactorSetupPageState extends State<TwoFactorSetupPage> with TickerProv
             style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
           ),
           const SizedBox(height: 32),
-          
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(6, (i) => _buildOtpBox(i)),

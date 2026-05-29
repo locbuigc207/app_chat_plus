@@ -12,10 +12,6 @@ import 'package:encrypt/encrypt.dart' as enc;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:pointycastle/export.dart' as pc;
 
-
-
-
-
 class EncryptedPayload {
   final String iv;
   final String data;
@@ -63,10 +59,6 @@ class E2EEException implements Exception {
       '${cause != null ? ' — caused by: $cause' : ''}';
 }
 
-
-
-
-
 Map<String, String> _generateRSAKeyPairInIsolate(int keySize) {
   final secureRandom = pc.SecureRandom('Fortuna')
     ..seed(
@@ -96,17 +88,11 @@ Map<String, String> _generateRSAKeyPairInIsolate(int keySize) {
   };
 }
 
-
-
-
-
 class E2EEService {
-  
   E2EEService._internal();
   static final E2EEService _instance = E2EEService._internal();
   factory E2EEService() => _instance;
 
-  
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -115,25 +101,17 @@ class E2EEService {
     ),
   );
 
-  
   String? _localPrivateKey;
   String? _localPublicKey;
 
   final Map<String, _CachedKey> _sessionKeyCache = {};
   static const int _maxCacheSize = 50;
 
-  
   static const _kPrivateKey = 'e2ee_private_key_v2';
   static const _kPublicKey = 'e2ee_public_key_v2';
   static const int _rsaKeySize = 2048;
 
-  
-  
   final Map<String, Completer<String>> _pendingKeyCreations = {};
-
-  
-  
-  
 
   bool get isInitialized => _localPrivateKey != null && _localPublicKey != null;
 
@@ -142,7 +120,6 @@ class E2EEService {
       _localPrivateKey = await _secureStorage.read(key: _kPrivateKey);
       _localPublicKey = await _secureStorage.read(key: _kPublicKey);
 
-      
       if (_localPrivateKey != null && _localPrivateKey!.trim().isEmpty) {
         _localPrivateKey = null;
       }
@@ -176,7 +153,6 @@ class E2EEService {
     final pub = keys['publicKey'] ?? '';
     final priv = keys['privateKey'] ?? '';
 
-    
     if (pub.isEmpty || priv.isEmpty) {
       throw const E2EEException(
         E2EEErrorType.encryptionFailed,
@@ -223,10 +199,6 @@ class E2EEService {
     }
   }
 
-  
-  
-  
-
   String generateRandomSessionKey() {
     final bytes = Uint8List.fromList(
       List.generate(32, (_) => Random.secure().nextInt(256)),
@@ -234,26 +206,21 @@ class E2EEService {
     return base64.encode(bytes);
   }
 
-  
-  
   Future<String> getOrCreateSessionKey({
     required String conversationId,
     required List<String> participantIds,
     required String currentUserId,
   }) async {
-    
     final cached = _sessionKeyCache[conversationId];
     if (cached != null && !cached.isExpired) {
       return cached.key;
     }
 
-    
     if (_pendingKeyCreations.containsKey(conversationId)) {
       debugPrint('[E2EE] ⏳ Đang chờ session key cho $conversationId...');
       return _pendingKeyCreations[conversationId]!.future;
     }
 
-    
     final completer = Completer<String>();
     _pendingKeyCreations[conversationId] = completer;
 
@@ -273,7 +240,6 @@ class E2EEService {
     }
   }
 
-  
   Future<String> _resolveSessionKey({
     required String conversationId,
     required List<String> participantIds,
@@ -290,12 +256,11 @@ class E2EEService {
     if (snapshot.exists) {
       final encryptedKey = snapshot.data()?['encryptedKey'] as String?;
 
-      
       if (encryptedKey == null || encryptedKey.trim().isEmpty) {
         debugPrint(
           '[E2EE] ⚠️ encryptedKey rỗng cho $conversationId, tạo mới...',
         );
-        
+
         return _createAndDistributeSessionKey(
           conversationId: conversationId,
           participantIds: participantIds,
@@ -306,8 +271,6 @@ class E2EEService {
       try {
         final sessionKey = decryptSessionKeyWithMyPrivateKey(encryptedKey);
 
-        
-        
         _validateSessionKeyBytes(sessionKey);
 
         _cacheSessionKey(conversationId, sessionKey);
@@ -316,7 +279,7 @@ class E2EEService {
         debugPrint(
           '[E2EE] ⚠️ Decrypt session key thất bại ($e), tạo lại key...',
         );
-        
+
         evictSessionKey(conversationId);
         return _createAndDistributeSessionKey(
           conversationId: conversationId,
@@ -326,7 +289,6 @@ class E2EEService {
       }
     }
 
-    
     return _createAndDistributeSessionKey(
       conversationId: conversationId,
       participantIds: participantIds,
@@ -341,7 +303,6 @@ class E2EEService {
   }) async {
     final newSessionKey = generateRandomSessionKey();
 
-    
     _validateSessionKeyBytes(newSessionKey);
 
     final batch = _firestore.batch();
@@ -356,7 +317,6 @@ class E2EEService {
       final uid = participantIds[i];
       final publicKey = userDocs[i].data()?['publicKey'] as String?;
 
-      
       if (publicKey == null || publicKey.trim().isEmpty) {
         debugPrint('[E2EE] ⚠️ Bỏ qua user $uid — publicKey rỗng hoặc null');
         continue;
@@ -368,7 +328,6 @@ class E2EEService {
           publicKey,
         );
 
-        
         if (encryptedKey.isEmpty) {
           debugPrint('[E2EE] ⚠️ encryptedKey rỗng cho user $uid, bỏ qua');
           continue;
@@ -428,15 +387,10 @@ class E2EEService {
     _sessionKeyCache[conversationId] = _CachedKey(key);
   }
 
-  
-  
-  
-
   String encryptSessionKeyWithPublicKey(
     String sessionKey,
     String publicKeyPem,
   ) {
-    
     if (sessionKey.isEmpty) {
       throw const E2EEException(
         E2EEErrorType.encryptionFailed,
@@ -471,7 +425,6 @@ class E2EEService {
       );
     }
 
-    
     if (encryptedBase64.trim().isEmpty) {
       throw const E2EEException(
         E2EEErrorType.decryptionFailed,
@@ -484,7 +437,6 @@ class E2EEService {
       final encrypter = enc.Encrypter(enc.RSA(privateKey: rsaPrivateKey));
       final decrypted = encrypter.decrypt(enc.Encrypted.fromBase64(encryptedBase64));
 
-      
       if (decrypted.isEmpty) {
         throw const E2EEException(
           E2EEErrorType.decryptionFailed,
@@ -503,10 +455,6 @@ class E2EEService {
       );
     }
   }
-
-  
-  
-  
 
   String encryptMessage(
     String plainText,
@@ -540,12 +488,7 @@ class E2EEService {
     }
   }
 
-  
-  
-  
-
   String decryptMessage(String encryptedPayload, String sessionKey) {
-    
     if (encryptedPayload.trim().isEmpty) {
       throw const E2EEException(
         E2EEErrorType.invalidPayload,
@@ -558,7 +501,6 @@ class E2EEService {
         jsonDecode(encryptedPayload) as Map<String, dynamic>,
       );
 
-      
       if (payload.iv.isEmpty || payload.data.isEmpty) {
         throw const E2EEException(
           E2EEErrorType.invalidPayload,
@@ -595,10 +537,6 @@ class E2EEService {
     }
   }
 
-  
-  
-  
-
   Future<String> encryptPayload(
     String plainText,
     String conversationId,
@@ -613,8 +551,6 @@ class E2EEService {
     return encryptMessage(plainText, sessionKey);
   }
 
-  
-  
   Future<String> decryptPayload(
     String encryptedPayload,
     String conversationId,
@@ -629,7 +565,7 @@ class E2EEService {
       );
       return decryptMessage(encryptedPayload, sessionKey);
     } on E2EEException {
-      rethrow; 
+      rethrow;
     } catch (e) {
       throw E2EEException(
         E2EEErrorType.decryptionFailed,
@@ -638,10 +574,6 @@ class E2EEService {
       );
     }
   }
-
-  
-  
-  
 
   Future<String> rotateSessionKey({
     required String conversationId,
@@ -666,10 +598,6 @@ class E2EEService {
       currentUserId: currentUserId,
     );
   }
-
-  
-  
-  
 
   Future<void> addParticipantToConversation({
     required String conversationId,
@@ -707,10 +635,6 @@ class E2EEService {
     });
   }
 
-  
-  
-  
-
   void clearSessionCache() => _sessionKeyCache.clear();
 
   void evictSessionKey(String conversationId) => _sessionKeyCache.remove(conversationId);
@@ -735,25 +659,10 @@ class E2EEService {
     debugPrint('[E2EE] 🧹 Đã dọn sạch tất cả khóa.');
   }
 
-  
-  
-  
-
   String? get localPublicKey => _localPublicKey;
   int get cachedKeyCount => _sessionKeyCache.length;
 
-  
-  
-  
-
-  
-  
-  
-  
-  
-  
   Uint8List _decodeSessionKey(String sessionKey) {
-    
     if (sessionKey.trim().isEmpty) {
       throw const E2EEException(
         E2EEErrorType.invalidPayload,
@@ -772,7 +681,6 @@ class E2EEService {
       );
     }
 
-    
     if (bytes.isEmpty) {
       throw const E2EEException(
         E2EEErrorType.invalidPayload,
@@ -789,10 +697,8 @@ class E2EEService {
     return bytes;
   }
 
-  
-  
   void _validateSessionKeyBytes(String sessionKey) {
-    _decodeSessionKey(sessionKey); 
+    _decodeSessionKey(sessionKey);
   }
 
   String _computeHmac(Uint8List keyBytes, String data) {
@@ -814,10 +720,6 @@ class E2EEService {
     return result == 0;
   }
 }
-
-
-
-
 
 class _CachedKey {
   final String key;

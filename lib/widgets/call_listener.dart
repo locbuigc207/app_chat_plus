@@ -8,25 +8,9 @@ import '../models/call_model.dart';
 import '../pages/incoming_call_page.dart';
 import '../services/call_service.dart';
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class CallListener extends StatefulWidget {
   final Widget child;
 
-  
-  
   final String? currentUserId;
 
   const CallListener({
@@ -69,11 +53,8 @@ class _CallListenerState extends State<CallListener> with WidgetsBindingObserver
     _incomingCallSub = _callService.incomingCallStream.listen((call) {
       if (call == null) return;
 
-      
       if (call.callId == _activeIncomingCallId) return;
 
-      
-      
       if (!call.status.isActive) return;
 
       _activeIncomingCallId = call.callId;
@@ -90,7 +71,6 @@ class _CallListenerState extends State<CallListener> with WidgetsBindingObserver
   void _showIncomingCall(CallModel call) {
     if (!mounted) return;
 
-    
     final navigator = Navigator.of(context, rootNavigator: true);
 
     navigator
@@ -113,7 +93,6 @@ class _CallListenerState extends State<CallListener> with WidgetsBindingObserver
       ),
     )
         .then((_) {
-      
       _activeIncomingCallId = null;
     });
   }

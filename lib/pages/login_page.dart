@@ -133,7 +133,6 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     return Scaffold(
       body: Stack(
         children: [
-          
           AnimatedBuilder(
             animation: _bgController,
             builder: (_, __) {
@@ -153,8 +152,6 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               );
             },
           ),
-
-          
           Positioned(
             top: -size.height * 0.1,
             left: -size.width * 0.2,
@@ -183,11 +180,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               },
             ),
           ),
-
-          
           ...List.generate(6, (i) => _FloatingDot(index: i, size: size)),
-
-          
           SafeArea(
             child: Center(
               child: ConstrainedBox(
@@ -196,7 +189,6 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
                   child: Column(
                     children: [
-                      
                       SlideTransition(
                         position: _logoSlide,
                         child: FadeTransition(
@@ -216,10 +208,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                           ),
                         ),
                       ),
-
                       const SizedBox(height: 40),
-
-                      
                       SlideTransition(
                         position: _cardSlide,
                         child: FadeTransition(
@@ -255,8 +244,6 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               ),
             ),
           ),
-
-          
           if (authProvider.status == Status.authenticating) const _LoadingOverlay(),
         ],
       ),
@@ -264,14 +251,11 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   }
 }
 
-
-
 class _LogoSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        
         Container(
           width: 90,
           height: 90,
@@ -304,7 +288,6 @@ class _LogoSection extends StatelessWidget {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  
                   Positioned(
                     top: 0,
                     left: 0,
@@ -360,8 +343,6 @@ class _LogoSection extends StatelessWidget {
   }
 }
 
-
-
 class _AuthCard extends StatelessWidget {
   final Animation<double> btnFade;
   final AuthProvider authProvider;
@@ -414,8 +395,6 @@ class _AuthCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 24),
-
-                
                 _SignInButton(
                   onPressed: () {
                     authProvider.handleSignIn().then(onSignInSuccess).catchError(
@@ -429,10 +408,7 @@ class _AuthCard extends StatelessWidget {
                   label: 'Tiếp tục với Google',
                   isPrimary: true,
                 ),
-
                 const SizedBox(height: 14),
-
-                
                 Row(
                   children: [
                     Expanded(
@@ -460,10 +436,7 @@ class _AuthCard extends StatelessWidget {
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 14),
-
-                
                 _SignInButton(
                   onPressed: onPhoneTap,
                   icon: const Icon(
@@ -474,10 +447,7 @@ class _AuthCard extends StatelessWidget {
                   label: 'Tiếp tục với Số điện thoại',
                   isPrimary: false,
                 ),
-
                 const SizedBox(height: 24),
-
-                
                 Center(
                   child: Text(
                     'Khi tiếp tục, bạn đồng ý với\nĐiều khoản dịch vụ và Chính sách bảo mật',
@@ -497,8 +467,6 @@ class _AuthCard extends StatelessWidget {
     );
   }
 }
-
-
 
 class _SignInButton extends StatefulWidget {
   final VoidCallback onPressed;
@@ -596,8 +564,6 @@ class _SignInButtonState extends State<_SignInButton> with SingleTickerProviderS
   }
 }
 
-
-
 class _GoogleColorIcon extends StatelessWidget {
   const _GoogleColorIcon();
 
@@ -632,8 +598,6 @@ class _GooglePainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter _) => false;
 }
-
-
 
 class _LoadingOverlay extends StatelessWidget {
   const _LoadingOverlay();
@@ -692,8 +656,6 @@ class _LoadingOverlay extends StatelessWidget {
   }
 }
 
-
-
 class _GlowOrb extends StatelessWidget {
   final Color color;
   final double size;
@@ -722,8 +684,6 @@ class _GlowOrb extends StatelessWidget {
     );
   }
 }
-
-
 
 class _FloatingDot extends StatefulWidget {
   final int index;
@@ -784,8 +744,6 @@ class _FloatingDotState extends State<_FloatingDot> with SingleTickerProviderSta
     );
   }
 }
-
-
 
 class _FadeRoute extends PageRouteBuilder {
   final Widget page;

@@ -139,7 +139,6 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 20, 16, 12),
               child: Row(
@@ -181,12 +180,9 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
                 ],
               ),
             ),
-
             Divider(
                 height: 1,
                 color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.grey.shade100),
-
-            
             if (_isLoading)
               const Padding(
                 padding: EdgeInsets.all(32),
@@ -202,7 +198,6 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
                         final (duration, icon, label, subtitle) = opt;
                         return _buildOption(isDark, duration, icon, label, subtitle);
                       }),
-                      
                       AnimatedSize(
                         duration: const Duration(milliseconds: 250),
                         curve: Curves.easeOut,
@@ -255,12 +250,9 @@ class _AutoDeleteSettingsDialogState extends State<AutoDeleteSettingsDialog> {
                   ),
                 ),
               ),
-
             Divider(
                 height: 1,
                 color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.grey.shade100),
-
-            
             Padding(
               padding: const EdgeInsets.all(16),
               child: Row(

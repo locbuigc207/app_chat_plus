@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-
 class MentionUser {
   final String id;
   final String username;
@@ -17,31 +16,19 @@ class MentionUser {
   String get label => displayName ?? username;
 }
 
-
-
-
-
-
-
 class MentionTextEditingController extends TextEditingController {
-  
   final void Function(String? query)? onMentionQuery;
 
-  
   final Map<String, MentionUser> _insertedMentions = {};
 
-  
   static final _mentionRegex = RegExp(r'@([\p{L}0-9_.]+)', unicode: true);
 
-  
   static final _queryRegex = RegExp(r'@([\p{L}0-9_.]*)$', unicode: true);
 
   MentionTextEditingController({
     super.text,
     this.onMentionQuery,
   });
-
-  
 
   @override
   TextSpan buildTextSpan({
@@ -54,7 +41,6 @@ class MentionTextEditingController extends TextEditingController {
     int lastEnd = 0;
 
     for (final match in _mentionRegex.allMatches(fullText)) {
-      
       if (match.start > lastEnd) {
         spans.add(TextSpan(
           text: fullText.substring(lastEnd, match.start),
@@ -62,7 +48,6 @@ class MentionTextEditingController extends TextEditingController {
         ));
       }
 
-      
       final mentionText = match.group(0)!;
       final isSaved = _insertedMentions.containsKey(mentionText);
 
@@ -79,7 +64,6 @@ class MentionTextEditingController extends TextEditingController {
       lastEnd = match.end;
     }
 
-    
     if (lastEnd < fullText.length) {
       spans.add(TextSpan(
         text: fullText.substring(lastEnd),
@@ -90,18 +74,14 @@ class MentionTextEditingController extends TextEditingController {
     return TextSpan(children: spans, style: style);
   }
 
-  
-
   @override
   set value(TextEditingValue newValue) {
     final oldText = value.text;
     final newText = newValue.text;
 
-    
     if (newText.length < oldText.length) {
       final cursorPos = newValue.selection.baseOffset;
       if (cursorPos >= 0 && cursorPos <= oldText.length) {
-        
         final textBefore = oldText.substring(0, cursorPos + 1);
         final match = RegExp(r'@[\p{L}0-9_.]+$', unicode: true).firstMatch(textBefore);
 
@@ -120,19 +100,15 @@ class MentionTextEditingController extends TextEditingController {
 
     super.value = newValue;
 
-    
     _checkMentionQuery(newText, newValue.selection.baseOffset);
   }
 
-  
-
-  
   void insertMention(MentionUser user) {
     final cursorPos = selection.baseOffset;
     if (cursorPos < 0) return;
 
     final currentText = text;
-    
+
     final textBefore = currentText.substring(0, cursorPos);
     final match = _queryRegex.firstMatch(textBefore);
 
@@ -141,7 +117,7 @@ class MentionTextEditingController extends TextEditingController {
       final newText = currentText.replaceRange(
         match.start,
         cursorPos,
-        '$mentionText ', 
+        '$mentionText ',
       );
 
       _insertedMentions[mentionText] = user;
@@ -153,17 +129,14 @@ class MentionTextEditingController extends TextEditingController {
         ),
       );
 
-      
       onMentionQuery?.call(null);
     }
   }
 
-  
   void clearMentions() {
     _insertedMentions.clear();
   }
 
-  
   List<MentionUser> get currentMentions {
     final mentions = <MentionUser>[];
     for (final match in _mentionRegex.allMatches(text)) {
@@ -175,18 +148,14 @@ class MentionTextEditingController extends TextEditingController {
     return mentions;
   }
 
-  
   List<String> get mentionedUserIds => currentMentions.map((u) => u.id).toList();
 
-  
   String get plainText {
     return text.replaceAllMapped(
       _mentionRegex,
       (m) => _insertedMentions['@${m.group(1)}']?.label ?? m.group(0)!,
     );
   }
-
-  
 
   void _checkMentionQuery(String fullText, int cursorPos) {
     if (cursorPos < 0 || cursorPos > fullText.length) {
@@ -210,7 +179,6 @@ class MentionTextEditingController extends TextEditingController {
     super.dispose();
   }
 }
-
 
 class MentionSuggestionOverlay extends StatelessWidget {
   final List<MentionUser> suggestions;

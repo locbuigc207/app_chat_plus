@@ -8,10 +8,6 @@ import 'package:photo_view/photo_view.dart';
 
 import '../constants/constants.dart';
 
-
-
-
-
 class FullPhotoPage extends StatefulWidget {
   final String url;
   final String? heroTag;
@@ -95,7 +91,6 @@ class _FullPhotoPageState extends State<FullPhotoPage> with SingleTickerProvider
         child: Stack(
           fit: StackFit.expand,
           children: [
-            
             Hero(
               tag: widget.heroTag ?? widget.url,
               child: PhotoView(
@@ -146,8 +141,6 @@ class _FullPhotoPageState extends State<FullPhotoPage> with SingleTickerProvider
                 ),
               ),
             ),
-
-            
             FadeTransition(
               opacity: _ctrlsFade,
               child: Positioned(
@@ -173,13 +166,11 @@ class _FullPhotoPageState extends State<FullPhotoPage> with SingleTickerProvider
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                         child: Row(
                           children: [
-                            
                             _BarBtn(
                               icon: Icons.arrow_back_ios_new_rounded,
                               onTap: () => Navigator.pop(context),
                             ),
                             const SizedBox(width: 8),
-                            
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -201,12 +192,10 @@ class _FullPhotoPageState extends State<FullPhotoPage> with SingleTickerProvider
                                 ],
                               ),
                             ),
-                            
                             _BarBtn(
                               icon: Icons.share_rounded,
                               onTap: _onShare,
                             ),
-                            
                             _BarBtn(
                               icon: Icons.download_rounded,
                               onTap: _onDownload,
@@ -219,8 +208,6 @@ class _FullPhotoPageState extends State<FullPhotoPage> with SingleTickerProvider
                 ),
               ),
             ),
-
-            
             FadeTransition(
               opacity: _ctrlsFade,
               child: Positioned(
@@ -264,7 +251,6 @@ class _FullPhotoPageState extends State<FullPhotoPage> with SingleTickerProvider
 
   void _onShare() {
     HapticFeedback.lightImpact();
-    
   }
 
   void _onDownload() {
@@ -279,10 +265,6 @@ class _FullPhotoPageState extends State<FullPhotoPage> with SingleTickerProvider
     );
   }
 }
-
-
-
-
 
 class _BarBtn extends StatelessWidget {
   final IconData icon;

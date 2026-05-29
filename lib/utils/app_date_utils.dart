@@ -2,22 +2,15 @@ import 'package:flutter/material.dart';
 
 import 'package:intl/intl.dart';
 
-
 class AppDateUtils {
-  AppDateUtils._(); 
+  AppDateUtils._();
 
-  
   static const _secondsPerMinute = 60;
   static const _minutesPerHour = 60;
   static const _hoursPerDay = 24;
   static const _daysPerWeek = 7;
   static const _daysPerYear = 365;
 
-  
-
-  
-  
-  
   static String formatMessageTime(dynamic timestamp, BuildContext context) {
     try {
       final ms = timestamp is int ? timestamp : int.parse(timestamp.toString());
@@ -28,7 +21,6 @@ class AppDateUtils {
     }
   }
 
-  
   static String formatDateHeader(dynamic timestamp, BuildContext context) {
     try {
       final ms = timestamp is int ? timestamp : int.parse(timestamp.toString());
@@ -41,7 +33,7 @@ class AppDateUtils {
       } else if (_isSameDay(dateTime, now.subtract(const Duration(days: 1)))) {
         return locale == 'vi' ? 'Hôm qua' : 'Yesterday';
       } else if (now.difference(dateTime).inDays < _daysPerWeek) {
-        return DateFormat.EEEE(locale).format(dateTime); 
+        return DateFormat.EEEE(locale).format(dateTime);
       } else if (dateTime.year == now.year) {
         return DateFormat('d MMM', locale).format(dateTime);
       } else {
@@ -52,12 +44,10 @@ class AppDateUtils {
     }
   }
 
-  
   static String formatLastSeen(DateTime lastSeen, BuildContext context) {
     return _formatRelative(lastSeen, context, short: false);
   }
 
-  
   static String formatReminderTime(dynamic timestamp, BuildContext context) {
     try {
       final ms = timestamp is int ? timestamp : int.parse(timestamp.toString());
@@ -76,7 +66,6 @@ class AppDateUtils {
     }
   }
 
-  
   static String formatFullDateTime(dynamic timestamp, BuildContext context) {
     try {
       final ms = timestamp is int ? timestamp : int.parse(timestamp.toString());
@@ -88,7 +77,6 @@ class AppDateUtils {
     }
   }
 
-  
   static String formatCallDuration(int totalSeconds) {
     final h = totalSeconds ~/ 3600;
     final m = (totalSeconds % 3600) ~/ 60;
@@ -99,14 +87,11 @@ class AppDateUtils {
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
-  
   static String formatAudioDuration(Duration duration) {
     final m = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$m:$s';
   }
-
-  
 
   static bool isToday(DateTime date) => _isSameDay(date, DateTime.now());
 
@@ -125,7 +110,6 @@ class AppDateUtils {
 
   static bool isSameDay(DateTime a, DateTime b) => _isSameDay(a, b);
 
-  
   static bool shouldShowDateHeader(dynamic prevTimestamp, dynamic currentTimestamp) {
     try {
       final prev = _parseMs(prevTimestamp);
@@ -140,7 +124,6 @@ class AppDateUtils {
     }
   }
 
-  
   static bool isWithinGroupingWindow(dynamic ts1, dynamic ts2,
       {Duration window = const Duration(minutes: 2)}) {
     try {
@@ -153,8 +136,6 @@ class AppDateUtils {
       return false;
     }
   }
-
-  
 
   static String _locale(BuildContext context) {
     try {
@@ -208,9 +189,6 @@ class AppDateUtils {
     }
   }
 
-  
-
-  
   static DateTime? parseTimestamp(dynamic timestamp) {
     try {
       final ms = _parseMs(timestamp);
@@ -221,13 +199,10 @@ class AppDateUtils {
     }
   }
 
-  
   static String toTimestamp(DateTime dateTime) => dateTime.millisecondsSinceEpoch.toString();
 
-  
   static DateTime startOfDay(DateTime date) => DateTime(date.year, date.month, date.day);
 
-  
   static DateTime endOfDay(DateTime date) =>
       DateTime(date.year, date.month, date.day, 23, 59, 59, 999);
 }

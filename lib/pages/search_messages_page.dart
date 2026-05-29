@@ -13,10 +13,6 @@ import 'package:flutter_chat_demo/services/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-
-
-
-
 const _kBg = Color(0xFF0D0D14);
 const _kSurface = Color(0xFF16161F);
 const _kSurface2 = Color(0xFF1E1E2A);
@@ -28,17 +24,13 @@ const _kTextSec = Color(0xFF8888AA);
 const _kTextDim = Color(0xFF55556A);
 const _kHighlight = Color(0xFFFFE066);
 
-
-
-
-
 class SearchResult {
   final String messageId;
   final String idFrom;
   final String content;
   final String timestamp;
   final bool isMyMessage;
-  final String source; 
+  final String source;
 
   const SearchResult({
     required this.messageId,
@@ -86,10 +78,6 @@ class SearchResult {
   }
 }
 
-
-
-
-
 class SearchMessagesPage extends StatefulWidget {
   const SearchMessagesPage({
     super.key,
@@ -108,27 +96,22 @@ class SearchMessagesPage extends StatefulWidget {
 
 class _SearchMessagesPageState extends State<SearchMessagesPage>
     with SingleTickerProviderStateMixin {
-  
   final _searchController = TextEditingController();
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
 
-  
   List<SearchResult> _results = [];
   bool _isSearching = false;
   bool _usingLocal = false;
   String _query = '';
   String? _errorMsg;
 
-  
   Timer? _debounce;
 
-  
   String? _lastFirestoreQuery;
 
   late final String _currentUserId;
 
-  
   late final AnimationController _listAc;
 
   @override
@@ -155,12 +138,8 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
     super.dispose();
   }
 
-  
-  
-  
-
   void _onQueryChanged(String raw) {
-    setState(() {}); 
+    setState(() {});
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 300), () {
       _performSearch(raw);
@@ -187,7 +166,6 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
       _errorMsg = null;
     });
 
-    
     final local = _searchLocalDb(_query);
     if (local.isNotEmpty) {
       if (mounted) {
@@ -201,7 +179,6 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
       return;
     }
 
-    
     await _searchFirestore(_query);
   }
 
@@ -277,10 +254,6 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
   void _animateList() {
     _listAc.forward(from: 0);
   }
-
-  
-  
-  
 
   @override
   Widget build(BuildContext context) {
@@ -525,10 +498,6 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
   }
 }
 
-
-
-
-
 class _SearchResultCard extends StatelessWidget {
   final SearchResult result;
   final String query;
@@ -562,7 +531,6 @@ class _SearchResultCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            
             Row(
               children: [
                 Container(
@@ -590,7 +558,6 @@ class _SearchResultCard extends StatelessWidget {
                 if (dateStr.isNotEmpty)
                   Text(dateStr, style: const TextStyle(color: _kTextDim, fontSize: 11)),
                 const SizedBox(width: 6),
-                
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
@@ -610,7 +577,6 @@ class _SearchResultCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-            
             _HighlightedText(
               text: result.content,
               query: query,
@@ -621,10 +587,6 @@ class _SearchResultCard extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _HighlightedText extends StatelessWidget {
   final String text;
@@ -651,7 +613,6 @@ class _HighlightedText extends StatelessWidget {
           style: const TextStyle(color: _kTextSec, fontSize: 13, height: 1.5));
     }
 
-    
     String display = text;
     int matchIdx = idx;
     if (text.length > 120) {

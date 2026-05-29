@@ -5,8 +5,6 @@ import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-
-
 class UserStatusIndicator extends StatelessWidget {
   final String userId;
   final double size;
@@ -46,8 +44,6 @@ class UserStatusIndicator extends StatelessWidget {
     );
   }
 }
-
-
 
 class _StatusContent extends StatefulWidget {
   final bool isOnline;
@@ -144,7 +140,6 @@ class _StatusContentState extends State<_StatusContent> with SingleTickerProvide
       builder: (_, __) => Stack(
         alignment: Alignment.center,
         children: [
-          
           Container(
             width: widget.size * 2,
             height: widget.size * 2,
@@ -199,9 +194,6 @@ class _Dot extends StatelessWidget {
   }
 }
 
-
-
-
 class AvatarWithStatus extends StatelessWidget {
   final String userId;
   final String photoUrl;
@@ -230,7 +222,6 @@ class AvatarWithStatus extends StatelessWidget {
         return Stack(
           clipBehavior: Clip.none,
           children: [
-            
             AnimatedContainer(
               duration: const Duration(milliseconds: 300),
               width: size,
@@ -246,8 +237,6 @@ class AvatarWithStatus extends StatelessWidget {
               ),
               child: ClipOval(child: _buildImage()),
             ),
-
-            
             Positioned(
               right: 0,
               bottom: 0,
@@ -308,8 +297,6 @@ class AvatarWithStatus extends StatelessWidget {
     );
   }
 }
-
-
 
 class StatusBadge extends StatelessWidget {
   final String userId;

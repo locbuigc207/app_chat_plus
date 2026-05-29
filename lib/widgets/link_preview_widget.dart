@@ -1,4 +1,3 @@
-
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -73,17 +72,16 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget> with SingleTicker
     super.dispose();
   }
 
-  
   Future<void> _launch() async {
     HapticFeedback.lightImpact();
     try {
       final uri = Uri.parse(widget.url);
-      
+
       final launched = await launchUrl(
         uri,
         mode: LaunchMode.externalApplication,
       );
-      
+
       if (!launched) {
         await launchUrl(
           uri,
@@ -143,8 +141,8 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget> with SingleTicker
       child: SlideTransition(
         position: _slideAnim,
         child: GestureDetector(
-          onTap: _launch, 
-          onLongPress: _copyLink, 
+          onTap: _launch,
+          onLongPress: _copyLink,
           child: Container(
             margin: const EdgeInsets.only(top: 8),
             decoration: BoxDecoration(
@@ -192,7 +190,6 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget> with SingleTicker
                         ),
                       ],
                       const SizedBox(height: 8),
-                      
                       Row(
                         children: [
                           Icon(
@@ -311,7 +308,6 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget> with SingleTicker
     );
   }
 
-  
   Widget _buildFallback() {
     return GestureDetector(
       onTap: _launch,
@@ -334,7 +330,6 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget> with SingleTicker
             const SizedBox(width: 6),
             Flexible(
               child: Text(
-                
                 widget.url.length > 40 ? '${widget.url.substring(0, 40)}…' : widget.url,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -358,10 +353,6 @@ class _LinkPreviewWidgetState extends State<LinkPreviewWidget> with SingleTicker
     );
   }
 }
-
-
-
-
 
 class _DomainPill extends StatelessWidget {
   final String domain;
@@ -406,10 +397,6 @@ class _DomainPill extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _Shimmer extends StatefulWidget {
   final Widget child;

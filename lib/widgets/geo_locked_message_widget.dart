@@ -4,9 +4,6 @@ import 'package:flutter/material.dart';
 
 import 'package:geolocator/geolocator.dart';
 
-
-
-
 class GeoLockedMessageWidget extends StatefulWidget {
   final String content;
   final bool isMe;
@@ -34,7 +31,6 @@ class _GeoLockedMessageWidgetState extends State<GeoLockedMessageWidget>
   void initState() {
     super.initState();
 
-    
     _shakeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
@@ -43,7 +39,6 @@ class _GeoLockedMessageWidgetState extends State<GeoLockedMessageWidget>
       CurvedAnimation(parent: _shakeController, curve: Curves.elasticIn),
     );
 
-    
     if (widget.isMe) {
       _isUnlocked = true;
     }
@@ -55,9 +50,6 @@ class _GeoLockedMessageWidgetState extends State<GeoLockedMessageWidget>
     super.dispose();
   }
 
-  
-  
-  
   Future<bool> _handlePermission() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
@@ -96,7 +88,6 @@ class _GeoLockedMessageWidgetState extends State<GeoLockedMessageWidget>
         return;
       }
 
-      
       final LocationSettings locationSettings = const LocationSettings(
         accuracy: LocationAccuracy.high,
         distanceFilter: 0,
@@ -136,9 +127,6 @@ class _GeoLockedMessageWidgetState extends State<GeoLockedMessageWidget>
     }
   }
 
-  
-  
-  
   Widget _buildUnlocked(String secretText) {
     return Container(
       constraints: const BoxConstraints(maxWidth: 260),
@@ -172,9 +160,6 @@ class _GeoLockedMessageWidgetState extends State<GeoLockedMessageWidget>
     );
   }
 
-  
-  
-  
   Widget _buildLocked(double lat, double lng) {
     return AnimatedBuilder(
       animation: _shakeAnimation,
@@ -208,7 +193,6 @@ class _GeoLockedMessageWidgetState extends State<GeoLockedMessageWidget>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              
               Stack(
                 alignment: Alignment.center,
                 children: [
@@ -260,7 +244,6 @@ class _GeoLockedMessageWidgetState extends State<GeoLockedMessageWidget>
                       textAlign: TextAlign.center,
                     ),
               const SizedBox(height: 8),
-              
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
@@ -283,9 +266,6 @@ class _GeoLockedMessageWidgetState extends State<GeoLockedMessageWidget>
     );
   }
 
-  
-  
-  
   @override
   Widget build(BuildContext context) {
     late Map<String, dynamic> data;

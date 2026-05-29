@@ -3,10 +3,6 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-
-
-
-
 class CallControlBar extends StatelessWidget {
   final bool isVideoCall;
   final bool isMuted;
@@ -58,7 +54,6 @@ class CallControlBar extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                
                 _ControlBtn(
                   icon: isMuted ? Icons.mic_off_rounded : Icons.mic_none_rounded,
                   label: isMuted ? 'Bật mic' : 'Tắt mic',
@@ -70,8 +65,6 @@ class CallControlBar extends StatelessWidget {
                   },
                 ),
                 const SizedBox(width: 12),
-
-                
                 _ControlBtn(
                   icon: isSpeakerOn ? Icons.volume_up_rounded : Icons.hearing_rounded,
                   label: isSpeakerOn ? 'Loa ngoài' : 'Tai nghe',
@@ -82,8 +75,6 @@ class CallControlBar extends StatelessWidget {
                     onSpeakerTap();
                   },
                 ),
-
-                
                 if (isVideoCall) ...[
                   const SizedBox(width: 12),
                   _ControlBtn(
@@ -108,10 +99,7 @@ class CallControlBar extends StatelessWidget {
                     },
                   ),
                 ],
-
                 const SizedBox(width: 16),
-
-                
                 _EndCallBtn(onTap: onEndCall),
               ],
             ),
@@ -121,10 +109,6 @@ class CallControlBar extends StatelessWidget {
     );
   }
 }
-
-
-
-
 
 class _ControlBtn extends StatefulWidget {
   final IconData icon;
@@ -219,10 +203,6 @@ class _ControlBtnState extends State<_ControlBtn> with SingleTickerProviderState
     );
   }
 }
-
-
-
-
 
 class _EndCallBtn extends StatefulWidget {
   final VoidCallback onTap;

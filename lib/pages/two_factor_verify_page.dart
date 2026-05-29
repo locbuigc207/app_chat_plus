@@ -29,7 +29,6 @@ class _TwoFactorVerifyPageState extends State<TwoFactorVerifyPage>
   int _lockSeconds = 0;
   Timer? _lockTimer;
 
-  
   late Timer _totpTimer;
   int _secondsLeft = 30;
 
@@ -82,7 +81,6 @@ class _TwoFactorVerifyPageState extends State<TwoFactorVerifyPage>
       if (index < 5) {
         _focusNodes[index + 1].requestFocus();
       } else {
-        
         _focusNodes[index].unfocus();
         _verifyLogin();
       }
@@ -178,8 +176,6 @@ class _TwoFactorVerifyPageState extends State<TwoFactorVerifyPage>
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginPage()));
     }
   }
-
-  
 
   @override
   Widget build(BuildContext context) {
