@@ -980,9 +980,9 @@ exports.smartReplyWithContext = onCall(
     }[replyIntent] ?? "hữu ích";
 
     const langNote = language === "vi" ? "Trả lời bằng tiếng Việt." : "Respond in English.";
-    const profileNote = Object.keys(userProfile).length > 0
-      ? `\nHồ sơ người dùng: ${JSON.stringify(userProfile)}`
-      : "";
+    const profileNote = Object.keys(userProfile).length > 0 ?
+      `\nHồ sơ người dùng: ${JSON.stringify(userProfile)}` :
+      "";
 
     const model = createGeminiModel(
       geminiApiKey.value(),
@@ -1038,8 +1038,8 @@ exports.generateIcebreakers = onCall(
       true,
     );
     try {
-      const interestNote = sharedInterests.length > 0
-        ? `Sở thích chung: ${sharedInterests.slice(0, 5).join(", ")}.` : "";
+      const interestNote = sharedInterests.length > 0 ?
+        `Sở thích chung: ${sharedInterests.slice(0, 5).join(", ")}.` : "";
       const raw = await callGeminiWithRetry(model,
         `Tạo ${count} câu mở đầu cuộc trò chuyện (${styleDesc}) cho mối quan hệ "${relationshipType}". ${interestNote}\n` +
         `Trả về JSON mảng: ["câu 1","câu 2",...]`,
@@ -1389,13 +1389,13 @@ exports.sendMessageNotification = onDocumentCreated(
       const senderAvatar = senderData?.photoUrl ?? "";
 
       const typeLabels = {1: "[Hình ảnh]", 2: "[Video]", 3: "[Tệp đính kèm]", 4: "[Âm thanh]"};
-      const messagePreview = msgData.type === 0
-        ? "Bạn có tin nhắn mới"
-        : (typeLabels[msgData.type] ?? "[Tệp đính kèm]");
+      const messagePreview = msgData.type === 0 ?
+        "Bạn có tin nhắn mới" :
+        (typeLabels[msgData.type] ?? "[Tệp đính kèm]");
 
-      const encryptedContent = msgData.type === 0
-        ? (msgData.content ?? "")
-        : (typeLabels[msgData.type] ?? "");
+      const encryptedContent = msgData.type === 0 ?
+        (msgData.content ?? "") :
+        (typeLabels[msgData.type] ?? "");
 
       await sendPushNotification({
         pushToken,
@@ -1743,7 +1743,6 @@ exports.dailyConversationDigest = onSchedule(
   },
   async () => {
     logger.info("[dailyConversationDigest] Starting...");
-    const oneDayAgo = (Date.now() - 24 * 60 * 60 * 1000).toString();
 
     try {
       // Get active users (online in last 7 days)

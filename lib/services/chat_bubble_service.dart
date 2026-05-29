@@ -9,6 +9,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Overlay-window chat bubble service for Android < 11.
 /// Uses [SYSTEM_ALERT_WINDOW] permission + WindowManager overlay.
+///
+/// Giai đoạn 2 — Game Center:
+///   Thêm [sendGameChallengeNotification] để gửi push notification
+///   riêng biệt khi có lời mời thách đấu đích danh (tag tên người nhận).
 class ChatBubbleService {
   // ── Channels ──────────────────────────────────────────────────────────────
   static const _method = MethodChannel('chat_bubble_overlay');
@@ -39,10 +43,17 @@ class ChatBubbleService {
   final _clickCtrl = StreamController<BubbleClickEvent>.broadcast();
   final _miniMsgCtrl = StreamController<MiniChatMessage>.broadcast();
 
+  // ─── Game Center: Stream cho sự kiện game challenge ──────────────────────
+  final _gameChallengeCtrl = StreamController<GameChallengeEvent>.broadcast();
+
   Stream<Map<String, BubbleData>> get activeBubblesStream =>
       _bubblesCtrl.stream;
   Stream<BubbleClickEvent> get bubbleClickStream => _clickCtrl.stream;
   Stream<MiniChatMessage> get miniChatMessageStream => _miniMsgCtrl.stream;
+
+  /// Stream emit khi user tap vào notification thách đấu game.
+  Stream<GameChallengeEvent> get gameChallengeStream =>
+      _gameChallengeCtrl.stream;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // BOOTSTRAP
@@ -70,6 +81,9 @@ class ChatBubbleService {
               break;
             case 'dismiss':
               _handleDismiss(event);
+              break;
+            case 'game_challenge_tap':
+              _handleGameChallengeTap(event);
               break;
           }
         },
@@ -113,6 +127,19 @@ class ChatBubbleService {
       _emitBubbles();
       _saveBubbles();
     }
+  }
+
+  // ─── Game Center: Xử lý tap vào notification thách đấu ───────────────────
+  void _handleGameChallengeTap(Map<String, dynamic> e) {
+    if (_gameChallengeCtrl.isClosed) return;
+    final event = GameChallengeEvent(
+      matchId: e['matchId'] as String? ?? '',
+      groupId: e['groupId'] as String? ?? '',
+      challengerName: e['challengerName'] as String? ?? '',
+      gameType: e['gameType'] as String? ?? 'caro',
+    );
+    _gameChallengeCtrl.add(event);
+    debugPrint('🎮 Game challenge tapped: ${event.matchId}');
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -250,7 +277,6 @@ class ChatBubbleService {
     _emitBubbles();
     await _saveBubbles();
 
-    // Also update native side if possible
     try {
       await _method.invokeMethod('updateBubble', {
         'userId': userId,
@@ -298,6 +324,83 @@ class ChatBubbleService {
     } catch (e) {
       debugPrint('❌ hideMiniChat: $e');
       return false;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GAME CENTER: GAME CHALLENGE NOTIFICATION
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Gửi push notification đích danh khi có lời mời thách đấu game.
+  ///
+  /// Được gọi từ [ChatProvider.sendGameInviteMessage] sau khi tin nhắn
+  /// đã được ghi vào Firestore, khi [targetUserId] != null (thách đấu đích danh).
+  ///
+  /// Trên Android: hiển thị notification với action "Vào bàn" và "Từ chối".
+  /// Tap vào notification → emit [gameChallengeStream] → navigate đến match room.
+  ///
+  /// [targetUserId]   : ID người được thách đấu
+  /// [challengerName] : Tên người tạo thách đấu (dùng làm @tag)
+  /// [challengerAvatar]: Avatar người tạo
+  /// [matchId]        : ID trận đấu cần join
+  /// [groupId]        : ID nhóm để navigate về đúng nhóm
+  /// [gameType]       : 'caro' | 'chess'
+  /// [timeControlLabel]: Mô tả thời gian, ví dụ "10 phút" hay "Không giới hạn"
+  Future<void> sendGameChallengeNotification({
+    required String targetUserId,
+    required String challengerName,
+    required String challengerAvatar,
+    required String matchId,
+    required String groupId,
+    required String gameType,
+    String timeControlLabel = '',
+  }) async {
+    // Trên web hoặc iOS: không dùng MethodChannel overlay
+    // → notification được xử lý bởi PushNotificationService (FCM)
+    if (kIsWeb) return;
+
+    final gameEmoji = gameType == 'chess' ? '♟️' : '⭕';
+    final timeLabel = timeControlLabel.isNotEmpty ? ' ($timeControlLabel)' : '';
+    final title =
+        '$gameEmoji $challengerName thách bạn đấu ${_gameDisplayName(gameType)}$timeLabel!';
+    const body = 'Bấm để vào bàn đấu ngay';
+
+    try {
+      if (Platform.isAndroid) {
+        // Gửi qua MethodChannel để native hiển thị notification có action buttons
+        await _method.invokeMethod('showGameChallengeNotification', {
+          'targetUserId': targetUserId,
+          'title': title,
+          'body': body,
+          'matchId': matchId,
+          'groupId': groupId,
+          'gameType': gameType,
+          'challengerName': challengerName,
+          'challengerAvatar': challengerAvatar,
+        });
+        debugPrint('🔔 Game challenge notification sent to $targetUserId');
+      }
+
+      // Cập nhật badge trên bubble nếu đang active
+      if (_activeBubbles.containsKey(targetUserId)) {
+        await updateBubbleMessage(
+          userId: targetUserId,
+          message: title,
+        );
+      }
+    } catch (e) {
+      // Không crash nếu notification thất bại — chỉ log
+      debugPrint('⚠️ sendGameChallengeNotification error: $e');
+    }
+  }
+
+  String _gameDisplayName(String gameType) {
+    switch (gameType.toLowerCase()) {
+      case 'chess':
+        return 'Cờ Vua';
+      case 'caro':
+      default:
+        return 'Caro';
     }
   }
 
@@ -408,6 +511,33 @@ class ChatBubbleService {
     if (!_bubblesCtrl.isClosed) _bubblesCtrl.close();
     if (!_clickCtrl.isClosed) _clickCtrl.close();
     if (!_miniMsgCtrl.isClosed) _miniMsgCtrl.close();
+    if (!_gameChallengeCtrl.isClosed) _gameChallengeCtrl.close();
     debugPrint('✅ ChatBubbleService disposed');
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GAME CHALLENGE EVENT
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Event được emit khi user tap vào notification thách đấu.
+/// match_room_page hoặc group_chat_page lắng nghe stream này để navigate.
+class GameChallengeEvent {
+  final String matchId;
+  final String groupId;
+  final String challengerName;
+  final String gameType;
+  final DateTime receivedAt;
+
+  GameChallengeEvent({
+    required this.matchId,
+    required this.groupId,
+    required this.challengerName,
+    required this.gameType,
+    DateTime? receivedAt,
+  }) : receivedAt = receivedAt ?? DateTime.now();
+
+  @override
+  String toString() =>
+      'GameChallengeEvent(matchId: $matchId, group: $groupId, from: $challengerName)';
 }

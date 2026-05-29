@@ -5,6 +5,7 @@ export 'chat_provider.dart';
 export 'conversation_lock_provider.dart';
 export 'conversation_provider.dart';
 export 'friend_provider.dart';
+export 'game_state_provider.dart';
 export 'home_provider.dart';
 export 'location_provider.dart';
 export 'message_provider.dart';
