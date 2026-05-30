@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
 import 'package:provider/provider.dart';
 
 import '../models/models.dart';
 import '../providers/providers.dart';
 import '../services/services.dart';
+import 'game_chat_bubbles.dart';
 
 enum MessageStatus { sending, sent, delivered, read, failed }
 
@@ -27,6 +27,10 @@ class AdaptiveChatBubble extends StatefulWidget {
   final void Function(String emoji)? onReact;
   final void Function(String emoji)? onRemoveReact;
 
+  // Game Center fields
+  final String currentUserName;
+  final String currentUserAvatar;
+
   const AdaptiveChatBubble({
     super.key,
     required this.message,
@@ -45,6 +49,8 @@ class AdaptiveChatBubble extends StatefulWidget {
     this.onTapMedia,
     this.onReact,
     this.onRemoveReact,
+    this.currentUserName = '',
+    this.currentUserAvatar = '',
   });
 
   @override
@@ -83,6 +89,7 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
 
     if (!_isMe &&
         widget.message.scamWarning != true &&
+        !widget.message.isGameMessage &&
         !_scannedIds.contains(widget.message.timestamp)) {
       _scannedIds.add(widget.message.timestamp);
       _doAiScan();
@@ -110,6 +117,17 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
     final provider = context.watch<AppModeProvider>();
     final t = provider.tokens;
 
+    // Game messages: render without swipe animation & reaction row
+    if (widget.message.isGameMessage) {
+      return FadeTransition(
+        opacity: _fadeAnim,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+          child: _buildBubbleContent(context, t, provider),
+        ),
+      );
+    }
+
     return FadeTransition(
       opacity: _fadeAnim,
       child: SlideTransition(
@@ -117,7 +135,8 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
           child: Column(
-            crossAxisAlignment: _isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            crossAxisAlignment:
+                _isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
               _buildRow(context, provider, t),
               if (widget.reactions.isNotEmpty)
@@ -158,7 +177,8 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
           child: child,
         ),
         child: Row(
-          mainAxisAlignment: _isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+          mainAxisAlignment:
+              _isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             if (!_isMe) ...[
@@ -207,6 +227,29 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
     AppModeTokens t,
     AppModeProvider provider,
   ) {
+    // Game Center messages
+    if (widget.message.type == TypeMessage.gameInvite ||
+        widget.message.type == TypeMessage.gameLive) {
+      return GameInviteCardBubble(
+        message: widget.message,
+        currentUserId: widget.currentUserId,
+        currentUserName: widget.currentUserName,
+        currentUserAvatar: widget.currentUserAvatar,
+        groupId: widget.conversationId,
+      );
+    }
+
+    if (widget.message.type == TypeMessage.gameResult) {
+      return GameResultCardBubble(
+        message: widget.message,
+        currentUserId: widget.currentUserId,
+        currentUserName: widget.currentUserName,
+        currentUserAvatar: widget.currentUserAvatar,
+        groupId: widget.conversationId,
+      );
+    }
+
+    // Standard messages
     if (widget.message.type == TypeMessage.text) {
       return _TextBubble(
         message: widget.message,
@@ -216,7 +259,8 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
         appMode: provider.currentMode,
         replyToMessage: widget.replyToMessage,
         isWarningExpanded: _isWarningExpanded,
-        onToggleWarning: () => setState(() => _isWarningExpanded = !_isWarningExpanded),
+        onToggleWarning: () =>
+            setState(() => _isWarningExpanded = !_isWarningExpanded),
       );
     }
     if (widget.message.type == TypeMessage.voice) {
@@ -238,7 +282,8 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
     final delta = _isMe ? -d.delta.dx : d.delta.dx;
     if (delta < 0 && _dragOffset == 0) return;
     setState(() {
-      _dragOffset = (_dragOffset + delta.clamp(0.0, double.infinity)).clamp(0.0, 80.0);
+      _dragOffset =
+          (_dragOffset + delta.clamp(0.0, double.infinity)).clamp(0.0, 80.0);
     });
     if (_dragOffset >= 60 && !_replyTriggered) {
       _replyTriggered = true;
@@ -274,13 +319,16 @@ class _AdaptiveChatBubbleState extends State<AdaptiveChatBubble>
               content: const Text('Đã sao chép tin nhắn'),
               duration: const Duration(seconds: 1),
               behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
             ),
           );
         },
         onReply: () => widget.onReply?.call(widget.message),
         onReact: () => setState(() => _showReactionBar = !_showReactionBar),
-        onForward: widget.onForward != null ? () => widget.onForward!.call(widget.message) : null,
+        onForward: widget.onForward != null
+            ? () => widget.onForward!.call(widget.message)
+            : null,
         onDelete: _isMe ? () => widget.onDelete?.call(widget.message) : null,
       ),
     );
@@ -333,22 +381,29 @@ class _TextBubble extends StatelessWidget {
                 ],
               )
             : null,
-        color: isScam ? const Color(0xFFFFF3E0) : (!isMe ? tokens.peerBubbleColor : null),
+        color: isScam
+            ? const Color(0xFFFFF3E0)
+            : (!isMe ? tokens.peerBubbleColor : null),
         borderRadius: _radius(),
         boxShadow: tokens.bubbleShadow,
-        border: isScam ? Border.all(color: const Color(0xFFFFA726), width: 1.2) : null,
+        border: isScam
+            ? Border.all(color: const Color(0xFFFFA726), width: 1.2)
+            : null,
       ),
       child: ClipRRect(
         borderRadius: _radius(),
         child: Column(
-          crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment:
+              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (replyToMessage != null) _ReplyPreview(replyTo: replyToMessage!, isMe: isMe),
+            if (replyToMessage != null)
+              _ReplyPreview(replyTo: replyToMessage!, isMe: isMe),
             Padding(
               padding: EdgeInsets.all(tokens.bubblePadding),
               child: Column(
-                crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                crossAxisAlignment:
+                    isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (contextType == 'study' && appMode == AppMode.student)
@@ -358,7 +413,9 @@ class _TextBubble extends StatelessWidget {
                     style: TextStyle(
                       color: isScam
                           ? const Color(0xFF7B3F00)
-                          : (isMe ? tokens.myBubbleTextColor : tokens.peerBubbleTextColor),
+                          : (isMe
+                              ? tokens.myBubbleTextColor
+                              : tokens.peerBubbleTextColor),
                       fontSize: tokens.bubbleFontSize,
                       fontWeight: tokens.bubbleFontWeight,
                       height: 1.5,
@@ -439,8 +496,10 @@ class _VoiceBubbleState extends State<_VoiceBubble> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         gradient: widget.isMe
-            ? LinearGradient(
-                colors: [widget.tokens.myBubbleGradientStart, widget.tokens.myBubbleGradientEnd])
+            ? LinearGradient(colors: [
+                widget.tokens.myBubbleGradientStart,
+                widget.tokens.myBubbleGradientEnd
+              ])
             : null,
         color: widget.isMe ? null : widget.tokens.peerBubbleColor,
         borderRadius: BorderRadius.circular(widget.tokens.bubbleRadius),
@@ -523,10 +582,12 @@ class _WaveformBar extends StatelessWidget {
               child: FractionallySizedBox(
                 heightFactor: _heights[i],
                 child: AnimatedContainer(
-                  duration: Duration(milliseconds: playing ? 400 + i * 60 : 200),
+                  duration:
+                      Duration(milliseconds: playing ? 400 + i * 60 : 200),
                   curve: Curves.easeInOut,
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: playing ? 0.8 + (_heights[i] * 0.2) : 0.45),
+                    color: color.withValues(
+                        alpha: playing ? 0.8 + (_heights[i] * 0.2) : 0.45),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -557,7 +618,8 @@ class _MediaBubble extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.65),
+        constraints:
+            BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.65),
         decoration: BoxDecoration(
           color: isMe ? tokens.myBubbleGradientStart : tokens.peerBubbleColor,
           borderRadius: BorderRadius.circular(tokens.bubbleRadius),
@@ -568,7 +630,9 @@ class _MediaBubble extends StatelessWidget {
             ? _ImagePreview(url: message.content)
             : _FileTile(
                 content: message.content,
-                textColor: isMe ? tokens.myBubbleTextColor : tokens.peerBubbleTextColor,
+                textColor: isMe
+                    ? tokens.myBubbleTextColor
+                    : tokens.peerBubbleTextColor,
                 fontSize: tokens.bubbleFontSize,
               ),
       ),
@@ -605,7 +669,9 @@ class _ImagePreview extends StatelessWidget {
               ),
         errorBuilder: (_, __, ___) => const SizedBox(
           height: 80,
-          child: Center(child: Icon(Icons.broken_image_rounded, size: 32, color: Colors.grey)),
+          child: Center(
+              child: Icon(Icons.broken_image_rounded,
+                  size: 32, color: Colors.grey)),
         ),
       ),
     );
@@ -616,7 +682,8 @@ class _FileTile extends StatelessWidget {
   final String content;
   final Color textColor;
   final double fontSize;
-  const _FileTile({required this.content, required this.textColor, required this.fontSize});
+  const _FileTile(
+      {required this.content, required this.textColor, required this.fontSize});
 
   @override
   Widget build(BuildContext context) {
@@ -685,7 +752,8 @@ class _StudyIndicator extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.menu_book_rounded, size: 11, color: isMe ? Colors.white70 : Colors.black45),
+          Icon(Icons.menu_book_rounded,
+              size: 11, color: isMe ? Colors.white70 : Colors.black45),
           const SizedBox(width: 4),
           Text(
             'Study Note',
@@ -721,17 +789,22 @@ class _ScamWarningBanner extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.warning_amber_rounded, size: 15, color: Color(0xFFF57C00)),
+                const Icon(Icons.warning_amber_rounded,
+                    size: 15, color: Color(0xFFF57C00)),
                 const SizedBox(width: 6),
                 const Expanded(
                   child: Text(
                     'Tin nhắn có dấu hiệu đáng ngờ',
                     style: TextStyle(
-                        fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF7B3F00)),
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF7B3F00)),
                   ),
                 ),
                 Icon(
-                  isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                  isExpanded
+                      ? Icons.keyboard_arrow_up
+                      : Icons.keyboard_arrow_down,
                   size: 15,
                   color: const Color(0xFF7B3F00),
                 ),
@@ -740,9 +813,9 @@ class _ScamWarningBanner extends StatelessWidget {
             if (isExpanded) ...[
               const SizedBox(height: 6),
               const Text(
-                'Hệ thống AI phát hiện tin nhắn này có thể là lừa đảo hoặc spam. '
-                'Không chia sẻ thông tin cá nhân hay chuyển tiền.',
-                style: TextStyle(fontSize: 11, color: Color(0xFF7B3F00), height: 1.4),
+                'Hệ thống AI phát hiện tin nhắn này có thể là lừa đảo. Không chia sẻ thông tin cá nhân.',
+                style: TextStyle(
+                    fontSize: 11, color: Color(0xFF7B3F00), height: 1.4),
               ),
             ],
           ],
@@ -756,7 +829,8 @@ class _StatusTick extends StatelessWidget {
   final MessageStatus status;
   final Color color;
   final double size;
-  const _StatusTick({required this.status, required this.color, required this.size});
+  const _StatusTick(
+      {required this.status, required this.color, required this.size});
 
   @override
   Widget build(BuildContext context) {
@@ -765,7 +839,8 @@ class _StatusTick extends StatelessWidget {
         return SizedBox(
           width: size,
           height: size,
-          child: CircularProgressIndicator(strokeWidth: 1.5, color: color.withValues(alpha: 0.5)),
+          child: CircularProgressIndicator(
+              strokeWidth: 1.5, color: color.withValues(alpha: 0.5)),
         );
       case MessageStatus.sent:
         return Icon(Icons.check_rounded, size: size, color: Colors.grey);
@@ -809,7 +884,10 @@ class _PeerAvatar extends StatelessWidget {
   final double radius;
   final bool isOnline;
   const _PeerAvatar(
-      {this.url, required this.primaryColor, required this.radius, this.isOnline = false});
+      {this.url,
+      required this.primaryColor,
+      required this.radius,
+      this.isOnline = false});
 
   @override
   Widget build(BuildContext context) {
@@ -818,9 +896,11 @@ class _PeerAvatar extends StatelessWidget {
         CircleAvatar(
           radius: radius,
           backgroundColor: primaryColor.withValues(alpha: 0.15),
-          backgroundImage: (url != null && url!.isNotEmpty) ? NetworkImage(url!) : null,
+          backgroundImage:
+              (url != null && url!.isNotEmpty) ? NetworkImage(url!) : null,
           child: (url == null || url!.isEmpty)
-              ? Icon(Icons.person_rounded, size: radius, color: primaryColor.withValues(alpha: 0.7))
+              ? Icon(Icons.person_rounded,
+                  size: radius, color: primaryColor.withValues(alpha: 0.7))
               : null,
         ),
         if (isOnline)
@@ -900,7 +980,8 @@ class _EmojiPickerBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(top: 4, left: isMe ? 0 : 44, right: isMe ? 18 : 0),
+      padding:
+          EdgeInsets.only(top: 4, left: isMe ? 0 : 44, right: isMe ? 18 : 0),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
@@ -953,8 +1034,12 @@ class _ContextMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final iconSize = appMode == AppMode.elder ? 26.0 : (appMode == AppMode.work ? 20.0 : 22.0);
-    final fontSize = appMode == AppMode.elder ? 17.0 : (appMode == AppMode.work ? 14.0 : 15.0);
+    final iconSize = appMode == AppMode.elder
+        ? 26.0
+        : (appMode == AppMode.work ? 20.0 : 22.0);
+    final fontSize = appMode == AppMode.elder
+        ? 17.0
+        : (appMode == AppMode.work ? 14.0 : 15.0);
 
     return Container(
       margin: const EdgeInsets.all(12),
@@ -1079,7 +1164,9 @@ class _Item extends StatelessWidget {
           children: [
             Icon(icon, size: iconSize, color: color),
             const SizedBox(width: 14),
-            Text(label, style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w500)),
+            Text(label,
+                style:
+                    TextStyle(fontSize: fontSize, fontWeight: FontWeight.w500)),
           ],
         ),
       ),
@@ -1090,6 +1177,10 @@ class _Item extends StatelessWidget {
 class _Div extends StatelessWidget {
   const _Div();
   @override
-  Widget build(BuildContext context) =>
-      Divider(height: 0, thickness: 0.5, indent: 20, endIndent: 20, color: Colors.black12);
+  Widget build(BuildContext context) => Divider(
+      height: 0,
+      thickness: 0.5,
+      indent: 20,
+      endIndent: 20,
+      color: Colors.black12);
 }

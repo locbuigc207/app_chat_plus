@@ -1,15 +1,46 @@
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_chat_demo/models/game_match.dart';
+import 'package:flutter_chat_demo/models/message_chat.dart';
+import 'package:flutter_chat_demo/pages/match_room_page.dart';
+import 'package:flutter_chat_demo/services/game_firebase_service.dart';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
+// ─── Design tokens ────────────────────────────────────────────────────────
+abstract final class _C {
+  static const bg = Color(0xFF1A1A2E);
+  static const surface = Color(0xFF16213E);
+  static const accent = Color(0xFF64FFDA);
+  static const xColor = Color(0xFFFF5252);
+  static const oColor = Color(0xFF40C4FF);
+  static const text1 = Color(0xFFEEF2FF);
+  static const text2 = Color(0xFF8B93B0);
+  static const border = Color(0xFF0F3460);
+  static const live = Color(0xFF00E676);
+  static const waiting = Color(0xFFFFD740);
+}
 
-class TicTacToeMessageWidget extends StatefulWidget {
+// =========================================================
+// TIC TAC TOE MESSAGE WIDGET (REDIRECT CARD)
+// =========================================================
+
+/// Card hiển thị trong nhóm chat cho tin nhắn type=7 (legacy game).
+///
+/// Chế độ hoạt động:
+/// • Nếu có [matchId] (trận mới từ Game Center) → redirect vào MatchRoomPage
+/// • Nếu không có matchId (legacy content JSON) → hiển thị snapshot 3x3
+///   kèm nút "Mở phòng đấu" nếu trận chưa kết thúc
+class TicTacToeMessageWidget extends StatelessWidget {
   final String content;
   final String messageId;
   final String groupId;
   final String currentUserId;
+
+  // Game Center fields (optional — set khi tin nhắn được tạo từ game_setup_page)
+  final String? matchId;
+  final String currentUserName;
+  final String currentUserAvatar;
 
   const TicTacToeMessageWidget({
     super.key,
@@ -17,141 +48,262 @@ class TicTacToeMessageWidget extends StatefulWidget {
     required this.messageId,
     required this.groupId,
     required this.currentUserId,
+    this.matchId,
+    this.currentUserName = '',
+    this.currentUserAvatar = '',
   });
 
-  @override
-  State<TicTacToeMessageWidget> createState() => _TicTacToeMessageWidgetState();
-}
+  // ── Parse legacy content ─────────────────────────────────────────────────
 
-class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
-    with TickerProviderStateMixin {
-  late AnimationController _winLineController;
-  late AnimationController _boardAppear;
-  late AnimationController _cellBounce;
-  late Animation<double> _winLineDraw;
-  late Animation<double> _boardScale;
-
-  final List<AnimationController> _cellControllers = [];
-  int? _lastTappedIndex;
-  List<int> _winningLine = [];
-
-  @override
-  void initState() {
-    super.initState();
-
-    _winLineController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 500),
-    );
-    _boardAppear = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    )..forward();
-
-    _cellBounce = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 350),
-    );
-
-    _winLineDraw = CurvedAnimation(
-      parent: _winLineController,
-      curve: Curves.easeOut,
-    );
-    _boardScale = CurvedAnimation(
-      parent: _boardAppear,
-      curve: Curves.elasticOut,
-    );
-
-    for (int i = 0; i < 9; i++) {
-      _cellControllers.add(AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 300),
-      ));
-    }
-
-    final state = jsonDecode(widget.content) as Map<String, dynamic>;
-    final board = List<String>.from(state['board'] ?? List.filled(9, ''));
-    final line = _getWinningLine(board);
-    if (line != null) {
-      _winningLine = line;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _winLineController.forward();
-      });
+  Map<String, dynamic>? get _legacyState {
+    try {
+      return jsonDecode(content) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
     }
   }
 
-  @override
-  void dispose() {
-    _winLineController.dispose();
-    _boardAppear.dispose();
-    _cellBounce.dispose();
-    for (final c in _cellControllers) {
-      c.dispose();
-    }
-    super.dispose();
+  List<String> get _board {
+    final state = _legacyState;
+    if (state == null) return List.filled(9, '');
+    return List<String>.from(
+        (state['board'] as List?)?.map((e) => e?.toString() ?? '') ??
+            List.filled(9, ''));
   }
 
-  Future<void> _onCellTapped(int index, Map<String, dynamic> gameState) async {
-    List<dynamic> board = List.from(gameState['board']);
-    String turn = gameState['turn'] ?? '';
-    String winner = gameState['winner'] ?? '';
-    String playerX = gameState['playerX'] ?? '';
-    String playerO = gameState['playerO'] ?? '';
+  String get _winner => _legacyState?['winner']?.toString() ?? '';
+  String get _turn => _legacyState?['turn']?.toString() ?? '';
+  String get _playerX => _legacyState?['playerX']?.toString() ?? '';
+  String get _playerO => _legacyState?['playerO']?.toString() ?? '';
 
-    if (winner.isNotEmpty || board[index].toString().isNotEmpty) return;
-
-    if (playerX.isEmpty) {
-      playerX = widget.currentUserId;
-      turn = widget.currentUserId;
-    } else if (playerO.isEmpty && playerX != widget.currentUserId) {
-      playerO = widget.currentUserId;
-    }
-
-    if (turn != widget.currentUserId) return;
-
-    final mySymbol = (widget.currentUserId == playerX) ? 'X' : 'O';
-    board[index] = mySymbol;
-
-    if (index < _cellControllers.length) {
-      _cellControllers[index].forward(from: 0);
-    }
-    setState(() => _lastTappedIndex = index);
-
-    final newWinner = _checkWinner(board);
-    final winLine = _getWinningLine(board);
-
-    final nextTurn =
-        (widget.currentUserId == playerX) ? (playerO.isEmpty ? playerX : playerO) : playerX;
-
-    final newState = {
-      'board': board,
-      'turn': newWinner.isNotEmpty ? '' : nextTurn,
-      'winner': newWinner,
-      'playerX': playerX,
-      'playerO': playerO,
-    };
-
-    await FirebaseFirestore.instance
-        .collection('messages')
-        .doc(widget.groupId)
-        .collection(widget.groupId)
-        .doc(widget.messageId)
-        .update({'content': jsonEncode(newState)});
-
-    if (winLine != null) {
-      setState(() => _winningLine = winLine);
-      _winLineController.forward(from: 0);
-    }
-  }
-
-  String _checkWinner(List<dynamic> b) {
-    final line = _getWinningLine(b);
-    if (line != null) return b[line[0]].toString();
-    if (!b.contains('')) return 'Hòa';
+  bool get _isGameOver => _winner.isNotEmpty;
+  bool get _isMyturn => _turn == currentUserId;
+  String get _mySymbol {
+    if (_playerX == currentUserId) return 'X';
+    if (_playerO == currentUserId) return 'O';
     return '';
   }
 
-  List<int>? _getWinningLine(List<dynamic> b) {
+  // ── Navigate ──────────────────────────────────────────────────────────────
+
+  Future<void> _openRoom(BuildContext context, String mId) async {
+    HapticFeedback.mediumImpact();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MatchRoomPage(
+          matchId: mId,
+          currentUserId: currentUserId,
+          currentUserName: currentUserName,
+          currentUserAvatar: currentUserAvatar,
+          groupId: groupId,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _createAndOpenRoom(BuildContext context) async {
+    HapticFeedback.mediumImpact();
+
+    // Tạo GameMatch mới từ legacy content nếu chưa có matchId
+    final newMatchId = '${groupId}_$messageId';
+
+    try {
+      // Kiểm tra xem match đã tồn tại chưa
+      final existing = await GameFirebaseService().fetchMatch(newMatchId);
+      if (existing != null) {
+        if (context.mounted) _openRoom(context, newMatchId);
+        return;
+      }
+
+      // Tạo match mới boardSize=3 (3×3 Tic-tac-toe)
+      final match = GameMatch(
+        matchId: newMatchId,
+        gameType: GameType.caro,
+        status:
+            _isGameOver ? GameMatchStatus.finished : GameMatchStatus.playing,
+        player1Id: _playerX.isNotEmpty ? _playerX : currentUserId,
+        player1Name: 'Player X',
+        player1Avatar: '',
+        player2Id: _playerO.isNotEmpty ? _playerO : null,
+        player2Name: _playerO.isNotEmpty ? 'Player O' : null,
+        boardSize: 3,
+        sourceGroupId: groupId,
+        createdAt: DateTime.now().millisecondsSinceEpoch.toString(),
+      );
+
+      await GameFirebaseService().createMatch(match);
+      if (context.mounted) _openRoom(context, newMatchId);
+    } catch (e) {
+      debugPrint('[TicTacToeMessageWidget] _createAndOpenRoom error: $e');
+    }
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    // Nếu có matchId từ Game Center → dùng redirect đơn giản
+    if (matchId != null && matchId!.isNotEmpty) {
+      return _GameCenterRedirectCard(
+        matchId: matchId!,
+        gameType: GameType.caro,
+        boardSize: 3,
+        isGameOver: _isGameOver,
+        winner: _winner,
+        onTap: () => _openRoom(context, matchId!),
+      );
+    }
+
+    // Legacy: hiển thị snapshot bàn cờ 3x3 + redirect
+    return _LegacySnapshotCard(
+      board: _board,
+      winner: _winner,
+      mySymbol: _mySymbol,
+      isMyturn: _isMyturn,
+      isGameOver: _isGameOver,
+      onOpenRoom: () => _createAndOpenRoom(context),
+    );
+  }
+}
+
+// =========================================================
+// GAME CENTER REDIRECT CARD
+// =========================================================
+
+/// Card đơn giản cho tin nhắn type=7 được tạo từ Game Center.
+/// Hiển thị thông tin trận + nút vào phòng.
+class _GameCenterRedirectCard extends StatelessWidget {
+  final String matchId;
+  final GameType gameType;
+  final int boardSize;
+  final bool isGameOver;
+  final String winner;
+  final VoidCallback onTap;
+
+  const _GameCenterRedirectCard({
+    required this.matchId,
+    required this.gameType,
+    required this.boardSize,
+    required this.isGameOver,
+    required this.winner,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final label = boardSize == 3 ? 'Tic-tac-toe 3×3' : 'Caro';
+    final statusColor = isGameOver ? _C.text2 : _C.live;
+    final statusLabel = isGameOver
+        ? (winner == 'Hòa' ? '🤝 Hòa' : '🏆 Kết thúc')
+        : '🎮 Đang diễn ra';
+
+    return GestureDetector(
+      onTap: isGameOver ? null : onTap,
+      child: Container(
+        width: 220,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: _C.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: _C.border, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.25),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(gameType.emoji, style: const TextStyle(fontSize: 20)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      color: _C.text1,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: statusColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              statusLabel,
+              style: TextStyle(color: statusColor, fontSize: 11),
+            ),
+            if (!isGameOver) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                height: 32,
+                child: ElevatedButton(
+                  onPressed: onTap,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _C.accent.withValues(alpha: 0.15),
+                    foregroundColor: _C.accent,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      side: BorderSide(color: _C.accent.withValues(alpha: 0.4)),
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  child: const Text('Vào phòng đấu'),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =========================================================
+// LEGACY SNAPSHOT CARD
+// =========================================================
+
+/// Card hiển thị snapshot bàn 3x3 từ content JSON cũ.
+/// Không cho đánh cờ trực tiếp — chỉ hiển thị trạng thái + redirect.
+class _LegacySnapshotCard extends StatelessWidget {
+  final List<String> board;
+  final String winner;
+  final String mySymbol;
+  final bool isMyturn;
+  final bool isGameOver;
+  final VoidCallback onOpenRoom;
+
+  const _LegacySnapshotCard({
+    required this.board,
+    required this.winner,
+    required this.mySymbol,
+    required this.isMyturn,
+    required this.isGameOver,
+    required this.onOpenRoom,
+  });
+
+  // ── Win detection ─────────────────────────────────────────────────────────
+
+  String _checkWinner() {
     const lines = [
       [0, 1, 2],
       [3, 4, 5],
@@ -163,181 +315,215 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
       [2, 4, 6],
     ];
     for (final l in lines) {
-      if (b[l[0]] != '' && b[l[0]] == b[l[1]] && b[l[1]] == b[l[2]]) {
+      if (board[l[0]].isNotEmpty &&
+          board[l[0]] == board[l[1]] &&
+          board[l[1]] == board[l[2]]) {
+        return board[l[0]];
+      }
+    }
+    return '';
+  }
+
+  List<int> _winLine() {
+    const lines = [
+      [0, 1, 2],
+      [3, 4, 5],
+      [6, 7, 8],
+      [0, 3, 6],
+      [1, 4, 7],
+      [2, 5, 8],
+      [0, 4, 8],
+      [2, 4, 6],
+    ];
+    for (final l in lines) {
+      if (board[l[0]].isNotEmpty &&
+          board[l[0]] == board[l[1]] &&
+          board[l[1]] == board[l[2]]) {
         return l;
       }
     }
-    return null;
-  }
-
-  bool _isMyturn(Map<String, dynamic> state) {
-    return (state['turn'] ?? '') == widget.currentUserId;
-  }
-
-  String _mySymbol(Map<String, dynamic> state) {
-    if (state['playerX'] == widget.currentUserId) return 'X';
-    if (state['playerO'] == widget.currentUserId) return 'O';
-    return '';
+    return [];
   }
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('messages')
-          .doc(widget.groupId)
-          .collection(widget.groupId)
-          .doc(widget.messageId)
-          .snapshots(),
-      builder: (context, snapshot) {
-        Map<String, dynamic> gameState;
-        if (snapshot.hasData && snapshot.data!.exists) {
-          final data = snapshot.data!.data() as Map<String, dynamic>;
-          gameState = jsonDecode(data['content']) as Map<String, dynamic>;
-        } else {
-          gameState = jsonDecode(widget.content) as Map<String, dynamic>;
-        }
+    final detectedWinner = winner.isNotEmpty ? winner : _checkWinner();
+    final winLine = _winLine();
+    final isDraw = detectedWinner.isEmpty && !board.contains('');
 
-        final board = List<String>.from(gameState['board'] ?? List.filled(9, ''));
-        final winner = gameState['winner'] ?? '';
-        final myTurn = _isMyturn(gameState);
-        final symbol = _mySymbol(gameState);
-
-        return ScaleTransition(
-          scale: _boardScale,
-          child: Container(
-            width: 240,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
-              gradient: const LinearGradient(
-                colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF0F3460).withValues(alpha: 0.55),
-                  blurRadius: 24,
-                  spreadRadius: 2,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildHeader(winner, myTurn, symbol, gameState),
-                  _buildGrid(board, winner, gameState),
-                  _buildFooter(gameState, winner),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildHeader(String winner, bool myTurn, String symbol, Map<String, dynamic> state) {
+    // Status label
     String statusText;
     Color statusColor;
-
-    if (winner == 'Hòa') {
+    if (detectedWinner == 'Hòa' || isDraw) {
       statusText = '🤝 Hòa nhau!';
-      statusColor = const Color(0xFFFFD700);
-    } else if (winner.isNotEmpty) {
-      final isIWon = (winner == 'X' && state['playerX'] == widget.currentUserId) ||
-          (winner == 'O' && state['playerO'] == widget.currentUserId);
+      statusColor = _C.waiting;
+    } else if (detectedWinner.isNotEmpty) {
+      final isIWon = detectedWinner == mySymbol;
       statusText = isIWon ? '🏆 Bạn thắng!' : '💀 Bạn thua!';
-      statusColor = isIWon ? const Color(0xFF00E676) : const Color(0xFFFF5252);
-    } else if (symbol.isEmpty) {
-      statusText = '👀 Đang chờ...';
-      statusColor = Colors.white60;
-    } else if (myTurn) {
-      statusText = 'Lượt của bạn ($symbol)';
-      statusColor = const Color(0xFF64FFDA);
+      statusColor = isIWon ? _C.live : const Color(0xFFFF5A5A);
+    } else if (mySymbol.isEmpty) {
+      statusText = '👀 Quan sát';
+      statusColor = _C.text2;
+    } else if (isMyturn) {
+      statusText = 'Lượt của bạn ($mySymbol)';
+      statusColor = _C.accent;
     } else {
-      statusText = 'Đợi đối thủ...';
-      statusColor = Colors.white38;
+      statusText = 'Chờ đối thủ...';
+      statusColor = _C.text2;
     }
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-      decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Color(0xFF0F3460), width: 1.5),
+      width: 240,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: statusColor,
-              boxShadow: [BoxShadow(color: statusColor.withValues(alpha: 0.7), blurRadius: 6)],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              statusText,
-              style: TextStyle(
-                color: statusColor,
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-                letterSpacing: 0.3,
-              ),
-            ),
-          ),
-          const Text(
-            'Cờ 3×3',
-            style: TextStyle(
-              color: Colors.white24,
-              fontSize: 10,
-              letterSpacing: 1,
-              fontWeight: FontWeight.w500,
-            ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F3460).withValues(alpha: 0.5),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Status header
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: const BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: _C.border, width: 1),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: statusColor,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: statusColor.withValues(alpha: 0.7),
+                          blurRadius: 6,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      statusText,
+                      style: TextStyle(
+                        color: statusColor,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const Text(
+                    '3×3',
+                    style: TextStyle(
+                        color: _C.text2, fontSize: 10, letterSpacing: 0.5),
+                  ),
+                ],
+              ),
+            ),
+
+            // Board snapshot
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: _SnapshotGrid(board: board, winLine: winLine),
+            ),
+
+            // CTA
+            if (!isGameOver && detectedWinner.isEmpty && !isDraw)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 34,
+                  child: ElevatedButton(
+                    onPressed: onOpenRoom,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _C.accent.withValues(alpha: 0.12),
+                      foregroundColor: _C.accent,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        side:
+                            BorderSide(color: _C.accent.withValues(alpha: 0.3)),
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    child: const Text('Mở phòng đấu'),
+                  ),
+                ),
+              )
+            else
+              const SizedBox(height: 6),
+          ],
+        ),
+      ),
     );
   }
+}
 
-  Widget _buildGrid(List<String> board, String winner, Map<String, dynamic> gameState) {
-    return Padding(
-      padding: const EdgeInsets.all(14),
+// ─── Snapshot Grid (Read-only Stack 3x3 with Painters) ───────────────────
+
+class _SnapshotGrid extends StatelessWidget {
+  final List<String> board;
+  final List<int> winLine;
+
+  const _SnapshotGrid({required this.board, required this.winLine});
+
+  @override
+  Widget build(BuildContext context) {
+    return AspectRatio(
+      aspectRatio: 1,
       child: Stack(
         children: [
           Column(
             children: List.generate(3, (row) {
-              return Row(
-                children: List.generate(3, (col) {
-                  final index = row * 3 + col;
-                  final isWinCell = _winningLine.contains(index);
-                  return Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.all(3.5),
-                      child: _buildCell(index, board[index], winner, isWinCell, gameState),
-                    ),
-                  );
-                }),
+              return Expanded(
+                child: Row(
+                  children: List.generate(3, (col) {
+                    final index = row * 3 + col;
+                    final isWinCell = winLine.contains(index);
+                    final symbol = index < board.length ? board[index] : '';
+
+                    return Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(3.5),
+                        child: _SnapshotCell(
+                          symbol: symbol,
+                          isWin: isWinCell,
+                        ),
+                      ),
+                    );
+                  }),
+                ),
               );
             }),
           ),
-          if (_winningLine.isNotEmpty)
+          if (winLine.isNotEmpty)
             Positioned.fill(
               child: IgnorePointer(
-                child: AnimatedBuilder(
-                  animation: _winLineDraw,
-                  builder: (_, __) => CustomPaint(
-                    painter: _WinLinePainter(
-                      winLine: _winningLine,
-                      progress: _winLineDraw.value,
-                    ),
+                child: CustomPaint(
+                  painter: _WinLinePainter(
+                    winLine: winLine,
+                    progress: 1.0, // Vẽ tĩnh vì đây là Snapshot Read-only
                   ),
                 ),
               ),
@@ -346,64 +532,39 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
       ),
     );
   }
+}
 
-  Widget _buildCell(
-      int index, String value, String winner, bool isWinCell, Map<String, dynamic> gameState) {
-    final canTap = winner.isEmpty && value.isEmpty && _isMyturn(gameState);
+class _SnapshotCell extends StatelessWidget {
+  final String symbol;
+  final bool isWin;
 
-    return GestureDetector(
-      onTap: canTap ? () => _onCellTapped(index, gameState) : null,
-      child: AnimatedBuilder(
-        animation: _cellControllers[index],
-        builder: (_, __) {
-          final t = _cellControllers[index].value;
-          final scale = 1.0 + sin(t * pi) * 0.18;
-          return Transform.scale(
-            scale: scale,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              height: 58,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                color: isWinCell
-                    ? const Color(0xFF0F3460)
-                    : value.isNotEmpty
-                        ? const Color(0xFF0A0A1A)
-                        : canTap
-                            ? const Color(0xFF0D0D22)
-                            : const Color(0xFF0A0A1A),
-                border: Border.all(
-                  color: isWinCell
-                      ? const Color(0xFF64FFDA).withValues(alpha: 0.6)
-                      : const Color(0xFF0F3460).withValues(alpha: 0.6),
-                  width: isWinCell ? 1.8 : 1.2,
-                ),
-                boxShadow: isWinCell
-                    ? [
-                        BoxShadow(
-                          color: const Color(0xFF64FFDA).withValues(alpha: 0.18),
-                          blurRadius: 10,
-                        )
-                      ]
-                    : canTap
-                        ? [
-                            BoxShadow(
-                              color: Colors.white.withValues(alpha: 0.04),
-                              blurRadius: 4,
-                            )
-                          ]
-                        : [],
-              ),
-              child: Center(
-                child: value.isEmpty
-                    ? (canTap
-                        ? const Icon(Icons.add, color: Colors.white12, size: 20)
-                        : const SizedBox())
-                    : _buildSymbol(value, isWinCell),
-              ),
-            ),
-          );
-        },
+  const _SnapshotCell({required this.symbol, required this.isWin});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: isWin ? const Color(0xFF0F3460) : const Color(0xFF0A0A1A),
+        border: Border.all(
+          color: isWin
+              ? _C.accent.withValues(alpha: 0.6)
+              : _C.border.withValues(alpha: 0.6),
+          width: isWin ? 1.8 : 1.2,
+        ),
+        boxShadow: isWin
+            ? [
+                BoxShadow(
+                  color: _C.accent.withValues(alpha: 0.18),
+                  blurRadius: 10,
+                )
+              ]
+            : [],
+      ),
+      child: Center(
+        child: symbol.isEmpty
+            ? const SizedBox.shrink()
+            : _buildSymbol(symbol, isWin),
       ),
     );
   }
@@ -427,84 +588,9 @@ class _TicTacToeMessageWidgetState extends State<TicTacToeMessageWidget>
       );
     }
   }
-
-  Widget _buildFooter(Map<String, dynamic> state, String winner) {
-    final playerX = state['playerX'] ?? '';
-    final playerO = state['playerO'] ?? '';
-    final isX = playerX == widget.currentUserId;
-    final isO = playerO == widget.currentUserId;
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
-      decoration: const BoxDecoration(
-        border: Border(
-          top: BorderSide(color: Color(0xFF0F3460), width: 1.0),
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          _buildPlayerChip('X', playerX, isX, const Color(0xFFFF5252)),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Text(
-              'VS',
-              style: TextStyle(
-                color: Colors.white38,
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.5,
-              ),
-            ),
-          ),
-          _buildPlayerChip('O', playerO, isO, const Color(0xFF40C4FF)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPlayerChip(String symbol, String userId, bool isMe, Color color) {
-    final isEmpty = userId.isEmpty;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: isMe ? color.withValues(alpha: 0.12) : Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: isMe ? color.withValues(alpha: 0.4) : Colors.white12,
-          width: 1.2,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            symbol,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w800,
-              fontSize: 13,
-            ),
-          ),
-          const SizedBox(width: 5),
-          Text(
-            isEmpty ? '?' : (isMe ? 'Bạn' : 'Đối thủ'),
-            style: TextStyle(
-              color: isEmpty ? Colors.white24 : Colors.white60,
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
+
+// ─── Custom Painters ───────────────────────────────────────────────────────
 
 class _XPainter extends CustomPainter {
   final Color color;
@@ -521,12 +607,15 @@ class _XPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     final pad = size.width * 0.1;
-    canvas.drawLine(Offset(pad, pad), Offset(size.width - pad, size.height - pad), paint);
-    canvas.drawLine(Offset(size.width - pad, pad), Offset(pad, size.height - pad), paint);
+    canvas.drawLine(
+        Offset(pad, pad), Offset(size.width - pad, size.height - pad), paint);
+    canvas.drawLine(
+        Offset(size.width - pad, pad), Offset(pad, size.height - pad), paint);
   }
 
   @override
-  bool shouldRepaint(_XPainter old) => old.color != color || old.strokeWidth != strokeWidth;
+  bool shouldRepaint(_XPainter old) =>
+      old.color != color || old.strokeWidth != strokeWidth;
 }
 
 class _OPainter extends CustomPainter {
@@ -548,7 +637,8 @@ class _OPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_OPainter old) => old.color != color || old.strokeWidth != strokeWidth;
+  bool shouldRepaint(_OPainter old) =>
+      old.color != color || old.strokeWidth != strokeWidth;
 }
 
 class _WinLinePainter extends CustomPainter {
@@ -586,5 +676,6 @@ class _WinLinePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_WinLinePainter old) => old.progress != progress || old.winLine != winLine;
+  bool shouldRepaint(_WinLinePainter old) =>
+      old.progress != progress || old.winLine != winLine;
 }

@@ -3,10 +3,9 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
@@ -22,10 +21,6 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-
-
-
-
 class ChatPageArguments {
   final String peerId;
   final String peerAvatar;
@@ -37,10 +32,6 @@ class ChatPageArguments {
     required this.peerNickname,
   });
 }
-
-
-
-
 
 class ChatPage extends StatefulWidget {
   const ChatPage({
@@ -61,17 +52,17 @@ class ChatPage extends StatefulWidget {
 }
 
 class ChatPageState extends State<ChatPage>
-    with WidgetsBindingObserver, ResourceManagerMixin, TickerProviderStateMixin {
-  
+    with
+        WidgetsBindingObserver,
+        ResourceManagerMixin,
+        TickerProviderStateMixin {
   late final String _currentUserId;
   String _groupChatId = '';
 
-  
   late final TextEditingController _inputController;
   late final ScrollController _scrollController;
   late final FocusNode _focusNode;
 
-  
   late final AnimationController _sendBtnAnim;
   late final AnimationController _fabAnim;
   late final AnimationController _menuAnim;
@@ -79,11 +70,9 @@ class ChatPageState extends State<ChatPage>
   late final AnimationController _appBarAnim;
   late final AnimationController _msgEntryAnim;
 
-  
   static const _miniChatChannel = MethodChannel('mini_chat_channel');
   static const _bubbleChannel = MethodChannel('bubble_chat_channel');
 
-  
   late ChatProvider _chatProvider;
   late AuthProvider _authProvider;
   late MessageProvider _messageProvider;
@@ -99,11 +88,9 @@ class ChatPageState extends State<ChatPage>
   VoiceMessageProvider? _voiceProvider;
   LocationProvider? _locationProvider;
 
-  
   int _limit = 30;
   final int _limitIncrement = 20;
 
-  
   bool _isLoading = false;
   bool _isShowSticker = false;
   bool _isLoadingMedia = false;
@@ -114,12 +101,10 @@ class ChatPageState extends State<ChatPage>
   bool _lockChecked = false;
   bool _isProcessingMsg = false;
 
-  
   String _recDuration = '0:00';
   int _recSeconds = 0;
   Timer? _recTimer;
 
-  
   List<DocumentSnapshot> _pinned = [];
   List<SmartReply> _smartReplies = [];
   MessageChat? _replyingTo;
@@ -132,10 +117,6 @@ class ChatPageState extends State<ChatPage>
 
   final ImagePicker _picker = ImagePicker();
 
-  
-  
-  
-
   @override
   void initState() {
     super.initState();
@@ -144,13 +125,19 @@ class ChatPageState extends State<ChatPage>
     _scrollController = ScrollController();
     _focusNode = FocusNode();
 
-    _sendBtnAnim = AnimationController(vsync: this, duration: const Duration(milliseconds: 180));
-    _fabAnim = AnimationController(vsync: this, duration: const Duration(milliseconds: 260));
-    _menuAnim = AnimationController(vsync: this, duration: const Duration(milliseconds: 260));
-    _replyAnim = AnimationController(vsync: this, duration: const Duration(milliseconds: 260));
-    _appBarAnim = AnimationController(vsync: this, duration: const Duration(milliseconds: 400))
+    _sendBtnAnim = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 180));
+    _fabAnim = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 260));
+    _menuAnim = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 260));
+    _replyAnim = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 260));
+    _appBarAnim = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 400))
       ..forward();
-    _msgEntryAnim = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
+    _msgEntryAnim = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 300));
 
     resourceManager
       ..addAnimationController(_sendBtnAnim)
@@ -208,7 +195,10 @@ class ChatPageState extends State<ChatPage>
       if (_presenceProvider != null && _currentUserId.isNotEmpty) {
         _presenceProvider!
           ..setUserOffline(_currentUserId)
-          ..setTypingStatus(conversationId: _groupChatId, userId: _currentUserId, isTyping: false);
+          ..setTypingStatus(
+              conversationId: _groupChatId,
+              userId: _currentUserId,
+              isTyping: false);
       }
     } catch (_) {}
     try {
@@ -216,10 +206,6 @@ class ChatPageState extends State<ChatPage>
     } catch (_) {}
     super.dispose();
   }
-
-  
-  
-  
 
   void _initProviders(BuildContext ctx) {
     if (resourceManager.isDisposed) return;
@@ -237,17 +223,20 @@ class ChatPageState extends State<ChatPage>
     _presenceProvider = ctx.read<UserPresenceProvider>();
     _bubbleService = ctx.read<UnifiedBubbleService>();
 
-    PushNotificationService.initialize().catchError((e) => debugPrint('⚠️ Push: $e'));
+    PushNotificationService.initialize()
+        .catchError((e) => debugPrint('⚠️ Push: $e'));
 
     final sub = _bubbleService?.bubbleClickStream.listen((event) {
       if (event.userId == widget.arguments.peerId && mounted) {
-        _toast('📨 ${widget.arguments.peerNickname}: ${event.message}', isSuccess: true);
+        _toast('📨 ${widget.arguments.peerNickname}: ${event.message}',
+            isSuccess: true);
       }
     });
     if (sub != null) resourceManager.addSubscription(sub);
 
     try {
-      _voiceProvider = VoiceMessageProvider(firebaseStorage: _chatProvider.firebaseStorage);
+      _voiceProvider =
+          VoiceMessageProvider(firebaseStorage: _chatProvider.firebaseStorage);
     } catch (_) {}
     _locationProvider = LocationProvider();
 
@@ -265,8 +254,8 @@ class ChatPageState extends State<ChatPage>
   void _readLocal() {
     final uid = _authProvider.userFirebaseId;
     if (uid == null || uid.isEmpty) {
-      Navigator.of(context)
-          .pushAndRemoveUntil(MaterialPageRoute(builder: (_) => LoginPage()), (_) => false);
+      Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => LoginPage()), (_) => false);
       return;
     }
     _currentUserId = uid;
@@ -293,10 +282,6 @@ class ChatPageState extends State<ChatPage>
     });
   }
 
-  
-  
-  
-
   void _onScroll() {
     if (resourceManager.isDisposed || !_scrollController.hasClients) return;
     final pos = _scrollController.position;
@@ -320,12 +305,9 @@ class ChatPageState extends State<ChatPage>
   void _scrollToBottom() {
     if (!_scrollController.hasClients) return;
     _scrollController.animateTo(0,
-        duration: const Duration(milliseconds: 400), curve: Curves.easeOutCubic);
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeOutCubic);
   }
-
-  
-  
-  
 
   void _onInputChanged() {
     if (_inputController.text.trim().isNotEmpty) {
@@ -360,21 +342,25 @@ class ChatPageState extends State<ChatPage>
     if (text.isEmpty) {
       if (_isTyping) {
         _isTyping = false;
-        _presenceProvider!
-            .setTypingStatus(conversationId: _groupChatId, userId: _currentUserId, isTyping: false);
+        _presenceProvider!.setTypingStatus(
+            conversationId: _groupChatId,
+            userId: _currentUserId,
+            isTyping: false);
       }
       return;
     }
     if (!_isTyping) {
       _isTyping = true;
-      _presenceProvider!
-          .setTypingStatus(conversationId: _groupChatId, userId: _currentUserId, isTyping: true);
+      _presenceProvider!.setTypingStatus(
+          conversationId: _groupChatId, userId: _currentUserId, isTyping: true);
     }
     resourceManager.addDelayedTimer(const Duration(seconds: 3), () {
       if (!resourceManager.isDisposed) {
         _isTyping = false;
         _presenceProvider?.setTypingStatus(
-            conversationId: _groupChatId, userId: _currentUserId, isTyping: false);
+            conversationId: _groupChatId,
+            userId: _currentUserId,
+            isTyping: false);
       }
     });
   }
@@ -402,10 +388,6 @@ class ChatPageState extends State<ChatPage>
     ));
   }
 
-  
-  
-  
-
   Future<void> _onSend(String content, int type) async {
     if (resourceManager.isDisposed) return;
     if (content.trim().isEmpty && type == TypeMessage.text) {
@@ -428,9 +410,10 @@ class ChatPageState extends State<ChatPage>
     }
 
     try {
-      await _chatProvider.sendMessage(
-          finalContent, type, _groupChatId, _currentUserId, widget.arguments.peerId);
-      ErrorLogger.logMessageSent(conversationId: _groupChatId, messageType: type);
+      await _chatProvider.sendMessage(finalContent, type, _groupChatId,
+          _currentUserId, widget.arguments.peerId);
+      ErrorLogger.logMessageSent(
+          conversationId: _groupChatId, messageType: type);
       await _updateBubble(finalContent, type, fromUser: true);
     } catch (e) {
       ErrorLogger.logError(e, null, context: 'SendMessage');
@@ -441,21 +424,21 @@ class ChatPageState extends State<ChatPage>
     try {
       final msgId = DateTime.now().millisecondsSinceEpoch.toString();
       await _autoDeleteProvider.scheduleMessageDeletion(
-          groupChatId: _groupChatId, messageId: msgId, conversationId: _groupChatId);
+          groupChatId: _groupChatId,
+          messageId: msgId,
+          conversationId: _groupChatId);
     } catch (_) {}
 
     if (!resourceManager.isDisposed) _loadSmartReplies();
     if (_scrollController.hasClients) {
       _scrollController.animateTo(0,
-          duration: const Duration(milliseconds: 280), curve: Curves.easeOutCubic);
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic);
     }
   }
 
-  
-  
-  
-
-  Future<void> _updateBubble(String content, int type, {required bool fromUser}) async {
+  Future<void> _updateBubble(String content, int type,
+      {required bool fromUser}) async {
     if (_bubbleService == null || resourceManager.isDisposed) return;
     if (!_bubbleService!.isBubbleActive(widget.arguments.peerId)) return;
     String msgType = 'text', display = content;
@@ -473,7 +456,8 @@ class ChatPageState extends State<ChatPage>
         display = '🎤 Thoại';
         break;
       default:
-        if (content.contains('maps.google.com') || content.contains('Location:')) {
+        if (content.contains('maps.google.com') ||
+            content.contains('Location:')) {
           msgType = 'location';
           display = '📍 Vị trí';
         }
@@ -525,7 +509,8 @@ class ChatPageState extends State<ChatPage>
     final p = context.read<ThemeProvider>().palette;
     final confirmed = await _confirm(
         title: 'Gửi ${isVideo ? 'Video' : 'Ảnh'}',
-        message: 'Gửi ${isVideo ? 'video' : 'ảnh'} này đến ${widget.arguments.peerNickname}?',
+        message:
+            'Gửi ${isVideo ? 'video' : 'ảnh'} này đến ${widget.arguments.peerNickname}?',
         confirmLabel: 'Gửi',
         icon: isVideo ? Icons.videocam_rounded : Icons.image_rounded);
     if (confirmed != true || resourceManager.isDisposed) return;
@@ -541,7 +526,10 @@ class ChatPageState extends State<ChatPage>
             if (mounted) setState(() => _isLoadingMedia = v);
           });
       if (!mounted || resourceManager.isDisposed) return;
-      _toast(ok != false ? (isVideo ? '🎬 Video đã gửi' : '📷 Ảnh đã gửi') : 'Gửi thất bại',
+      _toast(
+          ok != false
+              ? (isVideo ? '🎬 Video đã gửi' : '📷 Ảnh đã gửi')
+              : 'Gửi thất bại',
           isSuccess: ok != false);
     } catch (e) {
       ErrorLogger.logError(e, null, context: 'SendMedia');
@@ -641,7 +629,8 @@ class ChatPageState extends State<ChatPage>
       }
       final data = await _locationProvider!.getCurrentLocationWithDetails();
       if (data != null && !resourceManager.isDisposed) {
-        await _onSend(_locationProvider!.formatLocationMessage(data), TypeMessage.text);
+        await _onSend(
+            _locationProvider!.formatLocationMessage(data), TypeMessage.text);
         _toast('📍 Đã chia sẻ vị trí', isSuccess: true);
       }
     } catch (_) {
@@ -663,7 +652,9 @@ class ChatPageState extends State<ChatPage>
   Future<void> _scheduleMessage() async {
     if (resourceManager.isDisposed) return;
     final result = await showDialog<Map<String, dynamic>>(
-        context: context, barrierDismissible: false, builder: (_) => ScheduleMessageDialog());
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => ScheduleMessageDialog());
     if (result == null || resourceManager.isDisposed || !mounted) return;
     final text = result['message'] as String;
     final time = result['time'] as DateTime;
@@ -682,7 +673,8 @@ class ChatPageState extends State<ChatPage>
         _scheduledContent.remove(key);
       }
     });
-    _toast('📅 Lên lịch lúc ${DateFormat('HH:mm dd/MM').format(time)}', isSuccess: true);
+    _toast('📅 Lên lịch lúc ${DateFormat('HH:mm dd/MM').format(time)}',
+        isSuccess: true);
   }
 
   void _loadSmartReplies() {
@@ -691,7 +683,8 @@ class ChatPageState extends State<ChatPage>
     if (msgs.isEmpty) return;
     final last = msgs.first;
     if (last['idFrom'] != _currentUserId && last['type'] == TypeMessage.text) {
-      final replies = _smartReplyProvider.getRuleBasedReplies(last['content'] as String? ?? '');
+      final replies = _smartReplyProvider
+          .getRuleBasedReplies(last['content'] as String? ?? '');
       if (mounted && !resourceManager.isDisposed) {
         setState(() => _smartReplies = replies);
       }
@@ -708,7 +701,9 @@ class ChatPageState extends State<ChatPage>
   }
 
   void _listenIncoming() {
-    if (resourceManager.isDisposed || _groupChatId.isEmpty || _currentUserId.isEmpty) {
+    if (resourceManager.isDisposed ||
+        _groupChatId.isEmpty ||
+        _currentUserId.isEmpty) {
       return;
     }
     final sub = FirebaseFirestore.instance
@@ -758,13 +753,33 @@ class ChatPageState extends State<ChatPage>
       if (unread.docs.isEmpty) return;
       final batch = FirebaseFirestore.instance.batch();
       for (final doc in unread.docs) {
-        batch.update(doc.reference, {'isRead': true, 'readAt': FieldValue.serverTimestamp()});
+        batch.update(doc.reference,
+            {'isRead': true, 'readAt': FieldValue.serverTimestamp()});
       }
       await batch.commit();
-      _presenceProvider?.markMessagesAsRead(conversationId: _groupChatId, userId: _currentUserId);
+      _presenceProvider?.markMessagesAsRead(
+          conversationId: _groupChatId, userId: _currentUserId);
     } catch (e) {
       ErrorLogger.logError(e, null, context: 'MarkRead');
     }
+  }
+
+  // MỞ GAME CENTER (PATCH)
+  void _openGameCenter() {
+    HapticFeedback.lightImpact();
+    // Chat 1-1: groupId dùng _groupChatId, groupName dùng peerNickname
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GameCenterHubPage(
+          groupId: _groupChatId,
+          groupName: widget.arguments.peerNickname,
+          currentUserId: _currentUserId,
+          currentUserName: _authProvider.userFirebaseId ?? _currentUserId,
+          currentUserAvatar: '',
+        ),
+      ),
+    );
   }
 
   void _showMsgOptions(MessageChat msg, String msgId) {
@@ -796,7 +811,8 @@ class ChatPageState extends State<ChatPage>
         builder: (_) => EditMessageDialog(
             originalContent: current,
             onSave: (newContent) async {
-              final ok = await _messageProvider.editMessage(_groupChatId, id, newContent);
+              final ok = await _messageProvider.editMessage(
+                  _groupChatId, id, newContent);
               if (ok) _toast('Đã chỉnh sửa', isSuccess: true);
             }));
   }
@@ -815,7 +831,8 @@ class ChatPageState extends State<ChatPage>
   }
 
   Future<void> _pinMsg(String id, bool isPinned) async {
-    final ok = await _messageProvider.togglePinMessage(_groupChatId, id, isPinned);
+    final ok =
+        await _messageProvider.togglePinMessage(_groupChatId, id, isPinned);
     if (ok) _toast(isPinned ? 'Đã bỏ ghim' : '📌 Đã ghim', isSuccess: true);
   }
 
@@ -837,11 +854,13 @@ class ChatPageState extends State<ChatPage>
     showDialog(
         context: context,
         builder: (_) => Dialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24)),
               elevation: 0,
               backgroundColor: Colors.transparent,
               child: ReactionPicker(onEmojiSelected: (emoji) {
-                _reactionProvider.toggleReaction(_groupChatId, msgId, _currentUserId, emoji);
+                _reactionProvider.toggleReaction(
+                    _groupChatId, msgId, _currentUserId, emoji);
                 Navigator.pop(context);
               }),
             ));
@@ -856,11 +875,12 @@ class ChatPageState extends State<ChatPage>
         conversationId: _groupChatId,
         reminderTime: time,
         message: msg.content);
-    _toast(reminder != null ? '⏰ Đã đặt nhắc nhở' : 'Không thể đặt', isSuccess: reminder != null);
+    _toast(reminder != null ? '⏰ Đã đặt nhắc nhở' : 'Không thể đặt',
+        isSuccess: reminder != null);
   }
 
-  Future<DateTime?> _pickReminderTime() =>
-      showDialog<DateTime>(context: context, builder: (_) => _ReminderPickerDialog());
+  Future<DateTime?> _pickReminderTime() => showDialog<DateTime>(
+      context: context, builder: (_) => _ReminderPickerDialog());
 
   void _showReminders() {
     if (resourceManager.isDisposed) return;
@@ -868,11 +888,14 @@ class ChatPageState extends State<ChatPage>
         context,
         MaterialPageRoute(
             builder: (_) => _RemindersPage(
-                currentUserId: _currentUserId, reminderProvider: _reminderProvider)));
+                currentUserId: _currentUserId,
+                reminderProvider: _reminderProvider)));
   }
 
   void _translate(String content) {
-    showDialog(context: context, builder: (_) => TranslationDialog(originalMessage: content));
+    showDialog(
+        context: context,
+        builder: (_) => TranslationDialog(originalMessage: content));
   }
 
   Future<void> _checkLock() async {
@@ -901,12 +924,14 @@ class ChatPageState extends State<ChatPage>
               errorMessage: errorMsg,
               remainingAttempts: remaining));
       if (pin == null || resourceManager.isDisposed) return false;
-      final result = await _lockProvider.verifyPIN(conversationId: _groupChatId, enteredPin: pin);
+      final result = await _lockProvider.verifyPIN(
+          conversationId: _groupChatId, enteredPin: pin);
       if (result.success) return true;
       remaining = 5 - result.failedAttempts;
       errorMsg = result.message;
       if (remaining <= 0 || result.locked) {
-        await _lockProvider.autoDeleteMessagesAfterFailedAttempts(conversationId: _groupChatId);
+        await _lockProvider.autoDeleteMessagesAfterFailedAttempts(
+            conversationId: _groupChatId);
         _toast('Đã xóa tin nhắn do vi phạm bảo mật');
         return false;
       }
@@ -916,7 +941,9 @@ class ChatPageState extends State<ChatPage>
 
   void _showLockOptions() async {
     final action = await showModalBottomSheet<String>(
-        context: context, backgroundColor: Colors.transparent, builder: (_) => _LockOptionsSheet());
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (_) => _LockOptionsSheet());
     if (action == 'set_pin' && !resourceManager.isDisposed) {
       _setPin();
     } else if (action == 'remove' && !resourceManager.isDisposed) {
@@ -928,15 +955,17 @@ class ChatPageState extends State<ChatPage>
   void _setPin() async {
     final pin = await showDialog<String>(
         context: context,
-        builder: (_) =>
-            PINInputDialog(title: 'Đặt Mã PIN', onComplete: (p) => Navigator.pop(context, p)));
+        builder: (_) => PINInputDialog(
+            title: 'Đặt Mã PIN', onComplete: (p) => Navigator.pop(context, p)));
     if (pin == null) return;
     final confirm = await showDialog<String>(
         context: context,
-        builder: (_) =>
-            PINInputDialog(title: 'Xác Nhận PIN', onComplete: (p) => Navigator.pop(context, p)));
+        builder: (_) => PINInputDialog(
+            title: 'Xác Nhận PIN',
+            onComplete: (p) => Navigator.pop(context, p)));
     if (confirm == pin && !resourceManager.isDisposed) {
-      final ok = await _lockProvider.setConversationPIN(conversationId: _groupChatId, pin: pin);
+      final ok = await _lockProvider.setConversationPIN(
+          conversationId: _groupChatId, pin: pin);
       _toast(ok ? 'Đã đặt mã PIN' : 'Lỗi đặt PIN', isSuccess: ok);
     } else if (confirm != null) {
       _toast('PIN không khớp');
@@ -952,7 +981,9 @@ class ChatPageState extends State<ChatPage>
     final recent = msgs
         .take(15)
         .map((d) {
-          final s = d['idFrom'] == _currentUserId ? 'Tôi' : widget.arguments.peerNickname;
+          final s = d['idFrom'] == _currentUserId
+              ? 'Tôi'
+              : widget.arguments.peerNickname;
           return '$s: ${d['content']}';
         })
         .toList()
@@ -963,7 +994,9 @@ class ChatPageState extends State<ChatPage>
         context: context,
         barrierDismissible: false,
         builder: (_) => _AIDialog(
-            messages: recent, palette: p, primary: context.read<ThemeProvider>().primaryColor));
+            messages: recent,
+            palette: p,
+            primary: context.read<ThemeProvider>().primaryColor));
   }
 
   Future<void> _openSearch() async {
@@ -991,11 +1024,13 @@ class ChatPageState extends State<ChatPage>
     if (idx == -1) {
       if (mounted && _limit <= all.length) {
         setState(() => _limit += _limitIncrement);
-        resourceManager.addDelayedTimer(const Duration(milliseconds: 500), () => _scrollToMsg(id));
+        resourceManager.addDelayedTimer(
+            const Duration(milliseconds: 500), () => _scrollToMsg(id));
       }
       return;
     }
-    final offset = (idx * 76.0).clamp(0.0, _scrollController.position.maxScrollExtent);
+    final offset =
+        (idx * 76.0).clamp(0.0, _scrollController.position.maxScrollExtent);
     _scrollController.animateTo(offset,
         duration: const Duration(milliseconds: 400), curve: Curves.easeInOut);
     if (mounted) setState(() => _pendingScrollId = null);
@@ -1042,7 +1077,8 @@ class ChatPageState extends State<ChatPage>
               icon: Icons.bubble_chart_rounded,
               iconColor: primary,
               palette: p,
-              content: Text('Chọn cách hiển thị:', style: TextStyle(color: p.textSecondary)),
+              content: Text('Chọn cách hiển thị:',
+                  style: TextStyle(color: p.textSecondary)),
               actions: [
                 _ThemedDialogAction(
                     label: 'Bubble',
@@ -1050,14 +1086,18 @@ class ChatPageState extends State<ChatPage>
                     palette: p,
                     primary: primary,
                     onTap: () => Navigator.pop(ctx, 'bubble')),
-                if (_bubbleService!.currentImplementation == BubbleImplementation.windowManager)
+                if (_bubbleService!.currentImplementation ==
+                    BubbleImplementation.windowManager)
                   _ThemedDialogAction(
                       label: 'Mini Chat',
                       palette: p,
                       primary: primary,
                       onTap: () => Navigator.pop(ctx, 'minichat')),
                 _ThemedDialogAction(
-                    label: 'Huỷ', palette: p, primary: primary, onTap: () => Navigator.pop(ctx)),
+                    label: 'Huỷ',
+                    palette: p,
+                    primary: primary,
+                    onTap: () => Navigator.pop(ctx)),
               ],
             ));
   }
@@ -1072,8 +1112,8 @@ class ChatPageState extends State<ChatPage>
         _menuAnim.reverse();
       }
     } else {
-      _chatProvider.updateDataFirestore(FirestoreConstants.pathUserCollection, _currentUserId,
-          {FirestoreConstants.chattingWith: null});
+      _chatProvider.updateDataFirestore(FirestoreConstants.pathUserCollection,
+          _currentUserId, {FirestoreConstants.chattingWith: null});
       Navigator.pop(context);
     }
   }
@@ -1120,7 +1160,8 @@ class ChatPageState extends State<ChatPage>
             ));
   }
 
-  bool _sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
+  bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 
   String _fmtTimestamp(String ts) {
     final ms = int.tryParse(ts) ?? 0;
@@ -1128,13 +1169,8 @@ class ChatPageState extends State<ChatPage>
     return DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(ms));
   }
 
-  
-  
-  
-
   @override
   Widget build(BuildContext context) {
-    
     final theme = context.watch<ThemeProvider>();
     final p = theme.palette;
 
@@ -1213,14 +1249,18 @@ class ChatPageState extends State<ChatPage>
         ),
       );
 
-  PreferredSizeWidget _buildAppBar(ThemePalette p, ThemeProvider theme) => PreferredSize(
+  PreferredSizeWidget _buildAppBar(ThemePalette p, ThemeProvider theme) =>
+      PreferredSize(
         preferredSize: const Size.fromHeight(64),
         child: FadeTransition(
           opacity: _appBarAnim,
           child: Container(
             decoration: BoxDecoration(
               color: p.appBarBackground,
-              boxShadow: [BoxShadow(color: p.shadow, blurRadius: 8, offset: const Offset(0, 2))],
+              boxShadow: [
+                BoxShadow(
+                    color: p.shadow, blurRadius: 8, offset: const Offset(0, 2))
+              ],
             ),
             child: AppBar(
               backgroundColor: Colors.transparent,
@@ -1248,8 +1288,8 @@ class ChatPageState extends State<ChatPage>
                       Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (_) =>
-                                  UserProfilePage(userChat: UserChat.fromDocument(doc))));
+                              builder: (_) => UserProfilePage(
+                                  userChat: UserChat.fromDocument(doc))));
                     }
                   }),
               actions: [
@@ -1279,25 +1319,38 @@ class ChatPageState extends State<ChatPage>
                       case 'bubble':
                         _createBubble();
                         break;
+                      case 'game': // THÊM MỚI
+                        _openGameCenter(); // THÊM MỚI
+                        break; // THÊM MỚI
                       case 'theme':
                         Navigator.push(
-                            context, MaterialPageRoute(builder: (_) => const ThemeSettingsPage()));
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const ThemeSettingsPage()));
                         break;
                     }
                   },
-                  icon: Icon(Icons.more_vert_rounded, size: 22, color: p.textSecondary),
+                  icon: Icon(Icons.more_vert_rounded,
+                      size: 22, color: p.textSecondary),
                   color: p.surface,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
                   itemBuilder: (_) => [
                     _popItem('ai', Icons.auto_awesome_rounded, 'AI Assistant',
                         const Color(0xFF8B5CF6), p),
-                    _popItem('search', Icons.search_rounded, 'Tìm kiếm', theme.primaryColor, p),
-                    _popItem('reminders', Icons.alarm_rounded, 'Nhắc nhở', p.warningColor, p),
+                    _popItem('game', Icons.sports_esports_rounded,
+                        'Game Center', const Color(0xFF9C27B0), p), // THÊM MỚI
+                    _popItem('search', Icons.search_rounded, 'Tìm kiếm',
+                        theme.primaryColor, p),
+                    _popItem('reminders', Icons.alarm_rounded, 'Nhắc nhở',
+                        p.warningColor, p),
                     const PopupMenuDivider(),
-                    _popItem('lock', Icons.lock_rounded, 'Khoá chat', p.infoColor, p),
-                    _popItem(
-                        'bubble', Icons.bubble_chart_rounded, 'Chat Bubble', p.successColor, p),
-                    _popItem('theme', Icons.palette_rounded, 'Giao diện', theme.primaryColor, p),
+                    _popItem('lock', Icons.lock_rounded, 'Khoá chat',
+                        p.infoColor, p),
+                    _popItem('bubble', Icons.bubble_chart_rounded,
+                        'Chat Bubble', p.successColor, p),
+                    _popItem('theme', Icons.palette_rounded, 'Giao diện',
+                        theme.primaryColor, p),
                   ],
                 ),
                 const SizedBox(width: 4),
@@ -1307,8 +1360,8 @@ class ChatPageState extends State<ChatPage>
         ),
       );
 
-  PopupMenuItem<String> _popItem(
-          String value, IconData icon, String label, Color color, ThemePalette p) =>
+  PopupMenuItem<String> _popItem(String value, IconData icon, String label,
+          Color color, ThemePalette p) =>
       PopupMenuItem(
           value: value,
           child: Row(children: [
@@ -1316,16 +1369,16 @@ class ChatPageState extends State<ChatPage>
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                    color: color.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8)),
                 child: Icon(icon, color: color, size: 17)),
             const SizedBox(width: 10),
             Text(label,
-                style: TextStyle(color: p.textPrimary, fontSize: 14, fontWeight: FontWeight.w500)),
+                style: TextStyle(
+                    color: p.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500)),
           ]));
-
-  
-  
-  
 
   Widget _buildBody(ThemePalette p, ThemeProvider theme) {
     return ChatWallpaperWidget(
@@ -1348,7 +1401,8 @@ class ChatPageState extends State<ChatPage>
             ],
           ),
           if (_isLoading) const Positioned.fill(child: LoadingView()),
-          if (_isLoadingMedia) Positioned.fill(child: _buildMediaOverlay(p, theme)),
+          if (_isLoadingMedia)
+            Positioned.fill(child: _buildMediaOverlay(p, theme)),
         ],
       ),
     );
@@ -1358,8 +1412,9 @@ class ChatPageState extends State<ChatPage>
     if (_pinned.isEmpty) return const SizedBox.shrink();
     return Container(
       height: 44,
-      decoration:
-          BoxDecoration(color: p.surface, border: Border(bottom: BorderSide(color: p.divider))),
+      decoration: BoxDecoration(
+          color: p.surface,
+          border: Border(bottom: BorderSide(color: p.divider))),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -1373,7 +1428,9 @@ class ChatPageState extends State<ChatPage>
             decoration: BoxDecoration(
               color: p.pinnedBackground,
               borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: theme.primaryColor.withValues(alpha: 0.25), width: 0.8),
+              border: Border.all(
+                  color: theme.primaryColor.withValues(alpha: 0.25),
+                  width: 0.8),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(Icons.push_pin_rounded, size: 12, color: theme.primaryColor),
@@ -1383,7 +1440,9 @@ class ChatPageState extends State<ChatPage>
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                          fontSize: 12, color: theme.primaryColor, fontWeight: FontWeight.w600))),
+                          fontSize: 12,
+                          color: theme.primaryColor,
+                          fontWeight: FontWeight.w600))),
             ]),
           );
         },
@@ -1406,14 +1465,16 @@ class ChatPageState extends State<ChatPage>
                     Container(
                         width: 80,
                         height: 80,
-                        decoration:
-                            BoxDecoration(color: p.primaryContainer, shape: BoxShape.circle),
+                        decoration: BoxDecoration(
+                            color: p.primaryContainer, shape: BoxShape.circle),
                         child: Icon(Icons.chat_bubble_outline_rounded,
                             size: 36, color: theme.primaryColor)),
                     const SizedBox(height: 16),
                     Text('Bắt đầu cuộc trò chuyện',
                         style: TextStyle(
-                            color: p.textSecondary, fontWeight: FontWeight.w600, fontSize: 15)),
+                            color: p.textSecondary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15)),
                     const SizedBox(height: 6),
                     Text('Hãy gửi tin nhắn đầu tiên! 👋',
                         style: TextStyle(color: p.textHint, fontSize: 13)),
@@ -1425,27 +1486,33 @@ class ChatPageState extends State<ChatPage>
                     controller: _scrollController,
                     reverse: true,
                     padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                    physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+                    physics: const BouncingScrollPhysics(
+                        parent: AlwaysScrollableScrollPhysics()),
                     itemCount: display.length,
-                    itemBuilder: (_, i) => _buildMsgItem(i, display[i], display, p, theme),
+                    itemBuilder: (_, i) =>
+                        _buildMsgItem(i, display[i], display, p, theme),
                   ),
                   Positioned(
                     right: 12,
                     bottom: 12,
                     child: ScaleTransition(
-                      scale: CurvedAnimation(parent: _fabAnim, curve: Curves.elasticOut),
-                      child: _ScrollFab(onTap: _scrollToBottom, palette: p, theme: theme),
+                      scale: CurvedAnimation(
+                          parent: _fabAnim, curve: Curves.elasticOut),
+                      child: _ScrollFab(
+                          onTap: _scrollToBottom, palette: p, theme: theme),
                     ),
                   ),
                 ]);
               },
             )
-          : Center(child: CircularProgressIndicator(color: theme.primaryColor, strokeWidth: 2)),
+          : Center(
+              child: CircularProgressIndicator(
+                  color: theme.primaryColor, strokeWidth: 2)),
     );
   }
 
-  Widget _buildMsgItem(int index, Map<dynamic, dynamic> data, List<Map<dynamic, dynamic>> full,
-      ThemePalette p, ThemeProvider theme) {
+  Widget _buildMsgItem(int index, Map<dynamic, dynamic> data,
+      List<Map<dynamic, dynamic>> full, ThemePalette p, ThemeProvider theme) {
     final isHighlighted = _pendingScrollId == data['messageId'];
     final isPending = data['status'] == 'pending';
     final msg = MessageChat(
@@ -1462,11 +1529,14 @@ class ChatPageState extends State<ChatPage>
     Widget? sep;
     if (index == full.length - 1 ||
         !_sameDay(
-            DateTime.fromMillisecondsSinceEpoch(int.tryParse(msg.timestamp) ?? 0),
+            DateTime.fromMillisecondsSinceEpoch(
+                int.tryParse(msg.timestamp) ?? 0),
             DateTime.fromMillisecondsSinceEpoch(
                 int.tryParse(full[index + 1]['timestamp'] ?? '0') ?? 0))) {
       sep = _DateDivider(
-          date: DateTime.fromMillisecondsSinceEpoch(int.tryParse(msg.timestamp) ?? 0), palette: p);
+          date: DateTime.fromMillisecondsSinceEpoch(
+              int.tryParse(msg.timestamp) ?? 0),
+          palette: p);
     }
 
     final bubble = _buildBubble(
@@ -1481,7 +1551,9 @@ class ChatPageState extends State<ChatPage>
 
     return Column(children: [
       SwipeToReplyWrapper(
-          isMe: msg.idFrom == _currentUserId, onSwipe: () => _setReply(msg), child: bubble),
+          isMe: msg.idFrom == _currentUserId,
+          onSwipe: () => _setReply(msg),
+          child: bubble),
       if (sep != null) sep,
     ]);
   }
@@ -1523,7 +1595,9 @@ class ChatPageState extends State<ChatPage>
       return wrap(Align(
           alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
           child: VoiceMessageWidget(
-              voiceUrl: msg.content, isMyMessage: isMe, voiceProvider: _voiceProvider!)));
+              voiceUrl: msg.content,
+              isMyMessage: isMe,
+              voiceProvider: _voiceProvider!)));
     }
     if (msg.type == TypeMessage.video) {
       return wrap(_buildVideoBubble(
@@ -1586,15 +1660,19 @@ class ChatPageState extends State<ChatPage>
     return Container(
       margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
       child: Column(
-        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        crossAxisAlignment:
+            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+            mainAxisAlignment:
+                isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               if (!isMe && isLastInGroup && theme.showAvatarsInChat) ...[
                 _Avatar(
-                    photoUrl: widget.arguments.peerAvatar, radius: 16, primary: theme.primaryColor),
+                    photoUrl: widget.arguments.peerAvatar,
+                    radius: 16,
+                    primary: theme.primaryColor),
                 const SizedBox(width: 6),
               ] else if (!isMe) ...[
                 SizedBox(width: theme.showAvatarsInChat ? 38 : 0),
@@ -1610,7 +1688,8 @@ class ChatPageState extends State<ChatPage>
                 },
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * theme.bubbleMaxWidthFactor),
+                      maxWidth: MediaQuery.of(context).size.width *
+                          theme.bubbleMaxWidthFactor),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
                     padding: theme.bubblePadding,
@@ -1626,22 +1705,29 @@ class ChatPageState extends State<ChatPage>
                           : theme.incomingRadius(isLastInGroup),
                       boxShadow: [
                         BoxShadow(
-                            color: isMe ? theme.primaryColor.withValues(alpha: 0.25) : p.shadow,
+                            color: isMe
+                                ? theme.primaryColor.withValues(alpha: 0.25)
+                                : p.shadow,
                             blurRadius: 8,
                             offset: const Offset(0, 3))
                       ],
-                      border: isMe ? null : Border.all(color: p.divider, width: 0.5),
+                      border: isMe
+                          ? null
+                          : Border.all(color: p.divider, width: 0.5),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (!isMe && isScam) _ScamWarning(reason: scamReason, palette: p),
-                        if (!isMe && hasReminder) _ReminderHint(onView: _showReminders, palette: p),
+                        if (!isMe && isScam)
+                          _ScamWarning(reason: scamReason, palette: p),
+                        if (!isMe && hasReminder)
+                          _ReminderHint(onView: _showReminders, palette: p),
                         if (msg.isDeleted)
                           Row(mainAxisSize: MainAxisSize.min, children: [
                             Icon(Icons.block_rounded,
-                                size: 13, color: isMe ? Colors.white54 : p.textHint),
+                                size: 13,
+                                color: isMe ? Colors.white54 : p.textHint),
                             const SizedBox(width: 6),
                             Text('Tin nhắn đã xóa',
                                 style: TextStyle(
@@ -1663,7 +1749,8 @@ class ChatPageState extends State<ChatPage>
                               styleSheet: MarkdownStyleSheet(
                                   p: TextStyle(
                                       fontSize: 15 * fs,
-                                      color: isMe ? Colors.white : p.incomingText,
+                                      color:
+                                          isMe ? Colors.white : p.incomingText,
                                       height: 1.5)))
                         else
                           Text(msg.content,
@@ -1681,7 +1768,8 @@ class ChatPageState extends State<ChatPage>
                                   Text('(đã sửa) ',
                                       style: TextStyle(
                                           fontSize: 10,
-                                          color: Colors.white.withValues(alpha: 0.6))),
+                                          color: Colors.white
+                                              .withValues(alpha: 0.6))),
                                 Icon(
                                     isPending
                                         ? Icons.schedule_rounded
@@ -1735,8 +1823,8 @@ class ChatPageState extends State<ChatPage>
               currentUserId: _currentUserId,
               isMe: isMe,
               provider: _reactionProvider,
-              onTap: (emoji) =>
-                  _reactionProvider.toggleReaction(_groupChatId, msgId, _currentUserId, emoji)),
+              onTap: (emoji) => _reactionProvider.toggleReaction(
+                  _groupChatId, msgId, _currentUserId, emoji)),
           if (isLastInGroup || theme.showTimestampAlways)
             Padding(
                 padding: EdgeInsets.only(
@@ -1765,7 +1853,9 @@ class ChatPageState extends State<ChatPage>
         onTap: () {
           if (!isPending) {
             Navigator.push(
-                context, MaterialPageRoute(builder: (_) => FullPhotoPage(url: msg.content)));
+                context,
+                MaterialPageRoute(
+                    builder: (_) => FullPhotoPage(url: msg.content)));
           }
         },
         onLongPress: () => _showMsgOptions(msg, msgId),
@@ -1775,7 +1865,8 @@ class ChatPageState extends State<ChatPage>
               width: MediaQuery.of(context).size.width * 0.62,
               height: 220,
               child: isPending
-                  ? _MediaPlaceholder(isLoading: true, palette: p, primary: theme.primaryColor)
+                  ? _MediaPlaceholder(
+                      isLoading: true, palette: p, primary: theme.primaryColor)
                   : Image.network(msg.content,
                       fit: BoxFit.cover,
                       loadingBuilder: (_, child, prog) => prog == null
@@ -1785,10 +1876,13 @@ class ChatPageState extends State<ChatPage>
                               palette: p,
                               primary: theme.primaryColor,
                               progress: prog.expectedTotalBytes != null
-                                  ? prog.cumulativeBytesLoaded / prog.expectedTotalBytes!
+                                  ? prog.cumulativeBytesLoaded /
+                                      prog.expectedTotalBytes!
                                   : null),
                       errorBuilder: (_, __, ___) => _MediaPlaceholder(
-                          isLoading: false, palette: p, primary: theme.primaryColor))),
+                          isLoading: false,
+                          palette: p,
+                          primary: theme.primaryColor))),
         ),
       ),
     );
@@ -1812,7 +1906,9 @@ class ChatPageState extends State<ChatPage>
         onTap: () {
           if (!isPending) {
             Navigator.push(
-                context, MaterialPageRoute(builder: (_) => VideoPlayerPage(videoUrl: videoUrl)));
+                context,
+                MaterialPageRoute(
+                    builder: (_) => VideoPlayerPage(videoUrl: videoUrl)));
           }
         },
         onLongPress: () => _showMsgOptions(msg, msgId),
@@ -1823,18 +1919,24 @@ class ChatPageState extends State<ChatPage>
               borderRadius: BorderRadius.circular(20),
               color: Colors.black,
               boxShadow: [
-                BoxShadow(color: p.shadowStrong, blurRadius: 12, offset: const Offset(0, 4))
+                BoxShadow(
+                    color: p.shadowStrong,
+                    blurRadius: 12,
+                    offset: const Offset(0, 4))
               ]),
           clipBehavior: Clip.hardEdge,
           child: Stack(fit: StackFit.expand, children: [
             if (thumbUrl.isNotEmpty && !isPending)
               Image.network(thumbUrl,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFF1F2937)))
+                  errorBuilder: (_, __, ___) =>
+                      const ColoredBox(color: Color(0xFF1F2937)))
             else
               const ColoredBox(color: Color(0xFF1F2937)),
             if (isPending)
-              const Center(child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              const Center(
+                  child: CircularProgressIndicator(
+                      color: Colors.white, strokeWidth: 2))
             else
               Center(
                   child: Container(
@@ -1844,7 +1946,9 @@ class ChatPageState extends State<ChatPage>
                           color: Colors.white.withValues(alpha: 0.92),
                           shape: BoxShape.circle,
                           boxShadow: [
-                            BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 8)
+                            BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.2),
+                                blurRadius: 8)
                           ]),
                       child: const Icon(Icons.play_arrow_rounded,
                           size: 30, color: Color(0xFF1A1D2E)))),
@@ -1852,13 +1956,16 @@ class ChatPageState extends State<ChatPage>
               bottom: 8,
               right: 10,
               child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration:
-                      BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(8)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(8)),
                   child: const Row(mainAxisSize: MainAxisSize.min, children: [
                     Icon(Icons.videocam_rounded, size: 11, color: Colors.white),
                     SizedBox(width: 3),
-                    Text('Video', style: TextStyle(fontSize: 10, color: Colors.white)),
+                    Text('Video',
+                        style: TextStyle(fontSize: 10, color: Colors.white)),
                   ])),
             ),
           ]),
@@ -1884,8 +1991,8 @@ class ChatPageState extends State<ChatPage>
 
   Widget _buildStickerPanel(ThemePalette p, ThemeProvider theme) {
     return Container(
-      decoration:
-          BoxDecoration(color: p.surface, border: Border(top: BorderSide(color: p.divider))),
+      decoration: BoxDecoration(
+          color: p.surface, border: Border(top: BorderSide(color: p.divider))),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1899,21 +2006,23 @@ class ChatPageState extends State<ChatPage>
                           3,
                           (col) => _StickerItem(
                               name: 'mimi${row * 3 + col + 1}',
-                              onTap: () =>
-                                  _onSend('mimi${row * 3 + col + 1}', TypeMessage.sticker))))))),
+                              onTap: () => _onSend('mimi${row * 3 + col + 1}',
+                                  TypeMessage.sticker))))))),
     );
   }
 
   Widget _buildFeatureMenu(ThemePalette p, ThemeProvider theme) {
     final items = <_FeatureItem>[
       _FeatureItem(Icons.image_rounded, 'Ảnh', _pickImage, theme.primaryColor),
-      _FeatureItem(Icons.videocam_rounded, 'Video', _pickVideo, const Color(0xFFFF6B9D)),
+      _FeatureItem(
+          Icons.videocam_rounded, 'Video', _pickVideo, const Color(0xFFFF6B9D)),
       _FeatureItem(
           Icons.visibility_off_rounded,
           'View Once',
           () => showDialog(
               context: context,
-              builder: (_) => SendViewOnceDialog(onSend: (content, type, dur) async {
+              builder: (_) =>
+                  SendViewOnceDialog(onSend: (content, type, dur) async {
                     await _viewOnceProvider.sendViewOnceMessage(
                         groupChatId: _groupChatId,
                         currentUserId: _currentUserId,
@@ -1932,14 +2041,21 @@ class ChatPageState extends State<ChatPage>
                   conversationId: _groupChatId, provider: _autoDeleteProvider)),
           p.warningColor),
       _FeatureItem(Icons.lock_rounded, 'Khoá', _showLockOptions, p.infoColor),
-      _FeatureItem(Icons.location_on_rounded, 'Vị trí', _shareLocation, p.dangerColor),
-      _FeatureItem(Icons.schedule_send_rounded, 'Lên lịch', _scheduleMessage, p.successColor),
-      _FeatureItem(Icons.bubble_chart_rounded, 'Bubble', _createBubble, theme.primaryColor),
+      _FeatureItem(
+          Icons.location_on_rounded, 'Vị trí', _shareLocation, p.dangerColor),
+      _FeatureItem(Icons.schedule_send_rounded, 'Lên lịch', _scheduleMessage,
+          p.successColor),
+      _FeatureItem(Icons.bubble_chart_rounded, 'Bubble', _createBubble,
+          theme.primaryColor),
+      // THÊM MỚI: Menu item cho Game Center
+      _FeatureItem(Icons.sports_esports_rounded, 'Game', _openGameCenter,
+          const Color(0xFF9C27B0)),
     ];
 
     return SlideTransition(
       position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
-          .animate(CurvedAnimation(parent: _menuAnim, curve: Curves.easeOutCubic)),
+          .animate(
+              CurvedAnimation(parent: _menuAnim, curve: Curves.easeOutCubic)),
       child: Container(
         constraints: const BoxConstraints(maxHeight: 120),
         decoration: BoxDecoration(
@@ -1960,8 +2076,10 @@ class ChatPageState extends State<ChatPage>
                         },
                         child: Container(
                           width: 72,
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-                          child: Column(mainAxisSize: MainAxisSize.min, children: [
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 4, vertical: 6),
+                          child:
+                              Column(mainAxisSize: MainAxisSize.min, children: [
                             Container(
                                 width: 46,
                                 height: 46,
@@ -1969,8 +2087,11 @@ class ChatPageState extends State<ChatPage>
                                     color: item.color.withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(14),
                                     border: Border.all(
-                                        color: item.color.withValues(alpha: 0.2), width: 0.8)),
-                                child: Icon(item.icon, color: item.color, size: 22)),
+                                        color:
+                                            item.color.withValues(alpha: 0.2),
+                                        width: 0.8)),
+                                child: Icon(item.icon,
+                                    color: item.color, size: 22)),
                             const SizedBox(height: 5),
                             Text(item.label,
                                 style: TextStyle(
@@ -1995,16 +2116,26 @@ class ChatPageState extends State<ChatPage>
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
           color: p.dangerColor.withValues(alpha: 0.05),
-          border: Border(top: BorderSide(color: p.dangerColor.withValues(alpha: 0.2)))),
+          border: Border(
+              top: BorderSide(color: p.dangerColor.withValues(alpha: 0.2)))),
       child: Row(children: [
         _RecDot(color: p.dangerColor),
         const SizedBox(width: 10),
         Text('Đang ghi âm  $_recDuration',
-            style: TextStyle(color: p.dangerColor, fontWeight: FontWeight.w600, fontSize: 14)),
+            style: TextStyle(
+                color: p.dangerColor,
+                fontWeight: FontWeight.w600,
+                fontSize: 14)),
         const Spacer(),
-        _IconBtn(icon: Icons.delete_outline_rounded, color: p.dangerColor, onTap: _cancelRec),
+        _IconBtn(
+            icon: Icons.delete_outline_rounded,
+            color: p.dangerColor,
+            onTap: _cancelRec),
         const SizedBox(width: 6),
-        _IconBtn(icon: Icons.send_rounded, color: theme.primaryColor, onTap: _stopRec),
+        _IconBtn(
+            icon: Icons.send_rounded,
+            color: theme.primaryColor,
+            onTap: _stopRec),
       ]),
     );
   }
@@ -2033,7 +2164,10 @@ class ChatPageState extends State<ChatPage>
       _buildRecBar(p, theme),
       Container(
         margin: EdgeInsets.only(
-            bottom: MediaQuery.of(context).padding.bottom + 10, left: 12, right: 12, top: 6),
+            bottom: MediaQuery.of(context).padding.bottom + 10,
+            left: 12,
+            right: 12,
+            top: 6),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           AnimatedSize(
             duration: const Duration(milliseconds: 260),
@@ -2042,14 +2176,18 @@ class ChatPageState extends State<ChatPage>
                 ? const SizedBox.shrink()
                 : Container(
                     margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
                     decoration: BoxDecoration(
                         color: p.surface,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border(left: BorderSide(color: theme.primaryColor, width: 3)),
+                        border: Border(
+                            left: BorderSide(
+                                color: theme.primaryColor, width: 3)),
                         boxShadow: [BoxShadow(color: p.shadow, blurRadius: 6)]),
                     child: Row(children: [
-                      Icon(Icons.reply_rounded, color: theme.primaryColor, size: 17),
+                      Icon(Icons.reply_rounded,
+                          color: theme.primaryColor, size: 17),
                       const SizedBox(width: 8),
                       Expanded(
                           child: Text('Trả lời: ${_replyingTo!.content}',
@@ -2067,7 +2205,8 @@ class ChatPageState extends State<ChatPage>
                             _focusNode.requestFocus();
                           }
                         },
-                        child: Icon(Icons.close_rounded, size: 17, color: p.textHint),
+                        child: Icon(Icons.close_rounded,
+                            size: 17, color: p.textHint),
                       ),
                     ]),
                   ),
@@ -2076,7 +2215,12 @@ class ChatPageState extends State<ChatPage>
             decoration: BoxDecoration(
                 color: p.surface,
                 borderRadius: BorderRadius.circular(28),
-                boxShadow: [BoxShadow(color: p.shadow, blurRadius: 12, offset: const Offset(0, 3))],
+                boxShadow: [
+                  BoxShadow(
+                      color: p.shadow,
+                      blurRadius: 12,
+                      offset: const Offset(0, 3))
+                ],
                 border: Border.all(color: p.inputBorder, width: 0.6)),
             child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
               if (full)
@@ -2101,14 +2245,17 @@ class ChatPageState extends State<ChatPage>
                           duration: const Duration(milliseconds: 260),
                           curve: Curves.easeOutBack,
                           child: Icon(Icons.add_circle_rounded,
-                              color: _showMenu ? theme.primaryColor : p.textHint, size: 28))),
+                              color:
+                                  _showMenu ? theme.primaryColor : p.textHint,
+                              size: 28))),
                 ),
               if (full && !_showMenu)
                 GestureDetector(
                   onTap: _pickImage,
                   child: Padding(
                       padding: const EdgeInsets.all(10),
-                      child: Icon(Icons.image_rounded, color: p.textHint, size: 24)),
+                      child: Icon(Icons.image_rounded,
+                          color: p.textHint, size: 24)),
                 ),
               if (full && !_showMenu)
                 GestureDetector(
@@ -2116,15 +2263,19 @@ class ChatPageState extends State<ChatPage>
                   child: Padding(
                       padding: const EdgeInsets.all(10),
                       child: Icon(Icons.emoji_emotions_outlined,
-                          color: _isShowSticker ? theme.primaryColor : p.textHint, size: 24)),
+                          color:
+                              _isShowSticker ? theme.primaryColor : p.textHint,
+                          size: 24)),
                 ),
               Expanded(
                 child: Padding(
-                  padding: EdgeInsets.only(left: full ? 0 : 16, right: 6, top: 12, bottom: 12),
+                  padding: EdgeInsets.only(
+                      left: full ? 0 : 16, right: 6, top: 12, bottom: 12),
                   child: TextField(
                     controller: _inputController,
                     focusNode: _focusNode,
-                    style: TextStyle(color: p.textPrimary, fontSize: 15 * fs, height: 1.45),
+                    style: TextStyle(
+                        color: p.textPrimary, fontSize: 15 * fs, height: 1.45),
                     maxLines: null,
                     textInputAction: TextInputAction.newline,
                     autofocus: widget.isMiniChat || widget.isBubbleMode,
@@ -2141,7 +2292,8 @@ class ChatPageState extends State<ChatPage>
                     },
                     decoration: InputDecoration.collapsed(
                         hintText: 'Nhắn tin...',
-                        hintStyle: TextStyle(color: p.textHint, fontSize: 15 * fs)),
+                        hintStyle:
+                            TextStyle(color: p.textHint, fontSize: 15 * fs)),
                   ),
                 ),
               ),
@@ -2162,13 +2314,16 @@ class ChatPageState extends State<ChatPage>
                         width: 44,
                         height: 44,
                         decoration: BoxDecoration(
-                          gradient: hasText ? theme.outgoingBubbleGradient(p.isDark) : null,
+                          gradient: hasText
+                              ? theme.outgoingBubbleGradient(p.isDark)
+                              : null,
                           color: hasText ? null : p.surfaceVariant,
                           shape: BoxShape.circle,
                           boxShadow: hasText
                               ? [
                                   BoxShadow(
-                                      color: theme.primaryColor.withValues(alpha: 0.35),
+                                      color: theme.primaryColor
+                                          .withValues(alpha: 0.35),
                                       blurRadius: 10,
                                       offset: const Offset(0, 3))
                                 ]
@@ -2176,7 +2331,10 @@ class ChatPageState extends State<ChatPage>
                         ),
                         child: AnimatedSwitcher(
                             duration: const Duration(milliseconds: 180),
-                            child: Icon(hasText ? Icons.send_rounded : Icons.mic_rounded,
+                            child: Icon(
+                                hasText
+                                    ? Icons.send_rounded
+                                    : Icons.mic_rounded,
                                 key: ValueKey(hasText),
                                 color: hasText ? Colors.white : p.textHint,
                                 size: 20)),
@@ -2202,18 +2360,16 @@ class ChatPageState extends State<ChatPage>
               borderRadius: BorderRadius.circular(20),
               boxShadow: [BoxShadow(color: p.shadowStrong, blurRadius: 16)]),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            CircularProgressIndicator(color: theme.primaryColor, strokeWidth: 2.5),
+            CircularProgressIndicator(
+                color: theme.primaryColor, strokeWidth: 2.5),
             const SizedBox(height: 16),
             Text('Đang nén & tải lên...',
-                style: TextStyle(color: p.textPrimary, fontWeight: FontWeight.w600)),
+                style: TextStyle(
+                    color: p.textPrimary, fontWeight: FontWeight.w600)),
           ]),
         )),
       );
 }
-
-
-
-
 
 class _AppBarTitle extends StatelessWidget {
   const _AppBarTitle(
@@ -2232,7 +2388,11 @@ class _AppBarTitle extends StatelessWidget {
   Widget build(BuildContext context) => GestureDetector(
         onTap: onTap,
         child: Row(children: [
-          AvatarWithStatus(userId: peerId, photoUrl: peerAvatar, size: 40, indicatorSize: 11),
+          AvatarWithStatus(
+              userId: peerId,
+              photoUrl: peerAvatar,
+              size: 40,
+              indicatorSize: 11),
           const SizedBox(width: 10),
           Expanded(
               child: Column(
@@ -2283,21 +2443,34 @@ class _OverlayHeader extends StatelessWidget {
                   children: [
                 Text(nickname,
                     style: TextStyle(
-                        color: palette.textPrimary, fontSize: 15, fontWeight: FontWeight.w700),
+                        color: palette.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700),
                     overflow: TextOverflow.ellipsis),
                 UserStatusIndicator(
-                    userId: peerId, showText: true, size: 7, textColor: palette.textHint),
+                    userId: peerId,
+                    showText: true,
+                    size: 7,
+                    textColor: palette.textHint),
               ])),
           _IconBtn(
-              icon: Icons.remove_rounded, color: palette.textHint, onTap: onMinimize, size: 22),
+              icon: Icons.remove_rounded,
+              color: palette.textHint,
+              onTap: onMinimize,
+              size: 22),
           const SizedBox(width: 2),
-          _IconBtn(icon: Icons.close_rounded, color: palette.textHint, onTap: onClose, size: 22),
+          _IconBtn(
+              icon: Icons.close_rounded,
+              color: palette.textHint,
+              onTap: onClose,
+              size: 22),
         ]),
       );
 }
 
 class _Avatar extends StatelessWidget {
-  const _Avatar({required this.photoUrl, required this.radius, required this.primary});
+  const _Avatar(
+      {required this.photoUrl, required this.radius, required this.primary});
   final String photoUrl;
   final double radius;
   final Color primary;
@@ -2307,12 +2480,15 @@ class _Avatar extends StatelessWidget {
         radius: radius,
         backgroundColor: primary.withValues(alpha: 0.12),
         backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
-        child: photoUrl.isEmpty ? Icon(Icons.person_rounded, size: radius, color: primary) : null,
+        child: photoUrl.isEmpty
+            ? Icon(Icons.person_rounded, size: radius, color: primary)
+            : null,
       );
 }
 
 class _QuickBtn extends StatelessWidget {
-  const _QuickBtn({required this.icon, required this.onTap, required this.palette});
+  const _QuickBtn(
+      {required this.icon, required this.onTap, required this.palette});
   final IconData icon;
   final VoidCallback onTap;
   final ThemePalette palette;
@@ -2321,12 +2497,17 @@ class _QuickBtn extends StatelessWidget {
   Widget build(BuildContext context) => GestureDetector(
         onTap: onTap,
         child: Padding(
-            padding: const EdgeInsets.all(4), child: Icon(icon, size: 16, color: palette.textHint)),
+            padding: const EdgeInsets.all(4),
+            child: Icon(icon, size: 16, color: palette.textHint)),
       );
 }
 
 class _IconBtn extends StatelessWidget {
-  const _IconBtn({required this.icon, required this.color, required this.onTap, this.size = 22});
+  const _IconBtn(
+      {required this.icon,
+      required this.color,
+      required this.onTap,
+      this.size = 22});
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
@@ -2335,13 +2516,15 @@ class _IconBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) => GestureDetector(
         onTap: onTap,
-        child:
-            Padding(padding: const EdgeInsets.all(4), child: Icon(icon, color: color, size: size)),
+        child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: Icon(icon, color: color, size: size)),
       );
 }
 
 class _ScrollFab extends StatelessWidget {
-  const _ScrollFab({required this.onTap, required this.palette, required this.theme});
+  const _ScrollFab(
+      {required this.onTap, required this.palette, required this.theme});
   final VoidCallback onTap;
   final ThemePalette palette;
   final ThemeProvider theme;
@@ -2356,7 +2539,8 @@ class _ScrollFab extends StatelessWidget {
                 color: palette.surface,
                 shape: BoxShape.circle,
                 boxShadow: [BoxShadow(color: palette.shadow, blurRadius: 8)]),
-            child: Icon(Icons.keyboard_arrow_down_rounded, color: palette.textSecondary, size: 22)),
+            child: Icon(Icons.keyboard_arrow_down_rounded,
+                color: palette.textSecondary, size: 22)),
       );
 }
 
@@ -2383,23 +2567,31 @@ class _DateDivider extends StatelessWidget {
         Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
-                    color: palette.surfaceVariant, borderRadius: BorderRadius.circular(999)),
+                    color: palette.surfaceVariant,
+                    borderRadius: BorderRadius.circular(999)),
                 child: Text(label,
                     style: TextStyle(
-                        fontSize: 11, color: palette.textHint, fontWeight: FontWeight.w600)))),
+                        fontSize: 11,
+                        color: palette.textHint,
+                        fontWeight: FontWeight.w600)))),
         Expanded(child: Divider(color: palette.divider, height: 1)),
       ]),
     );
   }
 
-  bool _same(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
+  bool _same(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 }
 
 class _MediaPlaceholder extends StatelessWidget {
   const _MediaPlaceholder(
-      {required this.isLoading, required this.palette, required this.primary, this.progress});
+      {required this.isLoading,
+      required this.palette,
+      required this.primary,
+      this.progress});
   final bool isLoading;
   final ThemePalette palette;
   final Color primary;
@@ -2410,8 +2602,10 @@ class _MediaPlaceholder extends StatelessWidget {
       color: palette.surfaceVariant,
       child: Center(
           child: isLoading
-              ? CircularProgressIndicator(value: progress, color: primary, strokeWidth: 2.5)
-              : Icon(Icons.broken_image_rounded, color: palette.textHint, size: 32)));
+              ? CircularProgressIndicator(
+                  value: progress, color: primary, strokeWidth: 2.5)
+              : Icon(Icons.broken_image_rounded,
+                  color: palette.textHint, size: 32)));
 }
 
 class _RecDot extends StatefulWidget {
@@ -2422,9 +2616,9 @@ class _RecDot extends StatefulWidget {
 }
 
 class _RecDotState extends State<_RecDot> with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 700))
-        ..repeat(reverse: true);
+  late final AnimationController _ctrl = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 700))
+    ..repeat(reverse: true);
   @override
   void dispose() {
     _ctrl.dispose();
@@ -2437,7 +2631,8 @@ class _RecDotState extends State<_RecDot> with SingleTickerProviderStateMixin {
       child: Container(
           width: 8,
           height: 8,
-          decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle)));
+          decoration:
+              BoxDecoration(color: widget.color, shape: BoxShape.circle)));
 }
 
 class _StickerItem extends StatelessWidget {
@@ -2453,7 +2648,8 @@ class _StickerItem extends StatelessWidget {
               width: 56,
               height: 56,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const Icon(Icons.error, size: 40))));
+              errorBuilder: (_, __, ___) =>
+                  const Icon(Icons.error, size: 40))));
 }
 
 class _ScamWarning extends StatelessWidget {
@@ -2467,14 +2663,17 @@ class _ScamWarning extends StatelessWidget {
         decoration: BoxDecoration(
             color: palette.dangerColor.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: palette.dangerColor.withValues(alpha: 0.3))),
+            border:
+                Border.all(color: palette.dangerColor.withValues(alpha: 0.3))),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Icon(Icons.warning_rounded, color: palette.dangerColor, size: 14),
           const SizedBox(width: 6),
           Expanded(
               child: Text('CẢNH BÁO AI: $reason',
                   style: TextStyle(
-                      fontSize: 11.5, color: palette.dangerColor, fontWeight: FontWeight.w600))),
+                      fontSize: 11.5,
+                      color: palette.dangerColor,
+                      fontWeight: FontWeight.w600))),
         ]),
       );
 }
@@ -2500,7 +2699,9 @@ class _ReminderHint extends StatelessWidget {
               onTap: onView,
               child: Text('XEM',
                   style: TextStyle(
-                      fontSize: 11, color: palette.infoColor, fontWeight: FontWeight.w700))),
+                      fontSize: 11,
+                      color: palette.infoColor,
+                      fontWeight: FontWeight.w700))),
         ]),
       );
 }
@@ -2533,21 +2734,26 @@ class _LocationContent extends StatelessWidget {
         ]),
         const SizedBox(height: 4),
         Text(location.address,
-            style: TextStyle(color: isMe ? Colors.white70 : palette.textSecondary, fontSize: 12.5)),
+            style: TextStyle(
+                color: isMe ? Colors.white70 : palette.textSecondary,
+                fontSize: 12.5)),
         const SizedBox(height: 8),
         GestureDetector(
             onTap: onOpen,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                  color: isMe ? Colors.white.withValues(alpha: 0.18) : palette.primaryContainer,
+                  color: isMe
+                      ? Colors.white.withValues(alpha: 0.18)
+                      : palette.primaryContainer,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                       color: isMe
                           ? Colors.white.withValues(alpha: 0.3)
                           : theme.primaryColor.withValues(alpha: 0.3))),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.map_rounded, size: 13, color: isMe ? Colors.white : theme.primaryColor),
+                Icon(Icons.map_rounded,
+                    size: 13, color: isMe ? Colors.white : theme.primaryColor),
                 const SizedBox(width: 4),
                 Text('Xem trên Maps',
                     style: TextStyle(
@@ -2585,7 +2791,8 @@ class _ScamScanWidget extends StatelessWidget {
           onScan(statusString);
           if (statusString == 'SAFE') {
             Fluttertoast.showToast(
-                msg: '✅ Tin nhắn an toàn', backgroundColor: palette.successColor);
+                msg: '✅ Tin nhắn an toàn',
+                backgroundColor: palette.successColor);
           }
         },
         child: Container(
@@ -2593,13 +2800,17 @@ class _ScamScanWidget extends StatelessWidget {
           decoration: BoxDecoration(
               color: palette.successColor.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: palette.successColor.withValues(alpha: 0.3), width: 0.8)),
+              border: Border.all(
+                  color: palette.successColor.withValues(alpha: 0.3),
+                  width: 0.8)),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(Icons.shield_outlined, size: 13, color: palette.successColor),
             const SizedBox(width: 4),
             Text('Quét AI',
                 style: TextStyle(
-                    fontSize: 11, color: palette.successColor, fontWeight: FontWeight.w600)),
+                    fontSize: 11,
+                    color: palette.successColor,
+                    fontWeight: FontWeight.w600)),
           ]),
         ),
       );
@@ -2646,8 +2857,6 @@ class _ReactionRow extends StatelessWidget {
         },
       );
 }
-
-
 
 class _ThemedDialog extends StatelessWidget {
   const _ThemedDialog(
@@ -2697,7 +2906,8 @@ class _ThemedDialog extends StatelessWidget {
                 Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: actions
-                        .map((a) => Padding(padding: const EdgeInsets.only(left: 8), child: a))
+                        .map((a) => Padding(
+                            padding: const EdgeInsets.only(left: 8), child: a))
                         .toList()),
               ]),
         ),
@@ -2725,8 +2935,10 @@ class _ThemedDialogAction extends StatelessWidget {
           onPressed: onTap,
           style: FilledButton.styleFrom(
               backgroundColor: primary,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 18, vertical: 10)),
           child: Text(label));
     }
     if (isDanger) {
@@ -2749,16 +2961,18 @@ class _LockOptionsSheet extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-          color: p.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(28))),
+          color: p.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28))),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Container(
             width: 38,
             height: 4,
             margin: const EdgeInsets.symmetric(vertical: 10),
-            decoration: BoxDecoration(color: p.divider, borderRadius: BorderRadius.circular(999))),
+            decoration: BoxDecoration(
+                color: p.divider, borderRadius: BorderRadius.circular(999))),
         ListTile(
-            leading:
-                Icon(Icons.lock_outline_rounded, color: context.read<ThemeProvider>().primaryColor),
+            leading: Icon(Icons.lock_outline_rounded,
+                color: context.read<ThemeProvider>().primaryColor),
             title: Text('Đặt mã PIN', style: TextStyle(color: p.textPrimary)),
             onTap: () => Navigator.pop(context, 'set_pin')),
         ListTile(
@@ -2804,8 +3018,8 @@ class _ReminderPickerDialogState extends State<_ReminderPickerDialog> {
                   firstDate: DateTime.now(),
                   lastDate: DateTime.now().add(const Duration(days: 365)));
               if (d != null && mounted) {
-                setState(() =>
-                    _selected = DateTime(d.year, d.month, d.day, _selected.hour, _selected.minute));
+                setState(() => _selected = DateTime(
+                    d.year, d.month, d.day, _selected.hour, _selected.minute));
               }
             }),
         const SizedBox(height: 8),
@@ -2817,10 +3031,11 @@ class _ReminderPickerDialogState extends State<_ReminderPickerDialog> {
             primary: primary,
             onTap: () async {
               final t = await showTimePicker(
-                  context: context, initialTime: TimeOfDay.fromDateTime(_selected));
+                  context: context,
+                  initialTime: TimeOfDay.fromDateTime(_selected));
               if (t != null && mounted) {
-                setState(() => _selected =
-                    DateTime(_selected.year, _selected.month, _selected.day, t.hour, t.minute));
+                setState(() => _selected = DateTime(_selected.year,
+                    _selected.month, _selected.day, t.hour, t.minute));
               }
             }),
       ]),
@@ -2832,7 +3047,10 @@ class _ReminderPickerDialogState extends State<_ReminderPickerDialog> {
             primary: primary,
             onTap: () => Navigator.pop(context, _selected)),
         _ThemedDialogAction(
-            label: 'Huỷ', palette: p, primary: primary, onTap: () => Navigator.pop(context)),
+            label: 'Huỷ',
+            palette: p,
+            primary: primary,
+            onTap: () => Navigator.pop(context)),
       ],
     );
   }
@@ -2865,19 +3083,24 @@ class _PickerTile extends StatelessWidget {
               Icon(icon, color: primary, size: 20),
               const SizedBox(width: 12),
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(label, style: TextStyle(fontSize: 11, color: palette.textHint)),
+                Text(label,
+                    style: TextStyle(fontSize: 11, color: palette.textHint)),
                 Text(value,
                     style: TextStyle(
-                        color: palette.textPrimary, fontWeight: FontWeight.w600, fontSize: 15)),
+                        color: palette.textPrimary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15)),
               ]),
               const Spacer(),
-              Icon(Icons.chevron_right_rounded, color: palette.textHint, size: 20),
+              Icon(Icons.chevron_right_rounded,
+                  color: palette.textHint, size: 20),
             ])),
       );
 }
 
 class _RemindersPage extends StatelessWidget {
-  const _RemindersPage({required this.currentUserId, required this.reminderProvider});
+  const _RemindersPage(
+      {required this.currentUserId, required this.reminderProvider});
   final String currentUserId;
   final ReminderProvider reminderProvider;
 
@@ -2891,11 +3114,15 @@ class _RemindersPage extends StatelessWidget {
         backgroundColor: p.background,
         appBar: AppBar(
             title: Text('Nhắc nhở',
-                style: TextStyle(color: p.textPrimary, fontWeight: FontWeight.w700, fontSize: 17)),
+                style: TextStyle(
+                    color: p.textPrimary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 17)),
             backgroundColor: p.appBarBackground,
             elevation: 0,
             leading: IconButton(
-              icon: Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: theme.primaryColor),
+              icon: Icon(Icons.arrow_back_ios_new_rounded,
+                  size: 20, color: theme.primaryColor),
               onPressed: () => Navigator.pop(context),
             )),
         body: StreamBuilder<List<MessageReminder>>(
@@ -2903,7 +3130,8 @@ class _RemindersPage extends StatelessWidget {
           builder: (_, snap) {
             if (!snap.hasData) {
               return Center(
-                  child: CircularProgressIndicator(color: theme.primaryColor, strokeWidth: 2));
+                  child: CircularProgressIndicator(
+                      color: theme.primaryColor, strokeWidth: 2));
             }
             final reminders = snap.data!;
             if (reminders.isEmpty) {
@@ -2912,7 +3140,8 @@ class _RemindersPage extends StatelessWidget {
                 Icon(Icons.alarm_off_rounded, size: 60, color: p.textHint),
                 const SizedBox(height: 14),
                 Text('Chưa có nhắc nhở',
-                    style: TextStyle(color: p.textSecondary, fontWeight: FontWeight.w500)),
+                    style: TextStyle(
+                        color: p.textSecondary, fontWeight: FontWeight.w500)),
               ]));
             }
             return ListView.separated(
@@ -2927,24 +3156,30 @@ class _RemindersPage extends StatelessWidget {
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [BoxShadow(color: p.shadow, blurRadius: 8)]),
                   child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     leading: Container(
                         width: 44,
                         height: 44,
                         decoration: BoxDecoration(
                             color: theme.primaryColor.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12)),
-                        child: Icon(Icons.alarm_rounded, color: theme.primaryColor)),
+                        child: Icon(Icons.alarm_rounded,
+                            color: theme.primaryColor)),
                     title: Text(r.message,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                            color: p.textPrimary, fontSize: 14, fontWeight: FontWeight.w500)),
-                    subtitle: Text(DateFormat('dd/MM/yyyy HH:mm').format(r.reminderTime),
+                            color: p.textPrimary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500)),
+                    subtitle: Text(
+                        DateFormat('dd/MM/yyyy HH:mm').format(r.reminderTime),
                         style: TextStyle(fontSize: 11, color: p.textHint)),
                     trailing: GestureDetector(
                         onTap: () => reminderProvider.deleteReminder(r.id),
-                        child: Icon(Icons.delete_outline_rounded, color: p.dangerColor)),
+                        child: Icon(Icons.delete_outline_rounded,
+                            color: p.dangerColor)),
                   ),
                 );
               },
@@ -2957,7 +3192,8 @@ class _RemindersPage extends StatelessWidget {
 }
 
 class _AIDialog extends StatelessWidget {
-  const _AIDialog({required this.messages, required this.palette, required this.primary});
+  const _AIDialog(
+      {required this.messages, required this.palette, required this.primary});
   final List<String> messages;
   final ThemePalette palette;
   final Color primary;
@@ -2969,13 +3205,15 @@ class _AIDialog extends StatelessWidget {
         iconColor: const Color(0xFF8B5CF6),
         palette: palette,
         content: FutureBuilder<String?>(
-          future: AIBackendService().analyzeChatContext(messages, 'work', 'extract_tasks'),
+          future: AIBackendService()
+              .analyzeChatContext(messages, 'work', 'extract_tasks'),
           builder: (_, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
               return const SizedBox(
                   height: 100,
                   child: Center(
-                      child: CircularProgressIndicator(color: Color(0xFF8B5CF6), strokeWidth: 2)));
+                      child: CircularProgressIndicator(
+                          color: Color(0xFF8B5CF6), strokeWidth: 2)));
             }
             if (!snap.hasData) {
               return Text('Không thể kết nối AI lúc này.',
@@ -2987,7 +3225,8 @@ class _AIDialog extends StatelessWidget {
                   child: MarkdownBody(
                       data: snap.data!,
                       styleSheet: MarkdownStyleSheet(
-                          p: TextStyle(color: palette.textPrimary, height: 1.6))),
+                          p: TextStyle(
+                              color: palette.textPrimary, height: 1.6))),
                 ));
           },
         ),

@@ -7,6 +7,7 @@ class FirestoreConstants {
   static const String pathFriendshipCollection = 'friendships';
   static const String pathGroupCollection = 'groups';
   static const String pathConversationCollection = 'conversations';
+  static const String pathStoryCollection = 'stories';
 
   static const String pathMediaStorage = 'media';
 
