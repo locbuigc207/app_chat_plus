@@ -13,6 +13,7 @@ import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_chat_demo/utils/utils.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
+import 'package:flutter_chat_demo/widgets/link_preview_widget.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -52,10 +53,7 @@ class ChatPage extends StatefulWidget {
 }
 
 class ChatPageState extends State<ChatPage>
-    with
-        WidgetsBindingObserver,
-        ResourceManagerMixin,
-        TickerProviderStateMixin {
+    with WidgetsBindingObserver, ResourceManagerMixin, TickerProviderStateMixin {
   late final String _currentUserId;
   String _groupChatId = '';
 
@@ -115,6 +113,7 @@ class ChatPageState extends State<ChatPage>
   final Map<String, String> _scheduledContent = {};
   final Map<String, dynamic> _scamResults = {};
 
+  final Set<String> _expandedPreviews = {};
   final ImagePicker _picker = ImagePicker();
 
   @override
@@ -184,9 +183,7 @@ class ChatPageState extends State<ChatPage>
   @override
   void dispose() {
     _scheduled.forEach((_, t) {
-      try {
-        t.cancel();
-      } catch (_) {}
+      try { t.cancel(); } catch (_) {}
     });
     _scheduled.clear();
     _scheduledContent.clear();
@@ -201,9 +198,7 @@ class ChatPageState extends State<ChatPage>
               isTyping: false);
       }
     } catch (_) {}
-    try {
-      _voiceProvider?.dispose();
-    } catch (_) {}
+    try { _voiceProvider?.dispose(); } catch (_) {}
     super.dispose();
   }
 
@@ -235,8 +230,8 @@ class ChatPageState extends State<ChatPage>
     if (sub != null) resourceManager.addSubscription(sub);
 
     try {
-      _voiceProvider =
-          VoiceMessageProvider(firebaseStorage: _chatProvider.firebaseStorage);
+      _voiceProvider = VoiceMessageProvider(
+          firebaseStorage: _chatProvider.firebaseStorage);
     } catch (_) {}
     _locationProvider = LocationProvider();
 
@@ -278,6 +273,9 @@ class ChatPageState extends State<ChatPage>
       if (!resourceManager.isDisposed && mounted) {
         _markRead();
         _loadSmartReplies();
+        // Prefetch link previews for visible messages
+        final msgs = LocalDbService().getMessages(_groupChatId);
+        prefetchLinkPreviews(msgs.take(30).toList());
       }
     });
   }
@@ -294,19 +292,14 @@ class ChatPageState extends State<ChatPage>
     final show = pos.pixels > 400;
     if (show != _showScrollToBottom && mounted) {
       setState(() => _showScrollToBottom = show);
-      if (show) {
-        _fabAnim.forward();
-      } else {
-        _fabAnim.reverse();
-      }
+      if (show) { _fabAnim.forward(); } else { _fabAnim.reverse(); }
     }
   }
 
   void _scrollToBottom() {
     if (!_scrollController.hasClients) return;
     _scrollController.animateTo(0,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeOutCubic);
+        duration: const Duration(milliseconds: 400), curve: Curves.easeOutCubic);
   }
 
   void _onInputChanged() {
@@ -320,12 +313,7 @@ class ChatPageState extends State<ChatPage>
   void _onFocusChange() {
     if (resourceManager.isDisposed || !mounted) return;
     if (_focusNode.hasFocus) {
-      if (mounted) {
-        setState(() {
-          _isShowSticker = false;
-          _showMenu = false;
-        });
-      }
+      if (mounted) setState(() { _isShowSticker = false; _showMenu = false; });
       _menuAnim.reverse();
     }
   }
@@ -333,19 +321,15 @@ class ChatPageState extends State<ChatPage>
   void _handleTyping(String text) {
     if (_presenceProvider == null || resourceManager.isDisposed) return;
     _telemetryProvider.recordTextChange(text);
-
     if (_telemetryProvider.shouldSuggestElderMode) {
       _showElderModeSuggestion();
       _telemetryProvider.markAsHandled();
     }
-
     if (text.isEmpty) {
       if (_isTyping) {
         _isTyping = false;
         _presenceProvider!.setTypingStatus(
-            conversationId: _groupChatId,
-            userId: _currentUserId,
-            isTyping: false);
+            conversationId: _groupChatId, userId: _currentUserId, isTyping: false);
       }
       return;
     }
@@ -358,9 +342,7 @@ class ChatPageState extends State<ChatPage>
       if (!resourceManager.isDisposed) {
         _isTyping = false;
         _presenceProvider?.setTypingStatus(
-            conversationId: _groupChatId,
-            userId: _currentUserId,
-            isTyping: false);
+            conversationId: _groupChatId, userId: _currentUserId, isTyping: false);
       }
     });
   }
@@ -380,9 +362,7 @@ class ChatPageState extends State<ChatPage>
         label: 'BẬT',
         textColor: p.warningColor,
         onPressed: () {
-          try {
-            context.read<AppModeProvider>().setMode(AppMode.elder);
-          } catch (_) {}
+          try { context.read<AppModeProvider>().setMode(AppMode.elder); } catch (_) {}
         },
       ),
     ));
@@ -402,18 +382,14 @@ class ChatPageState extends State<ChatPage>
 
     _inputController.clear();
     if (mounted && !resourceManager.isDisposed) {
-      setState(() {
-        _replyingTo = null;
-        _smartReplies = [];
-      });
+      setState(() { _replyingTo = null; _smartReplies = []; });
       _replyAnim.reverse();
     }
 
     try {
-      await _chatProvider.sendMessage(finalContent, type, _groupChatId,
-          _currentUserId, widget.arguments.peerId);
-      ErrorLogger.logMessageSent(
-          conversationId: _groupChatId, messageType: type);
+      await _chatProvider.sendMessage(
+          finalContent, type, _groupChatId, _currentUserId, widget.arguments.peerId);
+      ErrorLogger.logMessageSent(conversationId: _groupChatId, messageType: type);
       await _updateBubble(finalContent, type, fromUser: true);
     } catch (e) {
       ErrorLogger.logError(e, null, context: 'SendMessage');
@@ -424,42 +400,27 @@ class ChatPageState extends State<ChatPage>
     try {
       final msgId = DateTime.now().millisecondsSinceEpoch.toString();
       await _autoDeleteProvider.scheduleMessageDeletion(
-          groupChatId: _groupChatId,
-          messageId: msgId,
-          conversationId: _groupChatId);
+          groupChatId: _groupChatId, messageId: msgId, conversationId: _groupChatId);
     } catch (_) {}
 
     if (!resourceManager.isDisposed) _loadSmartReplies();
     if (_scrollController.hasClients) {
       _scrollController.animateTo(0,
-          duration: const Duration(milliseconds: 280),
-          curve: Curves.easeOutCubic);
+          duration: const Duration(milliseconds: 280), curve: Curves.easeOutCubic);
     }
   }
 
-  Future<void> _updateBubble(String content, int type,
-      {required bool fromUser}) async {
+  Future<void> _updateBubble(String content, int type, {required bool fromUser}) async {
     if (_bubbleService == null || resourceManager.isDisposed) return;
     if (!_bubbleService!.isBubbleActive(widget.arguments.peerId)) return;
     String msgType = 'text', display = content;
     switch (type) {
-      case TypeMessage.image:
-        msgType = 'image';
-        display = '📷 Ảnh';
-        break;
-      case TypeMessage.video:
-        msgType = 'video';
-        display = '🎬 Video';
-        break;
-      case 3:
-        msgType = 'voice';
-        display = '🎤 Thoại';
-        break;
+      case TypeMessage.image: msgType = 'image'; display = '📷 Ảnh'; break;
+      case TypeMessage.video: msgType = 'video'; display = '🎬 Video'; break;
+      case 3: msgType = 'voice'; display = '🎤 Thoại'; break;
       default:
-        if (content.contains('maps.google.com') ||
-            content.contains('Location:')) {
-          msgType = 'location';
-          display = '📍 Vị trí';
+        if (content.contains('maps.google.com') || content.contains('Location:')) {
+          msgType = 'location'; display = '📍 Vị trí';
         }
     }
     try {
@@ -469,9 +430,7 @@ class ChatPageState extends State<ChatPage>
           message: display,
           avatarUrl: widget.arguments.peerAvatar,
           messageType: msgType);
-    } catch (e) {
-      debugPrint('❌ Bubble: $e');
-    }
+    } catch (e) { debugPrint('❌ Bubble: $e'); }
   }
 
   Future<void> _showBubbleIfNeeded() async {
@@ -489,9 +448,7 @@ class ChatPageState extends State<ChatPage>
     try {
       final f = await _picker.pickImage(source: ImageSource.gallery);
       if (f != null) await _sendMedia(File(f.path), isVideo: false);
-    } catch (_) {
-      _toast('Không thể chọn ảnh');
-    }
+    } catch (_) { _toast('Không thể chọn ảnh'); }
   }
 
   Future<void> _pickVideo() async {
@@ -499,18 +456,14 @@ class ChatPageState extends State<ChatPage>
     try {
       final f = await _picker.pickVideo(source: ImageSource.gallery);
       if (f != null) await _sendMedia(File(f.path), isVideo: true);
-    } catch (_) {
-      _toast('Không thể chọn video');
-    }
+    } catch (_) { _toast('Không thể chọn video'); }
   }
 
   Future<void> _sendMedia(File file, {required bool isVideo}) async {
     if (resourceManager.isDisposed) return;
-    final p = context.read<ThemeProvider>().palette;
     final confirmed = await _confirm(
         title: 'Gửi ${isVideo ? 'Video' : 'Ảnh'}',
-        message:
-            'Gửi ${isVideo ? 'video' : 'ảnh'} này đến ${widget.arguments.peerNickname}?',
+        message: 'Gửi ${isVideo ? 'video' : 'ảnh'} này đến ${widget.arguments.peerNickname}?',
         confirmLabel: 'Gửi',
         icon: isVideo ? Icons.videocam_rounded : Icons.image_rounded);
     if (confirmed != true || resourceManager.isDisposed) return;
@@ -526,18 +479,15 @@ class ChatPageState extends State<ChatPage>
             if (mounted) setState(() => _isLoadingMedia = v);
           });
       if (!mounted || resourceManager.isDisposed) return;
-      _toast(
-          ok != false
-              ? (isVideo ? '🎬 Video đã gửi' : '📷 Ảnh đã gửi')
-              : 'Gửi thất bại',
+      _toast(ok != false
+          ? (isVideo ? '🎬 Video đã gửi' : '📷 Ảnh đã gửi')
+          : 'Gửi thất bại',
           isSuccess: ok != false);
     } catch (e) {
       ErrorLogger.logError(e, null, context: 'SendMedia');
       _toast('Lỗi gửi media');
     } finally {
-      if (mounted && !resourceManager.isDisposed) {
-        setState(() => _isLoadingMedia = false);
-      }
+      if (mounted && !resourceManager.isDisposed) setState(() => _isLoadingMedia = false);
     }
   }
 
@@ -545,36 +495,20 @@ class ChatPageState extends State<ChatPage>
     if (resourceManager.isDisposed) return;
     HapticFeedback.lightImpact();
     _focusNode.unfocus();
-    setState(() {
-      _isShowSticker = !_isShowSticker;
-      _showMenu = false;
-    });
+    setState(() { _isShowSticker = !_isShowSticker; _showMenu = false; });
     _menuAnim.reverse();
   }
 
   Future<void> _startRec() async {
-    if (_voiceProvider == null) {
-      _toast('Ghi âm không khả dụng');
-      return;
-    }
+    if (_voiceProvider == null) { _toast('Ghi âm không khả dụng'); return; }
     final ok = await _voiceProvider!.initRecorder();
-    if (!ok) {
-      _toast('Cần quyền microphone');
-      return;
-    }
+    if (!ok) { _toast('Cần quyền microphone'); return; }
     final started = await _voiceProvider!.startRecording();
     if (started && mounted && !resourceManager.isDisposed) {
       HapticFeedback.lightImpact();
-      setState(() {
-        _isRecording = true;
-        _recSeconds = 0;
-        _recDuration = '0:00';
-      });
+      setState(() { _isRecording = true; _recSeconds = 0; _recDuration = '0:00'; });
       _recTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-        if (!mounted || resourceManager.isDisposed) {
-          t.cancel();
-          return;
-        }
+        if (!mounted || resourceManager.isDisposed) { t.cancel(); return; }
         setState(() {
           _recSeconds++;
           final m = _recSeconds ~/ 60, s = _recSeconds % 60;
@@ -593,12 +527,7 @@ class ChatPageState extends State<ChatPage>
       _toast('Ghi âm thất bại');
       return;
     }
-    if (mounted) {
-      setState(() {
-        _isRecording = false;
-        _isLoading = true;
-      });
-    }
+    if (mounted) setState(() { _isRecording = false; _isLoading = true; });
     final fileName = 'voice_${DateTime.now().millisecondsSinceEpoch}.aac';
     final result = await _voiceProvider!.uploadVoiceMessage(path, fileName);
     if (mounted) setState(() => _isLoading = false);
@@ -606,9 +535,7 @@ class ChatPageState extends State<ChatPage>
     if (url != null && !resourceManager.isDisposed) {
       await _onSend(url, 3);
       _toast('🎤 Đã gửi tin nhắn thoại', isSuccess: true);
-    } else {
-      _toast('Gửi thoại thất bại');
-    }
+    } else { _toast('Gửi thoại thất bại'); }
   }
 
   Future<void> _cancelRec() async {
@@ -623,29 +550,20 @@ class ChatPageState extends State<ChatPage>
     if (mounted) setState(() => _isLoading = true);
     try {
       final ok = await _locationProvider!.requestLocationPermission();
-      if (!ok) {
-        _toast('📍 Cần quyền vị trí');
-        return;
-      }
+      if (!ok) { _toast('📍 Cần quyền vị trí'); return; }
       final data = await _locationProvider!.getCurrentLocationWithDetails();
       if (data != null && !resourceManager.isDisposed) {
-        await _onSend(
-            _locationProvider!.formatLocationMessage(data), TypeMessage.text);
+        await _onSend(_locationProvider!.formatLocationMessage(data), TypeMessage.text);
         _toast('📍 Đã chia sẻ vị trí', isSuccess: true);
       }
-    } catch (_) {
-      _toast('❌ Lỗi lấy vị trí');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    } catch (_) { _toast('❌ Lỗi lấy vị trí'); }
+    finally { if (mounted) setState(() => _isLoading = false); }
   }
 
   Future<void> _openMaps(String url) async {
     try {
       final uri = Uri.parse(url);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
+      if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {}
   }
 
@@ -659,10 +577,7 @@ class ChatPageState extends State<ChatPage>
     final text = result['message'] as String;
     final time = result['time'] as DateTime;
     final delay = time.difference(DateTime.now());
-    if (delay.isNegative) {
-      _toast('Thời gian không hợp lệ');
-      return;
-    }
+    if (delay.isNegative) { _toast('Thời gian không hợp lệ'); return; }
     final key = time.millisecondsSinceEpoch.toString();
     _scheduledContent[key] = text;
     _scheduled[key] = Timer(delay, () {
@@ -673,8 +588,7 @@ class ChatPageState extends State<ChatPage>
         _scheduledContent.remove(key);
       }
     });
-    _toast('📅 Lên lịch lúc ${DateFormat('HH:mm dd/MM').format(time)}',
-        isSuccess: true);
+    _toast('📅 Lên lịch lúc ${DateFormat('HH:mm dd/MM').format(time)}', isSuccess: true);
   }
 
   void _loadSmartReplies() {
@@ -683,11 +597,8 @@ class ChatPageState extends State<ChatPage>
     if (msgs.isEmpty) return;
     final last = msgs.first;
     if (last['idFrom'] != _currentUserId && last['type'] == TypeMessage.text) {
-      final replies = _smartReplyProvider
-          .getRuleBasedReplies(last['content'] as String? ?? '');
-      if (mounted && !resourceManager.isDisposed) {
-        setState(() => _smartReplies = replies);
-      }
+      final replies = _smartReplyProvider.getRuleBasedReplies(last['content'] as String? ?? '');
+      if (mounted && !resourceManager.isDisposed) setState(() => _smartReplies = replies);
     }
   }
 
@@ -701,11 +612,7 @@ class ChatPageState extends State<ChatPage>
   }
 
   void _listenIncoming() {
-    if (resourceManager.isDisposed ||
-        _groupChatId.isEmpty ||
-        _currentUserId.isEmpty) {
-      return;
-    }
+    if (resourceManager.isDisposed || _groupChatId.isEmpty || _currentUserId.isEmpty) return;
     final sub = FirebaseFirestore.instance
         .collection(FirestoreConstants.pathMessageCollection)
         .doc(_groupChatId)
@@ -733,9 +640,7 @@ class ChatPageState extends State<ChatPage>
           }
           _showBubbleIfNeeded();
         }
-      } finally {
-        _isProcessingMsg = false;
-      }
+      } finally { _isProcessingMsg = false; }
     }, onError: (_) => _isProcessingMsg = false);
     resourceManager.addSubscription(sub);
   }
@@ -753,33 +658,24 @@ class ChatPageState extends State<ChatPage>
       if (unread.docs.isEmpty) return;
       final batch = FirebaseFirestore.instance.batch();
       for (final doc in unread.docs) {
-        batch.update(doc.reference,
-            {'isRead': true, 'readAt': FieldValue.serverTimestamp()});
+        batch.update(doc.reference, {'isRead': true, 'readAt': FieldValue.serverTimestamp()});
       }
       await batch.commit();
-      _presenceProvider?.markMessagesAsRead(
-          conversationId: _groupChatId, userId: _currentUserId);
-    } catch (e) {
-      ErrorLogger.logError(e, null, context: 'MarkRead');
-    }
+      _presenceProvider?.markMessagesAsRead(conversationId: _groupChatId, userId: _currentUserId);
+    } catch (e) { ErrorLogger.logError(e, null, context: 'MarkRead'); }
   }
 
-  // MỞ GAME CENTER (PATCH)
   void _openGameCenter() {
     HapticFeedback.lightImpact();
-    // Chat 1-1: groupId dùng _groupChatId, groupName dùng peerNickname
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => GameCenterHubPage(
-          groupId: _groupChatId,
-          groupName: widget.arguments.peerNickname,
-          currentUserId: _currentUserId,
-          currentUserName: _authProvider.userFirebaseId ?? _currentUserId,
-          currentUserAvatar: '',
-        ),
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => GameCenterHubPage(
+        groupId: _groupChatId,
+        groupName: widget.arguments.peerNickname,
+        currentUserId: _currentUserId,
+        currentUserName: _authProvider.userFirebaseId ?? _currentUserId,
+        currentUserAvatar: '',
       ),
-    );
+    ));
   }
 
   void _showMsgOptions(MessageChat msg, String msgId) {
@@ -811,19 +707,15 @@ class ChatPageState extends State<ChatPage>
         builder: (_) => EditMessageDialog(
             originalContent: current,
             onSave: (newContent) async {
-              final ok = await _messageProvider.editMessage(
-                  _groupChatId, id, newContent);
+              final ok = await _messageProvider.editMessage(_groupChatId, id, newContent);
               if (ok) _toast('Đã chỉnh sửa', isSuccess: true);
             }));
   }
 
   Future<void> _deleteMsg(String id) async {
     final ok = await _confirm(
-        title: 'Xoá tin nhắn',
-        message: 'Bạn có chắc muốn xóa?',
-        confirmLabel: 'Xoá',
-        icon: Icons.delete_rounded,
-        isDanger: true);
+        title: 'Xoá tin nhắn', message: 'Bạn có chắc muốn xóa?',
+        confirmLabel: 'Xoá', icon: Icons.delete_rounded, isDanger: true);
     if (ok == true && !resourceManager.isDisposed) {
       final res = await _messageProvider.deleteMessage(_groupChatId, id);
       if (res) _toast('Đã xoá', isSuccess: true);
@@ -831,8 +723,7 @@ class ChatPageState extends State<ChatPage>
   }
 
   Future<void> _pinMsg(String id, bool isPinned) async {
-    final ok =
-        await _messageProvider.togglePinMessage(_groupChatId, id, isPinned);
+    final ok = await _messageProvider.togglePinMessage(_groupChatId, id, isPinned);
     if (ok) _toast(isPinned ? 'Đã bỏ ghim' : '📌 Đã ghim', isSuccess: true);
   }
 
@@ -850,31 +741,25 @@ class ChatPageState extends State<ChatPage>
   }
 
   void _showReactionPicker(String msgId) {
-    final p = context.read<ThemeProvider>().palette;
     showDialog(
         context: context,
         builder: (_) => Dialog(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(24)),
-              elevation: 0,
-              backgroundColor: Colors.transparent,
-              child: ReactionPicker(onEmojiSelected: (emoji) {
-                _reactionProvider.toggleReaction(
-                    _groupChatId, msgId, _currentUserId, emoji);
-                Navigator.pop(context);
-              }),
-            ));
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+          child: ReactionPicker(onEmojiSelected: (emoji) {
+            _reactionProvider.toggleReaction(_groupChatId, msgId, _currentUserId, emoji);
+            Navigator.pop(context);
+          }),
+        ));
   }
 
   Future<void> _setReminder(MessageChat msg, String msgId) async {
     final time = await _pickReminderTime();
     if (time == null || resourceManager.isDisposed) return;
     final reminder = await _reminderProvider.scheduleReminder(
-        userId: _currentUserId,
-        messageId: msgId,
-        conversationId: _groupChatId,
-        reminderTime: time,
-        message: msg.content);
+        userId: _currentUserId, messageId: msgId, conversationId: _groupChatId,
+        reminderTime: time, message: msg.content);
     _toast(reminder != null ? '⏰ Đã đặt nhắc nhở' : 'Không thể đặt',
         isSuccess: reminder != null);
   }
@@ -884,17 +769,13 @@ class ChatPageState extends State<ChatPage>
 
   void _showReminders() {
     if (resourceManager.isDisposed) return;
-    Navigator.push(
-        context,
-        MaterialPageRoute(
-            builder: (_) => _RemindersPage(
-                currentUserId: _currentUserId,
-                reminderProvider: _reminderProvider)));
+    Navigator.push(context, MaterialPageRoute(
+        builder: (_) => _RemindersPage(
+            currentUserId: _currentUserId, reminderProvider: _reminderProvider)));
   }
 
   void _translate(String content) {
-    showDialog(
-        context: context,
+    showDialog(context: context,
         builder: (_) => TranslationDialog(originalMessage: content));
   }
 
@@ -906,9 +787,7 @@ class ChatPageState extends State<ChatPage>
       final ok = await _showPinVerify();
       if (ok != true && mounted) Navigator.pop(context);
     }
-    if (mounted && !resourceManager.isDisposed) {
-      setState(() => _lockChecked = true);
-    }
+    if (mounted && !resourceManager.isDisposed) setState(() => _lockChecked = true);
   }
 
   Future<bool?> _showPinVerify() async {
@@ -924,14 +803,12 @@ class ChatPageState extends State<ChatPage>
               errorMessage: errorMsg,
               remainingAttempts: remaining));
       if (pin == null || resourceManager.isDisposed) return false;
-      final result = await _lockProvider.verifyPIN(
-          conversationId: _groupChatId, enteredPin: pin);
+      final result = await _lockProvider.verifyPIN(conversationId: _groupChatId, enteredPin: pin);
       if (result.success) return true;
       remaining = 5 - result.failedAttempts;
       errorMsg = result.message;
       if (remaining <= 0 || result.locked) {
-        await _lockProvider.autoDeleteMessagesAfterFailedAttempts(
-            conversationId: _groupChatId);
+        await _lockProvider.autoDeleteMessagesAfterFailedAttempts(conversationId: _groupChatId);
         _toast('Đã xóa tin nhắn do vi phạm bảo mật');
         return false;
       }
@@ -944,55 +821,37 @@ class ChatPageState extends State<ChatPage>
         context: context,
         backgroundColor: Colors.transparent,
         builder: (_) => _LockOptionsSheet());
-    if (action == 'set_pin' && !resourceManager.isDisposed) {
-      _setPin();
-    } else if (action == 'remove' && !resourceManager.isDisposed) {
+    if (action == 'set_pin' && !resourceManager.isDisposed) _setPin();
+    else if (action == 'remove' && !resourceManager.isDisposed) {
       await _lockProvider.removeConversationLock(_groupChatId);
       _toast('Đã xóa khoá', isSuccess: true);
     }
   }
 
   void _setPin() async {
-    final pin = await showDialog<String>(
-        context: context,
+    final pin = await showDialog<String>(context: context,
         builder: (_) => PINInputDialog(
             title: 'Đặt Mã PIN', onComplete: (p) => Navigator.pop(context, p)));
     if (pin == null) return;
-    final confirm = await showDialog<String>(
-        context: context,
+    final confirm = await showDialog<String>(context: context,
         builder: (_) => PINInputDialog(
-            title: 'Xác Nhận PIN',
-            onComplete: (p) => Navigator.pop(context, p)));
+            title: 'Xác Nhận PIN', onComplete: (p) => Navigator.pop(context, p)));
     if (confirm == pin && !resourceManager.isDisposed) {
       final ok = await _lockProvider.setConversationPIN(
           conversationId: _groupChatId, pin: pin);
       _toast(ok ? 'Đã đặt mã PIN' : 'Lỗi đặt PIN', isSuccess: ok);
-    } else if (confirm != null) {
-      _toast('PIN không khớp');
-    }
+    } else if (confirm != null) { _toast('PIN không khớp'); }
   }
 
   void _showAI() {
     final msgs = LocalDbService().getMessages(_groupChatId);
-    if (msgs.isEmpty) {
-      _toast('Chưa đủ tin nhắn để phân tích');
-      return;
-    }
-    final recent = msgs
-        .take(15)
-        .map((d) {
-          final s = d['idFrom'] == _currentUserId
-              ? 'Tôi'
-              : widget.arguments.peerNickname;
-          return '$s: ${d['content']}';
-        })
-        .toList()
-        .reversed
-        .toList();
+    if (msgs.isEmpty) { _toast('Chưa đủ tin nhắn để phân tích'); return; }
+    final recent = msgs.take(15).map((d) {
+      final s = d['idFrom'] == _currentUserId ? 'Tôi' : widget.arguments.peerNickname;
+      return '$s: ${d['content']}';
+    }).toList().reversed.toList();
     final p = context.read<ThemeProvider>().palette;
-    showDialog(
-        context: context,
-        barrierDismissible: false,
+    showDialog(context: context, barrierDismissible: false,
         builder: (_) => _AIDialog(
             messages: recent,
             palette: p,
@@ -1001,13 +860,11 @@ class ChatPageState extends State<ChatPage>
 
   Future<void> _openSearch() async {
     if (resourceManager.isDisposed) return;
-    final id = await Navigator.push<String>(
-        context,
-        MaterialPageRoute(
-            builder: (_) => SearchMessagesPage(
-                groupChatId: _groupChatId,
-                peerName: widget.arguments.peerNickname,
-                peerId: widget.arguments.peerId)));
+    final id = await Navigator.push<String>(context,
+        MaterialPageRoute(builder: (_) => SearchMessagesPage(
+            groupChatId: _groupChatId,
+            peerName: widget.arguments.peerNickname,
+            peerId: widget.arguments.peerId)));
     if (id != null && mounted && !resourceManager.isDisposed) {
       setState(() => _pendingScrollId = id);
       resourceManager.addDelayedTimer(const Duration(milliseconds: 400), () {
@@ -1030,7 +887,7 @@ class ChatPageState extends State<ChatPage>
       return;
     }
     final offset =
-        (idx * 76.0).clamp(0.0, _scrollController.position.maxScrollExtent);
+    (idx * 76.0).clamp(0.0, _scrollController.position.maxScrollExtent);
     _scrollController.animateTo(offset,
         duration: const Duration(milliseconds: 400), curve: Curves.easeInOut);
     if (mounted) setState(() => _pendingScrollId = null);
@@ -1038,17 +895,11 @@ class ChatPageState extends State<ChatPage>
 
   Future<void> _createBubble() async {
     if (_bubbleService == null) return;
-    if (!_bubbleService!.isSupported) {
-      _toast('Thiết bị không hỗ trợ');
-      return;
-    }
+    if (!_bubbleService!.isSupported) { _toast('Thiết bị không hỗ trợ'); return; }
     final hasPermission = await _bubbleService!.hasOverlayPermission();
     if (!hasPermission) {
       final granted = await _bubbleService!.requestOverlayPermission();
-      if (!granted) {
-        _toast('Cần quyền hiển thị');
-        return;
-      }
+      if (!granted) { _toast('Cần quyền hiển thị'); return; }
     }
     final choice = await _showBubbleChoiceDialog();
     if (choice == null) return;
@@ -1070,47 +921,28 @@ class ChatPageState extends State<ChatPage>
   Future<String?> _showBubbleChoiceDialog() {
     final p = context.read<ThemeProvider>().palette;
     final primary = context.read<ThemeProvider>().primaryColor;
-    return showDialog<String>(
-        context: context,
-        builder: (ctx) => _ThemedDialog(
-              title: 'Tạo Chat Bubble',
-              icon: Icons.bubble_chart_rounded,
-              iconColor: primary,
-              palette: p,
-              content: Text('Chọn cách hiển thị:',
-                  style: TextStyle(color: p.textSecondary)),
-              actions: [
-                _ThemedDialogAction(
-                    label: 'Bubble',
-                    isPrimary: true,
-                    palette: p,
-                    primary: primary,
-                    onTap: () => Navigator.pop(ctx, 'bubble')),
-                if (_bubbleService!.currentImplementation ==
-                    BubbleImplementation.windowManager)
-                  _ThemedDialogAction(
-                      label: 'Mini Chat',
-                      palette: p,
-                      primary: primary,
-                      onTap: () => Navigator.pop(ctx, 'minichat')),
-                _ThemedDialogAction(
-                    label: 'Huỷ',
-                    palette: p,
-                    primary: primary,
-                    onTap: () => Navigator.pop(ctx)),
-              ],
-            ));
+    return showDialog<String>(context: context, builder: (ctx) => _ThemedDialog(
+      title: 'Tạo Chat Bubble',
+      icon: Icons.bubble_chart_rounded,
+      iconColor: primary,
+      palette: p,
+      content: Text('Chọn cách hiển thị:', style: TextStyle(color: p.textSecondary)),
+      actions: [
+        _ThemedDialogAction(label: 'Bubble', isPrimary: true, palette: p, primary: primary,
+            onTap: () => Navigator.pop(ctx, 'bubble')),
+        if (_bubbleService!.currentImplementation == BubbleImplementation.windowManager)
+          _ThemedDialogAction(label: 'Mini Chat', palette: p, primary: primary,
+              onTap: () => Navigator.pop(ctx, 'minichat')),
+        _ThemedDialogAction(label: 'Huỷ', palette: p, primary: primary,
+            onTap: () => Navigator.pop(ctx)),
+      ],
+    ));
   }
 
   void _onBack() {
     if (_isShowSticker || _showMenu) {
-      if (mounted) {
-        setState(() {
-          _isShowSticker = false;
-          _showMenu = false;
-        });
-        _menuAnim.reverse();
-      }
+      if (mounted) setState(() { _isShowSticker = false; _showMenu = false; });
+      _menuAnim.reverse();
     } else {
       _chatProvider.updateDataFirestore(FirestoreConstants.pathUserCollection,
           _currentUserId, {FirestoreConstants.chattingWith: null});
@@ -1127,37 +959,25 @@ class ChatPageState extends State<ChatPage>
         toastLength: Toast.LENGTH_SHORT);
   }
 
-  Future<bool?> _confirm(
-      {required String title,
-      required String message,
-      required String confirmLabel,
-      IconData? icon,
-      bool isDanger = false}) {
+  Future<bool?> _confirm({required String title, required String message,
+    required String confirmLabel, IconData? icon, bool isDanger = false}) {
     final p = context.read<ThemeProvider>().palette;
     final primary = context.read<ThemeProvider>().primaryColor;
-    return showDialog<bool>(
-        context: context,
+    return showDialog<bool>(context: context,
         builder: (ctx) => _ThemedDialog(
-              title: title,
-              icon: icon ?? Icons.help_outline_rounded,
-              iconColor: isDanger ? p.dangerColor : primary,
-              palette: p,
-              content: Text(message, style: TextStyle(color: p.textSecondary)),
-              actions: [
-                _ThemedDialogAction(
-                    label: confirmLabel,
-                    isPrimary: !isDanger,
-                    isDanger: isDanger,
-                    palette: p,
-                    primary: primary,
-                    onTap: () => Navigator.pop(ctx, true)),
-                _ThemedDialogAction(
-                    label: 'Huỷ',
-                    palette: p,
-                    primary: primary,
-                    onTap: () => Navigator.pop(ctx, false)),
-              ],
-            ));
+          title: title,
+          icon: icon ?? Icons.help_outline_rounded,
+          iconColor: isDanger ? p.dangerColor : primary,
+          palette: p,
+          content: Text(message, style: TextStyle(color: p.textSecondary)),
+          actions: [
+            _ThemedDialogAction(label: confirmLabel, isPrimary: !isDanger,
+                isDanger: isDanger, palette: p, primary: primary,
+                onTap: () => Navigator.pop(ctx, true)),
+            _ThemedDialogAction(label: 'Huỷ', palette: p, primary: primary,
+                onTap: () => Navigator.pop(ctx, false)),
+          ],
+        ));
   }
 
   bool _sameDay(DateTime a, DateTime b) =>
@@ -1169,85 +989,73 @@ class ChatPageState extends State<ChatPage>
     return DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(ms));
   }
 
+  // ── BUILD ──────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeProvider>();
     final p = theme.palette;
-
     return Theme(
       data: theme.isDark ? theme.darkTheme : theme.lightTheme,
       child: widget.isBubbleMode
           ? _buildBubbleMode(p, theme)
           : widget.isMiniChat
-              ? _buildMiniMode(p, theme)
-              : _buildFullMode(p, theme),
+          ? _buildMiniMode(p, theme)
+          : _buildFullMode(p, theme),
     );
   }
 
   Widget _buildBubbleMode(ThemePalette p, ThemeProvider theme) => Scaffold(
-        backgroundColor: p.background,
-        body: PopScope(
-          canPop: false,
-          onPopInvokedWithResult: (d, _) {
-            if (!d) _bubbleChannel.invokeMethod('minimize');
-          },
-          child: Column(children: [
-            _OverlayHeader(
-                nickname: widget.arguments.peerNickname,
-                avatar: widget.arguments.peerAvatar,
-                peerId: widget.arguments.peerId,
-                onMinimize: () => _bubbleChannel.invokeMethod('minimize'),
-                onClose: () => _bubbleChannel.invokeMethod('close'),
-                palette: p,
-                theme: theme),
-            Expanded(child: _buildBody(p, theme)),
-          ]),
-        ),
-      );
+    backgroundColor: p.background,
+    body: PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (d, _) {
+        if (!d) _bubbleChannel.invokeMethod('minimize');
+      },
+      child: Column(children: [
+        _OverlayHeader(
+            nickname: widget.arguments.peerNickname,
+            avatar: widget.arguments.peerAvatar,
+            peerId: widget.arguments.peerId,
+            onMinimize: () => _bubbleChannel.invokeMethod('minimize'),
+            onClose: () => _bubbleChannel.invokeMethod('close'),
+            palette: p, theme: theme),
+        Expanded(child: _buildBody(p, theme)),
+      ]),
+    ),
+  );
 
   Widget _buildMiniMode(ThemePalette p, ThemeProvider theme) => Scaffold(
-        backgroundColor: p.background,
-        body: PopScope(
-          canPop: false,
-          onPopInvokedWithResult: (d, _) {
-            if (!d) {
-              _focusNode.unfocus();
-              _miniChatChannel.invokeMethod('minimize');
-            }
-          },
-          child: Column(children: [
-            _OverlayHeader(
-                nickname: widget.arguments.peerNickname,
-                avatar: widget.arguments.peerAvatar,
-                peerId: widget.arguments.peerId,
-                onMinimize: () {
-                  _focusNode.unfocus();
-                  _miniChatChannel.invokeMethod('minimize');
-                },
-                onClose: () {
-                  _focusNode.unfocus();
-                  _miniChatChannel.invokeMethod('close');
-                },
-                palette: p,
-                theme: theme),
-            Expanded(child: _buildBody(p, theme)),
-          ]),
-        ),
-      );
+    backgroundColor: p.background,
+    body: PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (d, _) {
+        if (!d) { _focusNode.unfocus(); _miniChatChannel.invokeMethod('minimize'); }
+      },
+      child: Column(children: [
+        _OverlayHeader(
+            nickname: widget.arguments.peerNickname,
+            avatar: widget.arguments.peerAvatar,
+            peerId: widget.arguments.peerId,
+            onMinimize: () { _focusNode.unfocus(); _miniChatChannel.invokeMethod('minimize'); },
+            onClose: () { _focusNode.unfocus(); _miniChatChannel.invokeMethod('close'); },
+            palette: p, theme: theme),
+        Expanded(child: _buildBody(p, theme)),
+      ]),
+    ),
+  );
 
   Widget _buildFullMode(ThemePalette p, ThemeProvider theme) => Scaffold(
-        backgroundColor: p.background,
-        appBar: _buildAppBar(p, theme),
-        body: SafeArea(
-          child: PopScope(
-            canPop: false,
-            onPopInvokedWithResult: (d, _) {
-              if (!d) _onBack();
-            },
-            child: _buildBody(p, theme),
-          ),
-        ),
-      );
+    backgroundColor: p.background,
+    appBar: _buildAppBar(p, theme),
+    body: SafeArea(
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (d, _) { if (!d) _onBack(); },
+        child: _buildBody(p, theme),
+      ),
+    ),
+  );
 
   PreferredSizeWidget _buildAppBar(ThemePalette p, ThemeProvider theme) =>
       PreferredSize(
@@ -1258,8 +1066,7 @@ class ChatPageState extends State<ChatPage>
             decoration: BoxDecoration(
               color: p.appBarBackground,
               boxShadow: [
-                BoxShadow(
-                    color: p.shadow, blurRadius: 8, offset: const Offset(0, 2))
+                BoxShadow(color: p.shadow, blurRadius: 8, offset: const Offset(0, 2))
               ],
             ),
             child: AppBar(
@@ -1269,27 +1076,22 @@ class ChatPageState extends State<ChatPage>
               leading: widget.isWebMode
                   ? null
                   : IconButton(
-                      icon: Icon(Icons.arrow_back_ios_new_rounded,
-                          size: 20, color: theme.primaryColor),
-                      onPressed: _onBack,
-                    ),
+                  icon: Icon(Icons.arrow_back_ios_new_rounded,
+                      size: 20, color: theme.primaryColor),
+                  onPressed: _onBack),
               title: _AppBarTitle(
                   peerId: widget.arguments.peerId,
                   peerNickname: widget.arguments.peerNickname,
                   peerAvatar: widget.arguments.peerAvatar,
-                  palette: p,
-                  theme: theme,
+                  palette: p, theme: theme,
                   onTap: () async {
                     final doc = await FirebaseFirestore.instance
                         .collection(FirestoreConstants.pathUserCollection)
                         .doc(widget.arguments.peerId)
                         .get();
                     if (doc.exists && mounted) {
-                      Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => UserProfilePage(
-                                  userChat: UserChat.fromDocument(doc))));
+                      Navigator.push(context, MaterialPageRoute(
+                          builder: (_) => UserProfilePage(userChat: UserChat.fromDocument(doc))));
                     }
                   }),
               actions: [
@@ -1304,53 +1106,30 @@ class ChatPageState extends State<ChatPage>
                 PopupMenuButton<String>(
                   onSelected: (v) {
                     switch (v) {
-                      case 'ai':
-                        _showAI();
-                        break;
-                      case 'search':
-                        _openSearch();
-                        break;
-                      case 'reminders':
-                        _showReminders();
-                        break;
-                      case 'lock':
-                        _showLockOptions();
-                        break;
-                      case 'bubble':
-                        _createBubble();
-                        break;
-                      case 'game': // THÊM MỚI
-                        _openGameCenter(); // THÊM MỚI
-                        break; // THÊM MỚI
+                      case 'ai': _showAI(); break;
+                      case 'search': _openSearch(); break;
+                      case 'reminders': _showReminders(); break;
+                      case 'lock': _showLockOptions(); break;
+                      case 'bubble': _createBubble(); break;
+                      case 'game': _openGameCenter(); break;
                       case 'theme':
-                        Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const ThemeSettingsPage()));
+                        Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => const ThemeSettingsPage()));
                         break;
                     }
                   },
-                  icon: Icon(Icons.more_vert_rounded,
-                      size: 22, color: p.textSecondary),
+                  icon: Icon(Icons.more_vert_rounded, size: 22, color: p.textSecondary),
                   color: p.surface,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   itemBuilder: (_) => [
-                    _popItem('ai', Icons.auto_awesome_rounded, 'AI Assistant',
-                        const Color(0xFF8B5CF6), p),
-                    _popItem('game', Icons.sports_esports_rounded,
-                        'Game Center', const Color(0xFF9C27B0), p), // THÊM MỚI
-                    _popItem('search', Icons.search_rounded, 'Tìm kiếm',
-                        theme.primaryColor, p),
-                    _popItem('reminders', Icons.alarm_rounded, 'Nhắc nhở',
-                        p.warningColor, p),
+                    _popItem('ai', Icons.auto_awesome_rounded, 'AI Assistant', const Color(0xFF8B5CF6), p),
+                    _popItem('game', Icons.sports_esports_rounded, 'Game Center', const Color(0xFF9C27B0), p),
+                    _popItem('search', Icons.search_rounded, 'Tìm kiếm', theme.primaryColor, p),
+                    _popItem('reminders', Icons.alarm_rounded, 'Nhắc nhở', p.warningColor, p),
                     const PopupMenuDivider(),
-                    _popItem('lock', Icons.lock_rounded, 'Khoá chat',
-                        p.infoColor, p),
-                    _popItem('bubble', Icons.bubble_chart_rounded,
-                        'Chat Bubble', p.successColor, p),
-                    _popItem('theme', Icons.palette_rounded, 'Giao diện',
-                        theme.primaryColor, p),
+                    _popItem('lock', Icons.lock_rounded, 'Khoá chat', p.infoColor, p),
+                    _popItem('bubble', Icons.bubble_chart_rounded, 'Chat Bubble', p.successColor, p),
+                    _popItem('theme', Icons.palette_rounded, 'Giao diện', theme.primaryColor, p),
                   ],
                 ),
                 const SizedBox(width: 4),
@@ -1361,50 +1140,44 @@ class ChatPageState extends State<ChatPage>
       );
 
   PopupMenuItem<String> _popItem(String value, IconData icon, String label,
-          Color color, ThemePalette p) =>
+      Color color, ThemePalette p) =>
       PopupMenuItem(
           value: value,
           child: Row(children: [
             Container(
-                width: 32,
-                height: 32,
+                width: 32, height: 32,
                 decoration: BoxDecoration(
                     color: color.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8)),
                 child: Icon(icon, color: color, size: 17)),
             const SizedBox(width: 10),
             Text(label,
-                style: TextStyle(
-                    color: p.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500)),
+                style: TextStyle(color: p.textPrimary, fontSize: 14, fontWeight: FontWeight.w500)),
           ]));
+
+  // ── BODY ───────────────────────────────────────────────────────────────────
 
   Widget _buildBody(ThemePalette p, ThemeProvider theme) {
     return ChatWallpaperWidget(
       wallpaper: theme.chatWallpaper,
       color: theme.primaryColor,
       opacity: theme.chatWallpaperOpacity,
-      child: Stack(
-        children: [
-          Column(
-            children: [
-              const OfflineIndicator(),
-              _buildPinnedBar(p, theme),
-              _buildMsgList(p, theme),
-              _buildTypingBar(p, theme),
-              if (_isShowSticker && !widget.isMiniChat && !widget.isBubbleMode)
-                _buildStickerPanel(p, theme),
-              if (_showMenu && !widget.isMiniChat && !widget.isBubbleMode)
-                _buildFeatureMenu(p, theme),
-              _buildInput(p, theme),
-            ],
-          ),
-          if (_isLoading) const Positioned.fill(child: LoadingView()),
-          if (_isLoadingMedia)
-            Positioned.fill(child: _buildMediaOverlay(p, theme)),
-        ],
-      ),
+      child: Stack(children: [
+        Column(children: [
+          const OfflineIndicator(),
+          _buildPinnedBar(p, theme),
+          _buildMsgList(p, theme),
+          _buildTypingBar(p, theme),
+          if (_isShowSticker && !widget.isMiniChat && !widget.isBubbleMode)
+            _buildStickerPanel(p, theme),
+          if (_showMenu && !widget.isMiniChat && !widget.isBubbleMode)
+            _buildFeatureMenu(p, theme),
+          _buildInput(p, theme),
+        ]),
+        if (_isLoading) const Positioned.fill(child: LoadingView()),
+        if (_isLoadingMedia)
+          Positioned.fill(child: _buildMediaOverlay(p, theme)),
+      ]),
     );
   }
 
@@ -1413,8 +1186,7 @@ class ChatPageState extends State<ChatPage>
     return Container(
       height: 44,
       decoration: BoxDecoration(
-          color: p.surface,
-          border: Border(bottom: BorderSide(color: p.divider))),
+          color: p.surface, border: Border(bottom: BorderSide(color: p.divider))),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -1428,21 +1200,14 @@ class ChatPageState extends State<ChatPage>
             decoration: BoxDecoration(
               color: p.pinnedBackground,
               borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                  color: theme.primaryColor.withValues(alpha: 0.25),
-                  width: 0.8),
+              border: Border.all(color: theme.primaryColor.withValues(alpha: 0.25), width: 0.8),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(Icons.push_pin_rounded, size: 12, color: theme.primaryColor),
               const SizedBox(width: 5),
-              Flexible(
-                  child: Text(msg.content,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: theme.primaryColor,
-                          fontWeight: FontWeight.w600))),
+              Flexible(child: Text(msg.content,
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: theme.primaryColor, fontWeight: FontWeight.w600))),
             ]),
           );
         },
@@ -1454,60 +1219,49 @@ class ChatPageState extends State<ChatPage>
     return Flexible(
       child: _groupChatId.isNotEmpty
           ? ValueListenableBuilder(
-              valueListenable: LocalDbService().messagesBox.listenable(),
-              builder: (_, Box box, __) {
-                final all = LocalDbService().getMessages(_groupChatId);
-                final display = all.take(_limit).toList();
+        valueListenable: LocalDbService().messagesBox.listenable(),
+        builder: (_, Box box, __) {
+          final all = LocalDbService().getMessages(_groupChatId);
+          final display = all.take(_limit).toList();
 
-                if (display.isEmpty) {
-                  return Center(
-                      child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                            color: p.primaryContainer, shape: BoxShape.circle),
-                        child: Icon(Icons.chat_bubble_outline_rounded,
-                            size: 36, color: theme.primaryColor)),
-                    const SizedBox(height: 16),
-                    Text('Bắt đầu cuộc trò chuyện',
-                        style: TextStyle(
-                            color: p.textSecondary,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 15)),
-                    const SizedBox(height: 6),
-                    Text('Hãy gửi tin nhắn đầu tiên! 👋',
-                        style: TextStyle(color: p.textHint, fontSize: 13)),
-                  ]));
-                }
+          if (display.isEmpty) {
+            return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                  width: 80, height: 80,
+                  decoration: BoxDecoration(color: p.primaryContainer, shape: BoxShape.circle),
+                  child: Icon(Icons.chat_bubble_outline_rounded, size: 36, color: theme.primaryColor)),
+              const SizedBox(height: 16),
+              Text('Bắt đầu cuộc trò chuyện',
+                  style: TextStyle(color: p.textSecondary, fontWeight: FontWeight.w600, fontSize: 15)),
+              const SizedBox(height: 6),
+              Text('Hãy gửi tin nhắn đầu tiên! 👋',
+                  style: TextStyle(color: p.textHint, fontSize: 13)),
+            ]));
+          }
 
-                return Stack(children: [
-                  ListView.builder(
-                    controller: _scrollController,
-                    reverse: true,
-                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                    physics: const BouncingScrollPhysics(
-                        parent: AlwaysScrollableScrollPhysics()),
-                    itemCount: display.length,
-                    itemBuilder: (_, i) =>
-                        _buildMsgItem(i, display[i], display, p, theme),
-                  ),
-                  Positioned(
-                    right: 12,
-                    bottom: 12,
-                    child: ScaleTransition(
-                      scale: CurvedAnimation(
-                          parent: _fabAnim, curve: Curves.elasticOut),
-                      child: _ScrollFab(
-                          onTap: _scrollToBottom, palette: p, theme: theme),
-                    ),
-                  ),
-                ]);
-              },
-            )
-          : Center(
-              child: CircularProgressIndicator(
-                  color: theme.primaryColor, strokeWidth: 2)),
+          // Prefetch previews for newly loaded messages
+          prefetchLinkPreviews(display);
+
+          return Stack(children: [
+            ListView.builder(
+              controller: _scrollController,
+              reverse: true,
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+              physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+              itemCount: display.length,
+              itemBuilder: (_, i) => _buildMsgItem(i, display[i], display, p, theme),
+            ),
+            Positioned(
+              right: 12, bottom: 12,
+              child: ScaleTransition(
+                scale: CurvedAnimation(parent: _fabAnim, curve: Curves.elasticOut),
+                child: _ScrollFab(onTap: _scrollToBottom, palette: p, theme: theme),
+              ),
+            ),
+          ]);
+        },
+      )
+          : Center(child: CircularProgressIndicator(color: theme.primaryColor, strokeWidth: 2)),
     );
   }
 
@@ -1529,25 +1283,21 @@ class ChatPageState extends State<ChatPage>
     Widget? sep;
     if (index == full.length - 1 ||
         !_sameDay(
-            DateTime.fromMillisecondsSinceEpoch(
-                int.tryParse(msg.timestamp) ?? 0),
+            DateTime.fromMillisecondsSinceEpoch(int.tryParse(msg.timestamp) ?? 0),
             DateTime.fromMillisecondsSinceEpoch(
                 int.tryParse(full[index + 1]['timestamp'] ?? '0') ?? 0))) {
       sep = _DateDivider(
-          date: DateTime.fromMillisecondsSinceEpoch(
-              int.tryParse(msg.timestamp) ?? 0),
+          date: DateTime.fromMillisecondsSinceEpoch(int.tryParse(msg.timestamp) ?? 0),
           palette: p);
     }
 
     final bubble = _buildBubble(
         msgId: data['messageId'] ?? '',
-        msg: msg,
-        data: data,
+        msg: msg, data: data,
         isLastInGroup: isLastInGroup,
         isHighlighted: isHighlighted,
         isPending: isPending,
-        p: p,
-        theme: theme);
+        p: p, theme: theme);
 
     return Column(children: [
       SwipeToReplyWrapper(
@@ -1558,15 +1308,16 @@ class ChatPageState extends State<ChatPage>
     ]);
   }
 
-  Widget _buildBubble(
-      {required String msgId,
-      required MessageChat msg,
-      required Map<dynamic, dynamic> data,
-      required bool isLastInGroup,
-      bool isHighlighted = false,
-      bool isPending = false,
-      required ThemePalette p,
-      required ThemeProvider theme}) {
+  Widget _buildBubble({
+    required String msgId,
+    required MessageChat msg,
+    required Map<dynamic, dynamic> data,
+    required bool isLastInGroup,
+    bool isHighlighted = false,
+    bool isPending = false,
+    required ThemePalette p,
+    required ThemeProvider theme,
+  }) {
     final isMe = msg.idFrom == _currentUserId;
 
     Widget wrap(Widget child) {
@@ -1583,41 +1334,25 @@ class ChatPageState extends State<ChatPage>
       return wrap(Align(
           alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
           child: ViewOnceMessageWidget(
-              groupChatId: _groupChatId,
-              messageId: msgId,
-              content: msg.content,
-              type: msg.type,
-              currentUserId: _currentUserId,
-              isViewed: data['isViewed'] ?? false,
-              provider: _viewOnceProvider)));
+              groupChatId: _groupChatId, messageId: msgId, content: msg.content,
+              type: msg.type, currentUserId: _currentUserId,
+              isViewed: data['isViewed'] ?? false, provider: _viewOnceProvider)));
     }
     if (msg.type == 3 && _voiceProvider != null) {
       return wrap(Align(
           alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
           child: VoiceMessageWidget(
-              voiceUrl: msg.content,
-              isMyMessage: isMe,
-              voiceProvider: _voiceProvider!)));
+              voiceUrl: msg.content, isMyMessage: isMe, voiceProvider: _voiceProvider!)));
     }
     if (msg.type == TypeMessage.video) {
       return wrap(_buildVideoBubble(
-          msgId: msgId,
-          msg: msg,
-          isMe: isMe,
-          isLastInGroup: isLastInGroup,
-          isPending: isPending,
-          p: p,
-          theme: theme));
+          msgId: msgId, msg: msg, isMe: isMe, isLastInGroup: isLastInGroup,
+          isPending: isPending, p: p, theme: theme));
     }
     if (msg.type == TypeMessage.image) {
       return wrap(_buildImageBubble(
-          msgId: msgId,
-          msg: msg,
-          isMe: isMe,
-          isLastInGroup: isLastInGroup,
-          isPending: isPending,
-          p: p,
-          theme: theme));
+          msgId: msgId, msg: msg, isMe: isMe, isLastInGroup: isLastInGroup,
+          isPending: isPending, p: p, theme: theme));
     }
     if (msg.type == TypeMessage.sticker) {
       return wrap(Align(
@@ -1630,48 +1365,50 @@ class ChatPageState extends State<ChatPage>
                       width: 90, height: 90, fit: BoxFit.cover)))));
     }
     return wrap(_buildTextBubble(
-        msgId: msgId,
-        msg: msg,
-        isMe: isMe,
-        isLastInGroup: isLastInGroup,
-        isPending: isPending,
+        msgId: msgId, msg: msg, isMe: isMe,
+        isLastInGroup: isLastInGroup, isPending: isPending,
         isScam: data['scamWarning'] ?? false,
         scamReason: data['scamReason'] ?? '',
         hasReminder: data['hasReminder'] ?? false,
-        p: p,
-        theme: theme));
+        p: p, theme: theme));
   }
 
-  Widget _buildTextBubble(
-      {required String msgId,
-      required MessageChat msg,
-      required bool isMe,
-      required bool isLastInGroup,
-      required bool isPending,
-      bool isScam = false,
-      String scamReason = '',
-      bool hasReminder = false,
-      required ThemePalette p,
-      required ThemeProvider theme}) {
+  // ── TEXT BUBBLE with link detection ───────────────────────────────────────
+
+  Widget _buildTextBubble({
+    required String msgId,
+    required MessageChat msg,
+    required bool isMe,
+    required bool isLastInGroup,
+    required bool isPending,
+    bool isScam = false,
+    String scamReason = '',
+    bool hasReminder = false,
+    required ThemePalette p,
+    required ThemeProvider theme,
+  }) {
     final location = _locationProvider?.parseLocationFromMessage(msg.content);
     final isAI = msg.idFrom == AppConstants.aiAssistantId;
     final fs = theme.fontSizeMultiplier;
 
+    // Detect if the message has a URL for smart preview
+    final hasUrl = !msg.isDeleted &&
+        msg.type == TypeMessage.text &&
+        location == null &&
+        !isAI &&
+        UrlDetector.containsUrl(msg.content);
+
     return Container(
       margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
       child: Column(
-        crossAxisAlignment:
-            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment:
-                isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+            mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               if (!isMe && isLastInGroup && theme.showAvatarsInChat) ...[
-                _Avatar(
-                    photoUrl: widget.arguments.peerAvatar,
-                    radius: 16,
+                _Avatar(photoUrl: widget.arguments.peerAvatar, radius: 16,
                     primary: theme.primaryColor),
                 const SizedBox(width: 6),
               ] else if (!isMe) ...[
@@ -1689,14 +1426,13 @@ class ChatPageState extends State<ChatPage>
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
                       maxWidth: MediaQuery.of(context).size.width *
-                          theme.bubbleMaxWidthFactor),
+                          (hasUrl ? 0.82 : theme.bubbleMaxWidthFactor)),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
                     padding: theme.bubblePadding,
                     decoration: BoxDecoration(
                       gradient: isMe && theme.useGradientBubble
-                          ? theme.outgoingBubbleGradient(p.isDark)
-                          : null,
+                          ? theme.outgoingBubbleGradient(p.isDark) : null,
                       color: isMe && !theme.useGradientBubble
                           ? theme.primaryColor
                           : (!isMe ? p.incomingBubble : null),
@@ -1708,12 +1444,9 @@ class ChatPageState extends State<ChatPage>
                             color: isMe
                                 ? theme.primaryColor.withValues(alpha: 0.25)
                                 : p.shadow,
-                            blurRadius: 8,
-                            offset: const Offset(0, 3))
+                            blurRadius: 8, offset: const Offset(0, 3))
                       ],
-                      border: isMe
-                          ? null
-                          : Border.all(color: p.divider, width: 0.5),
+                      border: isMe ? null : Border.all(color: p.divider, width: 0.5),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1723,65 +1456,64 @@ class ChatPageState extends State<ChatPage>
                           _ScamWarning(reason: scamReason, palette: p),
                         if (!isMe && hasReminder)
                           _ReminderHint(onView: _showReminders, palette: p),
+
+                        // ── Content area ───────────────────────────────────
                         if (msg.isDeleted)
                           Row(mainAxisSize: MainAxisSize.min, children: [
                             Icon(Icons.block_rounded,
-                                size: 13,
-                                color: isMe ? Colors.white54 : p.textHint),
+                                size: 13, color: isMe ? Colors.white54 : p.textHint),
                             const SizedBox(width: 6),
                             Text('Tin nhắn đã xóa',
-                                style: TextStyle(
-                                    fontSize: 14 * fs,
+                                style: TextStyle(fontSize: 14 * fs,
                                     color: isMe ? Colors.white54 : p.textHint,
                                     fontStyle: FontStyle.italic)),
                           ])
                         else if (location != null)
                           _LocationContent(
-                              location: location,
-                              isMe: isMe,
-                              palette: p,
-                              theme: theme,
+                              location: location, isMe: isMe, palette: p, theme: theme,
                               onOpen: () => _openMaps(location.mapsUrl))
                         else if (isAI)
-                          MarkdownBody(
-                              data: msg.content,
-                              selectable: true,
-                              styleSheet: MarkdownStyleSheet(
-                                  p: TextStyle(
-                                      fontSize: 15 * fs,
-                                      color:
-                                          isMe ? Colors.white : p.incomingText,
-                                      height: 1.5)))
-                        else
-                          Text(msg.content,
-                              style: TextStyle(
-                                  color: isMe ? Colors.white : p.incomingText,
-                                  fontSize: 15 * fs,
-                                  height: 1.45)),
+                            MarkdownBody(
+                                data: msg.content, selectable: true,
+                                styleSheet: MarkdownStyleSheet(
+                                    p: TextStyle(fontSize: 15 * fs,
+                                        color: isMe ? Colors.white : p.incomingText, height: 1.5)))
+
+                          // ── Rich text with clickable URLs + link preview ────
+                          else if (hasUrl)
+                              ChatMessageWithLinkPreview(
+                                content: msg.content,
+                                isMe: isMe,
+                                textColor: isMe ? Colors.white : p.incomingText,
+                                fontSize: 15 * fs,
+                                primaryColor: theme.primaryColor,
+                                showPreview: true,
+                              )
+
+                            // ── Plain text ─────────────────────────────────────
+                            else
+                              Text(msg.content,
+                                  style: TextStyle(
+                                      color: isMe ? Colors.white : p.incomingText,
+                                      fontSize: 15 * fs, height: 1.45)),
+
+                        // ── Status row ─────────────────────────────────────
                         if (isMe) ...[
                           const SizedBox(height: 3),
-                          Row(
-                              mainAxisSize: MainAxisSize.min,
+                          Row(mainAxisSize: MainAxisSize.min,
                               mainAxisAlignment: MainAxisAlignment.end,
                               children: [
                                 if (msg.editedAt != null)
                                   Text('(đã sửa) ',
-                                      style: TextStyle(
-                                          fontSize: 10,
-                                          color: Colors.white
-                                              .withValues(alpha: 0.6))),
+                                      style: TextStyle(fontSize: 10,
+                                          color: Colors.white.withValues(alpha: 0.6))),
                                 Icon(
-                                    isPending
-                                        ? Icons.schedule_rounded
-                                        : msg.isRead
-                                            ? Icons.done_all_rounded
-                                            : Icons.check_rounded,
+                                    isPending ? Icons.schedule_rounded
+                                        : msg.isRead ? Icons.done_all_rounded
+                                        : Icons.check_rounded,
                                     size: 13,
-                                    color: isPending
-                                        ? Colors.white38
-                                        : msg.isRead
-                                            ? Colors.white
-                                            : Colors.white60),
+                                    color: isPending ? Colors.white38
+                                        : msg.isRead ? Colors.white : Colors.white60),
                               ]),
                         ],
                       ],
@@ -1792,45 +1524,40 @@ class ChatPageState extends State<ChatPage>
               const SizedBox(width: 4),
               if (!msg.isDeleted)
                 Column(mainAxisSize: MainAxisSize.min, children: [
-                  _QuickBtn(
-                      icon: Icons.add_reaction_outlined,
-                      onTap: () => _showReactionPicker(msgId),
-                      palette: p),
+                  _QuickBtn(icon: Icons.add_reaction_outlined,
+                      onTap: () => _showReactionPicker(msgId), palette: p),
                   if (!isMe)
-                    _QuickBtn(
-                        icon: Icons.alarm_add_rounded,
-                        onTap: () => _setReminder(msg, msgId),
-                        palette: p),
+                    _QuickBtn(icon: Icons.alarm_add_rounded,
+                        onTap: () => _setReminder(msg, msgId), palette: p),
                 ]),
             ],
           ),
+
+          // ── Scam scanner ────────────────────────────────────────────────
           if (!isMe && msg.type == TypeMessage.text) ...[
             const SizedBox(height: 3),
             Padding(
                 padding: const EdgeInsets.only(left: 44),
                 child: _ScamScanWidget(
-                    msgId: msgId,
-                    content: msg.content,
-                    result: _scamResults[msgId],
-                    palette: p,
+                    msgId: msgId, content: msg.content,
+                    result: _scamResults[msgId], palette: p,
                     onScan: (result) {
                       if (mounted) setState(() => _scamResults[msgId] = result);
                     })),
           ],
+
           _ReactionRow(
-              groupChatId: _groupChatId,
-              msgId: msgId,
-              currentUserId: _currentUserId,
-              isMe: isMe,
+              groupChatId: _groupChatId, msgId: msgId,
+              currentUserId: _currentUserId, isMe: isMe,
               provider: _reactionProvider,
               onTap: (emoji) => _reactionProvider.toggleReaction(
                   _groupChatId, msgId, _currentUserId, emoji)),
+
           if (isLastInGroup || theme.showTimestampAlways)
             Padding(
                 padding: EdgeInsets.only(
                     left: isMe ? 0 : (theme.showAvatarsInChat ? 44 : 4),
-                    right: isMe ? 6 : 0,
-                    top: 3),
+                    right: isMe ? 6 : 0, top: 3),
                 child: Text(_fmtTimestamp(msg.timestamp),
                     style: TextStyle(fontSize: 10.5, color: p.textHint))),
         ],
@@ -1838,26 +1565,17 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  Widget _buildImageBubble(
-      {required String msgId,
-      required MessageChat msg,
-      required bool isMe,
-      required bool isLastInGroup,
-      required bool isPending,
-      required ThemePalette p,
-      required ThemeProvider theme}) {
+  Widget _buildImageBubble({
+    required String msgId, required MessageChat msg, required bool isMe,
+    required bool isLastInGroup, required bool isPending,
+    required ThemePalette p, required ThemeProvider theme,
+  }) {
     return Container(
       margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
-        onTap: () {
-          if (!isPending) {
-            Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => FullPhotoPage(url: msg.content)));
-          }
-        },
+        onTap: () { if (!isPending) Navigator.push(context, MaterialPageRoute(
+            builder: (_) => FullPhotoPage(url: msg.content))); },
         onLongPress: () => _showMsgOptions(msg, msgId),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(20),
@@ -1865,37 +1583,25 @@ class ChatPageState extends State<ChatPage>
               width: MediaQuery.of(context).size.width * 0.62,
               height: 220,
               child: isPending
-                  ? _MediaPlaceholder(
-                      isLoading: true, palette: p, primary: theme.primaryColor)
-                  : Image.network(msg.content,
-                      fit: BoxFit.cover,
-                      loadingBuilder: (_, child, prog) => prog == null
-                          ? child
-                          : _MediaPlaceholder(
-                              isLoading: true,
-                              palette: p,
-                              primary: theme.primaryColor,
-                              progress: prog.expectedTotalBytes != null
-                                  ? prog.cumulativeBytesLoaded /
-                                      prog.expectedTotalBytes!
-                                  : null),
-                      errorBuilder: (_, __, ___) => _MediaPlaceholder(
-                          isLoading: false,
-                          palette: p,
-                          primary: theme.primaryColor))),
+                  ? _MediaPlaceholder(isLoading: true, palette: p, primary: theme.primaryColor)
+                  : Image.network(msg.content, fit: BoxFit.cover,
+                  loadingBuilder: (_, child, prog) => prog == null ? child
+                      : _MediaPlaceholder(isLoading: true, palette: p,
+                      primary: theme.primaryColor,
+                      progress: prog.expectedTotalBytes != null
+                          ? prog.cumulativeBytesLoaded / prog.expectedTotalBytes! : null),
+                  errorBuilder: (_, __, ___) => _MediaPlaceholder(
+                      isLoading: false, palette: p, primary: theme.primaryColor))),
         ),
       ),
     );
   }
 
-  Widget _buildVideoBubble(
-      {required String msgId,
-      required MessageChat msg,
-      required bool isMe,
-      required bool isLastInGroup,
-      required bool isPending,
-      required ThemePalette p,
-      required ThemeProvider theme}) {
+  Widget _buildVideoBubble({
+    required String msgId, required MessageChat msg, required bool isMe,
+    required bool isLastInGroup, required bool isPending,
+    required ThemePalette p, required ThemeProvider theme,
+  }) {
     final parts = msg.content.split('|');
     final videoUrl = parts.isNotEmpty ? parts[0] : '';
     final thumbUrl = parts.length > 1 ? parts[1] : '';
@@ -1903,14 +1609,8 @@ class ChatPageState extends State<ChatPage>
       margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
-        onTap: () {
-          if (!isPending) {
-            Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => VideoPlayerPage(videoUrl: videoUrl)));
-          }
-        },
+        onTap: () { if (!isPending) Navigator.push(context,
+            MaterialPageRoute(builder: (_) => VideoPlayerPage(videoUrl: videoUrl))); },
         onLongPress: () => _showMsgOptions(msg, msgId),
         child: Container(
           width: MediaQuery.of(context).size.width * 0.65,
@@ -1918,56 +1618,32 @@ class ChatPageState extends State<ChatPage>
           decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20),
               color: Colors.black,
-              boxShadow: [
-                BoxShadow(
-                    color: p.shadowStrong,
-                    blurRadius: 12,
-                    offset: const Offset(0, 4))
-              ]),
+              boxShadow: [BoxShadow(color: p.shadowStrong, blurRadius: 12, offset: const Offset(0, 4))]),
           clipBehavior: Clip.hardEdge,
           child: Stack(fit: StackFit.expand, children: [
             if (thumbUrl.isNotEmpty && !isPending)
-              Image.network(thumbUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) =>
-                      const ColoredBox(color: Color(0xFF1F2937)))
+              Image.network(thumbUrl, fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFF1F2937)))
             else
               const ColoredBox(color: Color(0xFF1F2937)),
             if (isPending)
-              const Center(
-                  child: CircularProgressIndicator(
-                      color: Colors.white, strokeWidth: 2))
+              const Center(child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
             else
-              Center(
-                  child: Container(
-                      width: 54,
-                      height: 54,
-                      decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.92),
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.2),
-                                blurRadius: 8)
-                          ]),
-                      child: const Icon(Icons.play_arrow_rounded,
-                          size: 30, color: Color(0xFF1A1D2E)))),
-            Positioned(
-              bottom: 8,
-              right: 10,
-              child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              Center(child: Container(
+                  width: 54, height: 54,
                   decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(8)),
-                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.videocam_rounded, size: 11, color: Colors.white),
-                    SizedBox(width: 3),
-                    Text('Video',
-                        style: TextStyle(fontSize: 10, color: Colors.white)),
-                  ])),
-            ),
+                      color: Colors.white.withValues(alpha: 0.92), shape: BoxShape.circle,
+                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 8)]),
+                  child: const Icon(Icons.play_arrow_rounded, size: 30, color: Color(0xFF1A1D2E)))),
+            Positioned(bottom: 8, right: 10,
+                child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(8)),
+                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.videocam_rounded, size: 11, color: Colors.white),
+                      SizedBox(width: 3),
+                      Text('Video', style: TextStyle(fontSize: 10, color: Colors.white)),
+                    ]))),
           ]),
         ),
       ),
@@ -1994,68 +1670,42 @@ class ChatPageState extends State<ChatPage>
       decoration: BoxDecoration(
           color: p.surface, border: Border(top: BorderSide(color: p.divider))),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: List.generate(
-              3,
-              (row) => Padding(
-                  padding: EdgeInsets.only(bottom: row < 2 ? 6 : 0),
-                  child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: List.generate(
-                          3,
-                          (col) => _StickerItem(
-                              name: 'mimi${row * 3 + col + 1}',
-                              onTap: () => _onSend('mimi${row * 3 + col + 1}',
-                                  TypeMessage.sticker))))))),
+      child: Column(mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (row) => Padding(
+              padding: EdgeInsets.only(bottom: row < 2 ? 6 : 0),
+              child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: List.generate(3, (col) => _StickerItem(
+                      name: 'mimi${row * 3 + col + 1}',
+                      onTap: () => _onSend('mimi${row * 3 + col + 1}', TypeMessage.sticker))))))),
     );
   }
 
   Widget _buildFeatureMenu(ThemePalette p, ThemeProvider theme) {
     final items = <_FeatureItem>[
       _FeatureItem(Icons.image_rounded, 'Ảnh', _pickImage, theme.primaryColor),
-      _FeatureItem(
-          Icons.videocam_rounded, 'Video', _pickVideo, const Color(0xFFFF6B9D)),
-      _FeatureItem(
-          Icons.visibility_off_rounded,
-          'View Once',
-          () => showDialog(
-              context: context,
-              builder: (_) =>
-                  SendViewOnceDialog(onSend: (content, type, dur) async {
-                    await _viewOnceProvider.sendViewOnceMessage(
-                        groupChatId: _groupChatId,
-                        currentUserId: _currentUserId,
-                        peerId: widget.arguments.peerId,
-                        content: content,
-                        type: type);
-                    _loadSmartReplies();
-                  })),
-          const Color(0xFF8B5CF6)),
-      _FeatureItem(
-          Icons.timer_rounded,
-          'Tự xoá',
-          () => showDialog(
-              context: context,
-              builder: (_) => AutoDeleteSettingsDialog(
-                  conversationId: _groupChatId, provider: _autoDeleteProvider)),
-          p.warningColor),
+      _FeatureItem(Icons.videocam_rounded, 'Video', _pickVideo, const Color(0xFFFF6B9D)),
+      _FeatureItem(Icons.visibility_off_rounded, 'View Once', () => showDialog(
+          context: context,
+          builder: (_) => SendViewOnceDialog(onSend: (content, type, dur) async {
+            await _viewOnceProvider.sendViewOnceMessage(
+                groupChatId: _groupChatId, currentUserId: _currentUserId,
+                peerId: widget.arguments.peerId, content: content, type: type);
+            _loadSmartReplies();
+          })), const Color(0xFF8B5CF6)),
+      _FeatureItem(Icons.timer_rounded, 'Tự xoá', () => showDialog(
+          context: context,
+          builder: (_) => AutoDeleteSettingsDialog(
+              conversationId: _groupChatId, provider: _autoDeleteProvider)), p.warningColor),
       _FeatureItem(Icons.lock_rounded, 'Khoá', _showLockOptions, p.infoColor),
-      _FeatureItem(
-          Icons.location_on_rounded, 'Vị trí', _shareLocation, p.dangerColor),
-      _FeatureItem(Icons.schedule_send_rounded, 'Lên lịch', _scheduleMessage,
-          p.successColor),
-      _FeatureItem(Icons.bubble_chart_rounded, 'Bubble', _createBubble,
-          theme.primaryColor),
-      // THÊM MỚI: Menu item cho Game Center
-      _FeatureItem(Icons.sports_esports_rounded, 'Game', _openGameCenter,
-          const Color(0xFF9C27B0)),
+      _FeatureItem(Icons.location_on_rounded, 'Vị trí', _shareLocation, p.dangerColor),
+      _FeatureItem(Icons.schedule_send_rounded, 'Lên lịch', _scheduleMessage, p.successColor),
+      _FeatureItem(Icons.bubble_chart_rounded, 'Bubble', _createBubble, theme.primaryColor),
+      _FeatureItem(Icons.sports_esports_rounded, 'Game', _openGameCenter, const Color(0xFF9C27B0)),
     ];
 
     return SlideTransition(
       position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
-          .animate(
-              CurvedAnimation(parent: _menuAnim, curve: Curves.easeOutCubic)),
+          .animate(CurvedAnimation(parent: _menuAnim, curve: Curves.easeOutCubic)),
       child: Container(
         constraints: const BoxConstraints(maxHeight: 120),
         decoration: BoxDecoration(
@@ -2065,46 +1715,32 @@ class ChatPageState extends State<ChatPage>
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
-              children: items
-                  .map((item) => GestureDetector(
-                        onTap: () {
-                          if (resourceManager.isDisposed) return;
-                          setState(() => _showMenu = false);
-                          _menuAnim.reverse();
-                          item.onTap();
-                        },
-                        child: Container(
-                          width: 72,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 4, vertical: 6),
-                          child:
-                              Column(mainAxisSize: MainAxisSize.min, children: [
-                            Container(
-                                width: 46,
-                                height: 46,
-                                decoration: BoxDecoration(
-                                    color: item.color.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(
-                                        color:
-                                            item.color.withValues(alpha: 0.2),
-                                        width: 0.8)),
-                                child: Icon(item.icon,
-                                    color: item.color, size: 22)),
-                            const SizedBox(height: 5),
-                            Text(item.label,
-                                style: TextStyle(
-                                    fontSize: 10.5,
-                                    color: p.textSecondary,
-                                    fontWeight: FontWeight.w500),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.center),
-                          ]),
-                        ),
-                      ))
-                  .toList()),
+          child: Row(children: items.map((item) => GestureDetector(
+            onTap: () {
+              if (resourceManager.isDisposed) return;
+              setState(() => _showMenu = false);
+              _menuAnim.reverse();
+              item.onTap();
+            },
+            child: Container(
+              width: 72,
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Container(
+                  width: 46, height: 46,
+                  decoration: BoxDecoration(
+                      color: item.color.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: item.color.withValues(alpha: 0.2), width: 0.8)),
+                  child: Icon(item.icon, color: item.color, size: 22),
+                ),
+                const SizedBox(height: 5),
+                Text(item.label,
+                    style: TextStyle(fontSize: 10.5, color: p.textSecondary, fontWeight: FontWeight.w500),
+                    maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
+              ]),
+            ),
+          )).toList()),
         ),
       ),
     );
@@ -2116,26 +1752,16 @@ class ChatPageState extends State<ChatPage>
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
           color: p.dangerColor.withValues(alpha: 0.05),
-          border: Border(
-              top: BorderSide(color: p.dangerColor.withValues(alpha: 0.2)))),
+          border: Border(top: BorderSide(color: p.dangerColor.withValues(alpha: 0.2)))),
       child: Row(children: [
         _RecDot(color: p.dangerColor),
         const SizedBox(width: 10),
         Text('Đang ghi âm  $_recDuration',
-            style: TextStyle(
-                color: p.dangerColor,
-                fontWeight: FontWeight.w600,
-                fontSize: 14)),
+            style: TextStyle(color: p.dangerColor, fontWeight: FontWeight.w600, fontSize: 14)),
         const Spacer(),
-        _IconBtn(
-            icon: Icons.delete_outline_rounded,
-            color: p.dangerColor,
-            onTap: _cancelRec),
+        _IconBtn(icon: Icons.delete_outline_rounded, color: p.dangerColor, onTap: _cancelRec),
         const SizedBox(width: 6),
-        _IconBtn(
-            icon: Icons.send_rounded,
-            color: theme.primaryColor,
-            onTap: _stopRec),
+        _IconBtn(icon: Icons.send_rounded, color: theme.primaryColor, onTap: _stopRec),
       ]),
     );
   }
@@ -2161,82 +1787,64 @@ class ChatPageState extends State<ChatPage>
                     }
                   }),
             )),
+
       _buildRecBar(p, theme),
+
       Container(
         margin: EdgeInsets.only(
             bottom: MediaQuery.of(context).padding.bottom + 10,
-            left: 12,
-            right: 12,
-            top: 6),
+            left: 12, right: 12, top: 6),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
+          // ── Reply preview ───────────────────────────────────────────────
           AnimatedSize(
             duration: const Duration(milliseconds: 260),
             curve: Curves.easeOutCubic,
             child: _replyingTo == null
                 ? const SizedBox.shrink()
                 : Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                    decoration: BoxDecoration(
-                        color: p.surface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border(
-                            left: BorderSide(
-                                color: theme.primaryColor, width: 3)),
-                        boxShadow: [BoxShadow(color: p.shadow, blurRadius: 6)]),
-                    child: Row(children: [
-                      Icon(Icons.reply_rounded,
-                          color: theme.primaryColor, size: 17),
-                      const SizedBox(width: 8),
-                      Expanded(
-                          child: Text('Trả lời: ${_replyingTo!.content}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                  color: p.textSecondary,
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w500))),
-                      GestureDetector(
-                        onTap: () {
-                          if (mounted) {
-                            setState(() => _replyingTo = null);
-                            _replyAnim.reverse();
-                            _focusNode.requestFocus();
-                          }
-                        },
-                        child: Icon(Icons.close_rounded,
-                            size: 17, color: p.textHint),
-                      ),
-                    ]),
-                  ),
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(
+                  color: p.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border(left: BorderSide(color: theme.primaryColor, width: 3)),
+                  boxShadow: [BoxShadow(color: p.shadow, blurRadius: 6)]),
+              child: Row(children: [
+                Icon(Icons.reply_rounded, color: theme.primaryColor, size: 17),
+                const SizedBox(width: 8),
+                Expanded(child: Text('Trả lời: ${_replyingTo!.content}',
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: p.textSecondary, fontSize: 12.5,
+                        fontWeight: FontWeight.w500))),
+                GestureDetector(
+                  onTap: () {
+                    if (mounted) {
+                      setState(() => _replyingTo = null);
+                      _replyAnim.reverse();
+                      _focusNode.requestFocus();
+                    }
+                  },
+                  child: Icon(Icons.close_rounded, size: 17, color: p.textHint),
+                ),
+              ]),
+            ),
           ),
+
+          // ── Input row ───────────────────────────────────────────────────
           Container(
             decoration: BoxDecoration(
                 color: p.surface,
                 borderRadius: BorderRadius.circular(28),
-                boxShadow: [
-                  BoxShadow(
-                      color: p.shadow,
-                      blurRadius: 12,
-                      offset: const Offset(0, 3))
-                ],
+                boxShadow: [BoxShadow(color: p.shadow, blurRadius: 12, offset: const Offset(0, 3))],
                 border: Border.all(color: p.inputBorder, width: 0.6)),
             child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
               if (full)
                 GestureDetector(
                   onTap: () {
                     if (resourceManager.isDisposed) return;
-                    setState(() {
-                      _showMenu = !_showMenu;
-                      _isShowSticker = false;
-                    });
-                    if (_showMenu) {
-                      _menuAnim.forward();
-                      _focusNode.unfocus();
-                    } else {
-                      _menuAnim.reverse();
-                    }
+                    setState(() { _showMenu = !_showMenu; _isShowSticker = false; });
+                    if (_showMenu) { _menuAnim.forward(); _focusNode.unfocus(); }
+                    else { _menuAnim.reverse(); }
                   },
                   child: Padding(
                       padding: const EdgeInsets.all(10),
@@ -2245,37 +1853,25 @@ class ChatPageState extends State<ChatPage>
                           duration: const Duration(milliseconds: 260),
                           curve: Curves.easeOutBack,
                           child: Icon(Icons.add_circle_rounded,
-                              color:
-                                  _showMenu ? theme.primaryColor : p.textHint,
-                              size: 28))),
+                              color: _showMenu ? theme.primaryColor : p.textHint, size: 28))),
                 ),
               if (full && !_showMenu)
-                GestureDetector(
-                  onTap: _pickImage,
-                  child: Padding(
-                      padding: const EdgeInsets.all(10),
-                      child: Icon(Icons.image_rounded,
-                          color: p.textHint, size: 24)),
-                ),
+                GestureDetector(onTap: _pickImage,
+                    child: Padding(padding: const EdgeInsets.all(10),
+                        child: Icon(Icons.image_rounded, color: p.textHint, size: 24))),
               if (full && !_showMenu)
-                GestureDetector(
-                  onTap: _toggleSticker,
-                  child: Padding(
-                      padding: const EdgeInsets.all(10),
-                      child: Icon(Icons.emoji_emotions_outlined,
-                          color:
-                              _isShowSticker ? theme.primaryColor : p.textHint,
-                          size: 24)),
-                ),
+                GestureDetector(onTap: _toggleSticker,
+                    child: Padding(padding: const EdgeInsets.all(10),
+                        child: Icon(Icons.emoji_emotions_outlined,
+                            color: _isShowSticker ? theme.primaryColor : p.textHint, size: 24))),
+
               Expanded(
                 child: Padding(
-                  padding: EdgeInsets.only(
-                      left: full ? 0 : 16, right: 6, top: 12, bottom: 12),
+                  padding: EdgeInsets.only(left: full ? 0 : 16, right: 6, top: 12, bottom: 12),
                   child: TextField(
                     controller: _inputController,
                     focusNode: _focusNode,
-                    style: TextStyle(
-                        color: p.textPrimary, fontSize: 15 * fs, height: 1.45),
+                    style: TextStyle(color: p.textPrimary, fontSize: 15 * fs, height: 1.45),
                     maxLines: null,
                     textInputAction: TextInputAction.newline,
                     autofocus: widget.isMiniChat || widget.isBubbleMode,
@@ -2292,11 +1888,11 @@ class ChatPageState extends State<ChatPage>
                     },
                     decoration: InputDecoration.collapsed(
                         hintText: 'Nhắn tin...',
-                        hintStyle:
-                            TextStyle(color: p.textHint, fontSize: 15 * fs)),
+                        hintStyle: TextStyle(color: p.textHint, fontSize: 15 * fs)),
                   ),
                 ),
               ),
+
               Padding(
                 padding: const EdgeInsets.all(6),
                 child: ValueListenableBuilder<TextEditingValue>(
@@ -2307,37 +1903,25 @@ class ChatPageState extends State<ChatPage>
                       onTap: () {
                         if (hasText) {
                           _onSend(_inputController.text, TypeMessage.text);
-                        } else if (full) _startRec();
+                        } else if (full) { _startRec(); }
                       },
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 180),
-                        width: 44,
-                        height: 44,
+                        width: 44, height: 44,
                         decoration: BoxDecoration(
-                          gradient: hasText
-                              ? theme.outgoingBubbleGradient(p.isDark)
-                              : null,
+                          gradient: hasText ? theme.outgoingBubbleGradient(p.isDark) : null,
                           color: hasText ? null : p.surfaceVariant,
                           shape: BoxShape.circle,
-                          boxShadow: hasText
-                              ? [
-                                  BoxShadow(
-                                      color: theme.primaryColor
-                                          .withValues(alpha: 0.35),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 3))
-                                ]
-                              : null,
+                          boxShadow: hasText ? [BoxShadow(
+                              color: theme.primaryColor.withValues(alpha: 0.35),
+                              blurRadius: 10, offset: const Offset(0, 3))] : null,
                         ),
                         child: AnimatedSwitcher(
                             duration: const Duration(milliseconds: 180),
                             child: Icon(
-                                hasText
-                                    ? Icons.send_rounded
-                                    : Icons.mic_rounded,
+                                hasText ? Icons.send_rounded : Icons.mic_rounded,
                                 key: ValueKey(hasText),
-                                color: hasText ? Colors.white : p.textHint,
-                                size: 20)),
+                                color: hasText ? Colors.white : p.textHint, size: 20)),
                       ),
                     );
                   },
@@ -2351,34 +1935,32 @@ class ChatPageState extends State<ChatPage>
   }
 
   Widget _buildMediaOverlay(ThemePalette p, ThemeProvider theme) => Container(
-        color: Colors.black54,
-        child: Center(
-            child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-          decoration: BoxDecoration(
-              color: p.surface,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [BoxShadow(color: p.shadowStrong, blurRadius: 16)]),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            CircularProgressIndicator(
-                color: theme.primaryColor, strokeWidth: 2.5),
-            const SizedBox(height: 16),
-            Text('Đang nén & tải lên...',
-                style: TextStyle(
-                    color: p.textPrimary, fontWeight: FontWeight.w600)),
-          ]),
-        )),
-      );
+    color: Colors.black54,
+    child: Center(child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+      decoration: BoxDecoration(
+          color: p.surface,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [BoxShadow(color: p.shadowStrong, blurRadius: 16)]),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        CircularProgressIndicator(color: theme.primaryColor, strokeWidth: 2.5),
+        const SizedBox(height: 16),
+        Text('Đang nén & tải lên...',
+            style: TextStyle(color: p.textPrimary, fontWeight: FontWeight.w600)),
+      ]),
+    )),
+  );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SHARED PRIVATE WIDGETS
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _AppBarTitle extends StatelessWidget {
-  const _AppBarTitle(
-      {required this.peerId,
-      required this.peerNickname,
-      required this.peerAvatar,
-      required this.palette,
-      required this.theme,
-      required this.onTap});
+  const _AppBarTitle({
+    required this.peerId, required this.peerNickname, required this.peerAvatar,
+    required this.palette, required this.theme, required this.onTap,
+  });
   final String peerId, peerNickname, peerAvatar;
   final ThemePalette palette;
   final ThemeProvider theme;
@@ -2386,41 +1968,28 @@ class _AppBarTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Row(children: [
-          AvatarWithStatus(
-              userId: peerId,
-              photoUrl: peerAvatar,
-              size: 40,
-              indicatorSize: 11),
-          const SizedBox(width: 10),
-          Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                Text(peerNickname,
-                    style: TextStyle(
-                        color: palette.textPrimary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.3),
-                    overflow: TextOverflow.ellipsis),
-                UserStatusIndicator(userId: peerId, showText: true, size: 8),
-              ])),
-        ]),
-      );
+    onTap: onTap,
+    child: Row(children: [
+      AvatarWithStatus(userId: peerId, photoUrl: peerAvatar, size: 40, indicatorSize: 11),
+      const SizedBox(width: 10),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min, children: [
+            Text(peerNickname,
+                style: TextStyle(color: palette.textPrimary, fontSize: 16,
+                    fontWeight: FontWeight.w700, letterSpacing: -0.3),
+                overflow: TextOverflow.ellipsis),
+            UserStatusIndicator(userId: peerId, showText: true, size: 8),
+          ])),
+    ]),
+  );
 }
 
 class _OverlayHeader extends StatelessWidget {
-  const _OverlayHeader(
-      {required this.nickname,
-      required this.avatar,
-      required this.peerId,
-      required this.onMinimize,
-      required this.onClose,
-      required this.palette,
-      required this.theme});
+  const _OverlayHeader({
+    required this.nickname, required this.avatar, required this.peerId,
+    required this.onMinimize, required this.onClose,
+    required this.palette, required this.theme,
+  });
   final String nickname, avatar, peerId;
   final VoidCallback onMinimize, onClose;
   final ThemePalette palette;
@@ -2428,138 +1997,99 @@ class _OverlayHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-            color: palette.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            border: Border(bottom: BorderSide(color: palette.divider))),
-        child: Row(children: [
-          _Avatar(photoUrl: avatar, radius: 18, primary: theme.primaryColor),
-          const SizedBox(width: 10),
-          Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                Text(nickname,
-                    style: TextStyle(
-                        color: palette.textPrimary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700),
-                    overflow: TextOverflow.ellipsis),
-                UserStatusIndicator(
-                    userId: peerId,
-                    showText: true,
-                    size: 7,
-                    textColor: palette.textHint),
-              ])),
-          _IconBtn(
-              icon: Icons.remove_rounded,
-              color: palette.textHint,
-              onTap: onMinimize,
-              size: 22),
-          const SizedBox(width: 2),
-          _IconBtn(
-              icon: Icons.close_rounded,
-              color: palette.textHint,
-              onTap: onClose,
-              size: 22),
-        ]),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+    decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        border: Border(bottom: BorderSide(color: palette.divider))),
+    child: Row(children: [
+      _Avatar(photoUrl: avatar, radius: 18, primary: theme.primaryColor),
+      const SizedBox(width: 10),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min, children: [
+            Text(nickname,
+                style: TextStyle(color: palette.textPrimary, fontSize: 15, fontWeight: FontWeight.w700),
+                overflow: TextOverflow.ellipsis),
+            UserStatusIndicator(userId: peerId, showText: true, size: 7, textColor: palette.textHint),
+          ])),
+      _IconBtn(icon: Icons.remove_rounded, color: palette.textHint, onTap: onMinimize, size: 22),
+      const SizedBox(width: 2),
+      _IconBtn(icon: Icons.close_rounded, color: palette.textHint, onTap: onClose, size: 22),
+    ]),
+  );
 }
 
 class _Avatar extends StatelessWidget {
-  const _Avatar(
-      {required this.photoUrl, required this.radius, required this.primary});
+  const _Avatar({required this.photoUrl, required this.radius, required this.primary});
   final String photoUrl;
   final double radius;
   final Color primary;
 
   @override
   Widget build(BuildContext context) => CircleAvatar(
-        radius: radius,
-        backgroundColor: primary.withValues(alpha: 0.12),
-        backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
-        child: photoUrl.isEmpty
-            ? Icon(Icons.person_rounded, size: radius, color: primary)
-            : null,
-      );
+    radius: radius,
+    backgroundColor: primary.withValues(alpha: 0.12),
+    backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
+    child: photoUrl.isEmpty
+        ? Icon(Icons.person_rounded, size: radius, color: primary) : null,
+  );
 }
 
 class _QuickBtn extends StatelessWidget {
-  const _QuickBtn(
-      {required this.icon, required this.onTap, required this.palette});
+  const _QuickBtn({required this.icon, required this.onTap, required this.palette});
   final IconData icon;
   final VoidCallback onTap;
   final ThemePalette palette;
-
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Padding(
-            padding: const EdgeInsets.all(4),
-            child: Icon(icon, size: 16, color: palette.textHint)),
-      );
+    onTap: onTap,
+    child: Padding(padding: const EdgeInsets.all(4),
+        child: Icon(icon, size: 16, color: palette.textHint)),
+  );
 }
 
 class _IconBtn extends StatelessWidget {
-  const _IconBtn(
-      {required this.icon,
-      required this.color,
-      required this.onTap,
-      this.size = 22});
+  const _IconBtn({required this.icon, required this.color, required this.onTap, this.size = 22});
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
   final double size;
-
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Padding(
-            padding: const EdgeInsets.all(4),
-            child: Icon(icon, color: color, size: size)),
-      );
+    onTap: onTap,
+    child: Padding(padding: const EdgeInsets.all(4),
+        child: Icon(icon, color: color, size: size)),
+  );
 }
 
 class _ScrollFab extends StatelessWidget {
-  const _ScrollFab(
-      {required this.onTap, required this.palette, required this.theme});
+  const _ScrollFab({required this.onTap, required this.palette, required this.theme});
   final VoidCallback onTap;
   final ThemePalette palette;
   final ThemeProvider theme;
-
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-                color: palette.surface,
-                shape: BoxShape.circle,
-                boxShadow: [BoxShadow(color: palette.shadow, blurRadius: 8)]),
-            child: Icon(Icons.keyboard_arrow_down_rounded,
-                color: palette.textSecondary, size: 22)),
-      );
+    onTap: onTap,
+    child: Container(
+        width: 36, height: 36,
+        decoration: BoxDecoration(
+            color: palette.surface, shape: BoxShape.circle,
+            boxShadow: [BoxShadow(color: palette.shadow, blurRadius: 8)]),
+        child: Icon(Icons.keyboard_arrow_down_rounded, color: palette.textSecondary, size: 22)),
+  );
 }
 
 class _DateDivider extends StatelessWidget {
   const _DateDivider({required this.date, required this.palette});
   final DateTime date;
   final ThemePalette palette;
-
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
     String label;
-    if (_same(date, now)) {
-      label = 'Hôm nay';
-    } else if (_same(date, now.subtract(const Duration(days: 1)))) {
-      label = 'Hôm qua';
-    } else {
-      label = DateFormat('dd/MM/yyyy').format(date);
-    }
+    if (_same(date, now)) label = 'Hôm nay';
+    else if (_same(date, now.subtract(const Duration(days: 1)))) label = 'Hôm qua';
+    else label = DateFormat('dd/MM/yyyy').format(date);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16),
       child: Row(children: [
@@ -2567,45 +2097,30 @@ class _DateDivider extends StatelessWidget {
         Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
-                    color: palette.surfaceVariant,
-                    borderRadius: BorderRadius.circular(999)),
+                    color: palette.surfaceVariant, borderRadius: BorderRadius.circular(999)),
                 child: Text(label,
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: palette.textHint,
-                        fontWeight: FontWeight.w600)))),
+                    style: TextStyle(fontSize: 11, color: palette.textHint, fontWeight: FontWeight.w600)))),
         Expanded(child: Divider(color: palette.divider, height: 1)),
       ]),
     );
   }
-
-  bool _same(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
+  bool _same(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
 }
 
 class _MediaPlaceholder extends StatelessWidget {
-  const _MediaPlaceholder(
-      {required this.isLoading,
-      required this.palette,
-      required this.primary,
-      this.progress});
+  const _MediaPlaceholder({required this.isLoading, required this.palette, required this.primary, this.progress});
   final bool isLoading;
   final ThemePalette palette;
   final Color primary;
   final double? progress;
-
   @override
   Widget build(BuildContext context) => ColoredBox(
       color: palette.surfaceVariant,
-      child: Center(
-          child: isLoading
-              ? CircularProgressIndicator(
-                  value: progress, color: primary, strokeWidth: 2.5)
-              : Icon(Icons.broken_image_rounded,
-                  color: palette.textHint, size: 32)));
+      child: Center(child: isLoading
+          ? CircularProgressIndicator(value: progress, color: primary, strokeWidth: 2.5)
+          : Icon(Icons.broken_image_rounded, color: palette.textHint, size: 32)));
 }
 
 class _RecDot extends StatefulWidget {
@@ -2614,25 +2129,16 @@ class _RecDot extends StatefulWidget {
   @override
   State<_RecDot> createState() => _RecDotState();
 }
-
 class _RecDotState extends State<_RecDot> with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 700))
-    ..repeat(reverse: true);
+      vsync: this, duration: const Duration(milliseconds: 700))..repeat(reverse: true);
   @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
+  void dispose() { _ctrl.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) => FadeTransition(
       opacity: _ctrl,
-      child: Container(
-          width: 8,
-          height: 8,
-          decoration:
-              BoxDecoration(color: widget.color, shape: BoxShape.circle)));
+      child: Container(width: 8, height: 8,
+          decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle)));
 }
 
 class _StickerItem extends StatelessWidget {
@@ -2642,14 +2148,9 @@ class _StickerItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) => GestureDetector(
       onTap: onTap,
-      child: Padding(
-          padding: const EdgeInsets.all(6),
-          child: Image.asset('images/$name.gif',
-              width: 56,
-              height: 56,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) =>
-                  const Icon(Icons.error, size: 40))));
+      child: Padding(padding: const EdgeInsets.all(6),
+          child: Image.asset('images/$name.gif', width: 56, height: 56, fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const Icon(Icons.error, size: 40))));
 }
 
 class _ScamWarning extends StatelessWidget {
@@ -2658,24 +2159,19 @@ class _ScamWarning extends StatelessWidget {
   final ThemePalette palette;
   @override
   Widget build(BuildContext context) => Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-            color: palette.dangerColor.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(10),
-            border:
-                Border.all(color: palette.dangerColor.withValues(alpha: 0.3))),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(Icons.warning_rounded, color: palette.dangerColor, size: 14),
-          const SizedBox(width: 6),
-          Expanded(
-              child: Text('CẢNH BÁO AI: $reason',
-                  style: TextStyle(
-                      fontSize: 11.5,
-                      color: palette.dangerColor,
-                      fontWeight: FontWeight.w600))),
-        ]),
-      );
+    margin: const EdgeInsets.only(bottom: 8),
+    padding: const EdgeInsets.all(8),
+    decoration: BoxDecoration(
+        color: palette.dangerColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: palette.dangerColor.withValues(alpha: 0.3))),
+    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Icon(Icons.warning_rounded, color: palette.dangerColor, size: 14),
+      const SizedBox(width: 6),
+      Expanded(child: Text('CẢNH BÁO AI: $reason',
+          style: TextStyle(fontSize: 11.5, color: palette.dangerColor, fontWeight: FontWeight.w600))),
+    ]),
+  );
 }
 
 class _ReminderHint extends StatelessWidget {
@@ -2684,94 +2180,70 @@ class _ReminderHint extends StatelessWidget {
   final ThemePalette palette;
   @override
   Widget build(BuildContext context) => Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        decoration: BoxDecoration(
-            color: palette.infoColor.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(10)),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.alarm_add_rounded, color: palette.infoColor, size: 13),
-          const SizedBox(width: 6),
-          Text('AI: Phát hiện công việc cần nhắc!',
-              style: TextStyle(fontSize: 11, color: palette.infoColor)),
-          const SizedBox(width: 8),
-          GestureDetector(
-              onTap: onView,
-              child: Text('XEM',
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: palette.infoColor,
-                      fontWeight: FontWeight.w700))),
-        ]),
-      );
+    margin: const EdgeInsets.only(bottom: 8),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+    decoration: BoxDecoration(
+        color: palette.infoColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10)),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(Icons.alarm_add_rounded, color: palette.infoColor, size: 13),
+      const SizedBox(width: 6),
+      Text('AI: Phát hiện công việc cần nhắc!',
+          style: TextStyle(fontSize: 11, color: palette.infoColor)),
+      const SizedBox(width: 8),
+      GestureDetector(onTap: onView,
+          child: Text('XEM',
+              style: TextStyle(fontSize: 11, color: palette.infoColor, fontWeight: FontWeight.w700))),
+    ]),
+  );
 }
 
 class _LocationContent extends StatelessWidget {
-  const _LocationContent(
-      {required this.location,
-      required this.isMe,
-      required this.palette,
-      required this.theme,
-      required this.onOpen});
+  const _LocationContent({
+    required this.location, required this.isMe, required this.palette,
+    required this.theme, required this.onOpen,
+  });
   final dynamic location;
   final bool isMe;
   final ThemePalette palette;
   final ThemeProvider theme;
   final VoidCallback onOpen;
-
   @override
-  Widget build(BuildContext context) =>
-      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.location_on_rounded,
-              color: isMe ? Colors.white : palette.dangerColor, size: 17),
-          const SizedBox(width: 4),
-          Text('Vị trí',
-              style: TextStyle(
-                  color: isMe ? Colors.white : palette.textPrimary,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14)),
-        ]),
-        const SizedBox(height: 4),
-        Text(location.address,
-            style: TextStyle(
-                color: isMe ? Colors.white70 : palette.textSecondary,
-                fontSize: 12.5)),
-        const SizedBox(height: 8),
-        GestureDetector(
-            onTap: onOpen,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                  color: isMe
-                      ? Colors.white.withValues(alpha: 0.18)
-                      : palette.primaryContainer,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                      color: isMe
-                          ? Colors.white.withValues(alpha: 0.3)
-                          : theme.primaryColor.withValues(alpha: 0.3))),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.map_rounded,
-                    size: 13, color: isMe ? Colors.white : theme.primaryColor),
-                const SizedBox(width: 4),
-                Text('Xem trên Maps',
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: isMe ? Colors.white : theme.primaryColor,
-                        fontWeight: FontWeight.w600)),
-              ]),
-            )),
-      ]);
+  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(Icons.location_on_rounded, color: isMe ? Colors.white : palette.dangerColor, size: 17),
+      const SizedBox(width: 4),
+      Text('Vị trí', style: TextStyle(color: isMe ? Colors.white : palette.textPrimary,
+          fontWeight: FontWeight.w700, fontSize: 14)),
+    ]),
+    const SizedBox(height: 4),
+    Text(location.address, style: TextStyle(
+        color: isMe ? Colors.white70 : palette.textSecondary, fontSize: 12.5)),
+    const SizedBox(height: 8),
+    GestureDetector(onTap: onOpen,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+              color: isMe ? Colors.white.withValues(alpha: 0.18) : palette.primaryContainer,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                  color: isMe ? Colors.white.withValues(alpha: 0.3)
+                      : theme.primaryColor.withValues(alpha: 0.3))),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.map_rounded, size: 13, color: isMe ? Colors.white : theme.primaryColor),
+            const SizedBox(width: 4),
+            Text('Xem trên Maps', style: TextStyle(fontSize: 12,
+                color: isMe ? Colors.white : theme.primaryColor, fontWeight: FontWeight.w600)),
+          ]),
+        )),
+  ]);
 }
 
 class _ScamScanWidget extends StatelessWidget {
-  const _ScamScanWidget(
-      {required this.msgId,
-      required this.content,
-      required this.result,
-      required this.onScan,
-      required this.palette});
+  const _ScamScanWidget({
+    required this.msgId, required this.content, required this.result,
+    required this.onScan, required this.palette,
+  });
   final String msgId, content;
   final dynamic result;
   final void Function(String) onScan;
@@ -2790,8 +2262,7 @@ class _ScamScanWidget extends StatelessWidget {
           final statusString = scamLevel.name.toUpperCase();
           onScan(statusString);
           if (statusString == 'SAFE') {
-            Fluttertoast.showToast(
-                msg: '✅ Tin nhắn an toàn',
+            Fluttertoast.showToast(msg: '✅ Tin nhắn an toàn',
                 backgroundColor: palette.successColor);
           }
         },
@@ -2800,17 +2271,12 @@ class _ScamScanWidget extends StatelessWidget {
           decoration: BoxDecoration(
               color: palette.successColor.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                  color: palette.successColor.withValues(alpha: 0.3),
-                  width: 0.8)),
+              border: Border.all(color: palette.successColor.withValues(alpha: 0.3), width: 0.8)),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(Icons.shield_outlined, size: 13, color: palette.successColor),
             const SizedBox(width: 4),
             Text('Quét AI',
-                style: TextStyle(
-                    fontSize: 11,
-                    color: palette.successColor,
-                    fontWeight: FontWeight.w600)),
+                style: TextStyle(fontSize: 11, color: palette.successColor, fontWeight: FontWeight.w600)),
           ]),
         ),
       );
@@ -2820,13 +2286,10 @@ class _ScamScanWidget extends StatelessWidget {
 }
 
 class _ReactionRow extends StatelessWidget {
-  const _ReactionRow(
-      {required this.groupChatId,
-      required this.msgId,
-      required this.currentUserId,
-      required this.isMe,
-      required this.provider,
-      required this.onTap});
+  const _ReactionRow({
+    required this.groupChatId, required this.msgId, required this.currentUserId,
+    required this.isMe, required this.provider, required this.onTap,
+  });
   final String groupChatId, msgId, currentUserId;
   final bool isMe;
   final ReactionProvider provider;
@@ -2834,38 +2297,31 @@ class _ReactionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => StreamBuilder<QuerySnapshot>(
-        stream: provider.getReactions(groupChatId, msgId),
-        builder: (_, snap) {
-          if (!snap.hasData || snap.data!.docs.isEmpty) {
-            return const SizedBox.shrink();
-          }
-          final reactions = <String, int>{};
-          final myReactions = <String, bool>{};
-          for (final doc in snap.data!.docs) {
-            final d = doc.data() as Map<String, dynamic>;
-            final emoji = d['emoji'] as String, uid = d['userId'] as String;
-            reactions[emoji] = (reactions[emoji] ?? 0) + 1;
-            if (uid == currentUserId) myReactions[emoji] = true;
-          }
-          return Padding(
-              padding: const EdgeInsets.only(top: 3),
-              child: MessageReactionsDisplay(
-                  reactions: reactions,
-                  currentUserId: currentUserId,
-                  userReactions: myReactions,
-                  onReactionTap: onTap));
-        },
-      );
+    stream: provider.getReactions(groupChatId, msgId),
+    builder: (_, snap) {
+      if (!snap.hasData || snap.data!.docs.isEmpty) return const SizedBox.shrink();
+      final reactions = <String, int>{};
+      final myReactions = <String, bool>{};
+      for (final doc in snap.data!.docs) {
+        final d = doc.data() as Map<String, dynamic>;
+        final emoji = d['emoji'] as String, uid = d['userId'] as String;
+        reactions[emoji] = (reactions[emoji] ?? 0) + 1;
+        if (uid == currentUserId) myReactions[emoji] = true;
+      }
+      return Padding(
+          padding: const EdgeInsets.only(top: 3),
+          child: MessageReactionsDisplay(
+              reactions: reactions, currentUserId: currentUserId,
+              userReactions: myReactions, onReactionTap: onTap));
+    },
+  );
 }
 
 class _ThemedDialog extends StatelessWidget {
-  const _ThemedDialog(
-      {required this.title,
-      required this.icon,
-      required this.iconColor,
-      required this.content,
-      required this.actions,
-      required this.palette});
+  const _ThemedDialog({
+    required this.title, required this.icon, required this.iconColor,
+    required this.content, required this.actions, required this.palette,
+  });
   final String title;
   final IconData icon;
   final Color iconColor;
@@ -2875,80 +2331,60 @@ class _ThemedDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        elevation: 0,
-        backgroundColor: palette.surface,
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                          color: iconColor.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12)),
-                      child: Icon(icon, color: iconColor, size: 22)),
-                  const SizedBox(width: 12),
-                  Expanded(
-                      child: Text(title,
-                          style: TextStyle(
-                              color: palette.textPrimary,
-                              fontSize: 17,
-                              fontWeight: FontWeight.w700))),
-                ]),
-                const SizedBox(height: 20),
-                content,
-                const SizedBox(height: 20),
-                Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: actions
-                        .map((a) => Padding(
-                            padding: const EdgeInsets.only(left: 8), child: a))
-                        .toList()),
-              ]),
-        ),
-      );
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+    elevation: 0,
+    backgroundColor: palette.surface,
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Container(width: 42, height: 42,
+                  decoration: BoxDecoration(
+                      color: iconColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12)),
+                  child: Icon(icon, color: iconColor, size: 22)),
+              const SizedBox(width: 12),
+              Expanded(child: Text(title,
+                  style: TextStyle(color: palette.textPrimary, fontSize: 17, fontWeight: FontWeight.w700))),
+            ]),
+            const SizedBox(height: 20),
+            content,
+            const SizedBox(height: 20),
+            Row(mainAxisAlignment: MainAxisAlignment.end,
+                children: actions.map((a) =>
+                    Padding(padding: const EdgeInsets.only(left: 8), child: a)).toList()),
+          ]),
+    ),
+  );
 }
 
 class _ThemedDialogAction extends StatelessWidget {
-  const _ThemedDialogAction(
-      {required this.label,
-      required this.onTap,
-      required this.palette,
-      required this.primary,
-      this.isPrimary = false,
-      this.isDanger = false});
+  const _ThemedDialogAction({
+    required this.label, required this.onTap, required this.palette, required this.primary,
+    this.isPrimary = false, this.isDanger = false,
+  });
   final String label;
   final VoidCallback onTap;
   final ThemePalette palette;
   final Color primary;
   final bool isPrimary, isDanger;
-
   @override
   Widget build(BuildContext context) {
     if (isPrimary) {
-      return FilledButton(
-          onPressed: onTap,
-          style: FilledButton.styleFrom(
-              backgroundColor: primary,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 18, vertical: 10)),
+      return FilledButton(onPressed: onTap,
+          style: FilledButton.styleFrom(backgroundColor: primary,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10)),
           child: Text(label));
     }
     if (isDanger) {
-      return TextButton(
-          onPressed: onTap,
+      return TextButton(onPressed: onTap,
           style: TextButton.styleFrom(foregroundColor: palette.dangerColor),
           child: Text(label));
     }
-    return TextButton(
-        onPressed: onTap,
+    return TextButton(onPressed: onTap,
         style: TextButton.styleFrom(foregroundColor: palette.textSecondary),
         child: Text(label));
   }
@@ -2964,15 +2400,10 @@ class _LockOptionsSheet extends StatelessWidget {
           color: p.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(28))),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-            width: 38,
-            height: 4,
-            margin: const EdgeInsets.symmetric(vertical: 10),
-            decoration: BoxDecoration(
-                color: p.divider, borderRadius: BorderRadius.circular(999))),
+        Container(width: 38, height: 4, margin: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(color: p.divider, borderRadius: BorderRadius.circular(999))),
         ListTile(
-            leading: Icon(Icons.lock_outline_rounded,
-                color: context.read<ThemeProvider>().primaryColor),
+            leading: Icon(Icons.lock_outline_rounded, color: context.read<ThemeProvider>().primaryColor),
             title: Text('Đặt mã PIN', style: TextStyle(color: p.textPrimary)),
             onTap: () => Navigator.pop(context, 'set_pin')),
         ListTile(
@@ -2992,7 +2423,6 @@ class _ReminderPickerDialog extends StatefulWidget {
   @override
   State<_ReminderPickerDialog> createState() => _ReminderPickerDialogState();
 }
-
 class _ReminderPickerDialogState extends State<_ReminderPickerDialog> {
   DateTime _selected = DateTime.now().add(const Duration(hours: 1));
   @override
@@ -3000,56 +2430,34 @@ class _ReminderPickerDialogState extends State<_ReminderPickerDialog> {
     final p = context.read<ThemeProvider>().palette;
     final primary = context.read<ThemeProvider>().primaryColor;
     return _ThemedDialog(
-      title: 'Đặt Nhắc Nhở',
-      icon: Icons.alarm_add_rounded,
-      iconColor: primary,
-      palette: p,
+      title: 'Đặt Nhắc Nhở', icon: Icons.alarm_add_rounded, iconColor: primary, palette: p,
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        _PickerTile(
-            icon: Icons.calendar_today_rounded,
-            label: 'Ngày',
+        _PickerTile(icon: Icons.calendar_today_rounded, label: 'Ngày',
             value: DateFormat('dd/MM/yyyy').format(_selected),
-            palette: p,
-            primary: primary,
+            palette: p, primary: primary,
             onTap: () async {
-              final d = await showDatePicker(
-                  context: context,
-                  initialDate: _selected,
-                  firstDate: DateTime.now(),
-                  lastDate: DateTime.now().add(const Duration(days: 365)));
+              final d = await showDatePicker(context: context, initialDate: _selected,
+                  firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 365)));
               if (d != null && mounted) {
-                setState(() => _selected = DateTime(
-                    d.year, d.month, d.day, _selected.hour, _selected.minute));
+                setState(() => _selected = DateTime(d.year, d.month, d.day, _selected.hour, _selected.minute));
               }
             }),
         const SizedBox(height: 8),
-        _PickerTile(
-            icon: Icons.access_time_rounded,
-            label: 'Giờ',
+        _PickerTile(icon: Icons.access_time_rounded, label: 'Giờ',
             value: DateFormat('HH:mm').format(_selected),
-            palette: p,
-            primary: primary,
+            palette: p, primary: primary,
             onTap: () async {
-              final t = await showTimePicker(
-                  context: context,
+              final t = await showTimePicker(context: context,
                   initialTime: TimeOfDay.fromDateTime(_selected));
               if (t != null && mounted) {
-                setState(() => _selected = DateTime(_selected.year,
-                    _selected.month, _selected.day, t.hour, t.minute));
+                setState(() => _selected = DateTime(_selected.year, _selected.month, _selected.day, t.hour, t.minute));
               }
             }),
       ]),
       actions: [
-        _ThemedDialogAction(
-            label: 'Đặt nhắc',
-            isPrimary: true,
-            palette: p,
-            primary: primary,
+        _ThemedDialogAction(label: 'Đặt nhắc', isPrimary: true, palette: p, primary: primary,
             onTap: () => Navigator.pop(context, _selected)),
-        _ThemedDialogAction(
-            label: 'Huỷ',
-            palette: p,
-            primary: primary,
+        _ThemedDialogAction(label: 'Huỷ', palette: p, primary: primary,
             onTap: () => Navigator.pop(context)),
       ],
     );
@@ -3057,53 +2465,42 @@ class _ReminderPickerDialogState extends State<_ReminderPickerDialog> {
 }
 
 class _PickerTile extends StatelessWidget {
-  const _PickerTile(
-      {required this.icon,
-      required this.label,
-      required this.value,
-      required this.onTap,
-      required this.palette,
-      required this.primary});
+  const _PickerTile({
+    required this.icon, required this.label, required this.value,
+    required this.onTap, required this.palette, required this.primary,
+  });
   final IconData icon;
   final String label, value;
   final VoidCallback onTap;
   final ThemePalette palette;
   final Color primary;
-
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-                color: palette.surfaceVariant,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: palette.divider)),
-            child: Row(children: [
-              Icon(icon, color: primary, size: 20),
-              const SizedBox(width: 12),
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(label,
-                    style: TextStyle(fontSize: 11, color: palette.textHint)),
-                Text(value,
-                    style: TextStyle(
-                        color: palette.textPrimary,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15)),
-              ]),
-              const Spacer(),
-              Icon(Icons.chevron_right_rounded,
-                  color: palette.textHint, size: 20),
-            ])),
-      );
+    onTap: onTap,
+    child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+            color: palette.surfaceVariant,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: palette.divider)),
+        child: Row(children: [
+          Icon(icon, color: primary, size: 20),
+          const SizedBox(width: 12),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label, style: TextStyle(fontSize: 11, color: palette.textHint)),
+            Text(value, style: TextStyle(color: palette.textPrimary,
+                fontWeight: FontWeight.w600, fontSize: 15)),
+          ]),
+          const Spacer(),
+          Icon(Icons.chevron_right_rounded, color: palette.textHint, size: 20),
+        ])),
+  );
 }
 
 class _RemindersPage extends StatelessWidget {
-  const _RemindersPage(
-      {required this.currentUserId, required this.reminderProvider});
+  const _RemindersPage({required this.currentUserId, required this.reminderProvider});
   final String currentUserId;
   final ReminderProvider reminderProvider;
-
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeProvider>();
@@ -3113,37 +2510,25 @@ class _RemindersPage extends StatelessWidget {
       child: Scaffold(
         backgroundColor: p.background,
         appBar: AppBar(
-            title: Text('Nhắc nhở',
-                style: TextStyle(
-                    color: p.textPrimary,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 17)),
-            backgroundColor: p.appBarBackground,
-            elevation: 0,
+            title: Text('Nhắc nhở', style: TextStyle(color: p.textPrimary,
+                fontWeight: FontWeight.w700, fontSize: 17)),
+            backgroundColor: p.appBarBackground, elevation: 0,
             leading: IconButton(
-              icon: Icon(Icons.arrow_back_ios_new_rounded,
-                  size: 20, color: theme.primaryColor),
+              icon: Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: theme.primaryColor),
               onPressed: () => Navigator.pop(context),
             )),
         body: StreamBuilder<List<MessageReminder>>(
           stream: reminderProvider.getUserRemindersStream(currentUserId),
           builder: (_, snap) {
-            if (!snap.hasData) {
-              return Center(
-                  child: CircularProgressIndicator(
-                      color: theme.primaryColor, strokeWidth: 2));
-            }
+            if (!snap.hasData) return Center(child: CircularProgressIndicator(
+                color: theme.primaryColor, strokeWidth: 2));
             final reminders = snap.data!;
-            if (reminders.isEmpty) {
-              return Center(
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.alarm_off_rounded, size: 60, color: p.textHint),
-                const SizedBox(height: 14),
-                Text('Chưa có nhắc nhở',
-                    style: TextStyle(
-                        color: p.textSecondary, fontWeight: FontWeight.w500)),
-              ]));
-            }
+            if (reminders.isEmpty) return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.alarm_off_rounded, size: 60, color: p.textHint),
+              const SizedBox(height: 14),
+              Text('Chưa có nhắc nhở',
+                  style: TextStyle(color: p.textSecondary, fontWeight: FontWeight.w500)),
+            ]));
             return ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: reminders.length,
@@ -3152,34 +2537,21 @@ class _RemindersPage extends StatelessWidget {
                 final r = reminders[i];
                 return Container(
                   decoration: BoxDecoration(
-                      color: p.surface,
-                      borderRadius: BorderRadius.circular(16),
+                      color: p.surface, borderRadius: BorderRadius.circular(16),
                       boxShadow: [BoxShadow(color: p.shadow, blurRadius: 8)]),
                   child: ListTile(
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    leading: Container(
-                        width: 44,
-                        height: 44,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    leading: Container(width: 44, height: 44,
                         decoration: BoxDecoration(
                             color: theme.primaryColor.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12)),
-                        child: Icon(Icons.alarm_rounded,
-                            color: theme.primaryColor)),
-                    title: Text(r.message,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            color: p.textPrimary,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500)),
-                    subtitle: Text(
-                        DateFormat('dd/MM/yyyy HH:mm').format(r.reminderTime),
+                        child: Icon(Icons.alarm_rounded, color: theme.primaryColor)),
+                    title: Text(r.message, maxLines: 2, overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: p.textPrimary, fontSize: 14, fontWeight: FontWeight.w500)),
+                    subtitle: Text(DateFormat('dd/MM/yyyy HH:mm').format(r.reminderTime),
                         style: TextStyle(fontSize: 11, color: p.textHint)),
-                    trailing: GestureDetector(
-                        onTap: () => reminderProvider.deleteReminder(r.id),
-                        child: Icon(Icons.delete_outline_rounded,
-                            color: p.dangerColor)),
+                    trailing: GestureDetector(onTap: () => reminderProvider.deleteReminder(r.id),
+                        child: Icon(Icons.delete_outline_rounded, color: p.dangerColor)),
                   ),
                 );
               },
@@ -3192,52 +2564,37 @@ class _RemindersPage extends StatelessWidget {
 }
 
 class _AIDialog extends StatelessWidget {
-  const _AIDialog(
-      {required this.messages, required this.palette, required this.primary});
+  const _AIDialog({required this.messages, required this.palette, required this.primary});
   final List<String> messages;
   final ThemePalette palette;
   final Color primary;
-
   @override
   Widget build(BuildContext context) => _ThemedDialog(
-        title: 'AI Phân Tích',
-        icon: Icons.auto_awesome_rounded,
-        iconColor: const Color(0xFF8B5CF6),
-        palette: palette,
-        content: FutureBuilder<String?>(
-          future: AIBackendService()
-              .analyzeChatContext(messages, 'work', 'extract_tasks'),
-          builder: (_, snap) {
-            if (snap.connectionState == ConnectionState.waiting) {
-              return const SizedBox(
-                  height: 100,
-                  child: Center(
-                      child: CircularProgressIndicator(
-                          color: Color(0xFF8B5CF6), strokeWidth: 2)));
-            }
-            if (!snap.hasData) {
-              return Text('Không thể kết nối AI lúc này.',
-                  style: TextStyle(color: palette.textSecondary));
-            }
-            return SizedBox(
-                height: 280,
-                child: SingleChildScrollView(
-                  child: MarkdownBody(
-                      data: snap.data!,
-                      styleSheet: MarkdownStyleSheet(
-                          p: TextStyle(
-                              color: palette.textPrimary, height: 1.6))),
-                ));
-          },
-        ),
-        actions: [
-          _ThemedDialogAction(
-              label: 'Đóng',
-              palette: palette,
-              primary: primary,
-              onTap: () => Navigator.pop(context))
-        ],
-      );
+    title: 'AI Phân Tích', icon: Icons.auto_awesome_rounded,
+    iconColor: const Color(0xFF8B5CF6), palette: palette,
+    content: FutureBuilder<String?>(
+      future: AIBackendService().analyzeChatContext(messages, 'work', 'extract_tasks'),
+      builder: (_, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const SizedBox(height: 100, child: Center(
+              child: CircularProgressIndicator(color: Color(0xFF8B5CF6), strokeWidth: 2)));
+        }
+        if (!snap.hasData) {
+          return Text('Không thể kết nối AI lúc này.',
+              style: TextStyle(color: palette.textSecondary));
+        }
+        return SizedBox(height: 280, child: SingleChildScrollView(
+          child: MarkdownBody(data: snap.data!,
+              styleSheet: MarkdownStyleSheet(
+                  p: TextStyle(color: palette.textPrimary, height: 1.6))),
+        ));
+      },
+    ),
+    actions: [
+      _ThemedDialogAction(label: 'Đóng', palette: palette, primary: primary,
+          onTap: () => Navigator.pop(context))
+    ],
+  );
 }
 
 class _FeatureItem {

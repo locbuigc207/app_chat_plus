@@ -1,6 +1,5 @@
-import 'package:flutter/foundation.dart';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
 enum MessageType { text, image, video, audio, file, location, sticker, gif }
@@ -136,8 +135,9 @@ class MessageProvider {
       final newPinned = !currentPinStatus;
       await _msgCollection(groupChatId).doc(messageId).update({
         'isPinned': newPinned,
-        'pinnedAt':
-            newPinned ? DateTime.now().millisecondsSinceEpoch.toString() : FieldValue.delete(),
+        'pinnedAt': newPinned
+            ? DateTime.now().millisecondsSinceEpoch.toString()
+            : FieldValue.delete(),
       });
       return true;
     } catch (e) {
@@ -154,7 +154,9 @@ class MessageProvider {
   ) async {
     try {
       await _msgCollection(groupChatId).doc(messageId).update({
-        'starredBy': isStarred ? FieldValue.arrayRemove([userId]) : FieldValue.arrayUnion([userId]),
+        'starredBy': isStarred
+            ? FieldValue.arrayRemove([userId])
+            : FieldValue.arrayUnion([userId]),
       });
       return true;
     } catch (e) {
@@ -170,10 +172,12 @@ class MessageProvider {
     required String senderId,
   }) async {
     try {
-      final original = await _msgCollection(fromGroupChatId).doc(messageId).get();
+      final original =
+          await _msgCollection(fromGroupChatId).doc(messageId).get();
       if (!original.exists) return false;
 
-      final data = Map<String, dynamic>.from(original.data() as Map<String, dynamic>);
+      final data =
+          Map<String, dynamic>.from(original.data() as Map<String, dynamic>);
 
       data.remove('isPinned');
       data.remove('pinnedAt');
@@ -182,7 +186,8 @@ class MessageProvider {
       data.remove('autoDeleteAt');
 
       data[FirestoreConstants.idFrom] = senderId;
-      data[FirestoreConstants.timestamp] = DateTime.now().millisecondsSinceEpoch.toString();
+      data[FirestoreConstants.timestamp] =
+          DateTime.now().millisecondsSinceEpoch.toString();
       data['isForwarded'] = true;
       data['forwardedFrom'] = fromGroupChatId;
 
@@ -200,7 +205,8 @@ class MessageProvider {
     required Map<String, dynamic> messageData,
   }) async {
     try {
-      final replyToDoc = await _msgCollection(groupChatId).doc(replyToMessageId).get();
+      final replyToDoc =
+          await _msgCollection(groupChatId).doc(replyToMessageId).get();
 
       String replyPreview = '';
       String replyToSender = '';
@@ -214,8 +220,9 @@ class MessageProvider {
         ...messageData,
         'replyTo': {
           'messageId': replyToMessageId,
-          'preview':
-              replyPreview.length > 100 ? '${replyPreview.substring(0, 100)}…' : replyPreview,
+          'preview': replyPreview.length > 100
+              ? '${replyPreview.substring(0, 100)}…'
+              : replyPreview,
           'senderId': replyToSender,
         },
       });
@@ -247,9 +254,6 @@ class MessageProvider {
     String userId,
   ) async {
     try {
-      final unread = await _msgCollection(groupChatId)
-          .where('readBy', arrayContainsAny: ['NOT_${userId}_PLACEHOLDER']).get();
-
       final all = await _msgCollection(groupChatId)
           .where(FirestoreConstants.idTo, isEqualTo: userId)
           .where('isRead', isEqualTo: false)
@@ -293,10 +297,11 @@ class MessageProvider {
           .get();
 
       return snapshot.docs.where((doc) {
-        final content = (doc.data() as Map<String, dynamic>)[FirestoreConstants.content]
-                ?.toString()
-                .toLowerCase() ??
-            '';
+        final content =
+            (doc.data() as Map<String, dynamic>)[FirestoreConstants.content]
+                    ?.toString()
+                    .toLowerCase() ??
+                '';
         return content.contains(trimmed);
       }).toList();
     } catch (e) {

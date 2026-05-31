@@ -1,6 +1,5 @@
-import 'package:flutter/foundation.dart';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
 enum ConversationFilter { all, unread, archived, pinned }
@@ -38,7 +37,8 @@ class ConversationSummary {
       isMuted: data['isMuted'] as bool? ?? false,
       isLocked: data['isLocked'] as bool? ?? false,
       unreadCount: data['unreadCount'] as int? ?? 0,
-      lastMessageTime: int.tryParse(data['lastMessageTime']?.toString() ?? '0') ?? 0,
+      lastMessageTime:
+          int.tryParse(data['lastMessageTime']?.toString() ?? '0') ?? 0,
       lastMessage: data['lastMessage'] as String? ?? '',
       participants: List<String>.from(data['participants'] as List? ?? []),
       isGroup: data['isGroup'] as bool? ?? false,
@@ -56,14 +56,16 @@ class ConversationProvider {
 
   ConversationProvider({required this.firebaseFirestore});
 
-  Stream<List<QueryDocumentSnapshot>> getConversationsWithPinned(String userId) {
+  Stream<List<QueryDocumentSnapshot>> getConversationsWithPinned(
+      String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathConversationCollection)
         .where(FirestoreConstants.participants, arrayContains: userId)
         .snapshots()
         .map((snapshot) {
       final docs = snapshot.docs.where((doc) {
-        final archivedBy = List<String>.from(doc.data()['archivedBy'] as List? ?? []);
+        final archivedBy =
+            List<String>.from(doc.data()['archivedBy'] as List? ?? []);
         return !archivedBy.contains(userId);
       }).toList();
 
@@ -75,8 +77,10 @@ class ConversationProvider {
 
         if (aPinned != bPinned) return aPinned ? -1 : 1;
 
-        final aTime = int.tryParse(aData['lastMessageTime']?.toString() ?? '0') ?? 0;
-        final bTime = int.tryParse(bData['lastMessageTime']?.toString() ?? '0') ?? 0;
+        final aTime =
+            int.tryParse(aData['lastMessageTime']?.toString() ?? '0') ?? 0;
+        final bTime =
+            int.tryParse(bData['lastMessageTime']?.toString() ?? '0') ?? 0;
         return bTime.compareTo(aTime);
       });
 
@@ -109,7 +113,8 @@ class ConversationProvider {
         .snapshots();
   }
 
-  Future<bool> togglePinConversation(String conversationId, bool currentStatus) async {
+  Future<bool> togglePinConversation(
+      String conversationId, bool currentStatus) async {
     try {
       final newPinned = !currentStatus;
       await firebaseFirestore
@@ -117,8 +122,9 @@ class ConversationProvider {
           .doc(conversationId)
           .update({
         'isPinned': newPinned,
-        'pinnedAt':
-            newPinned ? DateTime.now().millisecondsSinceEpoch.toString() : FieldValue.delete(),
+        'pinnedAt': newPinned
+            ? DateTime.now().millisecondsSinceEpoch.toString()
+            : FieldValue.delete(),
       });
       return true;
     } catch (e) {
@@ -127,7 +133,8 @@ class ConversationProvider {
     }
   }
 
-  Future<bool> toggleMuteConversation(String conversationId, bool currentStatus) async {
+  Future<bool> toggleMuteConversation(
+      String conversationId, bool currentStatus) async {
     try {
       await firebaseFirestore
           .collection(FirestoreConstants.pathConversationCollection)
@@ -197,7 +204,8 @@ class ConversationProvider {
     }
   }
 
-  Future<bool> incrementUnreadCount(String conversationId, List<String> excludeUserIds) async {
+  Future<bool> incrementUnreadCount(
+      String conversationId, List<String> excludeUserIds) async {
     try {
       await firebaseFirestore
           .collection(FirestoreConstants.pathConversationCollection)
@@ -252,7 +260,8 @@ class ConversationProvider {
     }
   }
 
-  Future<bool> deleteConversationForUser(String conversationId, String userId) async {
+  Future<bool> deleteConversationForUser(
+      String conversationId, String userId) async {
     try {
       await firebaseFirestore
           .collection(FirestoreConstants.pathConversationCollection)
@@ -277,8 +286,9 @@ class ConversationProvider {
           .collection(FirestoreConstants.pathConversationCollection)
           .doc(conversationId)
           .update({
-        'typingUsers.$userId':
-            isTyping ? DateTime.now().millisecondsSinceEpoch.toString() : FieldValue.delete(),
+        'typingUsers.$userId': isTyping
+            ? DateTime.now().millisecondsSinceEpoch.toString()
+            : FieldValue.delete(),
       });
     } catch (e) {
       debugPrint('❌ Error setting typing status: $e');
