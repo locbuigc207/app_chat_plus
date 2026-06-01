@@ -12,19 +12,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
-    <!--
-        FIX-ALARM: Chỉ giữ một trong hai, không khai báo cả hai:
-        - USE_EXACT_ALARM (API 33+): không cần user grant, nhưng chỉ dùng được
-          cho app clock/calendar/alarm. Nếu app không thuộc category này, Play Store
-          có thể từ chối.
-        - SCHEDULE_EXACT_ALARM (API 31+): user phải grant thủ công qua Settings.
-          Phù hợp hơn cho app thông thường.
-        Đã xóa USE_EXACT_ALARM, giữ SCHEDULE_EXACT_ALARM với maxSdkVersion guard.
-    -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"
         android:maxSdkVersion="32" />
-    <!-- API 33+ dùng USE_EXACT_ALARM nếu app thuộc loại clock/alarm, ngược lại
-         dùng setAndAllowWhileIdle() thay vì exact alarm -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
@@ -89,6 +78,10 @@
         <meta-data
             android:name="io.flutter.embedding.android.RenderingBackend"
             android:value="software" />
+
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="YOUR_GOOGLE_MAPS_API_KEY" />
 
         <service
             android:name=".bubble.BubbleOverlayService"

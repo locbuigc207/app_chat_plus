@@ -52,6 +52,8 @@ class ChatProvider {
     required this.firebaseStorage,
   });
 
+  // ─── Helpers ──────────────────────────────────────────────────────────────
+
   static Map<String, dynamic> _toStringMap(dynamic raw) {
     if (raw == null) return {};
     if (raw is Map<String, dynamic>) return raw;
@@ -66,7 +68,7 @@ class ChatProvider {
 
   void _log(String message) => debugPrint('[ChatProvider] $message');
 
-  // ─── Storage helpers ───────────────────────────────────────────────────────
+  // ─── Storage ──────────────────────────────────────────────────────────────
 
   UploadTask uploadFile(File image, String fileName) =>
       firebaseStorage.ref().child(fileName).putFile(image);
@@ -99,14 +101,11 @@ class ChatProvider {
     const mimeMap = <String, String>{
       'pdf': 'application/pdf',
       'doc': 'application/msword',
-      'docx':
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'xls': 'application/vnd.ms-excel',
-      'xlsx':
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'ppt': 'application/vnd.ms-powerpoint',
-      'pptx':
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       'txt': 'text/plain',
     };
     return mimeMap[ext] ?? 'application/octet-stream';
@@ -133,7 +132,7 @@ class ChatProvider {
           .doc(docPath)
           .update(dataNeedUpdate);
 
-  // ─── Send message (with link-preview metadata extraction) ─────────────────
+  // ─── Send message ─────────────────────────────────────────────────────────
 
   Future<void> sendMessage(
       String content,
@@ -165,7 +164,7 @@ class ChatProvider {
     await _localDb.saveMessage(groupChatId, timestamp, localMessage);
     await _localDb.updateConversationPreview(
       conversationId: groupChatId,
-      lastMessage: content,
+      lastMessage: _previewFor(content, type),
       lastMessageTime: timestamp,
       lastMessageType: type,
     );
@@ -196,6 +195,20 @@ class ChatProvider {
     }
 
     _syncManager.startListening();
+  }
+
+  /// Human-readable preview for the conversation list.
+  String _previewFor(String content, int type) {
+    switch (type) {
+      case TypeMessage.image: return '📷 Ảnh';
+      case TypeMessage.video: return '🎬 Video';
+      case TypeMessage.sticker: return '😊 Sticker';
+      case TypeMessage.document: return '📄 Tài liệu';
+      case TypeMessage.poll: return '📊 Cuộc khảo sát';
+      case TypeMessage.geoLocked: return '🔐 Tin nhắn ẩn địa điểm';
+      case 3: return '🎤 Tin nhắn thoại';
+      default: return content;
+    }
   }
 
   // ─── URL extraction helper ─────────────────────────────────────────────────
@@ -427,6 +440,7 @@ class ChatProvider {
 
     String content = data[FirestoreConstants.content] as String? ?? '';
 
+    // Decrypt text messages only; skip geoLocked (already JSON), media URLs, etc.
     if (type == TypeMessage.text && content.isNotEmpty) {
       try {
         content = await EncryptionService().decryptPayload(
@@ -440,7 +454,7 @@ class ChatProvider {
       }
     }
 
-    // Extract preview URL for incoming messages too
+    // Extract preview URL for incoming text messages
     String? previewUrl = data['previewUrl'] as String?;
     if (previewUrl == null && type == TypeMessage.text) {
       final urls = _extractUrls(content);
@@ -685,16 +699,13 @@ class ChatProvider {
     final content = jsonEncode(payload.toJson());
 
     // Preview text rõ ràng
-    final String previewText;
-    if (payload.result == 'draw') {
-      previewText =
-      '🤝 ${payload.player1Name} và ${payload.player2Name} hòa nhau!';
-    } else {
-      final winnerName = payload.winnerId == payload.player1Id
-          ? payload.player1Name
-          : payload.player2Name;
-      previewText = '🏆 $winnerName thắng trận ${payload.gameType.displayName}!';
-    }
+    final winner = payload.winnerId == currentUserId
+        ? payload.player1Name
+        : (payload.result == 'draw' ? null : payload.player2Name);
+
+    final previewText = payload.result == 'draw'
+        ? '🤝 ${payload.player1Name} và ${payload.player2Name} hòa nhau!'
+        : '🏆 $winner đã thắng trận ${payload.gameType.displayName}!';
 
     final messageData = <String, dynamic>{
       FirestoreConstants.idFrom: currentUserId,

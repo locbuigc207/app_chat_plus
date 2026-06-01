@@ -8,6 +8,10 @@ import 'package:flutter/foundation.dart';
 
 import 'e2ee_service.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMS & HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
 enum PayloadType { e2eeGcm, legacyCbc, plain }
 
 class _PayloadInfo {
@@ -16,12 +20,27 @@ class _PayloadInfo {
   const _PayloadInfo(this.type, this.raw);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ENCRYPTION SERVICE  (facade over E2EEService + legacy CBC fallback)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Single entry-point for all message encryption / decryption.
+///
+/// Strategy:
+///  1. Try E2EE (AES-256-GCM + RSA session-key distribution).
+///  2. Fall back to legacy AES-CBC keyed from the conversation ID.
+///  3. Return plain text when neither applies.
+///
+/// GeoLocked messages, media URLs and other non-text types are **never**
+/// encrypted — they are identified by [_isSkippable] and passed through.
 class EncryptionService {
   EncryptionService._internal();
   static final EncryptionService _instance = EncryptionService._internal();
   factory EncryptionService() => _instance;
 
   final E2EEService _e2ee = E2EEService();
+
+  // ── Legacy key derivation ─────────────────────────────────────────────────
 
   static const String _legacySalt = 'APP_CHAT_PLUS_SECURE_SALT_2026';
 
@@ -33,6 +52,8 @@ class EncryptionService {
     final digest = sha256.convert(bytes);
     return enc.Key(Uint8List.fromList(digest.bytes));
   }
+
+  // ── Legacy CBC ────────────────────────────────────────────────────────────
 
   String encryptMessageLegacy(String plainText, String conversationId) {
     if (plainText.isEmpty || _isSkippable(plainText)) return plainText;
@@ -63,6 +84,13 @@ class EncryptionService {
     }
   }
 
+  // ── High-level E2EE encrypt/decrypt ───────────────────────────────────────
+
+  /// Encrypts [plainText] for a conversation.
+  ///
+  /// Skips encryption for:
+  ///  * HTTP(S) URLs (media, thumbnails, voice)
+  ///  * JSON objects (geoLocked, polls, game payloads)
   Future<String> encryptPayload(
     String plainText,
     String conversationId,
@@ -76,11 +104,7 @@ class EncryptionService {
     if (_e2ee.isInitialized) {
       try {
         return await _e2ee.encryptPayload(
-          plainText,
-          conversationId,
-          participantIds,
-          currentUserId,
-        );
+            plainText, conversationId, participantIds, currentUserId);
       } on E2EEException catch (e) {
         debugPrint(
             '[EncryptionService] ⚠️ E2EE encrypt failed (${e.type.name}), falling back: $e');
@@ -94,6 +118,11 @@ class EncryptionService {
     return encryptMessageLegacy(plainText, conversationId);
   }
 
+  /// Decrypts [encryptedText] for a conversation.
+  ///
+  /// Auto-detects payload type (E2EE-GCM, Legacy-CBC, plain) and routes
+  /// accordingly. Never throws — returns a human-readable error string on
+  /// failure so the UI always has something to display.
   Future<String> decryptPayload(
     String encryptedText,
     String conversationId,
@@ -107,13 +136,17 @@ class EncryptionService {
     switch (info.type) {
       case PayloadType.plain:
         return encryptedText;
+
       case PayloadType.e2eeGcm:
         return _decryptE2EE(
             encryptedText, conversationId, participantIds, currentUserId);
+
       case PayloadType.legacyCbc:
         return decryptMessageLegacy(encryptedText, conversationId);
     }
   }
+
+  // ── E2EE decrypt (with graceful fallbacks) ────────────────────────────────
 
   Future<String> _decryptE2EE(
     String encryptedText,
@@ -136,14 +169,18 @@ class EncryptionService {
       switch (e.type) {
         case E2EEErrorType.keyNotInitialized:
           return '🔒 [Thiết bị chưa có khóa — không thể giải mã]';
+
         case E2EEErrorType.invalidPayload:
+          // Might be a legacy payload mis-detected as GCM; try legacy
           final legacyResult =
               decryptMessageLegacy(encryptedText, conversationId);
           if (legacyResult.startsWith('🔒')) {
             return '⚠️ [Dữ liệu tin nhắn bị hỏng]';
           }
           return legacyResult;
+
         case E2EEErrorType.decryptionFailed:
+          // Session key might be stale; evict and retry once
           _e2ee.evictSessionKey(conversationId);
           try {
             return await _e2ee.decryptPayload(
@@ -151,6 +188,7 @@ class EncryptionService {
           } catch (_) {
             return '🔒 [Tin nhắn được mã hóa — không thể giải mã]';
           }
+
         default:
           return '🔒 [Tin nhắn được mã hóa — không thể giải mã]';
       }
@@ -159,6 +197,8 @@ class EncryptionService {
       return '🔒 [Tin nhắn được mã hóa — không thể giải mã]';
     }
   }
+
+  // ── Batch decrypt ─────────────────────────────────────────────────────────
 
   Future<List<String>> decryptBatch(
     List<String> encryptedMessages,
@@ -171,10 +211,8 @@ class EncryptionService {
     for (int i = 0; i < encryptedMessages.length; i += maxConcurrent) {
       final end = (i + maxConcurrent).clamp(0, encryptedMessages.length);
       final batch = encryptedMessages.sublist(i, end);
-      final batchResults = await Future.wait(
-        batch.map((msg) =>
-            decryptPayload(msg, conversationId, participantIds, currentUserId)),
-      );
+      final batchResults = await Future.wait(batch.map((msg) =>
+          decryptPayload(msg, conversationId, participantIds, currentUserId)));
       for (int j = 0; j < batchResults.length; j++) {
         results[i + j] = batchResults[j];
       }
@@ -182,36 +220,56 @@ class EncryptionService {
     return results;
   }
 
-  bool isEncrypted(String text) {
-    if (text.isEmpty) return false;
-    return _detectPayloadType(text).type != PayloadType.plain;
-  }
+  // ── Inspection helpers ────────────────────────────────────────────────────
+
+  bool isEncrypted(String text) =>
+      text.isNotEmpty && _detectPayloadType(text).type != PayloadType.plain;
 
   PayloadType detectPayloadType(String text) => _detectPayloadType(text).type;
 
+  // ── Internal type detection ───────────────────────────────────────────────
+
   _PayloadInfo _detectPayloadType(String text) {
     final trimmed = text.trim();
-    if (_isSkippable(trimmed)) return _PayloadInfo(PayloadType.plain, trimmed);
+
+    // Always skip — these are never encrypted
+    if (_isSkippable(trimmed)) {
+      return _PayloadInfo(PayloadType.plain, trimmed);
+    }
+
+    // E2EE-GCM: JSON with "iv" and "data" keys
     if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
       try {
         final decoded = jsonDecode(trimmed);
-        if (decoded is Map &&
-            decoded.containsKey('iv') &&
-            decoded.containsKey('data')) {
-          final iv = decoded['iv']?.toString() ?? '';
-          final data = decoded['data']?.toString() ?? '';
-          if (iv.isNotEmpty && data.isNotEmpty) {
-            return _PayloadInfo(PayloadType.e2eeGcm, trimmed);
+        if (decoded is Map) {
+          // GeoLocked, poll, game payloads also start with '{' — distinguish
+          // them by checking for the canonical E2EE keys
+          final hasIv = decoded.containsKey('iv');
+          final hasData = decoded.containsKey('data');
+          if (hasIv && hasData) {
+            final iv = decoded['iv']?.toString() ?? '';
+            final data = decoded['data']?.toString() ?? '';
+            if (iv.isNotEmpty && data.isNotEmpty) {
+              return _PayloadInfo(PayloadType.e2eeGcm, trimmed);
+            }
           }
         }
       } catch (_) {}
+      // Any other JSON (geoLocked, poll…) → plain pass-through
+      return _PayloadInfo(PayloadType.plain, trimmed);
     }
+
+    // Legacy CBC: "base64:base64"
     if (_legacyPayloadRegex.hasMatch(trimmed)) {
       return _PayloadInfo(PayloadType.legacyCbc, trimmed);
     }
+
     return _PayloadInfo(PayloadType.plain, trimmed);
   }
 
+  /// Returns true for content that must never be encrypted:
+  ///  * HTTP/HTTPS URLs (media, voice, file storage)
+  ///  * JSON objects (geoLocked, polls, game states) — handled above
   bool _isSkippable(String text) =>
       text.startsWith('http://') || text.startsWith('https://');
 }

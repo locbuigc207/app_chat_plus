@@ -16,11 +16,13 @@ class MessageProvider {
       .doc(groupChatId)
       .collection(groupChatId);
 
+  // ── Streams ───────────────────────────────────────────────────────────────
+
   Stream<QuerySnapshot> getMessages(
-    String groupChatId, {
-    int limit = 30,
-    DocumentSnapshot? startAfter,
-  }) {
+      String groupChatId, {
+        int limit = 30,
+        DocumentSnapshot? startAfter,
+      }) {
     var query = _msgCollection(groupChatId)
         .orderBy(FirestoreConstants.timestamp, descending: true)
         .limit(limit);
@@ -43,11 +45,13 @@ class MessageProvider {
         .snapshots();
   }
 
+  // ── Mutations ─────────────────────────────────────────────────────────────
+
   Future<bool> editMessage(
-    String groupChatId,
-    String messageId,
-    String newContent,
-  ) async {
+      String groupChatId,
+      String messageId,
+      String newContent,
+      ) async {
     try {
       await _msgCollection(groupChatId).doc(messageId).update({
         FirestoreConstants.content: newContent,
@@ -64,10 +68,10 @@ class MessageProvider {
   }
 
   Future<bool> deleteMessage(
-    String groupChatId,
-    String messageId, {
-    bool forEveryone = true,
-  }) async {
+      String groupChatId,
+      String messageId, {
+        bool forEveryone = true,
+      }) async {
     try {
       final now = DateTime.now().millisecondsSinceEpoch.toString();
 
@@ -84,7 +88,6 @@ class MessageProvider {
           'deletedAt': now,
         });
       }
-
       return true;
     } catch (e) {
       debugPrint('❌ Error deleting message: $e');
@@ -92,10 +95,7 @@ class MessageProvider {
     }
   }
 
-  Future<int> deleteMultipleMessages(
-    String groupChatId,
-    List<String> messageIds,
-  ) async {
+  Future<int> deleteMultipleMessages(String groupChatId, List<String> messageIds) async {
     try {
       WriteBatch batch = firebaseFirestore.batch();
       int count = 0;
@@ -108,6 +108,7 @@ class MessageProvider {
           FirestoreConstants.content: 'This message was deleted',
           'deletedAt': now,
         });
+
         count++;
         deleted++;
 
@@ -127,10 +128,10 @@ class MessageProvider {
   }
 
   Future<bool> togglePinMessage(
-    String groupChatId,
-    String messageId,
-    bool currentPinStatus,
-  ) async {
+      String groupChatId,
+      String messageId,
+      bool currentPinStatus,
+      ) async {
     try {
       final newPinned = !currentPinStatus;
       await _msgCollection(groupChatId).doc(messageId).update({
@@ -147,11 +148,11 @@ class MessageProvider {
   }
 
   Future<bool> toggleStarMessage(
-    String groupChatId,
-    String messageId,
-    String userId,
-    bool isStarred,
-  ) async {
+      String groupChatId,
+      String messageId,
+      String userId,
+      bool isStarred,
+      ) async {
     try {
       await _msgCollection(groupChatId).doc(messageId).update({
         'starredBy': isStarred
@@ -172,12 +173,10 @@ class MessageProvider {
     required String senderId,
   }) async {
     try {
-      final original =
-          await _msgCollection(fromGroupChatId).doc(messageId).get();
+      final original = await _msgCollection(fromGroupChatId).doc(messageId).get();
       if (!original.exists) return false;
 
-      final data =
-          Map<String, dynamic>.from(original.data() as Map<String, dynamic>);
+      final data = Map<String, dynamic>.from(original.data() as Map<String, dynamic>);
 
       data.remove('isPinned');
       data.remove('pinnedAt');
@@ -186,8 +185,7 @@ class MessageProvider {
       data.remove('autoDeleteAt');
 
       data[FirestoreConstants.idFrom] = senderId;
-      data[FirestoreConstants.timestamp] =
-          DateTime.now().millisecondsSinceEpoch.toString();
+      data[FirestoreConstants.timestamp] = DateTime.now().millisecondsSinceEpoch.toString();
       data['isForwarded'] = true;
       data['forwardedFrom'] = fromGroupChatId;
 
@@ -205,11 +203,11 @@ class MessageProvider {
     required Map<String, dynamic> messageData,
   }) async {
     try {
-      final replyToDoc =
-          await _msgCollection(groupChatId).doc(replyToMessageId).get();
+      final replyToDoc = await _msgCollection(groupChatId).doc(replyToMessageId).get();
 
       String replyPreview = '';
       String replyToSender = '';
+
       if (replyToDoc.exists) {
         final d = replyToDoc.data() as Map<String, dynamic>;
         replyPreview = d[FirestoreConstants.content] as String? ?? '';
@@ -234,11 +232,9 @@ class MessageProvider {
     }
   }
 
-  Future<void> markMessageRead(
-    String groupChatId,
-    String messageId,
-    String userId,
-  ) async {
+  // ── Read receipts ─────────────────────────────────────────────────────────
+
+  Future<void> markMessageRead(String groupChatId, String messageId, String userId) async {
     try {
       await _msgCollection(groupChatId).doc(messageId).update({
         'readBy': FieldValue.arrayUnion([userId]),
@@ -249,10 +245,7 @@ class MessageProvider {
     }
   }
 
-  Future<void> markAllMessagesRead(
-    String groupChatId,
-    String userId,
-  ) async {
+  Future<void> markAllMessagesRead(String groupChatId, String userId) async {
     try {
       final all = await _msgCollection(groupChatId)
           .where(FirestoreConstants.idTo, isEqualTo: userId)
@@ -270,23 +263,25 @@ class MessageProvider {
           'readAt': DateTime.now().millisecondsSinceEpoch.toString(),
         });
         count++;
+
         if (count >= _batchSize) {
           await batch.commit();
           batch = firebaseFirestore.batch();
           count = 0;
         }
       }
-
       if (count > 0) await batch.commit();
     } catch (e) {
       debugPrint('❌ Error marking all messages read: $e');
     }
   }
 
+  // ── Search ────────────────────────────────────────────────────────────────
+
   Future<List<QueryDocumentSnapshot>> searchMessages(
-    String groupChatId,
-    String query,
-  ) async {
+      String groupChatId,
+      String query,
+      ) async {
     try {
       final trimmed = query.trim().toLowerCase();
       if (trimmed.isEmpty) return [];
@@ -297,11 +292,10 @@ class MessageProvider {
           .get();
 
       return snapshot.docs.where((doc) {
-        final content =
-            (doc.data() as Map<String, dynamic>)[FirestoreConstants.content]
-                    ?.toString()
-                    .toLowerCase() ??
-                '';
+        final content = (doc.data() as Map<String, dynamic>)[FirestoreConstants.content]
+            ?.toString()
+            .toLowerCase() ??
+            '';
         return content.contains(trimmed);
       }).toList();
     } catch (e) {
@@ -310,11 +304,13 @@ class MessageProvider {
     }
   }
 
+  // ── Internal ──────────────────────────────────────────────────────────────
+
   Future<void> _syncConversationLastMessage(
-    String groupChatId,
-    String messageId,
-    String newContent,
-  ) async {
+      String groupChatId,
+      String messageId,
+      String newContent,
+      ) async {
     try {
       final latest = await _msgCollection(groupChatId)
           .orderBy(FirestoreConstants.timestamp, descending: true)

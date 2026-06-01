@@ -56,6 +56,8 @@ class ConversationProvider {
 
   ConversationProvider({required this.firebaseFirestore});
 
+  // ── Streams ───────────────────────────────────────────────────────────────
+
   Stream<List<QueryDocumentSnapshot>> getConversationsWithPinned(
       String userId) {
     return firebaseFirestore
@@ -112,6 +114,8 @@ class ConversationProvider {
         .doc(conversationId)
         .snapshots();
   }
+
+  // ── Mutations ─────────────────────────────────────────────────────────────
 
   Future<bool> togglePinConversation(
       String conversationId, bool currentStatus) async {
@@ -267,7 +271,7 @@ class ConversationProvider {
           .collection(FirestoreConstants.pathConversationCollection)
           .doc(conversationId)
           .update({
-        'deletedBy': FieldValue.arrayUnion([userId]),
+        'deletedBy': FieldValue.arrayUnion([userId])
       });
       return true;
     } catch (e) {
@@ -275,6 +279,8 @@ class ConversationProvider {
       return false;
     }
   }
+
+  // ── Typing ────────────────────────────────────────────────────────────────
 
   Future<void> setTypingStatus(
     String conversationId,
@@ -303,9 +309,10 @@ class ConversationProvider {
         .map((snap) {
       final data = snap.data();
       if (data == null) return {};
-      final typingUsers = data['typingUsers'] as Map<String, dynamic>? ?? {};
 
+      final typingUsers = data['typingUsers'] as Map<String, dynamic>? ?? {};
       final now = DateTime.now().millisecondsSinceEpoch;
+
       return Map.fromEntries(
         typingUsers.entries.where((e) {
           final ts = int.tryParse(e.value.toString()) ?? 0;

@@ -18,7 +18,6 @@ import 'package:flutter_chat_demo/utils/utils.dart';
 import 'package:flutter_chat_demo/widgets/swipe_reply_cards.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -622,22 +621,66 @@ class GroupChatPageState extends State<GroupChatPage>
     } catch (_) {}
   }
 
+  // ── GEO LOCKED ──────────────────────────────────────────────────────────────
+
+  /// New GeoLock flow: opens full-screen map picker, then sends the result.
+  Future<void> _sendGeoLockedMessage() async {
+    if (resourceManager.isDisposed) return;
+    // Close features menu first
+    if (mounted) setState(() => _showFeaturesMenu = false);
+    _menuAnim.reverse();
+
+    final result = await Navigator.push<GeoLockData>(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => const GeoLockPickerPage(),
+        transitionsBuilder: (_, anim, __, child) => SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 1),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+          child: child,
+        ),
+        transitionDuration: const Duration(milliseconds: 340),
+        fullscreenDialog: true,
+      ),
+    );
+
+    if (result == null || resourceManager.isDisposed || !mounted) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final content = jsonEncode(result.toJson());
+      await _onSendMessage(content, TypeMessage.geoLocked);
+      _showToast(
+        result.hideLocation
+            ? '🔐 Đã gửi tin nhắn ẩn địa điểm'
+            : '📍 Đã gửi tin nhắn khóa địa điểm',
+        isSuccess: true,
+      );
+    } catch (e) {
+      debugPrint('❌ GeoLock send error: $e');
+      _showToast('Không thể gửi tin nhắn');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   // ── GAME CENTER ─────────────────────────────────────────────────────────────
 
   void _openGameCenter() {
     HapticFeedback.lightImpact();
     Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => GameCenterHubPage(
-          groupId: groupChatId,
-          groupName: widget.group.groupName,
-          currentUserId: _currentUserId,
-          currentUserName: _memberNames[_currentUserId] ?? 'Bạn',
-          currentUserAvatar: _avatarUrlCache[_currentUserId] ?? '',
-        ),
-      ),
-    );
+        context,
+        MaterialPageRoute(
+          builder: (_) => GameCenterHubPage(
+            groupId: groupChatId,
+            groupName: widget.group.groupName,
+            currentUserId: _currentUserId,
+            currentUserName: _memberNames[_currentUserId] ?? 'Bạn',
+            currentUserAvatar: _avatarUrlCache[_currentUserId] ?? '',
+          ),
+        ));
   }
 
   // ── AUTO-PILOT ──────────────────────────────────────────────────────────────
@@ -698,36 +741,6 @@ class GroupChatPageState extends State<GroupChatPage>
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  Future<void> _sendGeoLockedMessage() async {
-    setState(() => _showFeaturesMenu = false);
-    final ctrl = TextEditingController();
-    final p = context.read<ThemeProvider>().palette;
-    await showDialog(
-        context: context,
-        builder: (_) => _GeoLockDialog(
-            textController: ctrl,
-            palette: p,
-            primary: context.read<ThemeProvider>().primaryColor,
-            onSend: () async {
-              Navigator.pop(context);
-              if (mounted) setState(() => _isLoading = true);
-              try {
-                final pos = await Geolocator.getCurrentPosition();
-                final content = jsonEncode({
-                  'text': ctrl.text,
-                  'lat': pos.latitude,
-                  'lng': pos.longitude
-                });
-                await _onSendMessage(content, TypeMessage.geoLocked);
-              } catch (_) {
-                _showToast('Lỗi GPS');
-              } finally {
-                if (mounted) setState(() => _isLoading = false);
-              }
-            }));
-    ctrl.dispose();
   }
 
   void _showAIContextAnalysis() {
@@ -949,7 +962,6 @@ class GroupChatPageState extends State<GroupChatPage>
 
   void _showReactionPicker(String messageId) {
     HapticFeedback.mediumImpact();
-    final p = context.read<ThemeProvider>().palette;
     showDialog(
         context: context,
         builder: (_) => Dialog(
@@ -1557,8 +1569,6 @@ class GroupChatPageState extends State<GroupChatPage>
                   final all = LocalDbService().getMessages(groupChatId);
                   final display = all.take(_limit).toList();
                   final grouped = _processMessages(display);
-
-                  // Prefetch link previews for visible messages
                   prefetchLinkPreviews(display);
 
                   if (grouped.isEmpty) {
@@ -1783,7 +1793,6 @@ class GroupChatPageState extends State<GroupChatPage>
               ]),
         );
 
-    // ── View Once ──
     if (localData['isViewOnce'] ?? false) {
       return wrapRow(ViewOnceMessageWidget(
           groupChatId: groupChatId,
@@ -1794,60 +1803,44 @@ class GroupChatPageState extends State<GroupChatPage>
           isViewed: localData['isViewed'] ?? false,
           provider: _viewOnceProvider));
     }
-
-    // ── GeoLocked ──
-    if (msg.type == TypeMessage.geoLocked)
-      return wrapRow(GeoLockedMessageWidget(content: msg.content, isMe: isMe));
-
-    // ── Game Center Types ──
+    // ── GeoLocked ──────────────────────────────────────────────────────────
+    if (msg.type == TypeMessage.geoLocked) {
+      return Container(
+        margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: Column(
+          crossAxisAlignment:
+              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            if (!isMe && isLastInGroup) _buildSenderName(msg.idFrom, p),
+            Row(
+              mainAxisAlignment:
+                  isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (!isMe)
+                  isLastInGroup
+                      ? _buildGroupAvatar(msg.idFrom, theme)
+                      : const SizedBox(width: 36),
+                GestureDetector(
+                  onLongPress: () => _showMessageOptions(msg, messageId),
+                  child:
+                      GeoLockedMessageWidget(content: msg.content, isMe: isMe),
+                ),
+              ],
+            ),
+            _buildTimestamp(msg.timestamp, isMe, p, theme),
+          ],
+        ),
+      );
+    }
     if (msg.type == 7) {
       return wrapRow(TicTacToeMessageWidget(
-        content: msg.content,
-        messageId: messageId,
-        groupId: groupChatId,
-        currentUserId: _currentUserId,
-        matchId: localData[FirestoreConstants.matchId] as String?,
-        currentUserName: _memberNames[_currentUserId] ?? 'Bạn',
-        currentUserAvatar: _avatarUrlCache[_currentUserId] ?? '',
-      ));
-    }
-
-    if (msg.type == TypeMessage.gameInvite ||
-        msg.type == TypeMessage.gameLive) {
-      return Container(
-        margin: EdgeInsets.only(
-            bottom: isLastInGroup ? 12 : 4,
-            left: isMe ? 48 : 0,
-            right: isMe ? 0 : 48),
-        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-        child: GameInviteCardBubble(
-          message: msg,
-          currentUserId: _currentUserId,
-          currentUserName: _memberNames[_currentUserId] ?? 'Bạn',
-          currentUserAvatar: _avatarUrlCache[_currentUserId] ?? '',
+          content: msg.content,
+          messageId: messageId,
           groupId: groupChatId,
-        ),
-      );
+          currentUserId: _currentUserId));
     }
-
-    if (msg.type == TypeMessage.gameResult) {
-      return Container(
-        margin: EdgeInsets.only(
-            bottom: isLastInGroup ? 12 : 4,
-            left: isMe ? 48 : 0,
-            right: isMe ? 0 : 48),
-        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-        child: GameResultCardBubble(
-          message: msg,
-          currentUserId: _currentUserId,
-          currentUserName: _memberNames[_currentUserId] ?? 'Bạn',
-          currentUserAvatar: _avatarUrlCache[_currentUserId] ?? '',
-          groupId: groupChatId,
-        ),
-      );
-    }
-
-    // ── Others ──
     if (msg.type == 8)
       return wrapRow(BlowMessageWidget(secretText: msg.content));
     if (msg.type == 9)
@@ -1968,8 +1961,6 @@ class GroupChatPageState extends State<GroupChatPage>
     );
   }
 
-  // ── TEXT BUBBLE with link preview ─────────────────────────────────────────
-
   Widget _buildTextMessage({
     required String messageId,
     required MessageChat msg,
@@ -1985,8 +1976,6 @@ class GroupChatPageState extends State<GroupChatPage>
   }) {
     final location = _locationProvider?.parseLocationFromMessage(msg.content);
     final fs = theme.fontSizeMultiplier;
-
-    // Detect URL for rich preview
     final hasUrl = !msg.isDeleted &&
         msg.type == TypeMessage.text &&
         location == null &&
@@ -2085,8 +2074,6 @@ class GroupChatPageState extends State<GroupChatPage>
                                     theme: theme,
                                     onOpen: () =>
                                         _openLocationInMaps(location.mapsUrl))
-
-                              // ── Rich text + link preview ─────────────────────────────
                               else if (hasUrl)
                                 ChatMessageWithLinkPreview(
                                   content: msg.content,
@@ -2097,8 +2084,6 @@ class GroupChatPageState extends State<GroupChatPage>
                                   primaryColor: theme.primaryColor,
                                   showPreview: true,
                                 )
-
-                              // ── Plain text ───────────────────────────────────────────
                               else
                                 Column(
                                     crossAxisAlignment:
@@ -2136,8 +2121,6 @@ class GroupChatPageState extends State<GroupChatPage>
                     ),
                   )),
                 ]),
-
-            // ── Scam scanner (incoming text only) ──────────────────────────────
             if (!isMe && msg.type == TypeMessage.text) ...[
               if (_scamResults[messageId] != null &&
                   _scamResults[messageId] != 'SAFE')
@@ -2170,7 +2153,6 @@ class GroupChatPageState extends State<GroupChatPage>
                   ),
                 ),
             ],
-
             _buildReactions(messageId, isMe, p, theme),
             _buildTimestamp(msg.timestamp, isMe, p, theme),
           ]),
@@ -2550,6 +2532,8 @@ class GroupChatPageState extends State<GroupChatPage>
           Icons.image_rounded, 'Ảnh', _onPickImage, theme.primaryColor),
       _GFeatureItem(Icons.videocam_rounded, 'Video', _onPickVideo,
           const Color(0xFFFF6B9D)),
+      _GFeatureItem(Icons.add_location_alt_rounded, 'GeoLock',
+          _sendGeoLockedMessage, const Color(0xFF7B1FA2)),
       _GFeatureItem(Icons.games_rounded, 'Caro', () {
         setState(() => _showFeaturesMenu = false);
         _onSendMessage(
@@ -2570,8 +2554,6 @@ class GroupChatPageState extends State<GroupChatPage>
         setState(() => _showFeaturesMenu = false);
         _onSendMessage('Surprise! 🎁', 9);
       }, p.warningColor),
-      _GFeatureItem(Icons.add_location_alt_rounded, 'GeoLock',
-          _sendGeoLockedMessage, p.dangerColor),
       _GFeatureItem(Icons.attach_file_rounded, 'File', () {
         setState(() => _showFeaturesMenu = false);
         _onPickDocument();
@@ -2695,7 +2677,6 @@ class GroupChatPageState extends State<GroupChatPage>
           right: 12,
           top: 6),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        // Smart replies
         if (_smartReplies.isNotEmpty)
           Padding(
               padding: const EdgeInsets.only(bottom: 6),
@@ -2708,8 +2689,6 @@ class GroupChatPageState extends State<GroupChatPage>
                       _focusNode.requestFocus();
                     }
                   })),
-
-        // Reply preview
         AnimatedSize(
           duration: const Duration(milliseconds: 260),
           curve: Curves.easeOutCubic,
@@ -2770,8 +2749,6 @@ class GroupChatPageState extends State<GroupChatPage>
                   ),
                 ),
         ),
-
-        // Recording indicator
         if (_isRecording)
           Container(
             margin: const EdgeInsets.only(bottom: 6),
@@ -2804,8 +2781,6 @@ class GroupChatPageState extends State<GroupChatPage>
                           color: Colors.white, size: 16))),
             ]),
           ),
-
-        // Main input row
         Container(
           decoration: BoxDecoration(
               color: p.surface,
@@ -3262,108 +3237,6 @@ class _AIAnalysisDialog extends StatelessWidget {
               primary: primary,
               onTap: () => Navigator.pop(context))
         ],
-      );
-}
-
-class _GeoLockDialog extends StatelessWidget {
-  const _GeoLockDialog(
-      {required this.textController,
-      required this.onSend,
-      required this.palette,
-      required this.primary});
-  final TextEditingController textController;
-  final VoidCallback onSend;
-  final ThemePalette palette;
-  final Color primary;
-  @override
-  Widget build(BuildContext context) => Dialog(
-        backgroundColor: palette.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        child: Padding(
-            padding: const EdgeInsets.all(22),
-            child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                            color: palette.dangerColor.withValues(alpha: .12),
-                            borderRadius: BorderRadius.circular(10)),
-                        child: Icon(Icons.add_location_alt_rounded,
-                            color: palette.dangerColor, size: 20)),
-                    const SizedBox(width: 12),
-                    Text('Tin nhắn GeoLock',
-                        style: TextStyle(
-                            color: palette.textPrimary,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700)),
-                  ]),
-                  const SizedBox(height: 8),
-                  Text(
-                      'Người nhận cần ở trong phạm vi 50m để đọc tin nhắn này.',
-                      style: TextStyle(
-                          color: palette.textSecondary,
-                          fontSize: 13,
-                          height: 1.5)),
-                  const SizedBox(height: 14),
-                  Container(
-                      decoration: BoxDecoration(
-                          color: palette.surfaceVariant,
-                          borderRadius: BorderRadius.circular(12)),
-                      child: TextField(
-                          controller: textController,
-                          style: TextStyle(
-                              color: palette.textPrimary, fontSize: 14),
-                          decoration: InputDecoration.collapsed(
-                              hintText: '  🔒 Nội dung bí mật...',
-                              hintStyle: TextStyle(color: palette.textHint)))),
-                  const SizedBox(height: 18),
-                  Row(children: [
-                    Expanded(
-                        child: GestureDetector(
-                            onTap: () => Navigator.pop(context),
-                            child: Container(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 12),
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                    color: palette.surfaceVariant,
-                                    borderRadius: BorderRadius.circular(12)),
-                                child: Text('Huỷ',
-                                    style: TextStyle(
-                                        color: palette.textSecondary,
-                                        fontWeight: FontWeight.w600))))),
-                    const SizedBox(width: 10),
-                    Expanded(
-                        child: GestureDetector(
-                            onTap: onSend,
-                            child: Container(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 12),
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                    color: palette.dangerColor
-                                        .withValues(alpha: .12),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                        color: palette.dangerColor
-                                            .withValues(alpha: .4))),
-                                child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.lock_rounded,
-                                          color: palette.dangerColor, size: 16),
-                                      const SizedBox(width: 6),
-                                      Text('Gửi khoá',
-                                          style: TextStyle(
-                                              color: palette.dangerColor,
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 13.5)),
-                                    ])))),
-                  ]),
-                ])),
       );
 }
 

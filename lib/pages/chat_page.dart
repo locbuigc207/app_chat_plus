@@ -1,6 +1,5 @@
-// ignore_for_file: use_build_context_synchronously
-
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -456,6 +455,10 @@ class ChatPageState extends State<ChatPage>
         msgType = 'voice';
         display = '🎤 Thoại';
         break;
+      case TypeMessage.geoLocked:
+        msgType = 'text';
+        display = '🔐 Tin nhắn ẩn địa điểm';
+        break;
       default:
         if (content.contains('maps.google.com') ||
             content.contains('Location:')) {
@@ -633,6 +636,53 @@ class ChatPageState extends State<ChatPage>
       }
     } catch (_) {
       _toast('❌ Lỗi lấy vị trí');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // ── GeoLocked message ──────────────────────────────────────────────────────
+
+  Future<void> _sendGeoLockedMessage() async {
+    if (resourceManager.isDisposed) return;
+    // Close the features menu first
+    if (mounted)
+      setState(() {
+        _showMenu = false;
+      });
+    _menuAnim.reverse();
+
+    final result = await Navigator.push<GeoLockData>(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => const GeoLockPickerPage(),
+        transitionsBuilder: (_, anim, __, child) => SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 1),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+          child: child,
+        ),
+        transitionDuration: const Duration(milliseconds: 340),
+        fullscreenDialog: true,
+      ),
+    );
+
+    if (result == null || resourceManager.isDisposed || !mounted) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final content = jsonEncode(result.toJson());
+      await _onSend(content, TypeMessage.geoLocked);
+      _toast(
+        result.hideLocation
+            ? '🔐 Đã gửi tin nhắn ẩn địa điểm'
+            : '📍 Đã gửi tin nhắn khóa địa điểm',
+        isSuccess: true,
+      );
+    } catch (e) {
+      ErrorLogger.logError(e, null, context: 'SendGeoLock');
+      _toast('Không thể gửi tin nhắn');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -1620,6 +1670,22 @@ class ChatPageState extends State<ChatPage>
                   child: Image.asset('images/${msg.content}.gif',
                       width: 90, height: 90, fit: BoxFit.cover)))));
     }
+
+    // ── GeoLocked message ──────────────────────────────────────────────────
+    if (msg.type == TypeMessage.geoLocked) {
+      return wrap(Container(
+        margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: GestureDetector(
+          onLongPress: () => _showMsgOptions(msg, msgId),
+          child: GeoLockedMessageWidget(
+            content: msg.content,
+            isMe: isMe,
+          ),
+        ),
+      ));
+    }
+
     return wrap(_buildTextBubble(
         msgId: msgId,
         msg: msg,
@@ -2038,6 +2104,8 @@ class ChatPageState extends State<ChatPage>
       _FeatureItem(Icons.image_rounded, 'Ảnh', _pickImage, theme.primaryColor),
       _FeatureItem(
           Icons.videocam_rounded, 'Video', _pickVideo, const Color(0xFFFF6B9D)),
+      _FeatureItem(Icons.add_location_alt_rounded, 'GeoLock',
+          _sendGeoLockedMessage, const Color(0xFF7B1FA2)),
       _FeatureItem(
           Icons.visibility_off_rounded,
           'View Once',
@@ -2091,8 +2159,12 @@ class ChatPageState extends State<ChatPage>
                   .map((item) => GestureDetector(
                         onTap: () {
                           if (resourceManager.isDisposed) return;
-                          setState(() => _showMenu = false);
-                          _menuAnim.reverse();
+
+                          // Don't close menu for GeoLock (it handles closing itself)
+                          if (item.label != 'GeoLock') {
+                            setState(() => _showMenu = false);
+                            _menuAnim.reverse();
+                          }
                           item.onTap();
                         },
                         child: Container(
