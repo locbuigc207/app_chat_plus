@@ -2,17 +2,16 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
-
 import 'package:flutter_chat_demo/models/game_match.dart';
 import 'package:flutter_chat_demo/models/message_chat.dart';
 import 'package:flutter_chat_demo/services/game_firebase_service.dart';
 import 'package:uuid/uuid.dart';
 
-enum PlayerRole {
-  player1,
-  player2,
-  spectator,
-}
+// =========================================================
+// ENUMS & VALUE TYPES
+// =========================================================
+
+enum PlayerRole { player1, player2, spectator }
 
 enum EndReason {
   fiveInRow,
@@ -23,8 +22,7 @@ enum EndReason {
   drawAgreed,
   disconnect,
   stalemate,
-  insufficientMaterial,
-  ;
+  insufficientMaterial;
 
   String get label {
     switch (this) {
@@ -88,102 +86,128 @@ class DrawRequest {
 class CaroCell {
   final int row;
   final int col;
-
   final String symbol;
 
   const CaroCell(this.row, this.col, this.symbol);
 }
 
+// =========================================================
+// GAME STATE PROVIDER
+// =========================================================
+
 class GameStateProvider extends ChangeNotifier {
+  // ── Dependencies ──────────────────────────────────────────────────────────
   final GameFirebaseService _firebase = GameFirebaseService();
   final _uuid = const Uuid();
 
+  // ── Match ─────────────────────────────────────────────────────────────────
   GameMatch? _match;
   String _currentUserId = '';
   PlayerRole _role = PlayerRole.spectator;
 
+  // ── Subscriptions ─────────────────────────────────────────────────────────
   StreamSubscription<GameMatch?>? _matchSub;
   StreamSubscription<GameMove?>? _moveSub;
-  StreamSubscription<Map<String, dynamic>?>? _disconnectSub;
+  StreamSubscription<dynamic>? _disconnectSub;
+  StreamSubscription<dynamic>? _drawSub;
 
+  // ── Caro Board ────────────────────────────────────────────────────────────
   final Map<String, String> _caroBoard = {};
-
   CaroCell? _lastMove;
-
   List<CaroCell> _winLine = [];
 
+  // ── Turn ──────────────────────────────────────────────────────────────────
   String _currentTurnUserId = '';
-
   int _nextMoveIndex = 0;
 
+  // ── Chess Clock ───────────────────────────────────────────────────────────
   int _player1RemainingMs = 0;
-
   int _player2RemainingMs = 0;
-
   Timer? _chessClockTimer;
 
+  // ── Turn Timer (Caro) ─────────────────────────────────────────────────────
   int _turnTimerSeconds = 0;
-
   Timer? _turnTimer;
 
+  // ── Draw / Resign ─────────────────────────────────────────────────────────
   DrawRequest? _pendingDrawRequest;
 
+  // ── Disconnect ────────────────────────────────────────────────────────────
   Timer? _disconnectTimer;
-
   String? _disconnectedPlayerId;
-
   int _disconnectCountdown = 60;
 
+  // ── Game Over ─────────────────────────────────────────────────────────────
   bool _isGameOver = false;
   GameResult? _finalResult;
   EndReason? _endReason;
   String? _winnerUserId;
 
+  // ── Replay ────────────────────────────────────────────────────────────────
   bool _isReplayMode = false;
   List<GameMove> _replayMoves = [];
   int _replayIndex = -1;
   Timer? _replayTimer;
 
+  // ── Loading ───────────────────────────────────────────────────────────────
   bool _isLoading = false;
   String? _errorMessage;
 
+  // =========================================================
+  // GETTERS
+  // =========================================================
+
   GameMatch? get match => _match;
   PlayerRole get role => _role;
-  bool get isPlayer => _role == PlayerRole.player1 || _role == PlayerRole.player2;
+  bool get isPlayer =>
+      _role == PlayerRole.player1 || _role == PlayerRole.player2;
   bool get isSpectator => _role == PlayerRole.spectator;
-  bool get isMyTurn => _currentTurnUserId == _currentUserId && !_isGameOver && !_isReplayMode;
+  bool get isMyTurn =>
+      _currentTurnUserId == _currentUserId && !_isGameOver && !_isReplayMode;
   bool get isGameOver => _isGameOver;
   GameResult? get finalResult => _finalResult;
   EndReason? get endReason => _endReason;
   String? get winnerUserId => _winnerUserId;
+  bool get isPlayer1Turn => _currentTurnUserId == _match?.player1Id;
 
+  // Caro
   Map<String, String> get caroBoard => Map.unmodifiable(_caroBoard);
   CaroCell? get lastMove => _lastMove;
   List<CaroCell> get winLine => List.unmodifiable(_winLine);
   String getCaroCell(int row, int col) => _caroBoard['$row,$col'] ?? '';
 
+  // Clocks
   int get player1RemainingMs => _player1RemainingMs;
   int get player2RemainingMs => _player2RemainingMs;
   int get turnTimerSeconds => _turnTimerSeconds;
-  bool get isPlayer1Turn => _currentTurnUserId == _match?.player1Id;
 
+  // Draw
   DrawRequest? get pendingDrawRequest => _pendingDrawRequest;
   bool get hasIncomingDrawRequest =>
       _pendingDrawRequest != null &&
       !_pendingDrawRequest!.isAnswered &&
       _pendingDrawRequest!.requesterId != _currentUserId;
 
+  // Disconnect
   String? get disconnectedPlayerId => _disconnectedPlayerId;
   int get disconnectCountdown => _disconnectCountdown;
 
+  // Replay
   bool get isReplayMode => _isReplayMode;
   int get replayIndex => _replayIndex;
   int get replayTotal => _replayMoves.length;
   bool get canReplayBack => _replayIndex > 0;
   bool get canReplayForward => _replayIndex < _replayMoves.length - 1;
+  List<GameMove> get replayMoves => List.unmodifiable(_replayMoves);
+  int get totalMoveCount => _nextMoveIndex;
 
+  // Loading
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+
+  // =========================================================
+  // INITIALIZE
+  // =========================================================
 
   Future<void> initialize({
     required String matchId,
@@ -204,7 +228,6 @@ class GameStateProvider extends ChangeNotifier {
       }
 
       _applyMatchData(match);
-
       _role = _detectRole(match, currentUserId);
 
       if (_role == PlayerRole.spectator) {
@@ -213,9 +236,11 @@ class GameStateProvider extends ChangeNotifier {
 
       _initClocks(match);
 
+      // Subscribe all streams
       _subscribeMatch(matchId);
       _subscribeLatestMove(matchId);
       _subscribeDisconnect(matchId);
+      _subscribeDrawRequest(matchId);
 
       if (match.isPlaying) {
         _startActiveTimer();
@@ -224,12 +249,14 @@ class GameStateProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     } catch (e) {
-      _errorMessage = 'Lỗi khởi tạo trận: $e';
+      _errorMessage = 'Lỗi khởi tạo: $e';
       _isLoading = false;
       notifyListeners();
       debugPrint('[GameStateProvider] initialize error: $e');
     }
   }
+
+  // ── Internal helpers ──────────────────────────────────────────────────────
 
   void _applyMatchData(GameMatch match) {
     _match = match;
@@ -252,8 +279,9 @@ class GameStateProvider extends ChangeNotifier {
 
   String _computeCurrentTurn(GameMatch match) {
     if (_nextMoveIndex == 0) return match.player1Id;
-
-    return _nextMoveIndex.isEven ? match.player1Id : (match.player2Id ?? match.player1Id);
+    return _nextMoveIndex.isEven
+        ? match.player1Id
+        : (match.player2Id ?? match.player1Id);
   }
 
   void _initClocks(GameMatch match) {
@@ -267,15 +295,14 @@ class GameStateProvider extends ChangeNotifier {
     }
   }
 
+  // ── Subscriptions ─────────────────────────────────────────────────────────
+
   void _subscribeMatch(String matchId) {
     _matchSub?.cancel();
     _matchSub = _firebase.watchMatch(matchId).listen((match) {
       if (match == null) return;
-      final wasPlaying = _match?.isPlaying ?? false;
       _match = match;
-
       notifyListeners();
-
       if (match.isFinished && !_isGameOver) {
         _handleGameOverFromFirestore(match);
       }
@@ -286,7 +313,6 @@ class GameStateProvider extends ChangeNotifier {
     _moveSub?.cancel();
     _moveSub = _firebase.watchLatestMove(matchId).listen((move) {
       if (move == null) return;
-
       if (move.movedBy != _currentUserId && move.moveIndex >= _nextMoveIndex) {
         _applyMoveToBoard(move);
       }
@@ -299,7 +325,11 @@ class GameStateProvider extends ChangeNotifier {
       if (info == null) {
         _cancelDisconnectTimer();
       } else {
-        final userId = info['userId'] as String?;
+        // Fix lỗi The operator '[]' isn't defined bằng cách ép kiểu rõ ràng
+        final userId = info is Map
+            ? (info as Map)['userId'] as String?
+            : (info as dynamic).userId as String?;
+
         if (userId != null && userId != _currentUserId) {
           _startDisconnectCountdown(userId);
         }
@@ -307,15 +337,63 @@ class GameStateProvider extends ChangeNotifier {
     });
   }
 
+  void _subscribeDrawRequest(String matchId) {
+    _drawSub?.cancel();
+    _drawSub = _firebase.watchDrawRequest(matchId).listen((info) {
+      if (info == null) {
+        // Đã bị xóa → clear local pending
+        if (_pendingDrawRequest != null && _pendingDrawRequest!.isAnswered) {
+          _pendingDrawRequest = null;
+          notifyListeners();
+        }
+        return;
+      }
+
+      // Xử lý đối tượng hoặc Map để tương thích an toàn
+      final reqId = info is Map
+          ? (info as Map)['requesterId']
+          : (info as dynamic).requesterId;
+
+      final sentAtData =
+          info is Map ? (info as Map)['sentAt'] : (info as dynamic).sentAt;
+
+      // Nhận draw request từ đối thủ
+      if (reqId != null && reqId != _currentUserId) {
+        // Tạo pending draw request nếu chưa có hoặc là mới hơn
+        if (_pendingDrawRequest == null ||
+            _pendingDrawRequest!.requesterId != reqId) {
+          DateTime parsedSentAt;
+          if (sentAtData is String) {
+            parsedSentAt = DateTime.fromMillisecondsSinceEpoch(
+                int.tryParse(sentAtData) ??
+                    DateTime.now().millisecondsSinceEpoch);
+          } else if (sentAtData is DateTime) {
+            parsedSentAt = sentAtData;
+          } else {
+            parsedSentAt = DateTime.now();
+          }
+
+          _pendingDrawRequest = DrawRequest(
+            requesterId: reqId as String,
+            sentAt: parsedSentAt,
+          );
+          notifyListeners();
+        }
+      }
+    });
+  }
+
+  // =========================================================
+  // CARO LOGIC
+  // =========================================================
+
   Future<bool> playCaroMove(int row, int col) async {
     if (!isMyTurn) return false;
     if (_match == null || _isGameOver) return false;
     if (getCaroCell(row, col).isNotEmpty) return false;
 
     final symbol = _myCaroSymbol;
-    final key = '$row,$col';
-
-    _caroBoard[key] = symbol;
+    _caroBoard['$row,$col'] = symbol;
     _lastMove = CaroCell(row, col, symbol);
 
     _advanceTurn();
@@ -341,7 +419,7 @@ class GameStateProvider extends ChangeNotifier {
     try {
       await _firebase.addMove(_match!.matchId, move);
     } catch (e) {
-      debugPrint('[GameStateProvider] playCaroMove firebase error: $e');
+      debugPrint('[GameStateProvider] addMove error: $e');
     }
 
     if (_isGameOver) {
@@ -353,27 +431,21 @@ class GameStateProvider extends ChangeNotifier {
     return true;
   }
 
-  String get _myCaroSymbol {
-    if (_match == null) return 'X';
-    return _currentUserId == _match!.player1Id ? 'X' : 'O';
-  }
+  String get _myCaroSymbol => _currentUserId == _match?.player1Id ? 'X' : 'O';
 
   List<CaroCell>? _checkCaroWin(int row, int col, String symbol) {
-    const directions = [
+    const dirs = [
       [0, 1],
       [1, 0],
       [1, 1],
-      [1, -1],
+      [1, -1]
     ];
-
-    for (final dir in directions) {
-      final dr = dir[0];
-      final dc = dir[1];
+    for (final dir in dirs) {
+      final dr = dir[0], dc = dir[1];
       final line = <CaroCell>[];
 
       for (int i = 4; i >= 1; i--) {
-        final r = row - dr * i;
-        final c = col - dc * i;
+        final r = row - dr * i, c = col - dc * i;
         if (_caroBoard['$r,$c'] == symbol) {
           line.add(CaroCell(r, c, symbol));
         } else {
@@ -384,41 +456,30 @@ class GameStateProvider extends ChangeNotifier {
       line.add(CaroCell(row, col, symbol));
 
       for (int i = 1; i <= 4; i++) {
-        final r = row + dr * i;
-        final c = col + dc * i;
+        final r = row + dr * i, c = col + dc * i;
         if (_caroBoard['$r,$c'] == symbol) {
           line.add(CaroCell(r, c, symbol));
-          if (line.length >= 5) {
-            return line.take(5).toList();
-          }
+          if (line.length >= 5) return line.take(5).toList();
         } else {
           break;
         }
       }
 
-      if (line.length >= 5) {
-        return line.take(5).toList();
-      }
+      if (line.length >= 5) return line.take(5).toList();
     }
-
     return null;
   }
 
   bool _checkCaroDraw() {
     final boardSize = _match?.boardSize ?? 0;
-    if (boardSize == 0) return false;
+    if (boardSize != 3) return false;
 
-    if (boardSize == 3) {
-      for (int r = 0; r < 3; r++) {
-        for (int c = 0; c < 3; c++) {
-          if (_caroBoard['$r,$c'] == null || _caroBoard['$r,$c']!.isEmpty) {
-            return false;
-          }
-        }
+    for (int r = 0; r < 3; r++) {
+      for (int c = 0; c < 3; c++) {
+        if ((_caroBoard['$r,$c'] ?? '').isEmpty) return false;
       }
-      return true;
     }
-    return false;
+    return true;
   }
 
   static String checkTicTacToeWinner(List<String> board) {
@@ -430,12 +491,12 @@ class GameStateProvider extends ChangeNotifier {
       [1, 4, 7],
       [2, 5, 8],
       [0, 4, 8],
-      [2, 4, 6],
+      [2, 4, 6]
     ];
     for (final l in lines) {
-      if (board[l[0]].isNotEmpty && board[l[0]] == board[l[1]] && board[l[1]] == board[l[2]]) {
-        return board[l[0]];
-      }
+      if (board[l[0]].isNotEmpty &&
+          board[l[0]] == board[l[1]] &&
+          board[l[1]] == board[l[2]]) return board[l[0]];
     }
     return '';
   }
@@ -443,16 +504,20 @@ class GameStateProvider extends ChangeNotifier {
   void _handleCaroWin() {
     _isGameOver = true;
     _winnerUserId = _currentUserId;
-    _finalResult =
-        (_currentUserId == _match!.player1Id) ? GameResult.player1Win : GameResult.player2Win;
+    _finalResult = (_currentUserId == _match!.player1Id)
+        ? GameResult.player1Win
+        : GameResult.player2Win;
     _endReason = EndReason.fiveInRow;
     _stopAllTimers();
   }
 
+  // =========================================================
+  // CHESS CLOCK & TURN TIMER
+  // =========================================================
+
   void _startActiveTimer() {
     _chessClockTimer?.cancel();
     _turnTimer?.cancel();
-
     final match = _match;
     if (match == null || _isGameOver) return;
 
@@ -500,9 +565,12 @@ class GameStateProvider extends ChangeNotifier {
     _chessClockTimer?.cancel();
     _isGameOver = true;
     _endReason = EndReason.timeout;
-    _winnerUserId = (timedOutUserId == _match?.player1Id) ? _match?.player2Id : _match?.player1Id;
-    _finalResult =
-        (timedOutUserId == _match?.player1Id) ? GameResult.player2Win : GameResult.player1Win;
+    _winnerUserId = (timedOutUserId == _match?.player1Id)
+        ? _match?.player2Id
+        : _match?.player1Id;
+    _finalResult = (timedOutUserId == _match?.player1Id)
+        ? GameResult.player2Win
+        : GameResult.player1Win;
     notifyListeners();
     _notifyGameOver();
   }
@@ -512,9 +580,12 @@ class GameStateProvider extends ChangeNotifier {
     if (!isMyTurn) return;
     _isGameOver = true;
     _endReason = EndReason.turnTimeout;
-    _winnerUserId = (_currentUserId == _match?.player1Id) ? _match?.player2Id : _match?.player1Id;
-    _finalResult =
-        (_currentUserId == _match?.player1Id) ? GameResult.player2Win : GameResult.player1Win;
+    _winnerUserId = (_currentUserId == _match?.player1Id)
+        ? _match?.player2Id
+        : _match?.player1Id;
+    _finalResult = (_currentUserId == _match?.player1Id)
+        ? GameResult.player2Win
+        : GameResult.player1Win;
     notifyListeners();
     _notifyGameOver();
   }
@@ -527,28 +598,38 @@ class GameStateProvider extends ChangeNotifier {
     _startActiveTimer();
   }
 
-  int get _myRemainingMs {
-    if (_currentUserId == _match?.player1Id) return _player1RemainingMs;
-    return _player2RemainingMs;
-  }
+  int get _myRemainingMs => _currentUserId == _match?.player1Id
+      ? _player1RemainingMs
+      : _player2RemainingMs;
+
+  // =========================================================
+  // RESIGN
+  // =========================================================
 
   Future<void> resign() async {
     if (!isPlayer || _isGameOver) return;
-
     _isGameOver = true;
     _endReason = EndReason.resign;
-    _winnerUserId = (_currentUserId == _match?.player1Id) ? _match?.player2Id : _match?.player1Id;
-    _finalResult =
-        (_currentUserId == _match?.player1Id) ? GameResult.player2Win : GameResult.player1Win;
+    _winnerUserId = (_currentUserId == _match?.player1Id)
+        ? _match?.player2Id
+        : _match?.player1Id;
+    _finalResult = (_currentUserId == _match?.player1Id)
+        ? GameResult.player2Win
+        : GameResult.player1Win;
     _stopAllTimers();
     notifyListeners();
-
     await _notifyGameOver();
   }
 
+  // =========================================================
+  // DRAW
+  // =========================================================
+
   Future<void> requestDraw() async {
     if (!isPlayer || _isGameOver) return;
-    if (_pendingDrawRequest != null && !_pendingDrawRequest!.isAnswered) return;
+    if (_pendingDrawRequest != null && !_pendingDrawRequest!.isAnswered) {
+      return;
+    }
 
     _pendingDrawRequest = DrawRequest(
       requesterId: _currentUserId,
@@ -557,12 +638,10 @@ class GameStateProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _firebase.updateMatch(_match!.matchId, {
-        'drawRequest': {
-          'requesterId': _currentUserId,
-          'sentAt': DateTime.now().millisecondsSinceEpoch.toString(),
-        },
-      });
+      await _firebase.updateDrawRequest(
+        matchId: _match!.matchId,
+        requesterId: _currentUserId,
+      );
     } catch (e) {
       debugPrint('[GameStateProvider] requestDraw error: $e');
     }
@@ -570,10 +649,14 @@ class GameStateProvider extends ChangeNotifier {
 
   Future<void> acceptDraw() async {
     if (!hasIncomingDrawRequest || _isGameOver) return;
-
     _pendingDrawRequest?.isAnswered = true;
     _handleDraw(EndReason.drawAgreed);
     notifyListeners();
+
+    try {
+      await _firebase.clearDrawRequest(_match!.matchId);
+    } catch (_) {}
+
     await _notifyGameOver();
   }
 
@@ -583,9 +666,7 @@ class GameStateProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _firebase.updateMatch(_match!.matchId, {
-        'drawRequest': null,
-      });
+      await _firebase.clearDrawRequest(_match!.matchId);
     } catch (e) {
       debugPrint('[GameStateProvider] declineDraw error: $e');
     }
@@ -598,6 +679,10 @@ class GameStateProvider extends ChangeNotifier {
     _winnerUserId = null;
     _stopAllTimers();
   }
+
+  // =========================================================
+  // DISCONNECT
+  // =========================================================
 
   Future<void> onDisconnected() async {
     if (_match == null || _isGameOver) return;
@@ -619,10 +704,8 @@ class GameStateProvider extends ChangeNotifier {
     _disconnectTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       _disconnectCountdown--;
       notifyListeners();
-
       if (_disconnectCountdown <= 0) {
         _disconnectTimer?.cancel();
-
         _handleDisconnectLoss(disconnectedUserId);
       }
     });
@@ -632,9 +715,12 @@ class GameStateProvider extends ChangeNotifier {
     if (_isGameOver) return;
     _isGameOver = true;
     _endReason = EndReason.disconnect;
-    _winnerUserId = (loserUserId == _match?.player1Id) ? _match?.player2Id : _match?.player1Id;
-    _finalResult =
-        (loserUserId == _match?.player1Id) ? GameResult.player2Win : GameResult.player1Win;
+    _winnerUserId = (loserUserId == _match?.player1Id)
+        ? _match?.player2Id
+        : _match?.player1Id;
+    _finalResult = (loserUserId == _match?.player1Id)
+        ? GameResult.player2Win
+        : GameResult.player1Win;
     _disconnectedPlayerId = null;
     _stopAllTimers();
     notifyListeners();
@@ -648,10 +734,13 @@ class GameStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // =========================================================
+  // GAME OVER → FIREBASE
+  // =========================================================
+
   Future<void> _notifyGameOver() async {
     final match = _match;
     if (match == null || _finalResult == null) return;
-
     try {
       await _firebase.finishMatch(
         matchId: match.matchId,
@@ -671,6 +760,10 @@ class GameStateProvider extends ChangeNotifier {
     _stopAllTimers();
     notifyListeners();
   }
+
+  // =========================================================
+  // TURN & MOVE
+  // =========================================================
 
   void _advanceTurn() {
     _nextMoveIndex++;
@@ -696,8 +789,9 @@ class GameStateProvider extends ChangeNotifier {
           _winLine = winCells;
           _isGameOver = true;
           _winnerUserId = move.movedBy;
-          _finalResult =
-              (move.movedBy == match.player1Id) ? GameResult.player1Win : GameResult.player2Win;
+          _finalResult = (move.movedBy == match.player1Id)
+              ? GameResult.player1Win
+              : GameResult.player2Win;
           _endReason = EndReason.fiveInRow;
           _stopAllTimers();
         }
@@ -742,9 +836,12 @@ class GameStateProvider extends ChangeNotifier {
     }
   }
 
+  // =========================================================
+  // REPLAY
+  // =========================================================
+
   Future<void> startReplay() async {
     if (_match == null) return;
-
     _isLoading = true;
     notifyListeners();
 
@@ -760,7 +857,7 @@ class GameStateProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _isLoading = false;
-      _errorMessage = 'Không thể tải lịch sử trận: $e';
+      _errorMessage = 'Không thể tải lịch sử: $e';
       notifyListeners();
     }
   }
@@ -769,7 +866,6 @@ class GameStateProvider extends ChangeNotifier {
     _isReplayMode = false;
     _replayIndex = -1;
     _replayTimer?.cancel();
-
     _rebuildBoardFromHistory(_replayMoves);
     notifyListeners();
   }
@@ -788,21 +884,16 @@ class GameStateProvider extends ChangeNotifier {
 
   void replayPlay({int intervalMs = 800}) {
     _replayTimer?.cancel();
-    _replayTimer = Timer.periodic(
-      Duration(milliseconds: intervalMs),
-      (_) {
-        if (canReplayForward) {
-          replayForward();
-        } else {
-          _replayTimer?.cancel();
-        }
-      },
-    );
+    _replayTimer = Timer.periodic(Duration(milliseconds: intervalMs), (_) {
+      if (canReplayForward) {
+        replayForward();
+      } else {
+        _replayTimer?.cancel();
+      }
+    });
   }
 
-  void replayPause() {
-    _replayTimer?.cancel();
-  }
+  void replayPause() => _replayTimer?.cancel();
 
   void _applyReplayState(int index) {
     _caroBoard.clear();
@@ -831,26 +922,25 @@ class GameStateProvider extends ChangeNotifier {
       final symbol = data['symbol'] as String?;
       if (row != null && col != null && symbol != null) {
         final winCells = _checkCaroWin(row, col, symbol);
-        if (winCells != null) {
-          _winLine = winCells;
-        }
+        if (winCells != null) _winLine = winCells;
       }
     }
 
     notifyListeners();
   }
 
-  void _stopAllTimers() {
-    _chessClockTimer?.cancel();
-    _turnTimer?.cancel();
-    _disconnectTimer?.cancel();
-    _replayTimer?.cancel();
-  }
+  // =========================================================
+  // SPECTATOR
+  // =========================================================
 
   Future<void> leaveAsSpectator() async {
     if (_match == null || !isSpectator) return;
     await _firebase.leaveAsSpectator(_match!.matchId, _currentUserId);
   }
+
+  // =========================================================
+  // STATIC HELPERS
+  // =========================================================
 
   static GameMatch buildNewMatch({
     required String matchId,
@@ -868,9 +958,9 @@ class GameStateProvider extends ChangeNotifier {
   }) {
     ChessSide resolvedSide = player1Side;
     if (player1Side == ChessSide.random) {
-      resolvedSide = math.Random().nextBool() ? ChessSide.white : ChessSide.black;
+      resolvedSide =
+          math.Random().nextBool() ? ChessSide.white : ChessSide.black;
     }
-
     return GameMatch(
       matchId: matchId,
       gameType: gameType,
@@ -903,13 +993,24 @@ class GameStateProvider extends ChangeNotifier {
     return '0:0$seconds.$tenths';
   }
 
+  // =========================================================
+  // TIMERS & DISPOSE
+  // =========================================================
+
+  void _stopAllTimers() {
+    _chessClockTimer?.cancel();
+    _turnTimer?.cancel();
+    _disconnectTimer?.cancel();
+    _replayTimer?.cancel();
+  }
+
   @override
   void dispose() {
     _stopAllTimers();
     _matchSub?.cancel();
     _moveSub?.cancel();
     _disconnectSub?.cancel();
-
+    _drawSub?.cancel();
     if (isSpectator && _match != null) {
       _firebase.leaveAsSpectator(_match!.matchId, _currentUserId);
     }

@@ -1,3 +1,15 @@
+// lib/widgets/tictactoe_message_widget.dart
+//
+// Giai đoạn 3 — Tái cấu trúc:
+// Widget này không còn xử lý game trực tiếp trên tin nhắn nữa.
+// Thay vào đó nó đóng vai trò UI Card chuyển hướng vào MatchRoomPage.
+//
+// Legacy flow (cũ): TicTacToeMessageWidget tự render bàn cờ 3x3 + Firestore listener
+// New flow   (mới): TicTacToeMessageWidget → card redirect → MatchRoomPage (boardSize=3)
+//
+// Backward compatibility: vẫn đọc được content JSON cũ (board/turn/winner/playerX/playerO)
+// để hiển thị trạng thái snapshot, nhưng không còn cho phép đánh cờ trực tiếp.
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -25,12 +37,6 @@ abstract final class _C {
 // TIC TAC TOE MESSAGE WIDGET (REDIRECT CARD)
 // =========================================================
 
-/// Card hiển thị trong nhóm chat cho tin nhắn type=7 (legacy game).
-///
-/// Chế độ hoạt động:
-/// • Nếu có [matchId] (trận mới từ Game Center) → redirect vào MatchRoomPage
-/// • Nếu không có matchId (legacy content JSON) → hiển thị snapshot 3x3
-///   kèm nút "Mở phòng đấu" nếu trận chưa kết thúc
 class TicTacToeMessageWidget extends StatelessWidget {
   final String content;
   final String messageId;
@@ -121,7 +127,7 @@ class TicTacToeMessageWidget extends StatelessWidget {
         matchId: newMatchId,
         gameType: GameType.caro,
         status:
-            _isGameOver ? GameMatchStatus.finished : GameMatchStatus.playing,
+        _isGameOver ? GameMatchStatus.finished : GameMatchStatus.playing,
         player1Id: _playerX.isNotEmpty ? _playerX : currentUserId,
         player1Name: 'Player X',
         player1Avatar: '',
@@ -460,7 +466,7 @@ class _LegacySnapshotCard extends StatelessWidget {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                         side:
-                            BorderSide(color: _C.accent.withValues(alpha: 0.3)),
+                        BorderSide(color: _C.accent.withValues(alpha: 0.3)),
                       ),
                       textStyle: const TextStyle(
                         fontSize: 12,
@@ -554,11 +560,11 @@ class _SnapshotCell extends StatelessWidget {
         ),
         boxShadow: isWin
             ? [
-                BoxShadow(
-                  color: _C.accent.withValues(alpha: 0.18),
-                  blurRadius: 10,
-                )
-              ]
+          BoxShadow(
+            color: _C.accent.withValues(alpha: 0.18),
+            blurRadius: 10,
+          )
+        ]
             : [],
       ),
       child: Center(

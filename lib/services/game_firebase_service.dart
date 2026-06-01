@@ -1,25 +1,45 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/game_match.dart';
 
+// =========================================================
+// GameFirebaseService
+// =========================================================
+
 class GameFirebaseService {
+  // ── Singleton ─────────────────────────────────────────────────────────────
   static final GameFirebaseService _instance = GameFirebaseService._internal();
   factory GameFirebaseService() => _instance;
   GameFirebaseService._internal();
 
+  // ── Firestore ─────────────────────────────────────────────────────────────
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  // ── Ref helpers ───────────────────────────────────────────────────────────
   CollectionReference<Map<String, dynamic>> get _matchesRef =>
       _db.collection(FirestoreConstants.pathGameMatchCollection);
 
-  DocumentReference<Map<String, dynamic>> _matchDoc(String matchId) => _matchesRef.doc(matchId);
+  DocumentReference<Map<String, dynamic>> _matchDoc(String matchId) =>
+      _matchesRef.doc(matchId);
 
   CollectionReference<Map<String, dynamic>> _movesRef(String matchId) =>
-      _matchDoc(matchId).collection(FirestoreConstants.pathGameMovesSubCollection);
+      _matchDoc(matchId)
+          .collection(FirestoreConstants.pathGameMovesSubCollection);
+
+  CollectionReference<Map<String, dynamic>> _chatRef(String matchId) =>
+      _matchDoc(matchId)
+          .collection(FirestoreConstants.pathSpectatorChatSubCollection);
+
+  CollectionReference<Map<String, dynamic>> _reactionsRef(String matchId) =>
+      _matchDoc(matchId)
+          .collection(FirestoreConstants.pathGameReactionsSubCollection);
+
+  // =========================================================
+  // 1. CREATE / UPDATE MATCH
+  // =========================================================
 
   Future<String> createMatch(GameMatch match) async {
     try {
@@ -88,6 +108,10 @@ class GameFirebaseService {
     _log('🚫 Match aborted: $matchId ($reason)');
   }
 
+  // =========================================================
+  // 2. STREAMS
+  // =========================================================
+
   Stream<GameMatch?> watchMatch(String matchId) {
     return _matchDoc(matchId).snapshots().map((doc) {
       if (!doc.exists) return null;
@@ -126,9 +150,15 @@ class GameFirebaseService {
         });
   }
 
+  // =========================================================
+  // 3. MOVES
+  // =========================================================
+
   Future<void> addMove(String matchId, GameMove move) async {
     try {
-      await _movesRef(matchId).doc(move.moveIndex.toString()).set(move.toJson());
+      await _movesRef(matchId)
+          .doc(move.moveIndex.toString())
+          .set(move.toJson());
       _log('♟️ Move ${move.moveIndex} added to $matchId');
     } catch (e) {
       _log('❌ addMove error: $e');
@@ -154,7 +184,8 @@ class GameFirebaseService {
 
   Future<List<GameMove>> fetchAllMoves(String matchId) async {
     try {
-      final snapshot = await _movesRef(matchId).orderBy(FirestoreConstants.moveIndex).get();
+      final snapshot =
+          await _movesRef(matchId).orderBy(FirestoreConstants.moveIndex).get();
       final moves = snapshot.docs.map(GameMove.fromDocument).toList();
       _log('📜 Loaded ${moves.length} moves for $matchId');
       return moves;
@@ -174,6 +205,10 @@ class GameFirebaseService {
       return null;
     }
   }
+
+  // =========================================================
+  // 4. SPECTATORS
+  // =========================================================
 
   Future<void> joinAsSpectator(String matchId, String userId) async {
     try {
@@ -197,6 +232,135 @@ class GameFirebaseService {
     }
   }
 
+  // =========================================================
+  // 5. SPECTATOR CHAT
+  // =========================================================
+
+  /// Gửi tin nhắn vào spectator chat của trận.
+  Future<void> sendSpectatorMessage({
+    required String matchId,
+    required String userId,
+    required String text,
+  }) async {
+    if (text.trim().isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch.toString();
+    try {
+      await _chatRef(matchId).doc(now).set({
+        FirestoreConstants.spectatorUserId: userId,
+        FirestoreConstants.spectatorText: text.trim(),
+        FirestoreConstants.spectatorSentAt: now,
+      });
+    } catch (e) {
+      _log('❌ sendSpectatorMessage error: $e');
+    }
+  }
+
+  /// Stream tin nhắn spectator chat (realtime, limit 50 mới nhất).
+  Stream<List<SpectatorChatMessage>> watchSpectatorMessages(String matchId) {
+    return _chatRef(matchId)
+        .orderBy(FirestoreConstants.spectatorSentAt, descending: true)
+        .limit(50)
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) {
+              final d = doc.data();
+              return SpectatorChatMessage(
+                userId: d[FirestoreConstants.spectatorUserId] as String? ?? '',
+                text: d[FirestoreConstants.spectatorText] as String? ?? '',
+                sentAt: d[FirestoreConstants.spectatorSentAt] as String? ?? '',
+              );
+            }).toList());
+  }
+
+  // =========================================================
+  // 6. REACTIONS (live feed)
+  // =========================================================
+
+  /// Gửi reaction vào sub-collection reactions.
+  Future<void> sendReaction({
+    required String matchId,
+    required String userId,
+    required String emoji,
+  }) async {
+    final now = DateTime.now().millisecondsSinceEpoch.toString();
+    try {
+      await _reactionsRef(matchId).doc(now).set({
+        FirestoreConstants.reactionUserId: userId,
+        FirestoreConstants.reactionEmoji: emoji,
+        FirestoreConstants.reactionSentAt: now,
+      });
+    } catch (e) {
+      _log('⚠️ sendReaction error: $e');
+    }
+  }
+
+  /// Stream 10 reaction gần nhất (live feed).
+  Stream<List<GameReaction>> watchRecentReactions(String matchId) {
+    return _reactionsRef(matchId)
+        .orderBy(FirestoreConstants.reactionSentAt, descending: true)
+        .limit(10)
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) {
+              final d = doc.data();
+              return GameReaction(
+                userId: d[FirestoreConstants.reactionUserId] as String? ?? '',
+                emoji: d[FirestoreConstants.reactionEmoji] as String? ?? '',
+                sentAt: d[FirestoreConstants.reactionSentAt] as String? ?? '',
+              );
+            }).toList());
+  }
+
+  // =========================================================
+  // 7. DRAW REQUEST
+  // =========================================================
+
+  /// Ghi draw request lên Firestore để đối thủ nhận được.
+  Future<void> updateDrawRequest({
+    required String matchId,
+    required String requesterId,
+  }) async {
+    final now = DateTime.now().millisecondsSinceEpoch.toString();
+    try {
+      await _matchDoc(matchId).set({
+        FirestoreConstants.drawRequest: {
+          'requesterId': requesterId,
+          'sentAt': now,
+        },
+      }, SetOptions(merge: true));
+    } catch (e) {
+      _log('❌ updateDrawRequest error: $e');
+    }
+  }
+
+  /// Xóa draw request sau khi đã xử lý (chấp nhận / từ chối).
+  Future<void> clearDrawRequest(String matchId) async {
+    try {
+      await _matchDoc(matchId).update({
+        FirestoreConstants.drawRequest: FieldValue.delete(),
+      });
+    } catch (e) {
+      _log('⚠️ clearDrawRequest error: $e');
+    }
+  }
+
+  /// Stream theo dõi draw request — emit khi có thay đổi.
+  Stream<DrawRequestInfo?> watchDrawRequest(String matchId) {
+    return _matchDoc(matchId).snapshots().map((doc) {
+      if (!doc.exists) return null;
+      final data = doc.data();
+      final req =
+          data?[FirestoreConstants.drawRequest] as Map<String, dynamic>?;
+      if (req == null) return null;
+      return DrawRequestInfo(
+        requesterId: req['requesterId'] as String? ?? '',
+        sentAt: req['sentAt'] as String? ?? '',
+      );
+    }).distinct();
+  }
+
+  // =========================================================
+  // 8. DISCONNECT
+  // =========================================================
+
   Future<void> markPlayerDisconnected(
     String matchId,
     String userId,
@@ -205,8 +369,10 @@ class GameFirebaseService {
     try {
       await _matchDoc(matchId).set(
         {
-          'disconnectedPlayerId': userId,
-          'disconnectedAt': now,
+          FirestoreConstants.disconnectedPlayerId:
+              userId, // Ensure this constant matches 'disconnectedPlayerId'
+          FirestoreConstants.disconnectedAt:
+              now, // Ensure this constant matches 'disconnectedAt'
         },
         SetOptions(merge: true),
       );
@@ -219,8 +385,8 @@ class GameFirebaseService {
   Future<void> markPlayerReconnected(String matchId) async {
     try {
       await _matchDoc(matchId).update({
-        'disconnectedPlayerId': FieldValue.delete(),
-        'disconnectedAt': FieldValue.delete(),
+        FirestoreConstants.disconnectedPlayerId: FieldValue.delete(),
+        FirestoreConstants.disconnectedAt: FieldValue.delete(),
       });
       _log('🔌 Player reconnected in $matchId');
     } catch (e) {
@@ -228,20 +394,30 @@ class GameFirebaseService {
     }
   }
 
-  Stream<Map<String, dynamic>?> watchDisconnectStatus(String matchId) {
+  Stream<DisconnectInfo?> watchDisconnectStatus(String matchId) {
     return _matchDoc(matchId).snapshots().map((doc) {
       if (!doc.exists) return null;
       final data = doc.data();
       if (data == null) return null;
-      final disconnectedId = data['disconnectedPlayerId'] as String?;
-      final disconnectedAt = data['disconnectedAt'] as String?;
+
+      final disconnectedId =
+          data[FirestoreConstants.disconnectedPlayerId] as String? ??
+              data['disconnectedPlayerId'] as String?;
+      final disconnectedAt =
+          data[FirestoreConstants.disconnectedAt] as String? ??
+              data['disconnectedAt'] as String?;
+
       if (disconnectedId == null) return null;
-      return {
-        'userId': disconnectedId,
-        'at': disconnectedAt,
-      };
+      return DisconnectInfo(
+        userId: disconnectedId,
+        at: disconnectedAt ?? '',
+      );
     }).distinct();
   }
+
+  // =========================================================
+  // 9. MISC & CLEANUP
+  // =========================================================
 
   Future<void> linkInviteMessage(
     String matchId,
@@ -263,7 +439,87 @@ class GameFirebaseService {
     }
   }
 
+  /// Xóa toàn bộ dữ liệu của trận (khi abort sớm).
+  /// Không xóa document gốc — chỉ xóa sub-collections nặng.
+  Future<void> cleanupMatchData(String matchId) async {
+    try {
+      await Future.wait([
+        _deleteCollection(_movesRef(matchId)),
+        _deleteCollection(_chatRef(matchId)),
+        _deleteCollection(_reactionsRef(matchId)),
+      ]);
+      _log('🧹 Cleanup done for $matchId');
+    } catch (e) {
+      _log('⚠️ cleanupMatchData error: $e');
+    }
+  }
+
+  Future<void> _deleteCollection(
+    CollectionReference<Map<String, dynamic>> ref,
+  ) async {
+    const batchSize = 100;
+    while (true) {
+      final snap = await ref.limit(batchSize).get();
+      if (snap.docs.isEmpty) break;
+      final batch = _db.batch();
+      for (final doc in snap.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+      if (snap.docs.length < batchSize) break;
+    }
+  }
+
   void _log(String msg) {
     debugPrint('[GameFirebaseService] $msg');
   }
+}
+
+// =========================================================
+// VALUE OBJECTS
+// =========================================================
+
+/// Tin nhắn spectator chat.
+class SpectatorChatMessage {
+  final String userId;
+  final String text;
+  final String sentAt;
+
+  const SpectatorChatMessage({
+    required this.userId,
+    required this.text,
+    required this.sentAt,
+  });
+}
+
+/// Reaction từ khán giả.
+class GameReaction {
+  final String userId;
+  final String emoji;
+  final String sentAt;
+
+  const GameReaction({
+    required this.userId,
+    required this.emoji,
+    required this.sentAt,
+  });
+}
+
+/// Thông tin draw request đang pending.
+class DrawRequestInfo {
+  final String requesterId;
+  final String sentAt;
+
+  const DrawRequestInfo({
+    required this.requesterId,
+    required this.sentAt,
+  });
+}
+
+/// Thông tin player đang bị disconnect.
+class DisconnectInfo {
+  final String userId;
+  final String at;
+
+  const DisconnectInfo({required this.userId, required this.at});
 }

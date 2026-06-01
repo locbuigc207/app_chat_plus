@@ -243,7 +243,8 @@ class GameMatch {
         FirestoreConstants.player1Avatar: player1Avatar,
         if (player2Id != null) FirestoreConstants.player2Id: player2Id,
         if (player2Name != null) FirestoreConstants.player2Name: player2Name,
-        if (player2Avatar != null) FirestoreConstants.player2Avatar: player2Avatar,
+        if (player2Avatar != null)
+          FirestoreConstants.player2Avatar: player2Avatar,
         FirestoreConstants.player1Side: player1Side.name,
         FirestoreConstants.timeControlSeconds: timeControlSeconds,
         FirestoreConstants.turnTimerSeconds: turnTimerSeconds,
@@ -251,7 +252,8 @@ class GameMatch {
         if (result != null) FirestoreConstants.gameResult: result!.value,
         if (endReason != null) FirestoreConstants.gameEndReason: endReason,
         FirestoreConstants.sourceGroupId: sourceGroupId,
-        if (inviteMessageId != null) FirestoreConstants.inviteMessageId: inviteMessageId,
+        if (inviteMessageId != null)
+          FirestoreConstants.inviteMessageId: inviteMessageId,
         FirestoreConstants.spectatorIds: spectatorIds,
         FirestoreConstants.createdAt: createdAt,
         if (startedAt != null) FirestoreConstants.startedAt: startedAt,
@@ -280,8 +282,10 @@ class GameMatch {
         player1Side: ChessSide.fromString(
           data[FirestoreConstants.player1Side] as String?,
         ),
-        timeControlSeconds: data[FirestoreConstants.timeControlSeconds] as int? ?? 0,
-        turnTimerSeconds: data[FirestoreConstants.turnTimerSeconds] as int? ?? 0,
+        timeControlSeconds:
+            data[FirestoreConstants.timeControlSeconds] as int? ?? 0,
+        turnTimerSeconds:
+            data[FirestoreConstants.turnTimerSeconds] as int? ?? 0,
         boardSize: data[FirestoreConstants.boardSize] as int? ?? 0,
         result: GameResult.fromString(
           data[FirestoreConstants.gameResult] as String?,
@@ -339,13 +343,15 @@ class GameMatch {
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) || (other is GameMatch && other.matchId == matchId);
+      identical(this, other) ||
+      (other is GameMatch && other.matchId == matchId);
 
   @override
   int get hashCode => matchId.hashCode;
 
   @override
-  String toString() => 'GameMatch(id: $matchId, type: ${gameType.name}, status: ${status.name})';
+  String toString() =>
+      'GameMatch(id: $matchId, type: ${gameType.name}, status: ${status.name})';
 
   static String _parseTs(dynamic v) {
     if (v is String) return v;
