@@ -1,20 +1,20 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/firebase_options.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
-import 'package:flutter_chat_demo/providers/phone_auth_provider.dart' as custom_auth;
+import 'package:flutter_chat_demo/providers/phone_auth_provider.dart'
+    as custom_auth;
 import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_chat_demo/utils/utils.dart';
@@ -27,16 +27,28 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Globals
+// ─────────────────────────────────────────────────────────────────────────────
+
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FCM background handler
+// ─────────────────────────────────────────────────────────────────────────────
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   debugPrint('🔔 Background FCM: ${message.messageId}');
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// main()
+// ─────────────────────────────────────────────────────────────────────────────
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -58,7 +70,6 @@ Future<void> main() async {
   ));
 
   await _initializeFirebase();
-
   await ErrorLogger.initialize();
 
   tz.initializeTimeZones();
@@ -84,6 +95,10 @@ Future<void> main() async {
   ));
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Firebase init
+// ─────────────────────────────────────────────────────────────────────────────
+
 Future<void> _initializeFirebase() async {
   try {
     await Firebase.initializeApp(
@@ -101,7 +116,8 @@ Future<void> _initializeFirebase() async {
     }
 
     await FirebaseAppCheck.instance.activate(
-      androidProvider: kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+      androidProvider:
+          kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
       appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
     );
 
@@ -115,6 +131,10 @@ Future<void> _initializeFirebase() async {
     await ErrorLogger.logError(e, stack, context: 'Firebase.initializeApp');
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FCM init
+// ─────────────────────────────────────────────────────────────────────────────
 
 Future<void> _initializeFcm() async {
   try {
@@ -146,11 +166,16 @@ Future<void> _initializeFcm() async {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Local Notifications init
+// ─────────────────────────────────────────────────────────────────────────────
+
 Future<void> _initializeLocalNotifications(
   FlutterLocalNotificationsPlugin plugin,
 ) async {
   try {
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
 
     final iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
@@ -175,7 +200,8 @@ Future<void> _initializeLocalNotifications(
     await plugin.initialize(
       initSettings,
       onDidReceiveNotificationResponse: _onNotificationTapped,
-      onDidReceiveBackgroundNotificationResponse: _onBackgroundNotificationTapped,
+      onDidReceiveBackgroundNotificationResponse:
+          _onBackgroundNotificationTapped,
     );
 
     if (Platform.isAndroid) {
@@ -184,22 +210,24 @@ Future<void> _initializeLocalNotifications(
 
     if (Platform.isIOS) {
       await plugin
-          .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
+          .resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin>()
           ?.requestPermissions(alert: true, badge: true, sound: true);
     }
 
     debugPrint('✅ Local Notifications khởi tạo xong');
   } catch (e, stack) {
     debugPrint('❌ Notification init lỗi: $e');
-    await ErrorLogger.logError(e, stack, context: '_initializeLocalNotifications');
+    await ErrorLogger.logError(e, stack,
+        context: '_initializeLocalNotifications');
   }
 }
 
 Future<void> _setupAndroidNotificationChannels(
   FlutterLocalNotificationsPlugin plugin,
 ) async {
-  final androidPlugin =
-      plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+  final androidPlugin = plugin.resolvePlatformSpecificImplementation<
+      AndroidFlutterLocalNotificationsPlugin>();
   if (androidPlugin == null) return;
 
   await androidPlugin.requestNotificationsPermission();
@@ -295,17 +323,21 @@ void _navigateToChat({
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// BubbleChatChannelManager
+// ─────────────────────────────────────────────────────────────────────────────
+
 class BubbleChatChannelManager extends StatefulWidget {
   final Widget child;
   const BubbleChatChannelManager({super.key, required this.child});
 
   @override
-  State<BubbleChatChannelManager> createState() => _BubbleChatChannelManagerState();
+  State<BubbleChatChannelManager> createState() =>
+      _BubbleChatChannelManagerState();
 }
 
 class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
   static const _channel = MethodChannel('bubble_chat_channel');
-
   final _recentNavigations = <String>{};
 
   @override
@@ -378,7 +410,8 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
       );
     } catch (e, stack) {
       _recentNavigations.remove(dedupKey);
-      await ErrorLogger.logError(e, stack, context: 'BubbleChatChannelManager.navigateToChat');
+      await ErrorLogger.logError(e, stack,
+          context: 'BubbleChatChannelManager.navigateToChat');
     }
   }
 
@@ -392,6 +425,10 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
   @override
   Widget build(BuildContext context) => widget.child;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MiniChatOverlayManager
+// ─────────────────────────────────────────────────────────────────────────────
 
 class MiniChatOverlayManager extends StatefulWidget {
   final Widget child;
@@ -652,11 +689,13 @@ class _MiniChatHeader extends StatelessWidget {
           CircleAvatar(
             radius: 17,
             backgroundColor: Colors.white24,
-            backgroundImage: avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+            backgroundImage:
+                avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
             child: avatarUrl.isEmpty
                 ? Text(
                     userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.bold),
                   )
                 : null,
           ),
@@ -742,6 +781,10 @@ class BubbleModeDetector {
     }
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MyApp
+// ─────────────────────────────────────────────────────────────────────────────
 
 class MyApp extends StatelessWidget {
   final SharedPreferences prefs;
@@ -871,7 +914,8 @@ class MyApp extends StatelessWidget {
         create: (_) => MessageProvider(firebaseFirestore: firebaseFirestore),
       ),
       Provider<ConversationProvider>(
-        create: (_) => ConversationProvider(firebaseFirestore: firebaseFirestore),
+        create: (_) =>
+            ConversationProvider(firebaseFirestore: firebaseFirestore),
       ),
       Provider<ReminderProvider>(
         create: (_) => ReminderProvider(
@@ -883,7 +927,8 @@ class MyApp extends StatelessWidget {
         create: (_) => AutoDeleteProvider(firebaseFirestore: firebaseFirestore),
       ),
       Provider<ConversationLockProvider>(
-        create: (_) => ConversationLockProvider(firebaseFirestore: firebaseFirestore),
+        create: (_) =>
+            ConversationLockProvider(firebaseFirestore: firebaseFirestore),
       ),
       Provider<ViewOnceProvider>(
         create: (_) => ViewOnceProvider(firebaseFirestore: firebaseFirestore),
@@ -892,7 +937,8 @@ class MyApp extends StatelessWidget {
         create: (_) => SmartReplyProvider(),
       ),
       Provider<UserPresenceProvider>(
-        create: (_) => UserPresenceProvider(firebaseFirestore: firebaseFirestore),
+        create: (_) =>
+            UserPresenceProvider(firebaseFirestore: firebaseFirestore),
       ),
       Provider<LocationProvider>(
         create: (_) => LocationProvider(),
@@ -906,6 +952,10 @@ class MyApp extends StatelessWidget {
     ];
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _AppBuilder
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _AppBuilder extends StatelessWidget {
   final Widget? child;
@@ -923,6 +973,10 @@ class _AppBuilder extends StatelessWidget {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AppRoutes
+// ─────────────────────────────────────────────────────────────────────────────
 
 class AppRoutes {
   AppRoutes._();
@@ -945,7 +999,6 @@ class AppRoutes {
             builder: (_) => ChatPage(arguments: args),
           );
         }
-
         return _errorRoute('Chat page: arguments không hợp lệ');
 
       default:
@@ -963,6 +1016,10 @@ class AppRoutes {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AppInitializer
+// ─────────────────────────────────────────────────────────────────────────────
+
 class AppInitializer extends StatefulWidget {
   final NotificationService notificationService;
   final Widget child;
@@ -977,7 +1034,8 @@ class AppInitializer extends StatefulWidget {
   State<AppInitializer> createState() => _AppInitializerState();
 }
 
-class _AppInitializerState extends State<AppInitializer> with WidgetsBindingObserver {
+class _AppInitializerState extends State<AppInitializer>
+    with WidgetsBindingObserver {
   StreamSubscription<firebase_auth.User?>? _authSub;
   bool _notificationStarted = false;
 
@@ -995,7 +1053,8 @@ class _AppInitializerState extends State<AppInitializer> with WidgetsBindingObse
   }
 
   void _startNotificationService() {
-    _authSub = firebase_auth.FirebaseAuth.instance.authStateChanges().listen((user) {
+    _authSub =
+        firebase_auth.FirebaseAuth.instance.authStateChanges().listen((user) {
       if (user != null && !_notificationStarted) {
         widget.notificationService.listenForNewMessages(user.uid);
         _notificationStarted = true;
@@ -1031,7 +1090,8 @@ class _AppInitializerState extends State<AppInitializer> with WidgetsBindingObse
 
   Future<void> _handleNotificationLaunch() async {
     try {
-      final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+      final initialMessage =
+          await FirebaseMessaging.instance.getInitialMessage();
       if (initialMessage != null) {
         final peerId = initialMessage.data['peerId'] as String?;
         final peerNickname = initialMessage.data['peerNickname'] as String?;

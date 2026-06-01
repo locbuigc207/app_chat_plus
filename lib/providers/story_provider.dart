@@ -14,12 +14,15 @@ class StoryProvider extends ChangeNotifier {
 
   static const String _col = 'stories';
   static const String _repliesCol = 'story_replies';
+  static const String _archiveCol = 'story_archive';
   static const Duration _ttl = Duration(hours: 24);
 
   StoryProvider({
     required this.firebaseFirestore,
     required this.firebaseStorage,
   });
+
+  // ── Streams ──────────────────────────────────────────────────────────────────
 
   Stream<List<UserStories>> getStoriesStream({
     required String currentUserId,
@@ -67,12 +70,10 @@ class StoryProvider extends ChangeNotifier {
       result.sort((a, b) {
         if (a.isCurrentUser) return -1;
         if (b.isCurrentUser) return 1;
-
         final aUnseen = a.hasUnseenStoriesBy(currentUserId);
         final bUnseen = b.hasUnseenStoriesBy(currentUserId);
         if (aUnseen && !bUnseen) return -1;
         if (!aUnseen && bUnseen) return 1;
-
         final aLatest = a.latestStory?.createdAt ?? DateTime(2000);
         final bLatest = b.latestStory?.createdAt ?? DateTime(2000);
         return bLatest.compareTo(aLatest);
@@ -90,18 +91,39 @@ class StoryProvider extends ChangeNotifier {
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snap) => snap.docs
-            .map((doc) {
-              try {
-                return Story.fromDocument(doc);
-              } catch (e) {
-                debugPrint('⚠️ Error parsing story ${doc.id}: $e');
-                return null;
-              }
-            })
-            .whereType<Story>()
-            .where((s) => !s.isExpired)
-            .toList());
+        .map((doc) {
+      try {
+        return Story.fromDocument(doc);
+      } catch (e) {
+        debugPrint('⚠️ Error parsing story ${doc.id}: $e');
+        return null;
+      }
+    })
+        .whereType<Story>()
+        .where((s) => !s.isExpired)
+        .toList());
   }
+
+  Stream<List<Story>> getArchivedStoriesStream(String userId) {
+    return firebaseFirestore
+        .collection(_col)
+        .where('userId', isEqualTo: userId)
+        .where('isArchived', isEqualTo: true)
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs
+        .map((doc) {
+      try {
+        return Story.fromDocument(doc);
+      } catch (_) {
+        return null;
+      }
+    })
+        .whereType<Story>()
+        .toList());
+  }
+
+  // ── Create stories ───────────────────────────────────────────────────────────
 
   Future<String?> createImageStory({
     required String userId,
@@ -110,6 +132,12 @@ class StoryProvider extends ChangeNotifier {
     required File imageFile,
     String? caption,
     StoryPrivacy privacy = StoryPrivacy.friends,
+    StoryFilter filter = StoryFilter.none,
+    List<StoryTextLayer> textLayers = const [],
+    List<StorySticker> stickers = const [],
+    StoryMusicInfo? music,
+    bool allowReplies = true,
+    bool allowReactions = true,
   }) async {
     try {
       final fileName = 'stories/${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
@@ -128,6 +156,12 @@ class StoryProvider extends ChangeNotifier {
         mediaUrl: mediaUrl,
         caption: caption,
         privacy: privacy,
+        filter: filter,
+        textLayers: textLayers,
+        stickers: stickers,
+        music: music,
+        allowReplies: allowReplies,
+        allowReactions: allowReactions,
       );
     } catch (e) {
       debugPrint('❌ createImageStory: $e');
@@ -143,6 +177,11 @@ class StoryProvider extends ChangeNotifier {
     String? caption,
     Duration? videoDuration,
     StoryPrivacy privacy = StoryPrivacy.friends,
+    List<StorySticker> stickers = const [],
+    StoryMusicInfo? music,
+    String? audioMixUrl,
+    bool allowReplies = true,
+    bool allowReactions = true,
   }) async {
     try {
       final fileName = 'stories/${userId}_${DateTime.now().millisecondsSinceEpoch}.mp4';
@@ -162,6 +201,11 @@ class StoryProvider extends ChangeNotifier {
         caption: caption,
         privacy: privacy,
         videoDuration: videoDuration,
+        stickers: stickers,
+        music: music,
+        audioMixUrl: audioMixUrl,
+        allowReplies: allowReplies,
+        allowReactions: allowReactions,
       );
     } catch (e) {
       debugPrint('❌ createVideoStory: $e');
@@ -179,6 +223,13 @@ class StoryProvider extends ChangeNotifier {
     String? fontFamily,
     double fontSize = 28.0,
     StoryPrivacy privacy = StoryPrivacy.friends,
+    List<Color>? gradientColors,
+    String? backgroundPattern,
+    List<StorySticker> stickers = const [],
+    List<StoryTextLayer> textLayers = const [],
+    StoryMusicInfo? music,
+    bool allowReplies = true,
+    bool allowReactions = true,
   }) async {
     try {
       return _saveDocument(
@@ -192,6 +243,13 @@ class StoryProvider extends ChangeNotifier {
         fontFamily: fontFamily,
         fontSize: fontSize,
         privacy: privacy,
+        gradientColors: gradientColors,
+        backgroundPattern: backgroundPattern,
+        stickers: stickers,
+        textLayers: textLayers,
+        music: music,
+        allowReplies: allowReplies,
+        allowReactions: allowReactions,
       );
     } catch (e) {
       debugPrint('❌ createTextStory: $e');
@@ -214,6 +272,15 @@ class StoryProvider extends ChangeNotifier {
     double fontSize = 28.0,
     StoryPrivacy privacy = StoryPrivacy.friends,
     Duration? videoDuration,
+    StoryFilter filter = StoryFilter.none,
+    List<Color>? gradientColors,
+    String? backgroundPattern,
+    List<StoryTextLayer> textLayers = const [],
+    List<StorySticker> stickers = const [],
+    StoryMusicInfo? music,
+    String? audioMixUrl,
+    bool allowReplies = true,
+    bool allowReactions = true,
   }) async {
     final now = DateTime.now();
     final data = <String, dynamic>{
@@ -229,12 +296,23 @@ class StoryProvider extends ChangeNotifier {
       'textColor': textColor?.toARGB32(),
       'fontFamily': fontFamily,
       'fontSize': fontSize,
+      'filter': filter.index,
+      'gradientColors': gradientColors?.map((c) => c.toARGB32()).toList(),
+      'backgroundPattern': backgroundPattern,
+      'textLayers': textLayers.map((l) => l.toJson()).toList(),
+      'stickers': stickers.map((s) => s.toJson()).toList(),
+      'music': music?.toJson(),
+      'audioMixUrl': audioMixUrl,
       'createdAt': now.millisecondsSinceEpoch.toString(),
       'expiresAt': now.add(_ttl).millisecondsSinceEpoch.toString(),
       'views': <dynamic>[],
       'reactions': <dynamic>[],
       'privacy': privacy.index,
       'isDeleted': false,
+      'isArchived': false,
+      'allowReplies': allowReplies,
+      'allowReactions': allowReactions,
+      'showViewCount': true,
       if (videoDuration != null) 'videoDurationMs': videoDuration.inMilliseconds,
     };
 
@@ -242,6 +320,8 @@ class StoryProvider extends ChangeNotifier {
     debugPrint('✅ Story created: ${doc.id}');
     return doc.id;
   }
+
+  // ── Interactions ─────────────────────────────────────────────────────────────
 
   Future<void> markStoryViewed({
     required String storyId,
@@ -286,14 +366,11 @@ class StoryProvider extends ChangeNotifier {
       if (!snap.exists) return;
 
       final story = Story.fromDocument(snap);
-
       final existingReaction =
-          story.reactions.where((r) => r.userId == reactorId).map((r) => r.toJson()).toList();
+      story.reactions.where((r) => r.userId == reactorId).map((r) => r.toJson()).toList();
 
       if (existingReaction.isNotEmpty) {
-        await ref.update({
-          'reactions': FieldValue.arrayRemove(existingReaction),
-        });
+        await ref.update({'reactions': FieldValue.arrayRemove(existingReaction)});
       }
 
       final reactionData = StoryReaction(
@@ -304,9 +381,7 @@ class StoryProvider extends ChangeNotifier {
         reactedAt: DateTime.now(),
       ).toJson();
 
-      await ref.update({
-        'reactions': FieldValue.arrayUnion([reactionData]),
-      });
+      await ref.update({'reactions': FieldValue.arrayUnion([reactionData])});
     } catch (e) {
       debugPrint('❌ reactToStory: $e');
     }
@@ -332,12 +407,47 @@ class StoryProvider extends ChangeNotifier {
     }
   }
 
+  Stream<QuerySnapshot> getRepliesStream(String storyId) {
+    return firebaseFirestore
+        .collection(_col)
+        .doc(storyId)
+        .collection(_repliesCol)
+        .orderBy('sentAt', descending: true)
+        .limit(50)
+        .snapshots();
+  }
+
+  // ── Management ────────────────────────────────────────────────────────────────
+
   Future<bool> deleteStory(String storyId) async {
     try {
       await firebaseFirestore.collection(_col).doc(storyId).update({'isDeleted': true});
       return true;
     } catch (e) {
       debugPrint('❌ deleteStory: $e');
+      return false;
+    }
+  }
+
+  Future<bool> archiveStory(String storyId) async {
+    try {
+      await firebaseFirestore.collection(_col).doc(storyId).update({'isArchived': true});
+      return true;
+    } catch (e) {
+      debugPrint('❌ archiveStory: $e');
+      return false;
+    }
+  }
+
+  Future<bool> updateStoryPrivacy(String storyId, StoryPrivacy privacy) async {
+    try {
+      await firebaseFirestore
+          .collection(_col)
+          .doc(storyId)
+          .update({'privacy': privacy.index});
+      return true;
+    } catch (e) {
+      debugPrint('❌ updateStoryPrivacy: $e');
       return false;
     }
   }
@@ -370,7 +480,10 @@ class StoryProvider extends ChangeNotifier {
     }
   }
 
+  // ── Formatters ────────────────────────────────────────────────────────────────
+
   String formatTimeRemaining(Duration d) {
+    if (d == Duration.zero) return 'Expired';
     if (d.inHours > 0) return '${d.inHours}h ${d.inMinutes % 60}m remaining';
     if (d.inMinutes > 0) return '${d.inMinutes}m remaining';
     return 'Expiring soon';
@@ -382,5 +495,23 @@ class StoryProvider extends ChangeNotifier {
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     return '${diff.inDays}d ago';
+  }
+
+  String privacyLabel(StoryPrivacy p) {
+    return switch (p) {
+      StoryPrivacy.everyone => 'Everyone',
+      StoryPrivacy.friends => 'Friends',
+      StoryPrivacy.closeFriends => 'Close Friends',
+      StoryPrivacy.onlyMe => 'Only Me',
+    };
+  }
+
+  IconData privacyIcon(StoryPrivacy p) {
+    return switch (p) {
+      StoryPrivacy.everyone => Icons.public_rounded,
+      StoryPrivacy.friends => Icons.people_rounded,
+      StoryPrivacy.closeFriends => Icons.star_rounded,
+      StoryPrivacy.onlyMe => Icons.lock_rounded,
+    };
   }
 }

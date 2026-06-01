@@ -4,18 +4,18 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_chat_demo/models/story_model.dart';
 
+// ─── Story Ring ───────────────────────────────────────────────────────────────
+
 class StoryRing extends StatefulWidget {
   final Widget child;
   final bool hasUnseenStories;
   final bool isCurrentUser;
   final int totalSegments;
   final int seenSegments;
-
   final double ringWidth;
-
   final double gap;
-
   final double segmentGap;
+  final bool animating;
 
   const StoryRing({
     super.key,
@@ -26,7 +26,8 @@ class StoryRing extends StatefulWidget {
     this.seenSegments = 0,
     this.ringWidth = 2.5,
     this.gap = 2.5,
-    this.segmentGap = 2.0,
+    this.segmentGap = 3.0,
+    this.animating = true,
   });
 
   @override
@@ -39,10 +40,21 @@ class _StoryRingState extends State<StoryRing> with SingleTickerProviderStateMix
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 3),
-    )..repeat();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(seconds: 3));
+    if (widget.animating && (widget.hasUnseenStories || widget.isCurrentUser)) {
+      _ctrl.repeat();
+    }
+  }
+
+  @override
+  void didUpdateWidget(StoryRing old) {
+    super.didUpdateWidget(old);
+    final shouldAnimate = widget.animating && (widget.hasUnseenStories || widget.isCurrentUser);
+    if (shouldAnimate && !_ctrl.isAnimating) {
+      _ctrl.repeat();
+    } else if (!shouldAnimate && _ctrl.isAnimating) {
+      _ctrl.stop();
+    }
   }
 
   @override
@@ -53,8 +65,8 @@ class _StoryRingState extends State<StoryRing> with SingleTickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
-    final showRing = widget.hasUnseenStories || widget.isCurrentUser;
-    if (!showRing && widget.seenSegments == 0) return widget.child;
+    final showRing = widget.hasUnseenStories || widget.isCurrentUser || widget.seenSegments > 0;
+    if (!showRing) return widget.child;
 
     final totalPad = widget.ringWidth + widget.gap;
 
@@ -88,17 +100,25 @@ class _SegmentedRingPainter extends CustomPainter {
   final bool isCurrentUser;
   final double segmentGapDeg;
 
-  static const _unseenColors = [
+  // Premium gradient for unseen stories
+  static const List<Color> _unseenGradient = [
     Color(0xFFFF6B35),
     Color(0xFFFF2D55),
     Color(0xFFBF5FFF),
-    Color(0xFF2196F3),
+    Color(0xFF5B5EFF),
     Color(0xFF00C6FF),
     Color(0xFFFF6B35),
   ];
 
-  static const _seenColor = Color(0xFF9E9E9E);
-  static const _currentUserColor = Color(0xFF2196F3);
+  // Close friends green gradient
+  static const List<Color> _closeFriendGradient = [
+    Color(0xFF00E676),
+    Color(0xFF00BFA5),
+    Color(0xFF00E676),
+  ];
+
+  static const Color _seenColor = Color(0xFF9E9E9E);
+  static const Color _currentUserColor = Color(0xFF2196F3);
 
   const _SegmentedRingPainter({
     required this.progress,
@@ -122,26 +142,40 @@ class _SegmentedRingPainter extends CustomPainter {
       ..isAntiAlias = true;
 
     if (totalSegments <= 1) {
-      if (isCurrentUser) {
-        paint.color = _currentUserColor;
-        canvas.drawOval(rect, paint);
-        return;
-      }
-      if (!hasUnseen) {
-        paint.color = _seenColor.withValues(alpha: 0.45);
-        canvas.drawOval(rect, paint);
-        return;
-      }
-
-      paint.shader = SweepGradient(
-        startAngle: -math.pi / 2 + progress * 2 * math.pi,
-        endAngle: 3 * math.pi / 2 + progress * 2 * math.pi,
-        colors: _unseenColors,
-      ).createShader(rect);
-      canvas.drawOval(rect, paint);
+      _paintSingleRing(canvas, rect, paint);
       return;
     }
 
+    _paintSegmentedRing(canvas, rect, paint);
+  }
+
+  void _paintSingleRing(Canvas canvas, Rect rect, Paint paint) {
+    if (isCurrentUser) {
+      paint
+        ..shader = SweepGradient(
+          startAngle: -math.pi / 2 + progress * 2 * math.pi,
+          endAngle: 3 * math.pi / 2 + progress * 2 * math.pi,
+          colors: _unseenGradient,
+        ).createShader(rect);
+      canvas.drawOval(rect, paint);
+      return;
+    }
+    if (!hasUnseen) {
+      paint
+        ..shader = null
+        ..color = _seenColor.withOpacity(0.45);
+      canvas.drawOval(rect, paint);
+      return;
+    }
+    paint.shader = SweepGradient(
+      startAngle: -math.pi / 2 + progress * 2 * math.pi,
+      endAngle: 3 * math.pi / 2 + progress * 2 * math.pi,
+      colors: _unseenGradient,
+    ).createShader(rect);
+    canvas.drawOval(rect, paint);
+  }
+
+  void _paintSegmentedRing(Canvas canvas, Rect rect, Paint paint) {
     final total = totalSegments;
     final gapRad = segmentGapDeg * math.pi / 180;
     final segSweep = (2 * math.pi - gapRad * total) / total;
@@ -153,16 +187,18 @@ class _SegmentedRingPainter extends CustomPainter {
       if (isSeen) {
         paint
           ..shader = null
-          ..color = _seenColor.withValues(alpha: 0.45);
+          ..color = _seenColor.withOpacity(0.4);
       } else if (isCurrentUser) {
-        paint
-          ..shader = null
-          ..color = _currentUserColor;
+        paint.shader = SweepGradient(
+          startAngle: -math.pi / 2 + progress * 2 * math.pi,
+          endAngle: 3 * math.pi / 2 + progress * 2 * math.pi,
+          colors: _unseenGradient,
+        ).createShader(rect);
       } else {
         paint.shader = SweepGradient(
           startAngle: -math.pi / 2 + progress * 2 * math.pi,
           endAngle: 3 * math.pi / 2 + progress * 2 * math.pi,
-          colors: _unseenColors,
+          colors: _unseenGradient,
         ).createShader(rect);
       }
 
@@ -173,11 +209,13 @@ class _SegmentedRingPainter extends CustomPainter {
   @override
   bool shouldRepaint(_SegmentedRingPainter old) =>
       old.progress != progress ||
-      old.hasUnseen != hasUnseen ||
-      old.isCurrentUser != isCurrentUser ||
-      old.seenSegments != seenSegments ||
-      old.totalSegments != totalSegments;
+          old.hasUnseen != hasUnseen ||
+          old.isCurrentUser != isCurrentUser ||
+          old.seenSegments != seenSegments ||
+          old.totalSegments != totalSegments;
 }
+
+// ─── StoriesBar ───────────────────────────────────────────────────────────────
 
 class StoriesBar extends StatelessWidget {
   final List<UserStories> storiesList;
@@ -195,6 +233,7 @@ class StoriesBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     UserStories? myStories;
     final others = <UserStories>[];
 
@@ -207,38 +246,32 @@ class StoriesBar extends StatelessWidget {
     }
 
     return Container(
-      height: 110,
-      decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        border: Border(
-          bottom: BorderSide(
-            color: Theme.of(context).dividerColor,
-            width: 0.5,
-          ),
-        ),
-      ),
+      height: 106,
+      color: isDark ? const Color(0xFF0F0F0F) : Colors.white,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         children: [
           _MyStatusTile(
             myStories: myStories,
             currentUserId: currentUserId,
             onAdd: onAddStory,
             onView: myStories != null ? () => onViewStories(myStories!) : null,
+            isDark: isDark,
           ),
           if (others.isNotEmpty)
             Container(
               width: 0.5,
-              height: 64,
-              margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
-              color: Theme.of(context).dividerColor,
+              height: 56,
+              margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
+              color: isDark ? Colors.white12 : Colors.black12,
             ),
           for (final us in others)
             _FriendTile(
               userStories: us,
               viewerId: currentUserId,
               onTap: () => onViewStories(us),
+              isDark: isDark,
             ),
         ],
       ),
@@ -251,12 +284,14 @@ class _MyStatusTile extends StatelessWidget {
   final String currentUserId;
   final VoidCallback onAdd;
   final VoidCallback? onView;
+  final bool isDark;
 
   const _MyStatusTile({
     required this.myStories,
     required this.currentUserId,
     required this.onAdd,
     required this.onView,
+    required this.isDark,
   });
 
   @override
@@ -269,7 +304,7 @@ class _MyStatusTile extends StatelessWidget {
       onTap: hasStories ? onView : onAdd,
       onLongPress: hasStories ? onAdd : null,
       child: SizedBox(
-        width: 70,
+        width: 72,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -279,49 +314,49 @@ class _MyStatusTile extends StatelessWidget {
                 StoryRing(
                   hasUnseenStories: hasStories,
                   isCurrentUser: true,
-                  totalSegments: active.length.clamp(1, 10),
+                  totalSegments: active.length.clamp(1, 12),
                   seenSegments: seen,
+                  ringWidth: 2.0,
+                  gap: 2.0,
                   child: SizedBox(
-                    width: 54,
-                    height: 54,
-                    child: ClipOval(
-                      child: _AvatarImage(
-                        photoUrl: myStories?.latestStory?.type == StoryType.image
-                            ? (myStories?.latestStory?.mediaUrl ?? '')
-                            : (myStories?.userPhotoUrl ?? ''),
-                      ),
-                    ),
+                    width: 56,
+                    height: 56,
+                    child: ClipOval(child: _AvatarImage(photoUrl: myStories?.userPhotoUrl ?? '')),
                   ),
                 ),
                 Positioned(
-                  right: -2,
-                  bottom: -2,
+                  right: -1,
+                  bottom: -1,
                   child: GestureDetector(
                     onTap: onAdd,
                     child: Container(
-                      width: 22,
-                      height: 22,
+                      width: 20,
+                      height: 20,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF2196F3),
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF2196F3), Color(0xFF7B61FF)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: Theme.of(context).scaffoldBackgroundColor,
+                          color: isDark ? const Color(0xFF0F0F0F) : Colors.white,
                           width: 2,
                         ),
                       ),
-                      child: const Icon(Icons.add, color: Colors.white, size: 13),
+                      child: const Icon(Icons.add, color: Colors.white, size: 12),
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 5),
             Text(
               hasStories ? 'My Status' : 'Add Status',
               style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: Theme.of(context).textTheme.bodySmall?.color,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white70 : const Color(0xFF374151),
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -338,11 +373,13 @@ class _FriendTile extends StatelessWidget {
   final UserStories userStories;
   final String viewerId;
   final VoidCallback onTap;
+  final bool isDark;
 
   const _FriendTile({
     required this.userStories,
     required this.viewerId,
     required this.onTap,
+    required this.isDark,
   });
 
   @override
@@ -354,32 +391,32 @@ class _FriendTile extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 70,
-        margin: const EdgeInsets.only(right: 4),
+        width: 72,
+        margin: const EdgeInsets.only(right: 2),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             StoryRing(
               hasUnseenStories: hasUnseen,
-              totalSegments: active.length.clamp(1, 10),
+              totalSegments: active.length.clamp(1, 12),
               seenSegments: seen,
+              ringWidth: 2.0,
+              gap: 2.0,
               child: SizedBox(
-                width: 54,
-                height: 54,
-                child: ClipOval(
-                  child: _AvatarImage(photoUrl: userStories.userPhotoUrl),
-                ),
+                width: 56,
+                height: 56,
+                child: ClipOval(child: _AvatarImage(photoUrl: userStories.userPhotoUrl)),
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 5),
             Text(
-              userStories.userName,
+              userStories.userName.split(' ').first,
               style: TextStyle(
-                fontSize: 11,
-                fontWeight: hasUnseen ? FontWeight.w700 : FontWeight.w400,
+                fontSize: 10.5,
+                fontWeight: hasUnseen ? FontWeight.w700 : FontWeight.w500,
                 color: hasUnseen
-                    ? Theme.of(context).colorScheme.primary
-                    : Theme.of(context).textTheme.bodySmall?.color,
+                    ? (isDark ? Colors.white : const Color(0xFF0D1117))
+                    : (isDark ? Colors.white54 : const Color(0xFF9CA3AF)),
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -408,8 +445,8 @@ class _AvatarImage extends StatelessWidget {
       photoUrl,
       fit: BoxFit.cover,
       errorBuilder: (_, __, ___) => Container(
-        color: Colors.grey.shade300,
-        child: const Icon(Icons.person, color: Colors.grey, size: 28),
+        color: Colors.grey.shade800,
+        child: const Icon(Icons.person, color: Colors.white38, size: 28),
       ),
     );
   }
