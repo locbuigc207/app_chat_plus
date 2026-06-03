@@ -1,19 +1,22 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
-
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
+
+// ──────────────────────────────────────────────────────────────────────────────
+// MODELS
+// ──────────────────────────────────────────────────────────────────────────────
 
 enum RtcConnectionState {
   disconnected,
   connecting,
   connected,
   reconnecting,
-  failed,
+  failed
 }
 
 enum NetworkQuality { unknown, excellent, good, poor, bad, veryBad, down }
@@ -54,7 +57,11 @@ class RemoteUserState {
       );
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// AGORA RTC MANAGER
+// ──────────────────────────────────────────────────────────────────────────────
 class AgoraRtcManager extends ChangeNotifier {
+  // ── State ─────────────────────────────────────────────────────────────────
   RtcConnectionState _connectionState = RtcConnectionState.disconnected;
   bool _isMuted = false;
   bool _isCameraOff = false;
@@ -69,15 +76,16 @@ class AgoraRtcManager extends ChangeNotifier {
   RtcCallStats _stats = const RtcCallStats();
   NetworkQuality _networkQuality = NetworkQuality.unknown;
   Map<int, RemoteUserState> _remoteUsers = {};
-
   RtcEngine? _engine;
 
+  // ── Streams ────────────────────────────────────────────────────────────────
   final _remoteJoinedCtrl = StreamController<int>.broadcast();
   final _remoteLeftCtrl = StreamController<int>.broadcast();
   final _connectionCtrl = StreamController<RtcConnectionState>.broadcast();
   final _errorCtrl = StreamController<String>.broadcast();
   final _networkQualityCtrl = StreamController<NetworkQuality>.broadcast();
   final _activeSpeakerCtrl = StreamController<int>.broadcast();
+  final _audioLevelCtrl = StreamController<double>.broadcast();
 
   Stream<int> get remoteJoinedStream => _remoteJoinedCtrl.stream;
   Stream<int> get remoteLeftStream => _remoteLeftCtrl.stream;
@@ -85,7 +93,9 @@ class AgoraRtcManager extends ChangeNotifier {
   Stream<String> get errorStream => _errorCtrl.stream;
   Stream<NetworkQuality> get networkQualityStream => _networkQualityCtrl.stream;
   Stream<int> get activeSpeakerStream => _activeSpeakerCtrl.stream;
+  Stream<double> get audioLevelStream => _audioLevelCtrl.stream;
 
+  // ── Getters ────────────────────────────────────────────────────────────────
   RtcConnectionState get connectionState => _connectionState;
   bool get isMuted => _isMuted;
   bool get isCameraOff => _isCameraOff;
@@ -108,17 +118,17 @@ class AgoraRtcManager extends ChangeNotifier {
   String? get currentChannel => _currentChannel;
   RtcEngine? get engine => _engine;
 
-  String get _tokenServerBase =>
-      dotenv.env['AGORA_TOKEN_SERVER'] ?? 'https://agora-token-service-boa9.onrender.com';
-
+  String get _tokenServerBase => (dotenv.env['AGORA_TOKEN_SERVER'] ??
+          'https://agora-token-service-boa9.onrender.com')
+      .trim();
   String get _appId => (dotenv.env['AGORA_APP_ID'] ?? '').trim();
 
+  // ── Initialize ────────────────────────────────────────────────────────────
   Future<bool> initialize() async {
     if (_initialized) return true;
     if (_disposed) return false;
-
     if (_appId.isEmpty) {
-      _emitError('AGORA_APP_ID chưa được cấu hình trong .env');
+      _emitError('AGORA_APP_ID chưa cấu hình trong .env');
       return false;
     }
 
@@ -126,23 +136,23 @@ class AgoraRtcManager extends ChangeNotifier {
       await _requestPermissions(video: true);
       await _initEngine();
       _initialized = true;
-      debugPrint('✅ [Agora] Initialized');
+      debugPrint('✅ [AgoraRtcManager] Initialized');
       return true;
     } catch (e, st) {
-      debugPrint('❌ [Agora] initialize: $e\n$st');
-      _emitError('Không thể khởi tạo call engine: $e');
+      debugPrint('❌ [AgoraRtcManager] initialize: $e\n$st');
+      _emitError('Không thể khởi tạo engine: $e');
       return false;
     }
   }
 
+  // ── Join channel ──────────────────────────────────────────────────────────
   Future<bool> joinChannel({
     required String channelName,
     required bool isVideoCall,
     int uid = 0,
     String? token,
   }) async {
-    if (_disposed) return false;
-    if (_joining) return false;
+    if (_disposed || _joining) return false;
 
     final ch = channelName.trim();
     if (ch.isEmpty) {
@@ -191,10 +201,10 @@ class AgoraRtcManager extends ChangeNotifier {
         ),
       );
 
-      debugPrint('✅ [Agora] joinChannel dispatched: $ch');
+      debugPrint('✅ [AgoraRtcManager] joinChannel dispatched: $ch');
       return true;
     } catch (e, st) {
-      debugPrint('❌ [Agora] joinChannel: $e\n$st');
+      debugPrint('❌ [AgoraRtcManager] joinChannel: $e\n$st');
       _setConnectionState(RtcConnectionState.failed);
       _emitError('Không thể kết nối cuộc gọi: $e');
       return false;
@@ -203,12 +213,13 @@ class AgoraRtcManager extends ChangeNotifier {
     }
   }
 
+  // ── Leave channel ─────────────────────────────────────────────────────────
   Future<void> leaveChannel() async {
     if (!_initialized || _engine == null) return;
     try {
       await _engine!.leaveChannel();
     } catch (e) {
-      debugPrint('⚠️ [Agora] leaveChannel: $e');
+      debugPrint('⚠️ [AgoraRtcManager] leaveChannel: $e');
     } finally {
       _remoteUsers = {};
       _currentChannel = null;
@@ -220,6 +231,7 @@ class AgoraRtcManager extends ChangeNotifier {
     }
   }
 
+  // ── Controls ──────────────────────────────────────────────────────────────
   Future<void> toggleMute() async {
     if (_disposed) return;
     _isMuted = !_isMuted;
@@ -257,41 +269,22 @@ class AgoraRtcManager extends ChangeNotifier {
 
   Future<void> adjustRemoteVolume(int uid, int volume) async {
     if (_disposed) return;
-    final v = volume.clamp(0, 400);
-    await _safeCall(() => _engine?.adjustUserPlaybackSignalVolume(uid: uid, volume: v));
+    await _safeCall(
+      () => _engine?.adjustUserPlaybackSignalVolume(
+          uid: uid, volume: volume.clamp(0, 400)),
+    );
   }
 
   Future<void> muteRemoteVideo(int uid, {required bool mute}) async {
     if (_disposed) return;
-    await _safeCall(
-      () => _engine?.muteRemoteVideoStream(uid: uid, mute: mute),
-    );
+    await _safeCall(() => _engine?.muteRemoteVideoStream(uid: uid, mute: mute));
     if (_remoteUsers.containsKey(uid)) {
       _remoteUsers[uid] = _remoteUsers[uid]!.copyWith(videoOn: !mute);
       _safeNotify();
     }
   }
 
-  @override
-  void dispose() {
-    if (_disposed) return;
-    _disposed = true;
-
-    _engine?.leaveChannel().catchError((_) {});
-
-    _remoteJoinedCtrl.close();
-    _remoteLeftCtrl.close();
-    _connectionCtrl.close();
-    _errorCtrl.close();
-    _networkQualityCtrl.close();
-    _activeSpeakerCtrl.close();
-
-    _engine?.release().catchError((_) {});
-    _engine = null;
-
-    super.dispose();
-  }
-
+  // ── Engine init ───────────────────────────────────────────────────────────
   Future<void> _initEngine() async {
     _engine = createAgoraRtcEngine();
 
@@ -312,73 +305,88 @@ class AgoraRtcManager extends ChangeNotifier {
     );
     await _engine!.setEnableSpeakerphone(true);
 
+    // Echo cancellation & noise suppression
     await _engine!.setParameters('{"che.audio.enable.aec":true}');
     await _engine!.setParameters('{"che.audio.enable.agc":true}');
     await _engine!.setParameters('{"che.audio.enable.ns":true}');
 
+    // Enable audio volume indication for visualizer (200ms interval)
+    await _engine!.enableAudioVolumeIndication(
+      interval: 200,
+      smooth: 3,
+      reportVad: true,
+    );
+
     _engine!.registerEventHandler(RtcEngineEventHandler(
-      onJoinChannelSuccess: (connection, elapsed) {
-        debugPrint('✅ [Agora] Joined: ${connection.channelId} (${elapsed}ms)');
+      onJoinChannelSuccess: (conn, elapsed) {
+        debugPrint('✅ [Agora] Joined: ${conn.channelId} (${elapsed}ms)');
         _setConnectionState(RtcConnectionState.connected);
       },
-      onRejoinChannelSuccess: (connection, elapsed) {
-        debugPrint('✅ [Agora] Rejoined: ${connection.channelId}');
+      onRejoinChannelSuccess: (conn, elapsed) {
+        debugPrint('✅ [Agora] Rejoined: ${conn.channelId}');
         _setConnectionState(RtcConnectionState.connected);
       },
-      onLeaveChannel: (connection, rtcStats) {
+      onLeaveChannel: (conn, stats) {
         debugPrint('✅ [Agora] Left channel');
         _setConnectionState(RtcConnectionState.disconnected);
       },
-      onUserJoined: (connection, uid, elapsed) {
-        debugPrint('✅ [Agora] Remote user joined: $uid');
+      onUserJoined: (conn, uid, elapsed) {
+        debugPrint('✅ [Agora] Remote joined: $uid');
         _remoteUsers[uid] = RemoteUserState(uid: uid);
         if (!_remoteJoinedCtrl.isClosed) _remoteJoinedCtrl.add(uid);
         _safeNotify();
       },
-      onUserOffline: (connection, uid, reason) {
-        debugPrint('✅ [Agora] Remote user left: $uid (reason: $reason)');
+      onUserOffline: (conn, uid, reason) {
+        debugPrint('✅ [Agora] Remote left: $uid (reason: $reason)');
         _remoteUsers.remove(uid);
         if (!_remoteLeftCtrl.isClosed) _remoteLeftCtrl.add(uid);
         _safeNotify();
       },
-      onConnectionStateChanged: (connection, state, reason) {
+      onConnectionStateChanged: (conn, state, reason) {
         debugPrint('ℹ️ [Agora] Connection state: $state (reason: $reason)');
-        _setConnectionState(_mapConnectionState(state));
+        _setConnectionState(_mapConnState(state));
       },
-      onConnectionLost: (connection) {
+      onConnectionLost: (conn) {
         debugPrint('⚠️ [Agora] Connection lost');
         _setConnectionState(RtcConnectionState.reconnecting);
       },
-      onRemoteVideoStateChanged: (connection, uid, state, reason, elapsed) {
+      onRemoteVideoStateChanged: (conn, uid, state, reason, elapsed) {
         if (_remoteUsers.containsKey(uid)) {
-          final isOn = state == RemoteVideoState.remoteVideoStateDecoding ||
+          final on = state == RemoteVideoState.remoteVideoStateDecoding ||
               state == RemoteVideoState.remoteVideoStateStarting;
-          _remoteUsers[uid] = _remoteUsers[uid]!.copyWith(videoOn: isOn);
+          _remoteUsers[uid] = _remoteUsers[uid]!.copyWith(videoOn: on);
           _safeNotify();
         }
       },
-      onRemoteAudioStateChanged: (connection, uid, state, reason, elapsed) {
+      onRemoteAudioStateChanged: (conn, uid, state, reason, elapsed) {
         if (_remoteUsers.containsKey(uid)) {
-          final isOn = state == RemoteAudioState.remoteAudioStateDecoding ||
+          final on = state == RemoteAudioState.remoteAudioStateDecoding ||
               state == RemoteAudioState.remoteAudioStateStarting;
-          _remoteUsers[uid] = _remoteUsers[uid]!.copyWith(audioOn: isOn);
+          _remoteUsers[uid] = _remoteUsers[uid]!.copyWith(audioOn: on);
           _safeNotify();
         }
       },
-      onActiveSpeaker: (connection, uid) {
+      onActiveSpeaker: (conn, uid) {
         if (!_activeSpeakerCtrl.isClosed) _activeSpeakerCtrl.add(uid);
       },
-      onNetworkQuality: (connection, uid, txQuality, rxQuality) {
+      onAudioVolumeIndication: (conn, speakers, speakerNum, totalVolume) {
+        if (_disposed || _audioLevelCtrl.isClosed) return;
+        // totalVolume: 0-255; normalize to 0.0-1.0
+        final normalized = (totalVolume / 255.0).clamp(0.0, 1.0);
+        _audioLevelCtrl.add(normalized.toDouble());
+      },
+      onNetworkQuality: (conn, uid, txQuality, rxQuality) {
         if (uid == 0) {
-          final worst = txQuality.index > rxQuality.index ? txQuality : rxQuality;
-          final q = _mapNetworkQuality(worst);
+          final worst =
+              txQuality.index > rxQuality.index ? txQuality : rxQuality;
+          final q = _mapNetQuality(worst);
           if (q != _networkQuality) {
             _networkQuality = q;
             if (!_networkQualityCtrl.isClosed) _networkQualityCtrl.add(q);
           }
         }
       },
-      onRtcStats: (connection, rtcStats) {
+      onRtcStats: (conn, rtcStats) {
         if (_disposed) return;
         _stats = RtcCallStats(
           txBitrate: rtcStats.txKBitRate ?? 0,
@@ -390,8 +398,8 @@ class AgoraRtcManager extends ChangeNotifier {
         );
         _safeNotify();
       },
-      onTokenPrivilegeWillExpire: (connection, token) async {
-        debugPrint('⚠️ [Agora] Token will expire — refreshing');
+      onTokenPrivilegeWillExpire: (conn, token) async {
+        debugPrint('⚠️ [Agora] Token expiring — refreshing');
         if (_currentChannel != null) {
           final newToken = await _fetchToken(_currentChannel!);
           if (newToken != null) {
@@ -406,14 +414,15 @@ class AgoraRtcManager extends ChangeNotifier {
     ));
   }
 
+  // ── Token fetch ───────────────────────────────────────────────────────────
   Future<String?> _fetchToken(String channelName, {int uid = 0}) async {
     const maxRetries = 3;
     for (int attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        final url = Uri.parse(
-          '$_tokenServerBase/rtc/$channelName/publisher/uid/$uid',
-        );
+        final url =
+            Uri.parse('$_tokenServerBase/rtc/$channelName/publisher/uid/$uid');
         final res = await http.get(url).timeout(const Duration(seconds: 15));
+
         if (res.statusCode == 200) {
           final body = json.decode(res.body) as Map<String, dynamic>;
           final token = (body['rtcToken'] ?? body['token']) as String?;
@@ -425,7 +434,7 @@ class AgoraRtcManager extends ChangeNotifier {
           debugPrint('❌ [Agora] Token server ${res.statusCode}: ${res.body}');
         }
       } catch (e) {
-        debugPrint('❌ [Agora] Token fetch attempt ${attempt + 1}: $e');
+        debugPrint('❌ [Agora] Token attempt ${attempt + 1}: $e');
       }
       if (attempt < maxRetries - 1) {
         await Future.delayed(Duration(seconds: 2 * (attempt + 1)));
@@ -435,10 +444,12 @@ class AgoraRtcManager extends ChangeNotifier {
     return null;
   }
 
+  // ── Permissions ───────────────────────────────────────────────────────────
   Future<void> _requestPermissions({bool video = false}) async {
     if (kIsWeb) return;
     final perms = [Permission.microphone];
     if (video) perms.add(Permission.camera);
+
     final statuses = await perms.request();
     for (final e in statuses.entries) {
       if (!e.value.isGranted) {
@@ -447,10 +458,11 @@ class AgoraRtcManager extends ChangeNotifier {
     }
   }
 
-  void _setConnectionState(RtcConnectionState state) {
-    if (_disposed || _connectionState == state) return;
-    _connectionState = state;
-    if (!_connectionCtrl.isClosed) _connectionCtrl.add(state);
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  void _setConnectionState(RtcConnectionState s) {
+    if (_disposed || _connectionState == s) return;
+    _connectionState = s;
+    if (!_connectionCtrl.isClosed) _connectionCtrl.add(s);
     _safeNotify();
   }
 
@@ -470,7 +482,7 @@ class AgoraRtcManager extends ChangeNotifier {
     }
   }
 
-  RtcConnectionState _mapConnectionState(ConnectionStateType s) {
+  RtcConnectionState _mapConnState(ConnectionStateType s) {
     switch (s) {
       case ConnectionStateType.connectionStateDisconnected:
         return RtcConnectionState.disconnected;
@@ -487,7 +499,7 @@ class AgoraRtcManager extends ChangeNotifier {
     }
   }
 
-  NetworkQuality _mapNetworkQuality(QualityType q) {
+  NetworkQuality _mapNetQuality(QualityType q) {
     switch (q) {
       case QualityType.qualityExcellent:
         return NetworkQuality.excellent;
@@ -504,5 +516,27 @@ class AgoraRtcManager extends ChangeNotifier {
       default:
         return NetworkQuality.unknown;
     }
+  }
+
+  // ── Dispose ───────────────────────────────────────────────────────────────
+  @override
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+
+    _engine?.leaveChannel().catchError((_) {});
+
+    _remoteJoinedCtrl.close();
+    _remoteLeftCtrl.close();
+    _connectionCtrl.close();
+    _errorCtrl.close();
+    _networkQualityCtrl.close();
+    _activeSpeakerCtrl.close();
+    _audioLevelCtrl.close();
+
+    _engine?.release().catchError((_) {});
+    _engine = null;
+
+    super.dispose();
   }
 }

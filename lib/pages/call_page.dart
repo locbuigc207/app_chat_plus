@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart' hide AspectRatio;
@@ -19,41 +20,59 @@ import '../widgets/call_quality_indicator.dart';
 import '../widgets/call_timer_widget.dart';
 import '../widgets/live_caption_overlay.dart';
 
+// ══════════════════════════════════════════════════════
+// DESIGN TOKENS
+// ══════════════════════════════════════════════════════
+const _kBg      = Color(0xFF080C18);
+const _kAccept  = Color(0xFF34C759);
+const _kDecline = Color(0xFFFF3B30);
+const _kBlue    = Color(0xFF0A84FF);
+const _kSurface = Color(0x1AFFFFFF);
+const _kBorder  = Color(0x33FFFFFF);
+
+// ══════════════════════════════════════════════════════
+// CALL PAGE
+// ══════════════════════════════════════════════════════
 class CallPage extends StatefulWidget {
   final CallModel call;
   final bool isOutgoing;
 
-  const CallPage({
-    super.key,
-    required this.call,
-    required this.isOutgoing,
-  });
+  const CallPage({super.key, required this.call, required this.isOutgoing});
 
   @override
   State<CallPage> createState() => _CallPageState();
 }
 
 class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
-  final _callService = CallService.instance;
-  final _pip = SimplePip();
-  late final AgoraRtcManager _rtcManager;
+  final _callService  = CallService.instance;
+  final _pip          = SimplePip();
+  late final AgoraRtcManager _rtc;
 
-  CallStatus _callStatus = CallStatus.calling;
-  StreamSubscription? _callStatusSub;
-  StreamSubscription? _remoteJoinedSub;
+  // State
+  CallStatus _status       = CallStatus.calling;
+  DateTime?  _connectedAt;
+  bool _callEnded          = false;
+  bool _showControls       = true;
+  bool _isInitializing     = true;
+  bool _isLiveCaptionOn    = false;
+  String? _errorMessage;
+
+  // Local PiP drag position
+  Offset _localPipPos      = const Offset(double.infinity, double.infinity);
+  bool   _localPipDragging = false;
+
+  // Controls auto-hide
+  Timer? _hideTimer;
+
+  // Subscriptions
+  StreamSubscription? _statusSub;
+  StreamSubscription? _remoteJoinSub;
   StreamSubscription? _remoteLeftSub;
   StreamSubscription? _errorSub;
 
-  DateTime? _callConnectedAt;
-  bool _callEnded = false;
-  bool _showControls = true;
-  Timer? _controlsHideTimer;
-  bool _isInitializing = true;
-  String? _errorMessage;
-  bool _isLiveCaptionEnabled = false;
-
-  Offset _localPipOffset = const Offset(double.infinity, double.infinity);
-  bool _localPipDragging = false;
+  // Audio level for visualizer (0.0 – 1.0)
+  final List<double> _audioLevels = List.filled(20, 0.05);
+  StreamSubscription? _audioLevelSub;
 
   @override
   void initState() {
@@ -61,25 +80,16 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-    _rtcManager = AgoraRtcManager();
-    _callStatus = widget.call.status;
+    _rtc    = AgoraRtcManager();
+    _status = widget.call.status;
 
-    if (widget.call.status == CallStatus.connected || widget.call.status == CallStatus.accepted) {
-      _callConnectedAt = DateTime.now();
+    if (_status == CallStatus.connected || _status == CallStatus.accepted) {
+      _connectedAt = DateTime.now();
     }
 
     _initCall();
-    _watchCallStatus();
-    _scheduleControlsHide();
-  }
-
-  Future<void> _enterPiPMode() async {
-    final available = await SimplePip.isPipAvailable;
-    if (available) {
-      await _pip.enterPipMode(aspectRatio: (9, 16));
-    } else if (mounted) {
-      Navigator.pop(context);
-    }
+    _watchStatus();
+    _scheduleHide();
   }
 
   void _startAIProtection() {
@@ -87,48 +97,49 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     RealtimeAIService().startProtection(peerId, widget.call.channelName);
   }
 
+  // ── Init call ─────────────────────────────────────────────────────────────
   Future<void> _initCall() async {
-    _errorSub = _rtcManager.errorStream.listen((error) {
-      if (mounted) {
-        setState(() => _errorMessage = error);
-        _showErrorDialog(error);
-      }
+    _errorSub = _rtc.errorStream.listen((e) {
+      if (mounted) setState(() => _errorMessage = e);
     });
 
-    _remoteJoinedSub = _rtcManager.remoteJoinedStream.listen((_) {
+    _remoteJoinSub = _rtc.remoteJoinedStream.listen((_) {
       if (mounted) {
         setState(() {
-          _callStatus = CallStatus.connected;
-          _callConnectedAt ??= DateTime.now();
+          _status         = CallStatus.connected;
+          _connectedAt ??= DateTime.now();
           _isInitializing = false;
         });
         _startAIProtection();
+        _scheduleHide();
       }
     });
 
-    _remoteLeftSub = _rtcManager.remoteLeftStream.listen((_) => _endCall());
+    _remoteLeftSub = _rtc.remoteLeftStream.listen((_) => _endCall());
 
-    final ok = await _rtcManager.initialize();
-    if (!ok) {
-      if (mounted) {
+    // Subscribe to audio levels for visualizer
+    _audioLevelSub = _rtc.audioLevelStream.listen((level) {
+      if (mounted && _status == CallStatus.connected) {
         setState(() {
-          _isInitializing = false;
-          _errorMessage = 'Không thể khởi tạo cuộc gọi.\nKiểm tra Agora App ID.';
+          _audioLevels.removeAt(0);
+          _audioLevels.add(level.clamp(0.0, 1.0));
         });
       }
+    });
+
+    final ok = await _rtc.initialize();
+    if (!ok) {
+      if (mounted) setState(() { _isInitializing = false; _errorMessage = 'Không thể khởi tạo engine cuộc gọi.'; });
       return;
     }
 
     if (widget.call.channelName.isNotEmpty) {
-      final joined = await _rtcManager.joinChannel(
+      final joined = await _rtc.joinChannel(
         channelName: widget.call.channelName,
         isVideoCall: widget.call.isVideoCall,
       );
       if (!joined && mounted) {
-        setState(() {
-          _isInitializing = false;
-          _errorMessage = 'Không thể tham gia kênh cuộc gọi.';
-        });
+        setState(() { _isInitializing = false; _errorMessage = 'Không thể tham gia kênh cuộc gọi.'; });
         return;
       }
     }
@@ -136,16 +147,14 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     if (mounted) setState(() => _isInitializing = false);
   }
 
-  void _watchCallStatus() {
-    _callStatusSub = _callService.watchCall(widget.call.callId).listen((call) {
+  void _watchStatus() {
+    _statusSub = _callService.watchCall(widget.call.callId).listen((call) {
       if (call == null || _callEnded) return;
-      if (mounted) setState(() => _callStatus = call.status);
-
-      if ((call.status == CallStatus.connected || call.status == CallStatus.accepted) &&
-          _callConnectedAt == null) {
-        if (mounted) setState(() => _callConnectedAt = DateTime.now());
+      if (mounted) setState(() => _status = call.status);
+      if ((_status == CallStatus.connected || _status == CallStatus.accepted) &&
+          _connectedAt == null) {
+        if (mounted) setState(() => _connectedAt = DateTime.now());
       }
-
       if (call.status.isTerminal) _endCall(remote: true);
     });
   }
@@ -153,12 +162,13 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
   Future<void> _endCall({bool remote = false}) async {
     if (_callEnded) return;
     _callEnded = true;
-    await _rtcManager.leaveChannel();
+    await _rtc.leaveChannel();
 
     if (!remote) {
-      final duration =
-          _callConnectedAt != null ? DateTime.now().difference(_callConnectedAt!).inSeconds : null;
-      await _callService.endCall(widget.call.callId, durationSeconds: duration);
+      final dur = _connectedAt != null
+          ? DateTime.now().difference(_connectedAt!).inSeconds
+          : null;
+      await _callService.endCall(widget.call.callId, durationSeconds: dur);
     }
 
     if (mounted) {
@@ -167,42 +177,11 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     }
   }
 
-  void _showErrorDialog(String message) {
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1F36),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.error_outline_rounded, color: Colors.redAccent),
-            SizedBox(width: 10),
-            Text('Lỗi cuộc gọi', style: TextStyle(color: Colors.white, fontSize: 17)),
-          ],
-        ),
-        content: Text(message, style: const TextStyle(color: Colors.white70, fontSize: 14)),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _endCall();
-            },
-            child: const Text('Đóng', style: TextStyle(color: Color(0xFF5C6BC0))),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _scheduleControlsHide() {
-    _controlsHideTimer?.cancel();
-    if (widget.call.isVideoCall) {
-      _controlsHideTimer = Timer(const Duration(seconds: 5), () {
-        if (mounted && _isConnected) {
-          setState(() => _showControls = false);
-        }
+  void _scheduleHide() {
+    _hideTimer?.cancel();
+    if (widget.call.isVideoCall && _isConnected) {
+      _hideTimer = Timer(const Duration(seconds: 5), () {
+        if (mounted && _isConnected) setState(() => _showControls = false);
       });
     }
   }
@@ -210,16 +189,34 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
   void _onTapScreen() {
     if (!widget.call.isVideoCall) return;
     setState(() => _showControls = !_showControls);
-    if (_showControls) _scheduleControlsHide();
+    if (_showControls) _scheduleHide();
+  }
+
+  void _toggleCaption() {
+    setState(() => _isLiveCaptionOn = !_isLiveCaptionOn);
+    Fluttertoast.showToast(
+      msg: _isLiveCaptionOn ? 'Đã bật phụ đề AI' : 'Đã tắt phụ đề AI',
+      backgroundColor: Colors.black87,
+      textColor: Colors.white,
+    );
   }
 
   bool get _isConnected =>
-      _callStatus == CallStatus.connected || _callStatus == CallStatus.accepted;
+      _status == CallStatus.connected || _status == CallStatus.accepted;
+
+  Future<void> _enterPip() async {
+    final ok = await SimplePip.isPipAvailable;
+    if (ok) {
+      await _pip.enterPipMode(aspectRatio: (9, 16));
+    } else if (mounted) {
+      Navigator.pop(context);
+    }
+  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused && widget.call.isVideoCall) {
-      if (!_rtcManager.isCameraOff) _rtcManager.toggleCamera();
+      if (!_rtc.isCameraOff) _rtc.toggleCamera();
     }
   }
 
@@ -227,31 +224,34 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     RealtimeAIService().stopProtection();
-    _callStatusSub?.cancel();
-    _remoteJoinedSub?.cancel();
+    _statusSub?.cancel();
+    _remoteJoinSub?.cancel();
     _remoteLeftSub?.cancel();
     _errorSub?.cancel();
-    _controlsHideTimer?.cancel();
-    _rtcManager.dispose();
+    _audioLevelSub?.cancel();
+    _hideTimer?.cancel();
+    _rtc.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
+  // ══════════════════════════════════════════════════════
+  // BUILD
+  // ══════════════════════════════════════════════════════
+
   @override
   Widget build(BuildContext context) {
+    if (_errorMessage != null && !_isInitializing) return _buildError();
+
     if (widget.call.isVideoCall) {
       return PipWidget(
-        pipBuilder: (context) => _buildRemoteVideoOnly(),
-        builder: (context) => PopScope(
+        pipBuilder: (_) => _buildPipRemoteView(),
+        builder: (_) => PopScope(
           canPop: false,
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop) _enterPiPMode();
-          },
+          onPopInvokedWithResult: (d, _) { if (!d) _enterPip(); },
           child: Scaffold(
             backgroundColor: Colors.black,
-            body: _errorMessage != null && !_isInitializing
-                ? _buildErrorState()
-                : _buildVideoCallUI(),
+            body: _buildVideoUI(),
           ),
         ),
       );
@@ -259,38 +259,273 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
 
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _endCall();
-      },
+      onPopInvokedWithResult: (d, _) { if (!d) _endCall(); },
       child: Scaffold(
-        backgroundColor: Colors.black,
-        body: _errorMessage != null && !_isInitializing ? _buildErrorState() : _buildVoiceCallUI(),
+        backgroundColor: _kBg,
+        body: _buildVoiceUI(),
       ),
     );
   }
 
-  Widget _buildRemoteVideoOnly() {
-    return ListenableBuilder(
-      listenable: _rtcManager,
-      builder: (_, __) {
-        final show = _isConnected &&
-            _rtcManager.hasRemoteUser &&
-            _rtcManager.remoteVideoOn &&
-            _rtcManager.engine != null;
+  // ══════════════════════════════════════════════════════
+  // VOICE CALL UI
+  // ══════════════════════════════════════════════════════
+  Widget _buildVoiceUI() {
+    final name   = widget.isOutgoing ? widget.call.calleeName  : widget.call.callerName;
+    final avatar = widget.isOutgoing ? widget.call.calleeAvatar : widget.call.callerAvatar;
 
-        if (!show) {
-          final name = widget.isOutgoing ? widget.call.calleeName : widget.call.callerName;
-          final avatar = widget.isOutgoing ? widget.call.calleeAvatar : widget.call.callerAvatar;
-          return ColoredBox(
-            color: const Color(0xFF0A0E1A),
-            child: Center(child: _buildAvatar(avatar, name, size: 60)),
-          );
-        }
+    return Stack(fit: StackFit.expand, children: [
+      // Blurred background
+      _VoiceBackground(avatarUrl: avatar),
+
+      SafeArea(
+        child: Column(children: [
+          // Top status bar
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+            child: Row(children: [
+              const AICallShield(),
+              const Spacer(),
+              ListenableBuilder(
+                listenable: _rtc,
+                builder: (_, __) => CallQualityIndicator(stats: _rtc.stats),
+              ),
+            ]),
+          ),
+
+          const Spacer(flex: 2),
+
+          // Avatar with pulsing rings + audio visualizer
+          Stack(alignment: Alignment.center, children: [
+            // Audio visualizer ring
+            if (_isConnected)
+              ListenableBuilder(
+                listenable: _rtc,
+                builder: (_, __) => _AudioRing(
+                  audioLevels: _audioLevels,
+                  isActive: _isConnected,
+                  baseSize: 180,
+                ),
+              ),
+            // Pulsing avatar
+            _PulsingCallAvatar(
+              url: avatar,
+              name: name,
+              size: 148,
+              isActive: _isConnected,
+            ),
+          ]),
+
+          const SizedBox(height: 32),
+
+          // Name
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Text(
+              name,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 32,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.6,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Timer / Status
+          if (_isConnected && _connectedAt != null)
+            CallTimerWidget(
+              startTime: _connectedAt!,
+              style: const TextStyle(
+                color: _kAccept,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 1.2,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            )
+          else if (_isInitializing)
+            const _ConnectingDots()
+          else
+            _StatusDots(status: _statusText()),
+
+          const Spacer(flex: 2),
+
+          // Live Caption Overlay
+          if (_isLiveCaptionOn)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              child: LiveCaptionOverlay(),
+            ),
+
+          // Caption toggle
+          if (_isConnected) _CaptionToggle(
+            enabled: _isLiveCaptionOn,
+            onToggle: _toggleCaption,
+          ),
+
+          // Control bar
+          ListenableBuilder(
+            listenable: _rtc,
+            builder: (_, __) => CallControlBar(
+              isVideoCall: false,
+              isMuted: _rtc.isMuted,
+              isCameraOff: _rtc.isCameraOff,
+              isSpeakerOn: _rtc.isSpeakerOn,
+              isFrontCamera: _rtc.isFrontCamera,
+              onMuteTap: _rtc.toggleMute,
+              onSpeakerTap: _rtc.toggleSpeaker,
+              onEndCall: _endCall,
+            ),
+          ),
+        ]),
+      ),
+    ]);
+  }
+
+  // ══════════════════════════════════════════════════════
+  // VIDEO CALL UI
+  // ══════════════════════════════════════════════════════
+  Widget _buildVideoUI() {
+    return GestureDetector(
+      onTap: _onTapScreen,
+      behavior: HitTestBehavior.opaque,
+      child: Stack(children: [
+        // Remote video
+        Positioned.fill(child: _buildRemoteVideoView()),
+
+        // Gradient overlays
+        const _VideoGradientOverlays(),
+
+        // Initializing overlay
+        if (_isInitializing) const _ConnectingOverlay(),
+
+        // Draggable local PiP
+        if (_isConnected)
+          _buildDraggableLocalPip(),
+
+        // Top bar
+        AnimatedOpacity(
+          opacity: _showControls || !_isConnected ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 300),
+          child: _buildVideoTopBar(),
+        ),
+
+        // AI shield + Quality
+        if (_showControls || !_isConnected) ...[
+          Positioned(
+            top: MediaQuery.paddingOf(context).top + 72,
+            left: 16,
+            child: const AICallShield(),
+          ),
+          Positioned(
+            top: MediaQuery.paddingOf(context).top + 72,
+            right: 16,
+            child: ListenableBuilder(
+              listenable: _rtc,
+              builder: (_, __) => CallQualityIndicator(stats: _rtc.stats),
+            ),
+          ),
+        ],
+
+        // Live Caption Overlay
+        if (_isLiveCaptionOn)
+          const Positioned(
+            bottom: 140,
+            left: 16,
+            right: 16,
+            child: LiveCaptionOverlay(),
+          ),
+
+        // Controls
+        AnimatedOpacity(
+          opacity: _showControls || !_isConnected ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 300),
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              if (_isConnected) _CaptionToggle(
+                enabled: _isLiveCaptionOn,
+                onToggle: _toggleCaption,
+              ),
+              ListenableBuilder(
+                listenable: _rtc,
+                builder: (_, __) => CallControlBar(
+                  isVideoCall: true,
+                  isMuted: _rtc.isMuted,
+                  isCameraOff: _rtc.isCameraOff,
+                  isSpeakerOn: _rtc.isSpeakerOn,
+                  isFrontCamera: _rtc.isFrontCamera,
+                  onMuteTap: _rtc.toggleMute,
+                  onCameraTap: _rtc.toggleCamera,
+                  onSpeakerTap: _rtc.toggleSpeaker,
+                  onSwitchCameraTap: _rtc.switchCamera,
+                  onEndCall: _endCall,
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildVideoTopBar() {
+    final name = widget.isOutgoing ? widget.call.calleeName : widget.call.callerName;
+    return Positioned(
+      top: 0, left: 0, right: 0,
+      child: ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: Container(
+            color: Colors.black.withOpacity(0.3),
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Row(children: [
+                  IconButton(
+                    icon: const Icon(Icons.picture_in_picture_alt_rounded,
+                        color: Colors.white70),
+                    onPressed: _enterPip,
+                    tooltip: 'Thu nhỏ',
+                  ),
+                  Expanded(
+                    child: Text(name,
+                        style: const TextStyle(color: Colors.white, fontSize: 17,
+                            fontWeight: FontWeight.w600),
+                        overflow: TextOverflow.ellipsis),
+                  ),
+                  if (_isConnected && _connectedAt != null)
+                    _TimerBadge(startTime: _connectedAt!),
+                  const SizedBox(width: 8),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRemoteVideoView() {
+    return ListenableBuilder(
+      listenable: _rtc,
+      builder: (_, __) {
+        final show = _isConnected && _rtc.hasRemoteUser &&
+            _rtc.remoteVideoOn && _rtc.engine != null && widget.call.channelName.isNotEmpty;
+
+        if (!show) return _buildRemotePlaceholder();
 
         return AgoraVideoView(
           controller: VideoViewController.remote(
-            rtcEngine: _rtcManager.engine!,
-            canvas: VideoCanvas(uid: _rtcManager.remoteUid!),
+            rtcEngine: _rtc.engine!,
+            canvas: VideoCanvas(uid: _rtc.remoteUid!),
             connection: RtcConnection(channelId: widget.call.channelName),
           ),
         );
@@ -298,199 +533,84 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildErrorState() {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF1A1F36), Color(0xFF0A0E1A)],
-        ),
-      ),
-      child: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 96,
-                  height: 96,
-                  decoration: BoxDecoration(
-                    color: Colors.redAccent.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.redAccent.withValues(alpha: 0.3), width: 2),
-                  ),
-                  child: const Icon(Icons.call_end_rounded, color: Colors.redAccent, size: 44),
-                ),
-                const SizedBox(height: 28),
-                Text(
-                  _errorMessage ?? 'Đã xảy ra lỗi',
-                  style: const TextStyle(color: Colors.white70, fontSize: 15),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 36),
-                ElevatedButton.icon(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.arrow_back_rounded),
-                  label: const Text('Quay lại'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.redAccent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget _buildRemotePlaceholder() {
+    final name   = widget.isOutgoing ? widget.call.calleeName  : widget.call.callerName;
+    final avatar = widget.isOutgoing ? widget.call.calleeAvatar : widget.call.callerAvatar;
 
-  Widget _buildVideoCallUI() {
-    return GestureDetector(
-      onTap: _onTapScreen,
-      behavior: HitTestBehavior.opaque,
-      child: Stack(
-        children: [
-          Positioned.fill(child: _buildRemoteVideoView()),
-          const Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 180,
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0xCC000000), Colors.transparent],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: 260,
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [Color(0xDD000000), Colors.transparent],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          if (_isInitializing)
-            const Positioned.fill(
-              child: _ConnectingOverlay(),
-            ),
-          if (_isConnected) _buildDraggableLocalPip(),
-          if (_showControls || !_isConnected) _buildVideoTopBar(),
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 64,
-            left: 16,
-            child: const AICallShield(),
-          ),
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 64,
-            right: 16,
-            child: ListenableBuilder(
-              listenable: _rtcManager,
-              builder: (_, __) => CallQualityIndicator(stats: _rtcManager.stats),
-            ),
-          ),
-          if (_isLiveCaptionEnabled)
-            const Positioned(
-              bottom: 140,
-              left: 16,
-              right: 16,
-              child: LiveCaptionOverlay(),
-            ),
-          AnimatedOpacity(
-            opacity: _showControls ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 300),
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildCaptionToggle(),
-                  _buildControlBar(),
-                ],
-              ),
-            ),
-          ),
-        ],
+    return Stack(fit: StackFit.expand, children: [
+      if (avatar.isNotEmpty)
+        Image.network(avatar, fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const ColoredBox(color: _kBg)),
+      BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
+        child: Container(color: Colors.black.withOpacity(0.55)),
       ),
-    );
+      Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          _PulsingCallAvatar(url: avatar, name: name, size: 110, isActive: _isConnected),
+          const SizedBox(height: 20),
+          Text(name, style: const TextStyle(color: Colors.white, fontSize: 24,
+              fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          Text(
+            _isConnected ? 'Camera đang tắt' : _statusText(),
+            style: TextStyle(color: Colors.white.withOpacity(0.65), fontSize: 15),
+          ),
+        ]),
+      ),
+    ]);
   }
 
   Widget _buildDraggableLocalPip() {
-    final size = MediaQuery.of(context).size;
+    final size = MediaQuery.sizeOf(context);
+    final topPadding = MediaQuery.paddingOf(context).top;
 
-    if (_localPipOffset.dx == double.infinity) {
-      _localPipOffset = Offset(size.width - 126, MediaQuery.of(context).padding.top + 110);
+    if (_localPipPos.dx == double.infinity) {
+      _localPipPos = Offset(size.width - 128, topPadding + 80);
     }
 
     return Positioned(
-      left: _localPipOffset.dx,
-      top: _localPipOffset.dy,
+      left: _localPipPos.dx,
+      top:  _localPipPos.dy,
       child: GestureDetector(
-        onPanUpdate: (details) {
-          setState(() {
-            final nx = (_localPipOffset.dx + details.delta.dx).clamp(0.0, size.width - 110.0);
-            final ny = (_localPipOffset.dy + details.delta.dy)
-                .clamp(MediaQuery.of(context).padding.top.toDouble(), size.height - 180.0);
-            _localPipOffset = Offset(nx, ny);
-            _localPipDragging = true;
-          });
-        },
+        onPanUpdate: (d) => setState(() {
+          final nx = (_localPipPos.dx + d.delta.dx).clamp(0.0, size.width - 112.0);
+          final ny = (_localPipPos.dy + d.delta.dy).clamp(topPadding.toDouble(), size.height - 190.0);
+          _localPipPos = Offset(nx, ny);
+          _localPipDragging = true;
+        }),
         onPanEnd: (_) => setState(() => _localPipDragging = false),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          width: 110,
-          height: 160,
+          width: 112, height: 168,
           decoration: BoxDecoration(
             color: Colors.black87,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: _localPipDragging
-                  ? const Color(0xFF5C6BC0)
-                  : Colors.white.withValues(alpha: 0.25),
+                  ? _kBlue.withOpacity(0.8)
+                  : Colors.white.withOpacity(0.25),
               width: _localPipDragging ? 2.5 : 1.5,
             ),
             boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.6),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
-              ),
+              BoxShadow(color: Colors.black.withOpacity(0.55),
+                  blurRadius: 28, offset: const Offset(0, 6)),
             ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
             child: ListenableBuilder(
-              listenable: _rtcManager,
+              listenable: _rtc,
               builder: (_, __) {
-                if (_rtcManager.isCameraOff || _rtcManager.engine == null) {
+                if (_rtc.isCameraOff || _rtc.engine == null) {
                   return const Center(
-                    child: Icon(Icons.videocam_off_rounded, color: Colors.white38, size: 32),
+                    child: Icon(Icons.videocam_off_rounded,
+                        color: Colors.white38, size: 30),
                   );
                 }
                 return AgoraVideoView(
                   controller: VideoViewController(
-                    rtcEngine: _rtcManager.engine!,
+                    rtcEngine: _rtc.engine!,
                     canvas: const VideoCanvas(uid: 0),
                   ),
                 );
@@ -502,26 +622,22 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildRemoteVideoView() {
+  Widget _buildPipRemoteView() {
     return ListenableBuilder(
-      listenable: _rtcManager,
+      listenable: _rtc,
       builder: (_, __) {
-        final show = _isConnected &&
-            _rtcManager.hasRemoteUser &&
-            _rtcManager.remoteVideoOn &&
-            _rtcManager.engine != null &&
-            widget.call.channelName.isNotEmpty;
-
-        if (!show) {
-          return _buildRemoteVideoPlaceholder(
-            connected: _isConnected && _rtcManager.hasRemoteUser,
+        if (!_isConnected || !_rtc.hasRemoteUser || _rtc.engine == null) {
+          final name   = widget.isOutgoing ? widget.call.calleeName  : widget.call.callerName;
+          final avatar = widget.isOutgoing ? widget.call.calleeAvatar : widget.call.callerAvatar;
+          return ColoredBox(
+            color: _kBg,
+            child: Center(child: _AvatarCircle(url: avatar, name: name, size: 56)),
           );
         }
-
         return AgoraVideoView(
           controller: VideoViewController.remote(
-            rtcEngine: _rtcManager.engine!,
-            canvas: VideoCanvas(uid: _rtcManager.remoteUid!),
+            rtcEngine: _rtc.engine!,
+            canvas: VideoCanvas(uid: _rtc.remoteUid!),
             connection: RtcConnection(channelId: widget.call.channelName),
           ),
         );
@@ -529,483 +645,424 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildRemoteVideoPlaceholder({bool connected = false}) {
-    final name = widget.isOutgoing ? widget.call.calleeName : widget.call.callerName;
-    final avatar = widget.isOutgoing ? widget.call.calleeAvatar : widget.call.callerAvatar;
-
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        if (avatar.isNotEmpty)
-          Image.network(avatar,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFF0A0E1A))),
-        BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 48, sigmaY: 48),
-          child: Container(color: Colors.black.withValues(alpha: 0.6)),
-        ),
-        Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildAvatar(avatar, name, size: 120),
-              const SizedBox(height: 24),
-              Text(name,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 26,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.5)),
-              const SizedBox(height: 10),
-              Text(
-                connected ? 'Camera đang tắt' : _statusLabel(),
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 15),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildVideoTopBar() {
-    final name = widget.isOutgoing ? widget.call.calleeName : widget.call.callerName;
-
-    return Positioned(
-      top: 0,
-      left: 0,
-      right: 0,
-      child: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Container(
-            color: Colors.black.withValues(alpha: 0.25),
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.picture_in_picture_alt_rounded, color: Colors.white70),
-                      onPressed: _enterPiPMode,
-                      tooltip: 'Thu nhỏ',
-                    ),
-                    Expanded(
-                      child: Text(name,
-                          style: const TextStyle(
-                              color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600),
-                          overflow: TextOverflow.ellipsis),
-                    ),
-                    if (_isConnected && _callConnectedAt != null)
-                      _TimerBadge(startTime: _callConnectedAt!),
-                    const SizedBox(width: 8),
-                  ],
+  Widget _buildError() {
+    return Scaffold(
+      backgroundColor: _kBg,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                width: 96, height: 96,
+                decoration: BoxDecoration(
+                  color: _kDecline.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: _kDecline.withOpacity(0.3), width: 2),
                 ),
+                child: const Icon(Icons.call_end_rounded,
+                    color: _kDecline, size: 44),
               ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildVoiceCallUI() {
-    final name = widget.isOutgoing ? widget.call.calleeName : widget.call.callerName;
-    final avatar = widget.isOutgoing ? widget.call.calleeAvatar : widget.call.callerAvatar;
-
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        if (avatar.isNotEmpty)
-          Image.network(avatar,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFF0A0E1A))),
-        BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
-          child: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xCC0D1B4B), Color(0xDD000000)],
-              ),
-            ),
-          ),
-        ),
-        SafeArea(
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const AICallShield(),
-                    ListenableBuilder(
-                      listenable: _rtcManager,
-                      builder: (_, __) => CallQualityIndicator(stats: _rtcManager.stats),
-                    ),
-                  ],
-                ),
-              ),
-              const Spacer(flex: 2),
-              _PulsingAvatar(
-                url: avatar,
-                name: name,
-                size: 148,
-                isActive: _isConnected,
-              ),
+              const SizedBox(height: 28),
+              Text(_errorMessage ?? 'Đã xảy ra lỗi',
+                  style: const TextStyle(color: Colors.white70, fontSize: 16),
+                  textAlign: TextAlign.center),
               const SizedBox(height: 32),
-              Text(name,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 30,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.5)),
-              const SizedBox(height: 12),
-              if (_isConnected && _callConnectedAt != null)
-                CallTimerWidget(
-                  startTime: _callConnectedAt!,
-                  style: const TextStyle(
-                      color: Color(0xFF81C784),
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 1),
-                )
-              else if (_isInitializing)
-                const _ConnectingText()
-              else
-                _StatusDotsWidget(label: _statusLabel()),
-              const Spacer(flex: 2),
-              if (_isLiveCaptionEnabled)
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20),
-                  child: LiveCaptionOverlay(),
+              ElevatedButton.icon(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.arrow_back_rounded),
+                label: const Text('Quay lại'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _kDecline,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 ),
-              const Spacer(),
-              _buildCaptionToggle(),
-              _buildControlBar(),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCaptionToggle() {
-    return Padding(
-      padding: const EdgeInsets.only(right: 20, bottom: 12),
-      child: Align(
-        alignment: Alignment.centerRight,
-        child: GestureDetector(
-          onTap: () {
-            setState(() => _isLiveCaptionEnabled = !_isLiveCaptionEnabled);
-            Fluttertoast.showToast(
-              msg: _isLiveCaptionEnabled ? 'Đã bật phụ đề AI' : 'Đã tắt phụ đề AI',
-              backgroundColor: Colors.black87,
-              textColor: Colors.white,
-            );
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.black45,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: _isLiveCaptionEnabled ? const Color(0xFF81C784) : Colors.white24,
-                width: 1,
               ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  _isLiveCaptionEnabled ? Icons.subtitles_rounded : Icons.subtitles_off_rounded,
-                  size: 16,
-                  color: _isLiveCaptionEnabled ? const Color(0xFF81C784) : Colors.white54,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'Phụ đề AI',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: _isLiveCaptionEnabled ? const Color(0xFF81C784) : Colors.white54,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
+            ]),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildControlBar() {
-    return ListenableBuilder(
-      listenable: _rtcManager,
-      builder: (_, __) => CallControlBar(
-        isVideoCall: widget.call.isVideoCall,
-        isMuted: _rtcManager.isMuted,
-        isCameraOff: _rtcManager.isCameraOff,
-        isSpeakerOn: _rtcManager.isSpeakerOn,
-        isFrontCamera: _rtcManager.isFrontCamera,
-        onMuteTap: _rtcManager.toggleMute,
-        onCameraTap: widget.call.isVideoCall ? _rtcManager.toggleCamera : null,
-        onSpeakerTap: _rtcManager.toggleSpeaker,
-        onSwitchCameraTap: widget.call.isVideoCall ? _rtcManager.switchCamera : null,
-        onEndCall: _endCall,
-      ),
-    );
-  }
-
-  Widget _buildAvatar(String url, String name, {double size = 90}) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white.withValues(alpha: 0.7), width: 2.5),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.45), blurRadius: 28, spreadRadius: 6),
-        ],
-      ),
-      child: ClipOval(
-        child: url.isNotEmpty
-            ? Image.network(url,
-                fit: BoxFit.cover, errorBuilder: (_, __, ___) => _defaultAvatar(name, size))
-            : _defaultAvatar(name, size),
-      ),
-    );
-  }
-
-  Widget _defaultAvatar(String name, double size) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(colors: [Color(0xFF3949AB), Color(0xFF1E88E5)]),
-      ),
-      child: Center(
-        child: Text(
-          name.isNotEmpty ? name[0].toUpperCase() : '?',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: size * 0.38,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _statusLabel() {
-    switch (_callStatus) {
+  String _statusText() {
+    switch (_status) {
       case CallStatus.dialing:
       case CallStatus.calling:
         return widget.isOutgoing ? 'Đang gọi…' : 'Cuộc gọi đến…';
-      case CallStatus.ringing:
-        return 'Đang đổ chuông…';
+      case CallStatus.ringing:   return 'Đang đổ chuông…';
       case CallStatus.accepted:
-      case CallStatus.connected:
-        return 'Đã kết nối';
-      case CallStatus.ended:
-        return 'Cuộc gọi kết thúc';
-      case CallStatus.rejected:
-      case CallStatus.declined:
-        return 'Đã từ chối';
-      case CallStatus.missed:
-        return 'Cuộc gọi nhỡ';
-      case CallStatus.failed:
-        return 'Cuộc gọi thất bại';
+      case CallStatus.connected: return 'Đã kết nối';
+      case CallStatus.ended:     return 'Cuộc gọi kết thúc';
+      case CallStatus.declined:  return 'Đã từ chối';
+      case CallStatus.rejected:  return 'Bị từ chối';
+      case CallStatus.missed:    return 'Cuộc gọi nhỡ';
+      case CallStatus.failed:    return 'Kết nối thất bại';
     }
   }
 }
 
+// ══════════════════════════════════════════════════════
+// VOICE BACKGROUND
+// ══════════════════════════════════════════════════════
+class _VoiceBackground extends StatelessWidget {
+  final String avatarUrl;
+  const _VoiceBackground({required this.avatarUrl});
+
+  @override
+  Widget build(BuildContext context) => Stack(fit: StackFit.expand, children: [
+    if (avatarUrl.isNotEmpty)
+      Image.network(avatarUrl, fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const ColoredBox(color: _kBg)),
+    BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 90, sigmaY: 90),
+      child: const SizedBox.expand(),
+    ),
+    Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter, end: Alignment.bottomCenter,
+          colors: [Color(0xCC060818), Color(0x88060818), Color(0x88060818), Color(0xF5000000)],
+          stops: [0, 0.3, 0.65, 1],
+        ),
+      ),
+    ),
+  ]);
+}
+
+// ══════════════════════════════════════════════════════
+// VIDEO GRADIENT OVERLAYS
+// ══════════════════════════════════════════════════════
+class _VideoGradientOverlays extends StatelessWidget {
+  const _VideoGradientOverlays();
+
+  @override
+  Widget build(BuildContext context) => Stack(children: [
+    // Top gradient
+    Positioned(
+      top: 0, left: 0, right: 0, height: 200,
+      child: IgnorePointer(
+        child: DecoratedBox(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter, end: Alignment.bottomCenter,
+              colors: [Color(0xCC000000), Colors.transparent],
+            ),
+          ),
+        ),
+      ),
+    ),
+    // Bottom gradient
+    Positioned(
+      bottom: 0, left: 0, right: 0, height: 280,
+      child: IgnorePointer(
+        child: DecoratedBox(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.bottomCenter, end: Alignment.topCenter,
+              colors: [Color(0xDD000000), Colors.transparent],
+            ),
+          ),
+        ),
+      ),
+    ),
+  ]);
+}
+
+// ══════════════════════════════════════════════════════
+// AUDIO RING VISUALIZER
+// ══════════════════════════════════════════════════════
+class _AudioRing extends StatelessWidget {
+  final List<double> audioLevels;
+  final bool isActive;
+  final double baseSize;
+
+  const _AudioRing({
+    required this.audioLevels, required this.isActive, required this.baseSize,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isActive) return const SizedBox.shrink();
+    return CustomPaint(
+      size: Size(baseSize + 80, baseSize + 80),
+      painter: _AudioRingPainter(levels: audioLevels),
+    );
+  }
+}
+
+class _AudioRingPainter extends CustomPainter {
+  final List<double> levels;
+  _AudioRingPainter({required this.levels});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final baseRadius = size.width / 2 - 8;
+    final count = levels.length;
+
+    for (int i = 0; i < count; i++) {
+      final angle = (i / count) * 2 * math.pi - math.pi / 2;
+      final level = levels[i];
+      final spike = 8 + level * 32;
+
+      final paint = Paint()
+        ..color = _kAccept.withOpacity(0.15 + level * 0.55)
+        ..strokeWidth = 3.5
+        ..strokeCap = StrokeCap.round
+        ..style = PaintingStyle.stroke;
+
+      final x1 = center.dx + baseRadius * math.cos(angle);
+      final y1 = center.dy + baseRadius * math.sin(angle);
+      final x2 = center.dx + (baseRadius + spike) * math.cos(angle);
+      final y2 = center.dy + (baseRadius + spike) * math.sin(angle);
+
+      canvas.drawLine(Offset(x1, y1), Offset(x2, y2), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_AudioRingPainter old) => true;
+}
+
+// ══════════════════════════════════════════════════════
+// PULSING AVATAR
+// ══════════════════════════════════════════════════════
+class _PulsingCallAvatar extends StatefulWidget {
+  final String url, name;
+  final double size;
+  final bool isActive;
+
+  const _PulsingCallAvatar({
+    required this.url, required this.name,
+    required this.size, required this.isActive,
+  });
+
+  @override
+  State<_PulsingCallAvatar> createState() => _PulsingCallAvatarState();
+}
+
+class _PulsingCallAvatarState extends State<_PulsingCallAvatar> with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 2200))..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(alignment: Alignment.center, children: [
+      // Pulse rings (only when active)
+      if (widget.isActive)
+        ...List.generate(3, (i) => AnimatedBuilder(
+          animation: _ctrl,
+          builder: (_, __) {
+            final progress = (_ctrl.value + i / 3) % 1.0;
+            return Opacity(
+              opacity: ((1 - progress) * 0.35).clamp(0, 1),
+              child: Container(
+                width: widget.size + progress * 70,
+                height: widget.size + progress * 70,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: _kAccept, width: 1.5),
+                ),
+              ),
+            );
+          },
+        )),
+
+      // Avatar
+      Container(
+        width: widget.size, height: widget.size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white.withOpacity(0.75), width: 3),
+          boxShadow: [
+            BoxShadow(
+              color: (widget.isActive ? _kAccept : Colors.black).withOpacity(0.3),
+              blurRadius: 32,
+              spreadRadius: 6,
+            ),
+          ],
+        ),
+        child: ClipOval(
+          child: widget.url.isNotEmpty
+              ? Image.network(widget.url, fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _AvatarFallback(name: widget.name, size: widget.size))
+              : _AvatarFallback(name: widget.name, size: widget.size),
+        ),
+      ),
+    ]);
+  }
+}
+
+class _AvatarFallback extends StatelessWidget {
+  final String name;
+  final double size;
+  const _AvatarFallback({required this.name, required this.size});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    decoration: const BoxDecoration(
+      gradient: LinearGradient(
+        colors: [Color(0xFF3949AB), Color(0xFF1E88E5)],
+        begin: Alignment.topLeft, end: Alignment.bottomRight,
+      ),
+    ),
+    child: Center(child: Text(
+      name.isNotEmpty ? name[0].toUpperCase() : '?',
+      style: TextStyle(color: Colors.white, fontSize: size * 0.38, fontWeight: FontWeight.w800),
+    )),
+  );
+}
+
+class _AvatarCircle extends StatelessWidget {
+  final String url, name;
+  final double size;
+  const _AvatarCircle({required this.url, required this.name, required this.size});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: size, height: size,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      border: Border.all(color: Colors.white38),
+    ),
+    child: ClipOval(
+      child: url.isNotEmpty
+          ? Image.network(url, fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _AvatarFallback(name: name, size: size))
+          : _AvatarFallback(name: name, size: size),
+    ),
+  );
+}
+
+// ══════════════════════════════════════════════════════
+// MISC WIDGETS
+// ══════════════════════════════════════════════════════
 class _TimerBadge extends StatelessWidget {
   final DateTime startTime;
   const _TimerBadge({required this.startTime});
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.black38,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white12),
+  Widget build(BuildContext context) => ClipRRect(
+    borderRadius: BorderRadius.circular(20),
+    child: BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.black38,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white12),
+        ),
+        child: CallTimerWidget(
+          startTime: startTime,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.8,
+            fontFeatures: [FontFeature.tabularFigures()],
+          ),
+        ),
       ),
-      child: CallTimerWidget(startTime: startTime),
-    );
-  }
+    ),
+  );
 }
 
 class _ConnectingOverlay extends StatelessWidget {
   const _ConnectingOverlay();
 
   @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: Colors.black38,
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(
-              width: 36,
-              height: 36,
-              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'Đang kết nối an toàn…',
-              style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.85),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500),
-            ),
-          ],
+  Widget build(BuildContext context) => ColoredBox(
+    color: Colors.black45,
+    child: Center(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const SizedBox(
+          width: 40, height: 40,
+          child: CircularProgressIndicator(
+            color: Colors.white, strokeWidth: 2.5,
+          ),
         ),
-      ),
-    );
-  }
+        const SizedBox(height: 20),
+        Text('Đang kết nối an toàn…',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.8),
+              fontSize: 15, fontWeight: FontWeight.w500,
+            )),
+      ]),
+    ),
+  );
 }
 
-class _ConnectingText extends StatelessWidget {
-  const _ConnectingText();
+class _ConnectingDots extends StatefulWidget {
+  const _ConnectingDots();
 
   @override
-  Widget build(BuildContext context) {
-    return const Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        SizedBox(
-          width: 14,
-          height: 14,
-          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54),
-        ),
-        SizedBox(width: 10),
-        Text('Đang kết nối an toàn…', style: TextStyle(color: Colors.white54, fontSize: 15)),
-      ],
-    );
-  }
+  State<_ConnectingDots> createState() => _ConnectingDotsState();
 }
 
-class _PulsingAvatar extends StatefulWidget {
-  final String url;
-  final String name;
-  final double size;
-  final bool isActive;
-
-  const _PulsingAvatar({
-    required this.url,
-    required this.name,
-    required this.size,
-    required this.isActive,
-  });
-
-  @override
-  State<_PulsingAvatar> createState() => _PulsingAvatarState();
-}
-
-class _PulsingAvatarState extends State<_PulsingAvatar> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+class _ConnectingDotsState extends State<_ConnectingDots> with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _anim;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2000),
-    )..repeat();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 800))..repeat();
+    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _ctrl.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        if (widget.isActive)
-          ...List.generate(3, (i) {
-            return AnimatedBuilder(
-              animation: _controller,
-              builder: (_, __) {
-                final progress = (_controller.value + (i * 0.33)) % 1.0;
-                return Opacity(
-                  opacity: ((1.0 - progress) * 0.4).clamp(0, 1),
-                  child: Container(
-                    width: widget.size + (progress * 80),
-                    height: widget.size + (progress * 80),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xFF81C784), width: 1.5),
-                    ),
-                  ),
-                );
-              },
-            );
-          }),
-        Container(
-          width: widget.size,
-          height: widget.size,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withValues(alpha: 0.7), width: 2.5),
-            boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.5), blurRadius: 32, spreadRadius: 8),
-            ],
-          ),
-          child: ClipOval(
-            child: widget.url.isNotEmpty
-                ? Image.network(widget.url,
-                    fit: BoxFit.cover, errorBuilder: (_, __, ___) => _defaultAvatar())
-                : _defaultAvatar(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _defaultAvatar() {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(colors: [Color(0xFF3949AB), Color(0xFF1E88E5)]),
+  Widget build(BuildContext context) => Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      const SizedBox(
+        width: 16, height: 16,
+        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54),
       ),
-      child: Center(
-        child: Text(
-          widget.name.isNotEmpty ? widget.name[0].toUpperCase() : '?',
-          style: TextStyle(
-              color: Colors.white, fontSize: widget.size * 0.38, fontWeight: FontWeight.bold),
-        ),
-      ),
-    );
-  }
+      const SizedBox(width: 10),
+      const Text('Đang kết nối…', style: TextStyle(color: Colors.white54, fontSize: 16)),
+    ],
+  );
 }
 
-class _StatusDotsWidget extends StatefulWidget {
-  final String label;
-  const _StatusDotsWidget({required this.label});
+class _StatusDots extends StatefulWidget {
+  final String status;
+  const _StatusDots({required this.status});
 
   @override
-  State<_StatusDotsWidget> createState() => _StatusDotsWidgetState();
+  State<_StatusDots> createState() => _StatusDotsState();
 }
 
-class _StatusDotsWidgetState extends State<_StatusDotsWidget> {
-  int _dotCount = 0;
+class _StatusDotsState extends State<_StatusDots> {
+  int _count = 0;
   Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(milliseconds: 500), (_) {
-      if (mounted) setState(() => _dotCount = (_dotCount + 1) % 4);
-    });
+    _timer = Timer.periodic(
+      const Duration(milliseconds: 500),
+          (_) { if (mounted) setState(() => _count = (_count + 1) % 4); },
+    );
   }
 
   @override
@@ -1015,13 +1072,61 @@ class _StatusDotsWidgetState extends State<_StatusDotsWidget> {
   }
 
   @override
+  Widget build(BuildContext context) => Text(
+    '${widget.status}${'.' * _count}',
+    style: TextStyle(
+      color: Colors.white.withOpacity(0.65),
+      fontSize: 16, letterSpacing: 0.3,
+    ),
+  );
+}
+
+class _CaptionToggle extends StatelessWidget {
+  final bool enabled;
+  final VoidCallback onToggle;
+
+  const _CaptionToggle({required this.enabled, required this.onToggle});
+
+  @override
   Widget build(BuildContext context) {
-    return Text(
-      '${widget.label}${'.' * _dotCount}',
-      style: TextStyle(
-        color: Colors.white.withValues(alpha: 0.7),
-        fontSize: 16,
-        letterSpacing: 0.5,
+    return Padding(
+      padding: const EdgeInsets.only(right: 20, bottom: 12),
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: GestureDetector(
+          onTap: onToggle,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: enabled ? _kAccept.withOpacity(0.15) : Colors.black45,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: enabled ? _kAccept.withOpacity(0.5) : Colors.white24,
+                  ),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(
+                    enabled ? Icons.subtitles_rounded : Icons.subtitles_off_rounded,
+                    size: 16,
+                    color: enabled ? _kAccept : Colors.white54,
+                  ),
+                  const SizedBox(width: 6),
+                  Text('Phụ đề AI',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: enabled ? _kAccept : Colors.white54,
+                        fontWeight: FontWeight.w500,
+                      )),
+                ]),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

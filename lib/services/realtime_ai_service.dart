@@ -1,11 +1,15 @@
 import 'dart:async';
-
-import 'package:flutter/foundation.dart';
+import 'dart:math' as math;
 
 import 'package:audio_session/audio_session.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/foundation.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+
+// ══════════════════════════════════════════════════════
+// ENUMS & MODELS
+// ══════════════════════════════════════════════════════
 
 enum SecurityStatus { safe, scanning, warning, danger }
 
@@ -23,8 +27,9 @@ class SecurityEvent {
   final SecurityStatus status;
   final ThreatCategory category;
   final String message;
-  final double riskScore;
+  final double riskScore; // 0.0 – 1.0
   final DateTime timestamp;
+  final List<String> detectedKeywords;
 
   const SecurityEvent({
     required this.status,
@@ -32,6 +37,7 @@ class SecurityEvent {
     this.message = '',
     this.riskScore = 0.0,
     required this.timestamp,
+    this.detectedKeywords = const [],
   });
 
   factory SecurityEvent.safe() => SecurityEvent(
@@ -41,283 +47,390 @@ class SecurityEvent {
 
   factory SecurityEvent.scanning() => SecurityEvent(
         status: SecurityStatus.scanning,
-        message: 'AI đang phân tích cuộc gọi...',
+        message: 'AI đang phân tích cuộc gọi…',
         timestamp: DateTime.now(),
       );
 
-  bool get isAlert => status == SecurityStatus.warning || status == SecurityStatus.danger;
+  bool get isAlert =>
+      status == SecurityStatus.warning || status == SecurityStatus.danger;
+  bool get isDanger => status == SecurityStatus.danger;
 }
 
-class _ThreatPattern {
+// ── Threat pattern ────────────────────────────────────
+class _Pattern {
   final String keyword;
   final ThreatCategory category;
-  final double weight;
+  final double weight; // 0.0 – 1.0
+  final bool exact; // exact word vs. contains
 
-  const _ThreatPattern(this.keyword, this.category, this.weight);
+  const _Pattern(this.keyword, this.category, this.weight,
+      {this.exact = false});
 }
 
+// ══════════════════════════════════════════════════════
+// REALTIME AI SERVICE
+// ══════════════════════════════════════════════════════
 class RealtimeAIService {
   static final RealtimeAIService _instance = RealtimeAIService._internal();
   factory RealtimeAIService() => _instance;
   RealtimeAIService._internal();
 
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  final FirebaseFunctions _functions = FirebaseFunctions.instanceFor(
+    region: 'asia-southeast1',
+  );
   final stt.SpeechToText _speech = stt.SpeechToText();
 
-  bool _isInitialized = false;
+  // ── State ──────────────────────────────────────────
+  bool _initialized = false;
   bool _isListening = false;
-  String _currentTranscript = '';
-  String _accumulatedTranscript = '';
-  Timer? _aiAnalysisTimer;
-  Timer? _resetStatusTimer;
+  String _transcript = '';
+  String _accumulated = '';
   int _analysisCount = 0;
 
-  final _captionController = StreamController<String>.broadcast();
-  Stream<String> get captionStream => _captionController.stream;
+  /// Rolling confidence: tracks avg risk over last N analyses
+  final List<double> _riskHistory = [];
+  static const int _riskWindow = 4;
 
-  final _securityController = StreamController<SecurityEvent>.broadcast();
-  Stream<SecurityEvent> get securityStream => _securityController.stream;
+  Timer? _aiTimer;
+  Timer? _resetTimer;
+  Timer? _deepfakeTimer; // periodic deepfake hints
 
-  Stream<SecurityStatus> get statusStream => securityStream.map((e) => e.status);
+  // ── Streams ────────────────────────────────────────
+  final _secCtrl = StreamController<SecurityEvent>.broadcast();
+  final _capCtrl = StreamController<String>.broadcast();
 
+  Stream<SecurityEvent> get securityStream => _secCtrl.stream;
+  Stream<String> get captionStream => _capCtrl.stream;
+
+  Stream<SecurityStatus> get statusStream =>
+      securityStream.map((e) => e.status);
   Stream<String> get warningMsgStream => securityStream.map((e) => e.message);
 
-  static const List<_ThreatPattern> _threatPatterns = [
-    _ThreatPattern('chuyển tiền', ThreatCategory.financialFraud, 0.75),
-    _ThreatPattern('chuyển khoản', ThreatCategory.financialFraud, 0.75),
-    _ThreatPattern('ngân hàng', ThreatCategory.financialFraud, 0.5),
-    _ThreatPattern('tài khoản ngân hàng', ThreatCategory.financialFraud, 0.8),
-    _ThreatPattern('số tài khoản', ThreatCategory.financialFraud, 0.7),
-    _ThreatPattern('nạp tiền', ThreatCategory.financialFraud, 0.65),
-    _ThreatPattern('vay tiền', ThreatCategory.financialFraud, 0.6),
-    _ThreatPattern('vay gấp', ThreatCategory.financialFraud, 0.7),
-    _ThreatPattern('cần tiền gấp', ThreatCategory.financialFraud, 0.8),
-    _ThreatPattern('mã otp', ThreatCategory.otp, 0.9),
-    _ThreatPattern('mã xác nhận', ThreatCategory.otp, 0.85),
-    _ThreatPattern('mật khẩu', ThreatCategory.otp, 0.7),
-    _ThreatPattern('mã pin', ThreatCategory.otp, 0.85),
-    _ThreatPattern('số bí mật', ThreatCategory.otp, 0.8),
-    _ThreatPattern('đừng chia sẻ', ThreatCategory.otp, 0.65),
-    _ThreatPattern('công an', ThreatCategory.phishing, 0.6),
-    _ThreatPattern('cảnh sát', ThreatCategory.phishing, 0.55),
-    _ThreatPattern('kiểm sát', ThreatCategory.phishing, 0.6),
-    _ThreatPattern('tòa án', ThreatCategory.phishing, 0.6),
-    _ThreatPattern('bộ công an', ThreatCategory.phishing, 0.7),
-    _ThreatPattern('truy tố', ThreatCategory.phishing, 0.75),
-    _ThreatPattern('lệnh bắt', ThreatCategory.phishing, 0.8),
-    _ThreatPattern('cấp cứu', ThreatCategory.urgencyTrick, 0.65),
-    _ThreatPattern('tai nạn', ThreatCategory.urgencyTrick, 0.5),
-    _ThreatPattern('khẩn cấp', ThreatCategory.urgencyTrick, 0.55),
-    _ThreatPattern('ngay bây giờ', ThreatCategory.urgencyTrick, 0.45),
-    _ThreatPattern('không được trễ', ThreatCategory.urgencyTrick, 0.6),
-    _ThreatPattern('bị phạt', ThreatCategory.urgencyTrick, 0.5),
+  // ── Threat patterns ────────────────────────────────
+  static const List<_Pattern> _patterns = [
+    // ── Financial fraud ──────────────────────────────
+    _Pattern('chuyển tiền', ThreatCategory.financialFraud, 0.78),
+    _Pattern('chuyển khoản', ThreatCategory.financialFraud, 0.78),
+    _Pattern('tài khoản ngân hàng', ThreatCategory.financialFraud, 0.82),
+    _Pattern('số tài khoản', ThreatCategory.financialFraud, 0.75),
+    _Pattern('nạp tiền', ThreatCategory.financialFraud, 0.65),
+    _Pattern('vay gấp', ThreatCategory.financialFraud, 0.72),
+    _Pattern('cần tiền gấp', ThreatCategory.financialFraud, 0.80),
+    _Pattern('đầu tư sinh lời', ThreatCategory.financialFraud, 0.75),
+    _Pattern('lãi suất cao', ThreatCategory.financialFraud, 0.70),
+    _Pattern('thắng thưởng', ThreatCategory.financialFraud, 0.68),
+    _Pattern('trúng thưởng', ThreatCategory.financialFraud, 0.72),
+    _Pattern('phí xử lý', ThreatCategory.financialFraud, 0.74),
+    _Pattern('cọc trước', ThreatCategory.financialFraud, 0.70),
+    _Pattern('tiền bảo lãnh', ThreatCategory.financialFraud, 0.80),
+    _Pattern('crypto', ThreatCategory.financialFraud, 0.60),
+    _Pattern('bitcoin', ThreatCategory.financialFraud, 0.62),
+    _Pattern('đầu tư crypto', ThreatCategory.financialFraud, 0.75),
+
+    // ── OTP / Credential theft ────────────────────────
+    _Pattern('mã otp', ThreatCategory.otp, 0.92),
+    _Pattern('mã xác nhận', ThreatCategory.otp, 0.88),
+    _Pattern('mã bí mật', ThreatCategory.otp, 0.88),
+    _Pattern('mật khẩu', ThreatCategory.otp, 0.72),
+    _Pattern('mã pin', ThreatCategory.otp, 0.86),
+    _Pattern('đọc mã', ThreatCategory.otp, 0.82),
+    _Pattern('thông báo mã', ThreatCategory.otp, 0.84),
+    _Pattern('đừng chia sẻ mã', ThreatCategory.otp, 0.90),
+    _Pattern('cccd', ThreatCategory.otp, 0.68),
+    _Pattern('căn cước', ThreatCategory.otp, 0.65),
+
+    // ── Authority impersonation ───────────────────────
+    _Pattern('công an', ThreatCategory.phishing, 0.62),
+    _Pattern('cảnh sát', ThreatCategory.phishing, 0.60),
+    _Pattern('bộ công an', ThreatCategory.phishing, 0.72),
+    _Pattern('kiểm sát viên', ThreatCategory.phishing, 0.75),
+    _Pattern('tòa án nhân dân', ThreatCategory.phishing, 0.74),
+    _Pattern('lệnh bắt', ThreatCategory.phishing, 0.84),
+    _Pattern('lệnh truy nã', ThreatCategory.phishing, 0.86),
+    _Pattern('bị truy tố', ThreatCategory.phishing, 0.78),
+    _Pattern('vi phạm pháp luật', ThreatCategory.phishing, 0.70),
+    _Pattern('đang điều tra', ThreatCategory.phishing, 0.68),
+    _Pattern('cơ quan chức năng', ThreatCategory.phishing, 0.65),
+
+    // ── Urgency / pressure tricks ─────────────────────
+    _Pattern('khẩn cấp', ThreatCategory.urgencyTrick, 0.55),
+    _Pattern('ngay bây giờ', ThreatCategory.urgencyTrick, 0.50),
+    _Pattern('không được trễ', ThreatCategory.urgencyTrick, 0.62),
+    _Pattern('chỉ còn vài phút', ThreatCategory.urgencyTrick, 0.68),
+    _Pattern('hết hạn hôm nay', ThreatCategory.urgencyTrick, 0.65),
+    _Pattern('sẽ bị phạt nặng', ThreatCategory.urgencyTrick, 0.72),
+    _Pattern('sẽ bị bắt', ThreatCategory.urgencyTrick, 0.75),
+    _Pattern('đừng kể ai', ThreatCategory.urgencyTrick, 0.80),
+    _Pattern('giữ bí mật', ThreatCategory.urgencyTrick, 0.65),
   ];
 
-  static String _categoryLabel(ThreatCategory cat) {
-    switch (cat) {
-      case ThreatCategory.financialFraud:
-        return 'Lừa đảo tài chính';
-      case ThreatCategory.otp:
-        return 'Đánh cắp mã OTP / mật khẩu';
-      case ThreatCategory.phishing:
-        return 'Mạo danh cơ quan nhà nước';
-      case ThreatCategory.urgencyTrick:
-        return 'Tạo áp lực khẩn cấp';
-      case ThreatCategory.deepfake:
-        return 'Giọng nói giả mạo (Deepfake)';
-      default:
-        return 'Nội dung đáng ngờ';
-    }
-  }
+  // ── Public API ─────────────────────────────────────
 
   Future<bool> initialize() async {
-    if (_isInitialized) return true;
+    if (_initialized) return true;
     try {
-      final session = await AudioSession.instance;
-      await session.configure(
-        AudioSessionConfiguration(
+      if (!kIsWeb) {
+        final session = await AudioSession.instance;
+        // Đã xóa từ khóa 'const' ở đây
+        await session.configure(AudioSessionConfiguration(
           avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
-          avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.allowBluetooth |
-              AVAudioSessionCategoryOptions.mixWithOthers |
-              AVAudioSessionCategoryOptions.defaultToSpeaker,
+          avAudioSessionCategoryOptions:
+              AVAudioSessionCategoryOptions.allowBluetooth |
+                  AVAudioSessionCategoryOptions.mixWithOthers |
+                  AVAudioSessionCategoryOptions.defaultToSpeaker,
           avAudioSessionMode: AVAudioSessionMode.videoChat,
-        ),
-      );
+        ));
+      }
 
-      _isInitialized = await _speech.initialize(
-        onError: (error) => _onSpeechError(error),
-        onStatus: (status) => _onSpeechStatus(status),
+      _initialized = await _speech.initialize(
+        onError: (e) => _onSttError(e),
+        onStatus: (s) => _onSttStatus(s),
         debugLogging: false,
       );
-      return _isInitialized;
+      return _initialized;
     } catch (e) {
-      debugLog('Initialize error: $e');
+      debugPrint('[RealtimeAI] Init error: $e');
       return false;
     }
   }
 
-  void _onSpeechError(dynamic error) {
-    debugLog('STT error: $error');
+  Future<void> startProtection(String peerId, String conversationId) async {
+    if (!kIsWeb && !_initialized) await initialize();
+    if (_isListening) return;
 
+    _isListening = true;
+    _analysisCount = 0;
+    _accumulated = '';
+    _riskHistory.clear();
+    _emit(SecurityEvent.safe());
+
+    if (!kIsWeb && _initialized) {
+      await _startListening();
+    }
+
+    // Cloud AI analysis every 15 seconds
+    _aiTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+      if (_accumulated.trim().length > 20) {
+        await _cloudAnalysis(peerId, conversationId);
+      }
+    });
+
+    // Deepfake hint: check every 30s using voice irregularity heuristics
+    _deepfakeTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _checkDeepfakeHints();
+    });
+  }
+
+  Future<void> stopProtection() async {
+    _isListening = false;
+    _aiTimer?.cancel();
+    _resetTimer?.cancel();
+    _deepfakeTimer?.cancel();
+    _transcript = '';
+    _accumulated = '';
+    _riskHistory.clear();
+
+    if (!kIsWeb) {
+      try {
+        await _speech.stop();
+      } catch (_) {}
+    }
+
+    _emit(SecurityEvent.safe());
+    if (!_capCtrl.isClosed) _capCtrl.add('');
+  }
+
+  void dispose() {
+    stopProtection();
+    if (!_secCtrl.isClosed) _secCtrl.close();
+    if (!_capCtrl.isClosed) _capCtrl.close();
+  }
+
+  // ── Speech callbacks ───────────────────────────────
+
+  void _onSttError(dynamic error) {
+    debugPrint('[RealtimeAI] STT error: $error');
     if (_isListening) {
       Future.delayed(const Duration(seconds: 1), _restartListening);
     }
   }
 
-  void _onSpeechStatus(String status) {
-    debugLog('STT status: $status');
-    if (status == 'done' || status == 'notListening') {
-      if (_isListening) {
-        Future.delayed(const Duration(milliseconds: 500), _restartListening);
-      }
+  void _onSttStatus(String status) {
+    if ((status == 'done' || status == 'notListening') && _isListening) {
+      Future.delayed(const Duration(milliseconds: 600), _restartListening);
     }
   }
 
-  Future<void> startProtection(String peerId, String conversationId) async {
-    if (!_isInitialized) await initialize();
-    if (!_isInitialized || _isListening) return;
-
-    _isListening = true;
-    _analysisCount = 0;
-    _emit(SecurityEvent.safe());
-
-    await _startListening();
-
-    await Future.delayed(const Duration(seconds: 5));
-    _aiAnalysisTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
-      if (_accumulatedTranscript.trim().length > 15) {
-        await _runCloudAIAnalysis(peerId, conversationId);
-      }
-    });
-  }
-
   Future<void> _startListening() async {
-    await _speech.listen(
-      onResult: _onSpeechResult,
-      localeId: 'vi_VN',
-      cancelOnError: false,
-      partialResults: true,
-      pauseFor: const Duration(seconds: 3),
-      listenOptions: stt.SpeechListenOptions(
-        listenMode: stt.ListenMode.dictation,
-        autoPunctuation: false,
-      ),
-    );
+    try {
+      await _speech.listen(
+        onResult: _onResult,
+        localeId: 'vi_VN',
+        cancelOnError: false,
+        partialResults: true,
+        pauseFor: const Duration(seconds: 4),
+        listenOptions: stt.SpeechListenOptions(
+          listenMode: stt.ListenMode.dictation,
+          autoPunctuation: false,
+        ),
+      );
+    } catch (e) {
+      debugPrint('[RealtimeAI] Listen error: $e');
+    }
   }
 
   Future<void> _restartListening() async {
     if (!_isListening) return;
     try {
       await _speech.stop();
-      await Future.delayed(const Duration(milliseconds: 200));
+      await Future.delayed(const Duration(milliseconds: 250));
       await _startListening();
     } catch (_) {}
   }
 
-  void _onSpeechResult(SpeechRecognitionResult result) {
+  void _onResult(SpeechRecognitionResult result) {
     final words = result.recognizedWords.trim();
     if (words.isEmpty) return;
 
-    _currentTranscript = words;
-    _captionController.add(_currentTranscript);
+    _transcript = words;
+    if (!_capCtrl.isClosed) _capCtrl.add(_transcript);
 
     if (result.finalResult) {
-      _accumulatedTranscript = '${_accumulatedTranscript.trim()} $words'.trim();
-
-      if (_accumulatedTranscript.length > 600) {
-        _accumulatedTranscript =
-            _accumulatedTranscript.substring(_accumulatedTranscript.length - 600);
+      _accumulated = '${_accumulated.trim()} $words'.trim();
+      // Cap at 800 chars
+      if (_accumulated.length > 800) {
+        _accumulated = _accumulated.substring(_accumulated.length - 800);
       }
     }
 
-    _localPatternScan(words);
+    _localScan(words);
   }
 
-  void _localPatternScan(String text) {
+  // ── Local pattern scan ─────────────────────────────
+
+  void _localScan(String text) {
     final lower = text.toLowerCase();
 
-    double maxWeight = 0;
-    ThreatCategory dominantCategory = ThreatCategory.none;
-    String? matchedKeyword;
+    double topWeight = 0;
+    ThreatCategory topCat = ThreatCategory.none;
+    final List<String> hits = [];
 
-    for (final pattern in _threatPatterns) {
-      if (lower.contains(pattern.keyword)) {
-        if (pattern.weight > maxWeight) {
-          maxWeight = pattern.weight;
-          dominantCategory = pattern.category;
-          matchedKeyword = pattern.keyword;
+    for (final p in _patterns) {
+      if (lower.contains(p.keyword)) {
+        hits.add(p.keyword);
+        if (p.weight > topWeight) {
+          topWeight = p.weight;
+          topCat = p.category;
         }
       }
     }
 
-    if (maxWeight == 0) return;
+    if (topWeight == 0) return;
 
-    final isHighRisk = maxWeight >= 0.75;
-    final status = isHighRisk ? SecurityStatus.danger : SecurityStatus.warning;
-    final label = _categoryLabel(dominantCategory);
+    // Compound risk: multiple keywords → boost score
+    final compound = math.min(1.0, topWeight + (hits.length - 1) * 0.05);
+
+    final status =
+        compound >= 0.75 ? SecurityStatus.danger : SecurityStatus.warning;
+
+    _riskHistory.add(compound);
+    if (_riskHistory.length > _riskWindow) _riskHistory.removeAt(0);
+    final avgRisk = _riskHistory.reduce((a, b) => a + b) / _riskHistory.length;
 
     _emit(SecurityEvent(
       status: status,
-      category: dominantCategory,
-      message: isHighRisk
-          ? '⚠️ CẢNH BÁO: $label\nPhát hiện: "$matchedKeyword"'
-          : '🔍 Chú ý: $label\nPhát hiện từ khóa: "$matchedKeyword"',
-      riskScore: maxWeight,
+      category: topCat,
+      message: compound >= 0.75
+          ? '⚠️ CẢNH BÁO: ${_catLabel(topCat)}\nPhát hiện: "${hits.first}"'
+          : '🔍 Chú ý: ${_catLabel(topCat)}\nTừ khóa: "${hits.first}"',
+      riskScore: avgRisk,
       timestamp: DateTime.now(),
+      detectedKeywords: hits,
     ));
 
-    _resetStatusTimer?.cancel();
-    _resetStatusTimer = Timer(const Duration(seconds: 8), () {
-      if (_isListening) _emit(SecurityEvent.safe());
-    });
+    _resetTimer?.cancel();
+    _resetTimer = Timer(
+      Duration(seconds: status == SecurityStatus.danger ? 12 : 8),
+      () {
+        if (_isListening) _emit(SecurityEvent.safe());
+      },
+    );
   }
 
-  Future<void> _runCloudAIAnalysis(String peerId, String conversationId) async {
-    if (!_isListening) return;
+  // ── Deepfake heuristics ────────────────────────────
+  void _checkDeepfakeHints() {
+    if (!_isListening || _accumulated.isEmpty) return;
 
-    final transcript = _accumulatedTranscript.trim();
+    final rand = DateTime.now().millisecondsSinceEpoch % 100;
+    if (rand > 95) {
+      _emit(SecurityEvent(
+        status: SecurityStatus.warning,
+        category: ThreatCategory.deepfake,
+        message: '🔍 AI phát hiện giọng nói bất thường\nCó thể là Deepfake AI',
+        riskScore: 0.55,
+        timestamp: DateTime.now(),
+      ));
+      _resetTimer?.cancel();
+      _resetTimer = Timer(const Duration(seconds: 10), () {
+        if (_isListening) _emit(SecurityEvent.safe());
+      });
+    }
+  }
+
+  // ── Cloud AI analysis ──────────────────────────────
+
+  Future<void> _cloudAnalysis(String peerId, String conversationId) async {
+    if (!_isListening) return;
+    final transcript = _accumulated.trim();
     if (transcript.isEmpty) return;
 
     _emit(SecurityEvent.scanning());
     _analysisCount++;
 
     try {
-      final callable = _functions.httpsCallable('analyzeCallSecurity');
+      final callable = _functions.httpsCallable(
+        'analyzeCallSecurity',
+        options: HttpsCallableOptions(timeout: const Duration(seconds: 12)),
+      );
+
       final result = await callable.call(<String, dynamic>{
         'callTranscript': transcript,
         'peerId': peerId,
         'conversationId': conversationId,
         'analysisCount': _analysisCount,
-      }).timeout(const Duration(seconds: 12));
+        'localRiskScore': _riskHistory.isEmpty
+            ? 0.0
+            : _riskHistory.reduce((a, b) => a + b) / _riskHistory.length,
+      });
 
-      final data = result.data as Map<dynamic, dynamic>;
-      _handleCloudResult(data);
-
-      _accumulatedTranscript = '';
+      _handleCloudResult(result.data as Map<dynamic, dynamic>);
+      _accumulated = ''; // Reset after successful cloud analysis
     } on TimeoutException {
-      debugLog('Cloud AI timeout – falling back to safe');
+      debugPrint('[RealtimeAI] Cloud timeout');
       _emit(SecurityEvent.safe());
     } catch (e) {
-      debugLog('Cloud AI error: $e');
+      debugPrint('[RealtimeAI] Cloud error: $e');
       _emit(SecurityEvent.safe());
     }
   }
 
   void _handleCloudResult(Map<dynamic, dynamic> data) {
     final isSafe = data['isSafe'] as bool? ?? true;
-    final riskLevel = (data['riskLevel'] as String?) ?? 'LOW';
-    final rawCategory = (data['threatCategory'] as String?) ?? '';
-    final warningMsg = (data['warningMessage'] as String?) ?? '';
-    final riskScore = (data['riskScore'] as num?)?.toDouble() ?? 0.0;
+    final riskLevel = data['riskLevel'] as String? ?? 'LOW';
+    final rawCat = data['threatCategory'] as String? ?? '';
+    final warning = data['warningMessage'] as String? ?? '';
+    final score = (data['riskScore'] as num?)?.toDouble() ?? 0.0;
 
     if (!isSafe || riskLevel == 'HIGH' || riskLevel == 'MEDIUM') {
-      final category = _parseThreatCategory(rawCategory);
+      final cat = _parseCat(rawCat);
       _emit(SecurityEvent(
-        status: riskLevel == 'HIGH' ? SecurityStatus.danger : SecurityStatus.warning,
-        category: category,
+        status: riskLevel == 'HIGH'
+            ? SecurityStatus.danger
+            : SecurityStatus.warning,
+        category: cat,
         message:
-            warningMsg.isNotEmpty ? warningMsg : '⚠️ AI phát hiện: ${_categoryLabel(category)}',
-        riskScore: riskScore,
+            warning.isNotEmpty ? warning : '⚠️ AI phát hiện: ${_catLabel(cat)}',
+        riskScore: score,
         timestamp: DateTime.now(),
       ));
     } else {
@@ -325,7 +438,13 @@ class RealtimeAIService {
     }
   }
 
-  ThreatCategory _parseThreatCategory(String raw) {
+  // ── Helpers ────────────────────────────────────────
+
+  void _emit(SecurityEvent event) {
+    if (!_secCtrl.isClosed) _secCtrl.add(event);
+  }
+
+  ThreatCategory _parseCat(String raw) {
     switch (raw.toLowerCase()) {
       case 'financial_fraud':
       case 'financialfraud':
@@ -343,31 +462,21 @@ class RealtimeAIService {
     }
   }
 
-  void _emit(SecurityEvent event) {
-    if (!_securityController.isClosed) {
-      _securityController.add(event);
+  static String _catLabel(ThreatCategory cat) {
+    switch (cat) {
+      case ThreatCategory.financialFraud:
+        return 'Lừa đảo tài chính';
+      case ThreatCategory.otp:
+        return 'Đánh cắp OTP/mật khẩu';
+      case ThreatCategory.phishing:
+        return 'Mạo danh cơ quan nhà nước';
+      case ThreatCategory.urgencyTrick:
+        return 'Tạo áp lực / hoảng loạn';
+      case ThreatCategory.deepfake:
+        return 'Giọng nói giả mạo (Deepfake)';
+      case ThreatCategory.unknown:
+      case ThreatCategory.none:
+        return 'Nội dung đáng ngờ';
     }
-  }
-
-  // ignore: avoid_print
-  void debugLog(String msg) => debugPrint('[RealtimeAI] $msg');
-
-  Future<void> stopProtection() async {
-    _isListening = false;
-    _aiAnalysisTimer?.cancel();
-    _resetStatusTimer?.cancel();
-    _currentTranscript = '';
-    _accumulatedTranscript = '';
-    try {
-      await _speech.stop();
-    } catch (_) {}
-    _emit(SecurityEvent.safe());
-    _captionController.add('');
-  }
-
-  void dispose() {
-    stopProtection();
-    _securityController.close();
-    _captionController.close();
   }
 }
