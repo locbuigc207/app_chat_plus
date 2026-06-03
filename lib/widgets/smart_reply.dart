@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
 import 'package:flutter_chat_demo/constants/constants.dart';
-import 'package:flutter_chat_demo/providers/providers.dart';
+import 'package:flutter_chat_demo/models/models.dart';
 
 class SmartReplyWidget extends StatefulWidget {
   final List<SmartReply> replies;
@@ -20,7 +19,8 @@ class SmartReplyWidget extends StatefulWidget {
   State<SmartReplyWidget> createState() => _SmartReplyWidgetState();
 }
 
-class _SmartReplyWidgetState extends State<SmartReplyWidget> with SingleTickerProviderStateMixin {
+class _SmartReplyWidgetState extends State<SmartReplyWidget>
+    with SingleTickerProviderStateMixin {
   late AnimationController _entranceCtrl;
   late Animation<double> _fadeAnim;
   late Animation<double> _slideAnim;
@@ -68,8 +68,8 @@ class _SmartReplyWidgetState extends State<SmartReplyWidget> with SingleTickerPr
       opacity: _fadeAnim,
       child: AnimatedBuilder(
         animation: _slideAnim,
-        builder: (_, child) =>
-            Transform.translate(offset: Offset(0, _slideAnim.value), child: child),
+        builder: (_, child) => Transform.translate(
+            offset: Offset(0, _slideAnim.value), child: child),
         child: Container(
           padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
           child: Row(
@@ -111,7 +111,8 @@ class _AIIconBadge extends StatefulWidget {
   State<_AIIconBadge> createState() => _AIIconBadgeState();
 }
 
-class _AIIconBadgeState extends State<_AIIconBadge> with SingleTickerProviderStateMixin {
+class _AIIconBadgeState extends State<_AIIconBadge>
+    with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
 
   @override
@@ -182,7 +183,8 @@ class _ReplyChip extends StatefulWidget {
   State<_ReplyChip> createState() => _ReplyChipState();
 }
 
-class _ReplyChipState extends State<_ReplyChip> with SingleTickerProviderStateMixin {
+class _ReplyChipState extends State<_ReplyChip>
+    with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _scaleAnim;
   late Animation<double> _slideAnim;
@@ -235,7 +237,9 @@ class _ReplyChipState extends State<_ReplyChip> with SingleTickerProviderStateMi
           transform: Matrix4.identity()..scale(_pressed ? 0.95 : 1.0),
           transformAlignment: Alignment.center,
           decoration: BoxDecoration(
-            color: _pressed ? ColorConstants.primaryColor.withValues(alpha: 0.08) : Colors.white,
+            color: _pressed
+                ? ColorConstants.primaryColor.withValues(alpha: 0.08)
+                : Colors.white,
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
               color: ColorConstants.primaryColor.withValues(alpha: 0.25),
@@ -256,7 +260,9 @@ class _ReplyChipState extends State<_ReplyChip> with SingleTickerProviderStateMi
             style: TextStyle(
               fontSize: 13.5,
               fontWeight: FontWeight.w500,
-              color: _pressed ? ColorConstants.primaryColor : const Color(0xFF374151),
+              color: _pressed
+                  ? ColorConstants.primaryColor
+                  : const Color(0xFF374151),
             ),
           ),
         ),
@@ -272,7 +278,8 @@ class _ShimmerChips extends StatefulWidget {
   State<_ShimmerChips> createState() => _ShimmerChipsState();
 }
 
-class _ShimmerChipsState extends State<_ShimmerChips> with SingleTickerProviderStateMixin {
+class _ShimmerChipsState extends State<_ShimmerChips>
+    with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _anim;
 
@@ -297,8 +304,8 @@ class _ShimmerChipsState extends State<_ShimmerChips> with SingleTickerProviderS
     return AnimatedBuilder(
       animation: _anim,
       builder: (_, __) {
-        final shimmerColor =
-            Color.lerp(const Color(0xFFE8EBF0), const Color(0xFFF5F5F5), _anim.value)!;
+        final shimmerColor = Color.lerp(
+            const Color(0xFFE8EBF0), const Color(0xFFF5F5F5), _anim.value)!;
         return Row(
           children: List.generate(
             3,

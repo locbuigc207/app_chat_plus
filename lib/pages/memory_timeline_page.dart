@@ -2,10 +2,9 @@
 
 import 'dart:math' as math;
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/models/message_chat.dart';
 import 'package:flutter_chat_demo/services/ai_backend_service.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -161,15 +160,18 @@ class _RelationshipData {
     final memories = (map['memories'] as List<dynamic>? ?? [])
         .map((e) => _MemoryEntry.fromMap(e as Map))
         .toList();
-    final sharedTopics =
-        (map['sharedTopics'] as List<dynamic>? ?? []).map((e) => e.toString()).toList();
-    final importantDates =
-        (map['importantDates'] as List<dynamic>? ?? []).map((e) => e.toString()).toList();
+    final sharedTopics = (map['sharedTopics'] as List<dynamic>? ?? [])
+        .map((e) => e.toString())
+        .toList();
+    final importantDates = (map['importantDates'] as List<dynamic>? ?? [])
+        .map((e) => e.toString())
+        .toList();
 
     return _RelationshipData(
       healthScore: (map['healthScore'] as num?)?.toInt() ?? 0,
       summary: map['summary'] as String? ?? '',
-      relationshipType: RelationshipType.fromString(map['relationshipType'] as String?),
+      relationshipType:
+          RelationshipType.fromString(map['relationshipType'] as String?),
       communicationStyle: map['communicationStyle'] as String? ?? 'mixed',
       closenessLevel: (map['closenessLevel'] as num?)?.toInt() ?? 1,
       sharedTopics: sharedTopics,
@@ -197,7 +199,8 @@ class MemoryTimelinePage extends StatefulWidget {
   State<MemoryTimelinePage> createState() => _MemoryTimelinePageState();
 }
 
-class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProviderStateMixin {
+class _MemoryTimelinePageState extends State<MemoryTimelinePage>
+    with TickerProviderStateMixin {
   bool _isLoading = true;
   bool _isAnalyzing = false;
   _RelationshipData? _data;
@@ -211,8 +214,10 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
   @override
   void initState() {
     super.initState();
-    _fadeAc = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
-    _scoreAc = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200));
+    _fadeAc = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 600));
+    _scoreAc = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1200));
     _scoreAnim = CurvedAnimation(parent: _scoreAc, curve: Curves.easeOutCubic);
     _fetchCachedMemory();
     SystemChrome.setSystemUIOverlayStyle(
@@ -293,7 +298,9 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
       final chatHistory = querySnapshot.docs
           .map((doc) {
             final msg = MessageChat.fromDocument(doc);
-            final who = msg.idFrom == widget.currentUserId ? 'Tôi' : widget.peerNickname;
+            final who = msg.idFrom == widget.currentUserId
+                ? 'Tôi'
+                : widget.peerNickname;
             return '$who: ${msg.content}';
           })
           .toList()
@@ -301,12 +308,12 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
           .toList();
 
       final result = await AIBackendService().extractRelationshipMemory(
-        chatHistory,
+        messages: chatHistory,
         conversationId: widget.conversationId,
       );
 
       if (result != null) {
-        final dataMap = result.rawData;
+        final dataMap = result.toMap();
 
         await FirebaseFirestore.instance
             .collection('relationship_memories')
@@ -382,7 +389,8 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
       backgroundColor: Colors.transparent,
       elevation: 0,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new_rounded, color: _kTextPri, size: 20),
+        icon: const Icon(Icons.arrow_back_ios_new_rounded,
+            color: _kTextPri, size: 20),
         onPressed: () => Navigator.pop(context),
       ),
       title: Column(
@@ -441,7 +449,8 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
         children: [
           _PulsingOrb(),
           SizedBox(height: 20),
-          Text('Đang tải dữ liệu…', style: TextStyle(color: _kTextSec, fontSize: 14)),
+          Text('Đang tải dữ liệu…',
+              style: TextStyle(color: _kTextSec, fontSize: 14)),
         ],
       ),
     );
@@ -470,7 +479,8 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
               'Để AI phân tích mối quan hệ của bạn với ${widget.peerNickname}, '
               'nhấn nút bên dưới.',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: _kTextSec, fontSize: 14, height: 1.6),
+              style:
+                  const TextStyle(color: _kTextSec, fontSize: 14, height: 1.6),
             ),
             if (_errorMessage != null) ...[
               const SizedBox(height: 16),
@@ -482,7 +492,8 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
                   border: Border.all(color: const Color(0x44FF6E6E)),
                 ),
                 child: Text(_errorMessage!,
-                    style: const TextStyle(color: Color(0xFFFF6E6E), fontSize: 12)),
+                    style: const TextStyle(
+                        color: Color(0xFFFF6E6E), fontSize: 12)),
               ),
             ],
             const SizedBox(height: 32),
@@ -655,7 +666,8 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
             color: color,
           ),
           child: Center(
-            child: Icon(Icons.favorite_rounded, color: color.withValues(alpha: 0.7), size: 22),
+            child: Icon(Icons.favorite_rounded,
+                color: color.withValues(alpha: 0.7), size: 22),
           ),
         ),
       ),
@@ -751,7 +763,8 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
         if (_isAnalyzing) ...[
           const _PulsingOrb(),
           const SizedBox(height: 12),
-          const Text('AI đang phân tích…', style: TextStyle(color: _kTextSec, fontSize: 13)),
+          const Text('AI đang phân tích…',
+              style: TextStyle(color: _kTextSec, fontSize: 13)),
           const SizedBox(height: 24),
         ],
         Row(
@@ -760,7 +773,9 @@ class _MemoryTimelinePageState extends State<MemoryTimelinePage> with TickerProv
               child: _GlowButton(
                 label: 'Phân tích lại',
                 icon: Icons.refresh_rounded,
-                onTap: _isAnalyzing ? null : () => _analyzeMemory(forceRefresh: true),
+                onTap: _isAnalyzing
+                    ? null
+                    : () => _analyzeMemory(forceRefresh: true),
                 compact: true,
               ),
             ),
@@ -905,7 +920,9 @@ class _DateRow extends StatelessWidget {
         ),
         const SizedBox(width: 14),
         Expanded(
-          child: Text(label, style: const TextStyle(color: _kTextPri, fontSize: 13, height: 1.5)),
+          child: Text(label,
+              style:
+                  const TextStyle(color: _kTextPri, fontSize: 13, height: 1.5)),
         ),
       ]),
     );
@@ -940,7 +957,8 @@ class _TimelineEntry extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: color.withValues(alpha: 0.15),
                     shape: BoxShape.circle,
-                    border: Border.all(color: color.withValues(alpha: 0.4), width: 1.5),
+                    border: Border.all(
+                        color: color.withValues(alpha: 0.4), width: 1.5),
                   ),
                   child: Icon(entry.category.icon, size: 14, color: color),
                 ),
@@ -975,7 +993,8 @@ class _TimelineEntry extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: color.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(6),
@@ -1028,10 +1047,13 @@ class _GlowButton extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding: EdgeInsets.symmetric(horizontal: compact ? 20 : 28, vertical: compact ? 12 : 16),
+        padding: EdgeInsets.symmetric(
+            horizontal: compact ? 20 : 28, vertical: compact ? 12 : 16),
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: onTap != null ? [_kAccent, const Color(0xFF9B6EFF)] : [_kSurface2, _kSurface2],
+            colors: onTap != null
+                ? [_kAccent, const Color(0xFF9B6EFF)]
+                : [_kSurface2, _kSurface2],
           ),
           borderRadius: BorderRadius.circular(14),
           boxShadow: onTap != null
@@ -1047,7 +1069,8 @@ class _GlowButton extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: compact ? MainAxisSize.max : MainAxisSize.min,
           children: [
-            Icon(icon, color: onTap != null ? Colors.white : _kTextDim, size: 16),
+            Icon(icon,
+                color: onTap != null ? Colors.white : _kTextDim, size: 16),
             const SizedBox(width: 8),
             Text(
               label,
@@ -1089,9 +1112,12 @@ class _IconBtn extends StatelessWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: outlined ? Colors.transparent : color.withValues(alpha: 0.12),
+            color:
+                outlined ? Colors.transparent : color.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(12),
-            border: outlined ? Border.all(color: color.withValues(alpha: 0.3)) : null,
+            border: outlined
+                ? Border.all(color: color.withValues(alpha: 0.3))
+                : null,
           ),
           child: Icon(icon, color: color, size: 20),
         ),
@@ -1105,7 +1131,8 @@ class _GlowOrb extends StatelessWidget {
   final Color color;
   final double glowRadius;
 
-  const _GlowOrb({required this.size, required this.color, required this.glowRadius});
+  const _GlowOrb(
+      {required this.size, required this.color, required this.glowRadius});
 
   @override
   Widget build(BuildContext context) {
@@ -1116,8 +1143,10 @@ class _GlowOrb extends StatelessWidget {
         shape: BoxShape.circle,
         color: color.withValues(alpha: 0.12),
         boxShadow: [
-          BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: glowRadius),
-          BoxShadow(color: color.withValues(alpha: 0.15), blurRadius: glowRadius * 2),
+          BoxShadow(
+              color: color.withValues(alpha: 0.3), blurRadius: glowRadius),
+          BoxShadow(
+              color: color.withValues(alpha: 0.15), blurRadius: glowRadius * 2),
         ],
       ),
       child: Icon(Icons.psychology_rounded, color: color, size: size * 0.45),
@@ -1131,7 +1160,8 @@ class _PulsingOrb extends StatefulWidget {
   State<_PulsingOrb> createState() => _PulsingOrbState();
 }
 
-class _PulsingOrbState extends State<_PulsingOrb> with SingleTickerProviderStateMixin {
+class _PulsingOrbState extends State<_PulsingOrb>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _ac = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1000),
@@ -1160,7 +1190,8 @@ class _PulsingOrbState extends State<_PulsingOrb> with SingleTickerProviderState
             ),
           ],
         ),
-        child: const Icon(Icons.auto_awesome_rounded, color: _kAccent, size: 22),
+        child:
+            const Icon(Icons.auto_awesome_rounded, color: _kAccent, size: 22),
       ),
     );
   }
@@ -1198,7 +1229,8 @@ class _ConfirmDialog extends StatelessWidget {
             const SizedBox(height: 12),
             Text(message,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: _kTextSec, fontSize: 13, height: 1.5)),
+                style: const TextStyle(
+                    color: _kTextSec, fontSize: 13, height: 1.5)),
             const SizedBox(height: 24),
             Row(
               children: [
@@ -1214,7 +1246,8 @@ class _ConfirmDialog extends StatelessWidget {
                       ),
                       child: const Center(
                         child: Text('Huỷ',
-                            style: TextStyle(color: _kTextSec, fontWeight: FontWeight.w600)),
+                            style: TextStyle(
+                                color: _kTextSec, fontWeight: FontWeight.w600)),
                       ),
                     ),
                   ),
@@ -1228,7 +1261,8 @@ class _ConfirmDialog extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: confirmColor.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: confirmColor.withValues(alpha: 0.4)),
+                        border: Border.all(
+                            color: confirmColor.withValues(alpha: 0.4)),
                       ),
                       child: Center(
                         child: Text(confirmLabel,
@@ -1303,5 +1337,6 @@ class _ScoreGaugePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_ScoreGaugePainter old) => old.progress != progress || old.color != color;
+  bool shouldRepaint(_ScoreGaugePainter old) =>
+      old.progress != progress || old.color != color;
 }

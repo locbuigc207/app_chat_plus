@@ -1,9 +1,10 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
+
+import '../models/ai_models.dart'; // Import model dùng chung để tránh xung đột
 
 class UserPresence {
   final String userId;
@@ -30,20 +31,6 @@ class UserPresence {
   }
 }
 
-class TypingInfo {
-  final String userId;
-  final bool isTyping;
-  final DateTime timestamp;
-
-  const TypingInfo({
-    required this.userId,
-    required this.isTyping,
-    required this.timestamp,
-  });
-
-  bool get isStillActive => isTyping && DateTime.now().difference(timestamp).inSeconds < 6;
-}
-
 class UserPresenceProvider {
   final FirebaseFirestore firebaseFirestore;
 
@@ -61,13 +48,18 @@ class UserPresenceProvider {
 
   UserPresenceProvider({required this.firebaseFirestore});
 
-  Future<void> setUserOnline(String userId, {String? currentConversationId}) async {
+  Future<void> setUserOnline(String userId,
+      {String? currentConversationId}) async {
     _currentUserId = userId;
     try {
-      await firebaseFirestore.collection(FirestoreConstants.pathUserCollection).doc(userId).update({
+      await firebaseFirestore
+          .collection(FirestoreConstants.pathUserCollection)
+          .doc(userId)
+          .update({
         'isOnline': true,
         'lastSeen': FieldValue.serverTimestamp(),
-        if (currentConversationId != null) 'currentConversationId': currentConversationId,
+        if (currentConversationId != null)
+          'currentConversationId': currentConversationId,
       });
       _startHeartbeat(userId);
       debugPrint('✅ User online: $userId');
@@ -79,7 +71,10 @@ class UserPresenceProvider {
   Future<void> setUserOffline(String userId) async {
     _currentUserId = null;
     try {
-      await firebaseFirestore.collection(FirestoreConstants.pathUserCollection).doc(userId).update({
+      await firebaseFirestore
+          .collection(FirestoreConstants.pathUserCollection)
+          .doc(userId)
+          .update({
         'isOnline': false,
         'lastSeen': FieldValue.serverTimestamp(),
         'currentConversationId': FieldValue.delete(),
@@ -96,9 +91,13 @@ class UserPresenceProvider {
     }
   }
 
-  Future<void> setCurrentConversation(String userId, String? conversationId) async {
+  Future<void> setCurrentConversation(
+      String userId, String? conversationId) async {
     try {
-      await firebaseFirestore.collection(FirestoreConstants.pathUserCollection).doc(userId).update({
+      await firebaseFirestore
+          .collection(FirestoreConstants.pathUserCollection)
+          .doc(userId)
+          .update({
         'currentConversationId': conversationId ?? FieldValue.delete(),
       });
     } catch (e) {
@@ -173,14 +172,18 @@ class UserPresenceProvider {
         if (value is Map<String, dynamic>) {
           final isTyping = value['isTyping'] as bool? ?? false;
           final ts = value['timestamp'] as Timestamp?;
+
           if (ts != null) {
-            final info = TypingInfo(
-              userId: uid,
-              isTyping: isTyping,
-              timestamp: ts.toDate(),
-            );
-            if (info.isStillActive) {
-              result[uid] = info;
+            final lastUpdated = ts.toDate();
+            // Tính toán isStillActive trực tiếp tại đây để đồng bộ với cấu trúc của ai_models
+            final isStillActive = isTyping &&
+                DateTime.now().difference(lastUpdated).inSeconds < 6;
+
+            if (isStillActive) {
+              result[uid] = TypingInfo(
+                isTyping: isTyping,
+                lastUpdated: lastUpdated,
+              );
             }
           }
         }
@@ -343,19 +346,21 @@ class UserPresenceProvider {
         .collection(FirestoreConstants.pathUserCollection)
         .where('isOnline', isEqualTo: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs.where((d) => d.id != userId).map((doc) {
-              final data = doc.data();
-              return {
-                'id': doc.id,
-                'nickname': data['nickname'] ?? '',
-                'photoUrl': data['photoUrl'] ?? '',
-                'isOnline': data['isOnline'] ?? false,
-                'lastSeen': (data['lastSeen'] as Timestamp?)?.toDate(),
-              };
-            }).toList());
+        .map(
+            (snapshot) => snapshot.docs.where((d) => d.id != userId).map((doc) {
+                  final data = doc.data();
+                  return {
+                    'id': doc.id,
+                    'nickname': data['nickname'] ?? '',
+                    'photoUrl': data['photoUrl'] ?? '',
+                    'isOnline': data['isOnline'] ?? false,
+                    'lastSeen': (data['lastSeen'] as Timestamp?)?.toDate(),
+                  };
+                }).toList());
   }
 
-  Future<Map<String, UserPresence>> getMultipleUserPresences(List<String> userIds) async {
+  Future<Map<String, UserPresence>> getMultipleUserPresences(
+      List<String> userIds) async {
     if (userIds.isEmpty) return {};
     try {
       final results = <String, UserPresence>{};

@@ -7,4 +7,5 @@ export 'mention_text_editing_controller.dart';
 export 'network_utils.dart';
 export 'resource_manager.dart';
 export 'safe_state_mixin.dart';
+export 'stateful_masking.dart';
 export 'utilities.dart';

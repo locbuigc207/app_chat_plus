@@ -4,9 +4,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/message_chat.dart';
 import 'package:flutter_chat_demo/models/models.dart';
@@ -74,7 +74,11 @@ class ChatProvider {
       firebaseStorage.ref().child(fileName).putFile(image);
 
   Future<String> _uploadFileAndGetUrl(File file, String fileName) async {
-    final snap = await firebaseStorage.ref().child(fileName).putFile(file).whenComplete(() {});
+    final snap = await firebaseStorage
+        .ref()
+        .child(fileName)
+        .putFile(file)
+        .whenComplete(() {});
     return snap.ref.getDownloadURL();
   }
 
@@ -85,9 +89,9 @@ class ChatProvider {
       final storagePath =
           '${FirestoreConstants.pathDocumentStorage}/$groupId/${ts}_$originalName';
       final uploadTask = firebaseStorage.ref().child(storagePath).putFile(
-        file,
-        SettableMetadata(contentType: _resolveContentType(originalName)),
-      );
+            file,
+            SettableMetadata(contentType: _resolveContentType(originalName)),
+          );
       final snapshot = await uploadTask.whenComplete(() {});
       return await snapshot.ref.getDownloadURL();
     } catch (e) {
@@ -101,11 +105,14 @@ class ChatProvider {
     const mimeMap = <String, String>{
       'pdf': 'application/pdf',
       'doc': 'application/msword',
-      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'docx':
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'xls': 'application/vnd.ms-excel',
-      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'xlsx':
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'ppt': 'application/vnd.ms-powerpoint',
-      'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'pptx':
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       'txt': 'text/plain',
     };
     return mimeMap[ext] ?? 'application/octet-stream';
@@ -123,10 +130,10 @@ class ChatProvider {
           .snapshots();
 
   Future<void> updateDataFirestore(
-      String collectionPath,
-      String docPath,
-      Map<String, dynamic> dataNeedUpdate,
-      ) =>
+    String collectionPath,
+    String docPath,
+    Map<String, dynamic> dataNeedUpdate,
+  ) =>
       firebaseFirestore
           .collection(collectionPath)
           .doc(docPath)
@@ -135,15 +142,15 @@ class ChatProvider {
   // ─── Send message ─────────────────────────────────────────────────────────
 
   Future<void> sendMessage(
-      String content,
-      int type,
-      String groupChatId,
-      String currentUserId,
-      String peerId,
-      ) async {
+    String content,
+    int type,
+    String groupChatId,
+    String currentUserId,
+    String peerId,
+  ) async {
     final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
 
-    // Extract first URL for preview (stored locally, server reads on demand)
+    // Trích xuất URL đầu tiên để làm bản xem trước link preview
     String? previewUrl;
     if (type == TypeMessage.text) {
       final urls = _extractUrls(content);
@@ -197,17 +204,25 @@ class ChatProvider {
     _syncManager.startListening();
   }
 
-  /// Human-readable preview for the conversation list.
+  /// Tạo chuỗi hiển thị tóm tắt thân thiện cho danh sách hội thoại.
   String _previewFor(String content, int type) {
     switch (type) {
-      case TypeMessage.image: return '📷 Ảnh';
-      case TypeMessage.video: return '🎬 Video';
-      case TypeMessage.sticker: return '😊 Sticker';
-      case TypeMessage.document: return '📄 Tài liệu';
-      case TypeMessage.poll: return '📊 Cuộc khảo sát';
-      case TypeMessage.geoLocked: return '🔐 Tin nhắn ẩn địa điểm';
-      case 3: return '🎤 Tin nhắn thoại';
-      default: return content;
+      case TypeMessage.image:
+        return '📷 Ảnh';
+      case TypeMessage.video:
+        return '🎬 Video';
+      case TypeMessage.sticker:
+        return '😊 Sticker';
+      case TypeMessage.document:
+        return '📄 Tài liệu';
+      case TypeMessage.poll:
+        return '📊 Cuộc khảo sát';
+      case TypeMessage.geoLocked:
+        return '🔐 Tin nhắn ẩn địa điểm';
+      case 3:
+        return '🎤 Tin nhắn thoại';
+      default:
+        return content;
     }
   }
 
@@ -243,10 +258,10 @@ class ChatProvider {
 
     final options = optionTexts
         .map((text) => <String, dynamic>{
-      'id': _uuid.v4(),
-      'text': text.trim(),
-      'votes': <String>[],
-    })
+              'id': _uuid.v4(),
+              'text': text.trim(),
+              'votes': <String>[],
+            })
         .toList();
 
     final pollJson = jsonEncode(<String, dynamic>{
@@ -333,14 +348,14 @@ class ChatProvider {
         }
 
         final targetIndex =
-        options.indexWhere((o) => o['id'].toString() == optionId);
+            options.indexWhere((o) => o['id'].toString() == optionId);
         if (targetIndex == -1) {
           throw Exception('Option $optionId không tồn tại.');
         }
 
-        final isMultipleChoice =
-        (pollData['isMultipleChoice'] ?? data['isMultipleChoice'] ?? false)
-        as bool;
+        final isMultipleChoice = (pollData['isMultipleChoice'] ??
+            data['isMultipleChoice'] ??
+            false) as bool;
 
         if (!isMultipleChoice) {
           for (final opt in options) {
@@ -351,7 +366,7 @@ class ChatProvider {
         }
 
         final targetVotes =
-        List<dynamic>.from(options[targetIndex]['votes'] as List? ?? []);
+            List<dynamic>.from(options[targetIndex]['votes'] as List? ?? []);
         if (targetVotes.contains(userId)) {
           targetVotes.remove(userId);
         } else {
@@ -378,10 +393,10 @@ class ChatProvider {
   // ─── Firebase listener ────────────────────────────────────────────────────
 
   void listenToFirebaseChanges(
-      String groupChatId,
-      String currentUserId,
-      String peerId,
-      ) {
+    String groupChatId,
+    String currentUserId,
+    String peerId,
+  ) {
     firebaseFirestore
         .collection(FirestoreConstants.pathMessageCollection)
         .doc(groupChatId)
@@ -390,7 +405,7 @@ class ChatProvider {
         .limit(50)
         .snapshots()
         .listen(
-          (snapshot) async {
+      (snapshot) async {
         for (final doc in snapshot.docs) {
           try {
             await _processIncomingDoc(
@@ -440,7 +455,7 @@ class ChatProvider {
 
     String content = data[FirestoreConstants.content] as String? ?? '';
 
-    // Decrypt text messages only; skip geoLocked (already JSON), media URLs, etc.
+    // Decrypt đối với tin nhắn văn bản thông thường
     if (type == TypeMessage.text && content.isNotEmpty) {
       try {
         content = await EncryptionService().decryptPayload(
@@ -454,7 +469,7 @@ class ChatProvider {
       }
     }
 
-    // Extract preview URL for incoming text messages
+    // Trích xuất preview link cho các tin nhắn text nhận được
     String? previewUrl = data['previewUrl'] as String?;
     if (previewUrl == null && type == TypeMessage.text) {
       final urls = _extractUrls(content);
@@ -470,13 +485,15 @@ class ChatProvider {
       'type': type,
       'status': MessageStatus.sent,
       if (previewUrl != null) 'previewUrl': previewUrl,
-      if (data.containsKey('options')) 'options': _toOptionList(data['options']),
+      if (data.containsKey('options'))
+        'options': _toOptionList(data['options']),
       if (data.containsKey('isViewOnce')) 'isViewOnce': data['isViewOnce'],
       if (data.containsKey('isPinned')) 'isPinned': data['isPinned'],
       if (data.containsKey('isDeleted')) 'isDeleted': data['isDeleted'],
       if (data.containsKey('scamWarning')) 'scamWarning': data['scamWarning'],
       if (data.containsKey('scamReason')) 'scamReason': data['scamReason'],
       if (data.containsKey('hasReminder')) 'hasReminder': data['hasReminder'],
+      if (data.containsKey('isHateful')) 'isHateful': data['isHateful'],
       if (data.containsKey('lastVotedAt'))
         'lastVotedAt': data['lastVotedAt']?.toString(),
       if (data.containsKey(FirestoreConstants.matchId))
@@ -486,6 +503,57 @@ class ChatProvider {
       if (data.containsKey(FirestoreConstants.matchStatus))
         FirestoreConstants.matchStatus: data[FirestoreConstants.matchStatus],
     };
+
+    // ── Auto AI Analysis (parallel, non-blocking) ──────────────────────────
+    // Tiến hành phân tích ngầm tin nhắn text đến từ đối phương có độ dài > 15 ký tự
+    if (!isFromMe &&
+        type == TypeMessage.text &&
+        content.isNotEmpty &&
+        content.length > 15 &&
+        data['idFrom'] != AppConstants.aiAssistantId) {
+      // 1) Quét lừa đảo + tự tạo nhắc nhở công việc + phân tích cảm xúc (fire-and-forget)
+      unawaited(
+        AIBackendService()
+            .analyzeDecryptedClientMessage(
+              plainTextContent: content,
+              conversationId: groupChatId,
+              messageId: messageId,
+              idTo: currentUserId,
+            )
+            .catchError((e) => _log('AI analysis skipped: $e')),
+      );
+
+      // 2) Phát hiện ngôn ngữ thù ghét/độc hại độc lập
+      unawaited(
+        AIBackendService().detectHateSpeech(content).then((isHateful) async {
+          if (!isHateful) return;
+
+          // Ghi nhận flag isHateful vào cơ sở dữ liệu cục bộ
+          final key = '${groupChatId}_$messageId';
+          final existing = _localDb.messagesBox.get(key);
+          if (existing != null) {
+            await _localDb.saveMessage(
+              groupChatId,
+              messageId,
+              {
+                ...Map<String, dynamic>.from(existing as Map),
+                'isHateful': true,
+                'hateSpeechCategory': 'hate',
+              },
+            );
+          }
+
+          // Cập nhật lên Firestore Document (Best-effort update)
+          firebaseFirestore
+              .collection(FirestoreConstants.pathMessageCollection)
+              .doc(groupChatId)
+              .collection(groupChatId)
+              .doc(messageId)
+              .update({'isHateful': true}).catchError((_) {});
+        }).catchError((e) => _log('HateSpeech check skipped: $e')),
+      );
+    }
+    // ── END Auto AI Analysis ───────────────────────────────────────────────
 
     await _localDb.saveMessage(groupChatId, messageId, updatedMessage);
   }
@@ -527,7 +595,7 @@ class ChatProvider {
       String contentPayload = fileUrl;
       if (isVideo) {
         final thumbnail =
-        await _compressionService.getVideoThumbnail(originalFile);
+            await _compressionService.getVideoThumbnail(originalFile);
         if (thumbnail != null) {
           final thumbPath =
               '${FirestoreConstants.pathMediaStorage}/$groupChatId/${ts}_thumb.jpg';
@@ -583,7 +651,7 @@ class ChatProvider {
           final storagePath =
               '${FirestoreConstants.pathMediaStorage}/$groupChatId/$ts.jpg';
           final fileUrl =
-          await _uploadFileAndGetUrl(compressedFile, storagePath);
+              await _uploadFileAndGetUrl(compressedFile, storagePath);
           await sendMessage(
               fileUrl, TypeMessage.image, groupChatId, currentUserId, peerId);
           successCount++;
@@ -653,12 +721,12 @@ class ChatProvider {
       await _localDb.updateConversationPreview(
         conversationId: groupChatId,
         lastMessage:
-        '${payload.gameType.emoji} ${payload.challengerName} $challengeType ${payload.gameType.displayName}',
+            '${payload.gameType.emoji} ${payload.challengerName} $challengeType ${payload.gameType.displayName}',
         lastMessageTime: timestamp,
         lastMessageType: TypeMessage.gameInvite,
       );
 
-      // Push notification đích danh (fire-and-forget)
+      // Kích hoạt thông báo đẩy đích danh cho đối thủ (fire-and-forget)
       if (payload.targetUserId?.isNotEmpty == true) {
         unawaited(ChatBubbleService().sendGameChallengeNotification(
           targetUserId: payload.targetUserId!,
@@ -680,8 +748,7 @@ class ChatProvider {
   }
 
   String _resolveTimeLabel(GameInvitePayload payload) {
-    if (payload.gameType == GameType.chess &&
-        payload.timeControlSeconds > 0) {
+    if (payload.gameType == GameType.chess && payload.timeControlSeconds > 0) {
       return '${payload.timeControlSeconds ~/ 60} phút';
     }
     if (payload.gameType == GameType.caro) {
@@ -698,7 +765,6 @@ class ChatProvider {
     final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
     final content = jsonEncode(payload.toJson());
 
-    // Preview text rõ ràng
     final winner = payload.winnerId == currentUserId
         ? payload.player1Name
         : (payload.result == 'draw' ? null : payload.player2Name);
@@ -763,7 +829,7 @@ class ChatProvider {
           .collection(groupChatId)
           .doc(messageId);
 
-      // Dùng transaction để tránh race condition khi nhiều player cùng update
+      // Sử dụng Transaction để triệt tiêu race-condition khi có nhiều người cùng xem hoặc vào trận
       await firebaseFirestore.runTransaction((tx) async {
         final doc = await tx.get(docRef);
         if (!doc.exists) return;
@@ -771,13 +837,11 @@ class ChatProvider {
         final data = doc.data()!;
         final currentType = data[FirestoreConstants.type] as int? ?? 0;
 
-        // Chỉ update game messages
         if (currentType != TypeMessage.gameInvite &&
             currentType != TypeMessage.gameLive &&
             currentType != TypeMessage.gameResult) return;
 
-        final rawContent =
-            data[FirestoreConstants.content] as String? ?? '{}';
+        final rawContent = data[FirestoreConstants.content] as String? ?? '{}';
         String updatedContent = rawContent;
         try {
           final payloadMap = jsonDecode(rawContent) as Map<String, dynamic>;
@@ -788,10 +852,9 @@ class ChatProvider {
           updatedContent = jsonEncode(payloadMap);
         } catch (_) {}
 
-        // waiting→live: đổi type sang gameLive (13)
-        final newType = newStatus == MatchStatus.live
-            ? TypeMessage.gameLive
-            : currentType;
+        // Chuyển sang gameLive (type 13) khi trạng thái chuyển qua live
+        final newType =
+            newStatus == MatchStatus.live ? TypeMessage.gameLive : currentType;
 
         tx.update(docRef, {
           FirestoreConstants.matchStatus: newStatus.name,
@@ -800,7 +863,7 @@ class ChatProvider {
         });
       });
 
-      // Local DB sync
+      // Đồng bộ cơ sở dữ liệu cục bộ Local DB
       final localKey = '${groupChatId}_$messageId';
       final existingRaw = _localDb.messagesBox.get(localKey);
       final existing = _toStringMap(existingRaw);
@@ -819,9 +882,8 @@ class ChatProvider {
         } catch (_) {}
 
         final currentType = existing[FirestoreConstants.type] as int? ?? 0;
-        final newType = newStatus == MatchStatus.live
-            ? TypeMessage.gameLive
-            : currentType;
+        final newType =
+            newStatus == MatchStatus.live ? TypeMessage.gameLive : currentType;
 
         await _localDb.saveMessage(groupChatId, messageId, {
           ...existing,

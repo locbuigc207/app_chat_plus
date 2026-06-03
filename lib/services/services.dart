@@ -1,5 +1,6 @@
 export 'agora_rtc_manager.dart';
 export 'ai_backend_service.dart';
+export 'ai_content_service.dart';
 export 'bubble_service_v2.dart';
 export 'call_service.dart';
 export 'chat_bubble_service.dart';

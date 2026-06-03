@@ -5,7 +5,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,7 +14,6 @@ import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_chat_demo/utils/utils.dart';
-import 'package:flutter_chat_demo/widgets/swipe_reply_cards.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -47,6 +45,8 @@ class GroupChatPageState extends State<GroupChatPage>
   bool _showFeaturesMenu = false;
   bool _isRecording = false;
   bool _showScrollToBottom = false;
+  bool _isLoadingSmartReply = false; // AI loading indicator
+
   String _recordingDuration = '0:00';
   int _recordingSeconds = 0;
   Timer? _recordingTimer;
@@ -164,6 +164,7 @@ class GroupChatPageState extends State<GroupChatPage>
     _readLocal();
     _loadPinnedMessages();
     _loadMemberNames();
+    _startToxicityMonitor();
   }
 
   void _readLocal() {
@@ -179,7 +180,7 @@ class GroupChatPageState extends State<GroupChatPage>
     _markMessagesAsRead();
     resourceManager.addDelayedTimer(const Duration(milliseconds: 500), () {
       if (!resourceManager.isDisposed && mounted) {
-        _loadSmartReplies();
+        unawaited(_loadSmartReplies());
         final msgs = LocalDbService().getMessages(groupChatId);
         prefetchLinkPreviews(msgs.take(30).toList());
       }
@@ -231,6 +232,132 @@ class GroupChatPageState extends State<GroupChatPage>
     _focusNode.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  // ── AI FEATURE METHODS ──────────────────────────────────────────────────────
+
+  void _showSummaryAnalysis() {
+    final msgs = LocalDbService()
+        .getMessages(groupChatId)
+        .take(30)
+        .map((d) {
+          final content = d['content']?.toString() ?? '';
+          if (content.startsWith('{"iv":') || content.startsWith('{'))
+            return null;
+          final sender = d['idFrom'] == _currentUserId
+              ? 'Tôi'
+              : (_memberNames[d['idFrom']] ?? 'Member');
+          return '$sender: $content';
+        })
+        .whereType<String>()
+        .toList()
+        .reversed
+        .toList();
+
+    if (msgs.length < 3) {
+      _showToast('Cần ít nhất 3 tin nhắn để phân tích');
+      return;
+    }
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      useSafeArea: true,
+      builder: (_) => ConversationSummarySheet(messages: msgs),
+    );
+  }
+
+  void _showToneRewriter() {
+    final text = _chatInputController.text.trim();
+    if (text.isEmpty) {
+      _showToast('Nhập nội dung muốn viết lại vào ô chat trước');
+      return;
+    }
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      useSafeArea: true,
+      builder: (_) => ToneRewriterSheet(
+        originalMessage: text,
+        onApply: (rewritten) {
+          _chatInputController.text = rewritten;
+          _focusNode.requestFocus();
+        },
+      ),
+    );
+  }
+
+  void _openInsightsPage() {
+    HapticFeedback.lightImpact();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UserInsightsPage(
+          conversationId: groupChatId,
+          peerName: widget.group.groupName,
+        ),
+      ),
+    );
+  }
+
+  void _openWeeklyRecap() {
+    HapticFeedback.lightImpact();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => WeeklyRecapPage(userId: _currentUserId),
+      ),
+    );
+  }
+
+  void _startToxicityMonitor() {
+    if (widget.group.adminId != _currentUserId) return;
+    final sub = FirebaseFirestore.instance
+        .collection(FirestoreConstants.pathMessageCollection)
+        .doc(groupChatId)
+        .collection(groupChatId)
+        .orderBy('timestamp', descending: true)
+        .limit(5)
+        .snapshots()
+        .listen((snap) async {
+      final newMsgs = snap.docChanges
+          .where((c) => c.type == DocumentChangeType.added)
+          .map((c) {
+            final data = c.doc.data() as Map<String, dynamic>;
+            final content = data['content'] as String? ?? '';
+            final idFrom = data['idFrom'] as String? ?? '';
+            if (idFrom == _currentUserId || idFrom == 'AI_BOT') return null;
+            if (content.isEmpty ||
+                content.startsWith('{"iv":') ||
+                content.startsWith('{')) return null;
+            return ToxicityInput(id: c.doc.id, text: content);
+          })
+          .whereType<ToxicityInput>()
+          .toList();
+
+      if (newMsgs.isEmpty) return;
+      try {
+        final results = await AIBackendService().analyzeToxicityBatch(newMsgs);
+        for (final r in results) {
+          if (!r.isToxic || r.confidence <= 0.72 || r.id == null) continue;
+          await FirebaseFirestore.instance
+              .collection(FirestoreConstants.pathMessageCollection)
+              .doc(groupChatId)
+              .collection(groupChatId)
+              .doc(r.id!)
+              .update({
+            'isToxic': true,
+            'toxicCategory': r.category,
+            'toxicConfidence': r.confidence,
+            'toxicFlaggedAt': FieldValue.serverTimestamp(),
+          }).catchError((_) {});
+        }
+      } catch (e) {
+        debugPrint('⚠️ ToxicMonitor: $e');
+      }
+    });
+    resourceManager.addSubscription(sub);
   }
 
   // ── MEMBERS ─────────────────────────────────────────────────────────────────
@@ -417,17 +544,57 @@ class GroupChatPageState extends State<GroupChatPage>
       _listScrollController.animateTo(0,
           duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
     }
+
+    if (!resourceManager.isDisposed) unawaited(_loadSmartReplies());
   }
 
-  void _loadSmartReplies() {
+  Future<void> _loadSmartReplies() async {
     if (resourceManager.isDisposed) return;
     final messages = LocalDbService().getMessages(groupChatId);
     if (messages.isEmpty) return;
+
     final last = messages.first;
-    if (last['idFrom'] != _currentUserId && last['type'] == TypeMessage.text) {
-      final replies = _smartReplyProvider.getRuleBasedReplies(last['content']);
-      if (mounted && !resourceManager.isDisposed)
-        setState(() => _smartReplies = replies);
+    // Chỉ gợi ý khi tin nhắn cuối là từ người khác và là text
+    if (last['idFrom'] == _currentUserId || last['type'] != TypeMessage.text)
+      return;
+
+    final content = last['content'] as String? ?? '';
+    if (content.isEmpty || content.startsWith('{"iv":')) return;
+
+    if (mounted && !resourceManager.isDisposed) {
+      setState(() => _isLoadingSmartReply = true);
+    }
+
+    try {
+      final history = messages
+          .take(6)
+          .map((m) => m['content']?.toString() ?? '')
+          .where((c) => c.isNotEmpty && !c.startsWith('{"iv":'))
+          .toList()
+          .reversed
+          .toList();
+
+      final replies = await _smartReplyProvider.getAiSmartReplies(
+        lastMessage: content,
+        recentMessages: history,
+        language: 'vi',
+        replyIntent: 'helpful',
+      );
+
+      if (mounted && !resourceManager.isDisposed) {
+        setState(() {
+          _smartReplies = replies;
+          _isLoadingSmartReply = false;
+        });
+      }
+    } catch (e) {
+      if (mounted && !resourceManager.isDisposed) {
+        final fallback = _smartReplyProvider.getRuleBasedReplies(content);
+        setState(() {
+          _smartReplies = fallback;
+          _isLoadingSmartReply = false;
+        });
+      }
     }
   }
 
@@ -623,10 +790,8 @@ class GroupChatPageState extends State<GroupChatPage>
 
   // ── GEO LOCKED ──────────────────────────────────────────────────────────────
 
-  /// New GeoLock flow: opens full-screen map picker, then sends the result.
   Future<void> _sendGeoLockedMessage() async {
     if (resourceManager.isDisposed) return;
-    // Close features menu first
     if (mounted) setState(() => _showFeaturesMenu = false);
     _menuAnim.reverse();
 
@@ -705,14 +870,12 @@ class GroupChatPageState extends State<GroupChatPage>
           msgId != _lastAutoRepliedMessageId) {
         _lastAutoRepliedMessageId = msgId;
         try {
-          final result = await FirebaseFunctions.instance
-              .httpsCallable('generateAutoPilotReply')
-              .call({
-            'incomingMessage': content,
-            'myStyleContext': 'Gen Z: okela, đỉnh 😂🔥'
-          });
-          await _onSendMessage(
-              "[AI]: ${result.data['reply']}", TypeMessage.text);
+          final reply = await AIBackendService().generateAutoPilotReply(
+              incomingMessage: content,
+              myStyleContext: 'Gen Z: okela, đỉnh 😂🔥');
+          if (reply != null && !resourceManager.isDisposed) {
+            await _onSendMessage('[AI]: $reply', TypeMessage.text);
+          }
         } catch (e) {
           debugPrint('Auto-Pilot Error: $e');
         }
@@ -727,10 +890,8 @@ class GroupChatPageState extends State<GroupChatPage>
       final lastMsg = messages.isNotEmpty
           ? (messages.first['content'] ?? 'Hello')
           : 'Hello';
-      final result = await FirebaseFunctions.instance
-          .httpsCallable('generateSwipeReplies')
-          .call({'incomingMessage': lastMsg, 'contextMessages': ''});
-      final replies = List<String>.from(result.data as List);
+      final replies = await AIBackendService().generateSwipeReplies(
+          incomingMessage: lastMsg, contextMessages: '', replyStyle: 'genz');
       if (mounted)
         setState(() {
           _swipeReplies = replies;
@@ -1114,6 +1275,18 @@ class GroupChatPageState extends State<GroupChatPage>
       case 'ai_assistant':
         _showAIContextAnalysis();
         break;
+      case 'summarize':
+        _showSummaryAnalysis();
+        break;
+      case 'tone_rewriter':
+        _showToneRewriter();
+        break;
+      case 'insights':
+        _openInsightsPage();
+        break;
+      case 'weekly':
+        _openWeeklyRecap();
+        break;
       case 'info':
         _openGroupInfo();
         break;
@@ -1328,6 +1501,9 @@ class GroupChatPageState extends State<GroupChatPage>
                     groupId: groupChatId,
                     groupName: widget.group.groupName,
                     memberIds: widget.group.memberIds),
+                // ── AI Sentiment Indicator ──────────────────────────────────
+                SentimentIndicatorWidget(groupChatId: groupChatId),
+                const SizedBox(width: 2),
                 IconButton(
                     icon: Icon(Icons.search_rounded,
                         color: theme.primaryColor, size: 22),
@@ -1348,6 +1524,15 @@ class GroupChatPageState extends State<GroupChatPage>
                         'Media & Files', const Color(0xFF43C6AC), p),
                     _menuItem('search', Icons.search_rounded, 'Tìm kiếm',
                         p.textSecondary, p),
+                    const PopupMenuDivider(),
+                    _menuItem('summarize', Icons.summarize_rounded,
+                        'Tóm tắt & Phân tích', const Color(0xFF0EA5E9), p),
+                    _menuItem('tone_rewriter', Icons.edit_note_rounded,
+                        'Viết lại tông giọng', const Color(0xFF8B5CF6), p),
+                    _menuItem('insights', Icons.psychology_rounded,
+                        'AI Insights nhóm', const Color(0xFFF59E0B), p),
+                    _menuItem('weekly', Icons.analytics_rounded, 'Weekly Recap',
+                        const Color(0xFF10B981), p),
                     const PopupMenuDivider(),
                     _menuItem('autodelete', Icons.timer_rounded, 'Tự xoá',
                         p.warningColor, p),
@@ -1391,6 +1576,49 @@ class GroupChatPageState extends State<GroupChatPage>
           ]));
 
   // ── CHAT CONTENT ─────────────────────────────────────────────────────────────
+
+  List<dynamic> _processMessages(List<Map<dynamic, dynamic>> raw) {
+    final grouped = <dynamic>[];
+    final mediaGroup = <Map<dynamic, dynamic>>[];
+    for (final msg in raw) {
+      final int type = msg['type'] ?? 0;
+      final isMedia = type == TypeMessage.image || type == TypeMessage.video;
+      if (isMedia) {
+        if (mediaGroup.isEmpty) {
+          mediaGroup.add(msg);
+        } else {
+          final prev = mediaGroup.last;
+          final diff = (int.parse(prev['timestamp'] ?? '0') -
+                  int.parse(msg['timestamp'] ?? '0'))
+              .abs();
+          if (msg['idFrom'] == prev['idFrom'] && diff <= 10000) {
+            mediaGroup.add(msg);
+          } else {
+            grouped.add(mediaGroup.length == 1
+                ? mediaGroup.first
+                : {'isMediaGroup': true, 'messages': List.from(mediaGroup)});
+            mediaGroup
+              ..clear()
+              ..add(msg);
+          }
+        }
+      } else {
+        if (mediaGroup.isNotEmpty) {
+          grouped.add(mediaGroup.length == 1
+              ? mediaGroup.first
+              : {'isMediaGroup': true, 'messages': List.from(mediaGroup)});
+          mediaGroup.clear();
+        }
+        grouped.add(msg);
+      }
+    }
+    if (mediaGroup.isNotEmpty) {
+      grouped.add(mediaGroup.length == 1
+          ? mediaGroup.first
+          : {'isMediaGroup': true, 'messages': List.from(mediaGroup)});
+    }
+    return grouped;
+  }
 
   Widget _buildChatContent(ThemePalette p, ThemeProvider theme) {
     return ChatWallpaperWidget(
@@ -1513,51 +1741,6 @@ class GroupChatPageState extends State<GroupChatPage>
         },
       ),
     );
-  }
-
-  // ── MESSAGE LIST ─────────────────────────────────────────────────────────────
-
-  List<dynamic> _processMessages(List<Map<dynamic, dynamic>> raw) {
-    final grouped = <dynamic>[];
-    final mediaGroup = <Map<dynamic, dynamic>>[];
-    for (final msg in raw) {
-      final int type = msg['type'] ?? 0;
-      final isMedia = type == TypeMessage.image || type == TypeMessage.video;
-      if (isMedia) {
-        if (mediaGroup.isEmpty) {
-          mediaGroup.add(msg);
-        } else {
-          final prev = mediaGroup.last;
-          final diff = (int.parse(prev['timestamp'] ?? '0') -
-                  int.parse(msg['timestamp'] ?? '0'))
-              .abs();
-          if (msg['idFrom'] == prev['idFrom'] && diff <= 10000) {
-            mediaGroup.add(msg);
-          } else {
-            grouped.add(mediaGroup.length == 1
-                ? mediaGroup.first
-                : {'isMediaGroup': true, 'messages': List.from(mediaGroup)});
-            mediaGroup
-              ..clear()
-              ..add(msg);
-          }
-        }
-      } else {
-        if (mediaGroup.isNotEmpty) {
-          grouped.add(mediaGroup.length == 1
-              ? mediaGroup.first
-              : {'isMediaGroup': true, 'messages': List.from(mediaGroup)});
-          mediaGroup.clear();
-        }
-        grouped.add(msg);
-      }
-    }
-    if (mediaGroup.isNotEmpty) {
-      grouped.add(mediaGroup.length == 1
-          ? mediaGroup.first
-          : {'isMediaGroup': true, 'messages': List.from(mediaGroup)});
-    }
-    return grouped;
   }
 
   Widget _buildListMessage(ThemePalette p, ThemeProvider theme) {
@@ -1763,6 +1946,8 @@ class GroupChatPageState extends State<GroupChatPage>
           isScamWarning: localData['scamWarning'] ?? false,
           scamReason: localData['scamReason'] ?? '',
           hasReminder: localData['hasReminder'] ?? false,
+          isToxic: localData['isToxic'] ?? false,
+          toxicCategory: localData['toxicCategory'] ?? 'hate',
           p: p,
           theme: theme);
     }
@@ -1971,6 +2156,8 @@ class GroupChatPageState extends State<GroupChatPage>
     bool isScamWarning = false,
     String scamReason = '',
     bool hasReminder = false,
+    bool isToxic = false,
+    String toxicCategory = 'hate',
     required ThemePalette p,
     required ThemeProvider theme,
   }) {
@@ -2040,9 +2227,19 @@ class GroupChatPageState extends State<GroupChatPage>
                         child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              // ── Scam Warning ───────────────────────────────────
                               if (!isMe && isScamWarning)
                                 _GroupScamBanner(
                                     reason: scamReason, palette: p),
+                              // ── Toxic Badge ────────────────────────────────────
+                              if (!isMe && isToxic)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 6),
+                                  child: ToxicMessageBadge(
+                                      category: toxicCategory,
+                                      showDetails: true),
+                                ),
+                              // ── Reminder Banner ────────────────────────────────
                               if (!isMe && hasReminder)
                                 _GroupReminderBanner(
                                     msg: msg,
@@ -2050,6 +2247,7 @@ class GroupChatPageState extends State<GroupChatPage>
                                     onSet: _setReminder,
                                     palette: p,
                                     theme: theme),
+                              // ── Content ────────────────────────────────────────
                               if (msg.isDeleted)
                                 Row(mainAxisSize: MainAxisSize.min, children: [
                                   Icon(Icons.block_rounded,
@@ -2138,8 +2336,9 @@ class GroupChatPageState extends State<GroupChatPage>
                       final status =
                           await AIBackendService().checkScam(msg.content);
                       if (mounted)
-                        setState(() => _scamResults[messageId] = status);
-                      if (status == 'SAFE')
+                        setState(() => _scamResults[messageId] =
+                            status.name.toUpperCase());
+                      if (status.name.toUpperCase() == 'SAFE')
                         _showToast('✅ Tin nhắn an toàn', isSuccess: true);
                     },
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -2533,7 +2732,7 @@ class GroupChatPageState extends State<GroupChatPage>
       _GFeatureItem(Icons.videocam_rounded, 'Video', _onPickVideo,
           const Color(0xFFFF6B9D)),
       _GFeatureItem(Icons.add_location_alt_rounded, 'GeoLock',
-          _sendGeoLockedMessage, const Color(0xFF7B1FA2)),
+          _sendGeoLockedMessage, p.dangerColor),
       _GFeatureItem(Icons.games_rounded, 'Caro', () {
         setState(() => _showFeaturesMenu = false);
         _onSendMessage(
@@ -2677,18 +2876,10 @@ class GroupChatPageState extends State<GroupChatPage>
           right: 12,
           top: 6),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        if (_smartReplies.isNotEmpty)
+        if (_smartReplies.isNotEmpty || _isLoadingSmartReply)
           Padding(
               padding: const EdgeInsets.only(bottom: 6),
-              child: SmartReplyWidget(
-                  replies: _smartReplies,
-                  onReplySelected: (reply) {
-                    if (!resourceManager.isDisposed) {
-                      _chatInputController.text = reply;
-                      setState(() => _smartReplies = []);
-                      _focusNode.requestFocus();
-                    }
-                  })),
+              child: _buildSmartReplyBar(p, theme)),
         AnimatedSize(
           duration: const Duration(milliseconds: 260),
           curve: Curves.easeOutCubic,
@@ -2900,6 +3091,39 @@ class GroupChatPageState extends State<GroupChatPage>
       ]),
     );
   }
+
+  Widget _buildSmartReplyBar(ThemePalette p, ThemeProvider theme) {
+    return SizedBox(
+      height: 50,
+      child: _isLoadingSmartReply
+          ? Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(children: [
+                SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: theme.primaryColor)),
+                const SizedBox(width: 10),
+                Text('AI đang gợi ý...',
+                    style: TextStyle(fontSize: 12, color: p.textHint)),
+              ]),
+            )
+          : SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: SmartReplyWidget(
+                  replies: _smartReplies,
+                  onReplySelected: (reply) {
+                    if (!resourceManager.isDisposed) {
+                      _chatInputController.text = reply;
+                      setState(() => _smartReplies = []);
+                      _focusNode.requestFocus();
+                    }
+                  }),
+            ),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2934,12 +3158,13 @@ class _GroupScamBanner extends StatelessWidget {
 }
 
 class _GroupReminderBanner extends StatelessWidget {
-  const _GroupReminderBanner(
-      {required this.msg,
-      required this.messageId,
-      required this.onSet,
-      required this.palette,
-      required this.theme});
+  const _GroupReminderBanner({
+    required this.msg,
+    required this.messageId,
+    required this.onSet,
+    required this.palette,
+    required this.theme,
+  });
   final MessageChat msg;
   final String messageId;
   final Future<void> Function(MessageChat, String) onSet;
@@ -2977,12 +3202,13 @@ class _GroupReminderBanner extends StatelessWidget {
 }
 
 class _GroupLocationContent extends StatelessWidget {
-  const _GroupLocationContent(
-      {required this.location,
-      required this.isMe,
-      required this.palette,
-      required this.theme,
-      required this.onOpen});
+  const _GroupLocationContent({
+    required this.location,
+    required this.isMe,
+    required this.palette,
+    required this.theme,
+    required this.onOpen,
+  });
   final dynamic location;
   final bool isMe;
   final ThemePalette palette;
@@ -3035,13 +3261,14 @@ class _GroupLocationContent extends StatelessWidget {
 }
 
 class _ThemedDialog extends StatelessWidget {
-  const _ThemedDialog(
-      {required this.title,
-      required this.icon,
-      required this.iconColor,
-      required this.content,
-      required this.actions,
-      required this.palette});
+  const _ThemedDialog({
+    required this.title,
+    required this.icon,
+    required this.iconColor,
+    required this.content,
+    required this.actions,
+    required this.palette,
+  });
   final String title;
   final IconData icon;
   final Color iconColor;
@@ -3090,13 +3317,14 @@ class _ThemedDialog extends StatelessWidget {
 }
 
 class _ThemedDialogAction extends StatelessWidget {
-  const _ThemedDialogAction(
-      {required this.label,
-      required this.onTap,
-      required this.palette,
-      required this.primary,
-      this.isPrimary = false,
-      this.isDanger = false});
+  const _ThemedDialogAction({
+    required this.label,
+    required this.onTap,
+    required this.palette,
+    required this.primary,
+    this.isPrimary = false,
+    this.isDanger = false,
+  });
   final String label;
   final VoidCallback onTap;
   final ThemePalette palette;
@@ -3115,11 +3343,12 @@ class _ThemedDialogAction extends StatelessWidget {
                   const EdgeInsets.symmetric(horizontal: 18, vertical: 10)),
           child: Text(label));
     }
-    if (isDanger)
+    if (isDanger) {
       return TextButton(
           onPressed: onTap,
           style: TextButton.styleFrom(foregroundColor: palette.dangerColor),
           child: Text(label));
+    }
     return TextButton(
         onPressed: onTap,
         style: TextButton.styleFrom(foregroundColor: palette.textSecondary),
@@ -3128,13 +3357,14 @@ class _ThemedDialogAction extends StatelessWidget {
 }
 
 class _PickerTile extends StatelessWidget {
-  const _PickerTile(
-      {required this.label,
-      required this.value,
-      required this.icon,
-      required this.onTap,
-      required this.palette,
-      required this.primary});
+  const _PickerTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.onTap,
+    required this.palette,
+    required this.primary,
+  });
   final String label, value;
   final IconData icon;
   final VoidCallback onTap;
@@ -3195,8 +3425,11 @@ class _RecDotState extends State<_RecDot> with SingleTickerProviderStateMixin {
 }
 
 class _AIAnalysisDialog extends StatelessWidget {
-  const _AIAnalysisDialog(
-      {required this.messages, required this.palette, required this.primary});
+  const _AIAnalysisDialog({
+    required this.messages,
+    required this.palette,
+    required this.primary,
+  });
   final List<String> messages;
   final ThemePalette palette;
   final Color primary;
@@ -3217,9 +3450,10 @@ class _AIAnalysisDialog extends StatelessWidget {
                       child: CircularProgressIndicator(
                           color: Color(0xFF8B5CF6), strokeWidth: 2)));
             }
-            if (snap.hasError || !snap.hasData)
+            if (snap.hasError || !snap.hasData) {
               return Text('AI không khả dụng lúc này.',
                   style: TextStyle(color: palette.textSecondary));
+            }
             return ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 260),
                 child: SingleChildScrollView(

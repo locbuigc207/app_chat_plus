@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
 import 'package:flutter_chat_demo/services/ai_backend_service.dart';
 
 class TranslationDialog extends StatefulWidget {
@@ -15,7 +14,8 @@ class TranslationDialog extends StatefulWidget {
   State<TranslationDialog> createState() => _TranslationDialogState();
 }
 
-class _TranslationDialogState extends State<TranslationDialog> with SingleTickerProviderStateMixin {
+class _TranslationDialogState extends State<TranslationDialog>
+    with SingleTickerProviderStateMixin {
   final AIBackendService _aiService = AIBackendService();
 
   late AnimationController _animCtrl;
@@ -83,8 +83,8 @@ class _TranslationDialogState extends State<TranslationDialog> with SingleTicker
     });
 
     final result = await _aiService.translateCommunication(
-      widget.originalMessage,
-      _selectedMode,
+      message: widget.originalMessage,
+      targetAudience: _selectedMode,
     );
 
     if (mounted) {
@@ -115,7 +115,8 @@ class _TranslationDialogState extends State<TranslationDialog> with SingleTicker
         scale: _scaleAnim,
         child: Dialog(
           backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
           child: Container(
             decoration: BoxDecoration(
               color: Colors.white,
@@ -251,9 +252,12 @@ class _TranslationDialogState extends State<TranslationDialog> with SingleTicker
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   margin: const EdgeInsets.only(right: 10),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
-                    color: selected ? info.color.withValues(alpha: 0.1) : const Color(0xFFF7F8FA),
+                    color: selected
+                        ? info.color.withValues(alpha: 0.1)
+                        : const Color(0xFFF7F8FA),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
                       color: selected ? info.color : const Color(0xFFE8EBF0),
@@ -264,14 +268,17 @@ class _TranslationDialogState extends State<TranslationDialog> with SingleTicker
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(info.icon,
-                          size: 20, color: selected ? info.color : const Color(0xFF9CA3AF)),
+                          size: 20,
+                          color:
+                              selected ? info.color : const Color(0xFF9CA3AF)),
                       const SizedBox(height: 4),
                       Text(
                         info.label,
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: selected ? info.color : const Color(0xFF6B7280),
+                          color:
+                              selected ? info.color : const Color(0xFF6B7280),
                         ),
                       ),
                     ],
@@ -299,7 +306,8 @@ class _TranslationDialogState extends State<TranslationDialog> with SingleTicker
         children: [
           Row(
             children: [
-              const Icon(Icons.chat_bubble_outline_rounded, size: 12, color: Color(0xFF9CA3AF)),
+              const Icon(Icons.chat_bubble_outline_rounded,
+                  size: 12, color: Color(0xFF9CA3AF)),
               const SizedBox(width: 5),
               const Text(
                 'TIN NHẮN GỐC',
@@ -338,7 +346,8 @@ class _TranslationDialogState extends State<TranslationDialog> with SingleTicker
       decoration: BoxDecoration(
         color: info.color.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: info.color.withValues(alpha: 0.25), width: 1.5),
+        border:
+            Border.all(color: info.color.withValues(alpha: 0.25), width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -366,7 +375,8 @@ class _TranslationDialogState extends State<TranslationDialog> with SingleTicker
                   onTap: _copyResult,
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: _copied
                           ? Colors.green.withValues(alpha: 0.1)
@@ -475,13 +485,15 @@ class _TranslationDialogState extends State<TranslationDialog> with SingleTicker
                           height: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2.5,
-                            valueColor: AlwaysStoppedAnimation(Color(0xFF9CA3AF)),
+                            valueColor:
+                                AlwaysStoppedAnimation(Color(0xFF9CA3AF)),
                           ),
                         )
                       : const Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 16),
+                            Icon(Icons.auto_awesome_rounded,
+                                color: Colors.white, size: 16),
                             SizedBox(width: 6),
                             Text(
                               'Dịch AI',
@@ -564,7 +576,8 @@ class _DotsLoader extends StatefulWidget {
   State<_DotsLoader> createState() => _DotsLoaderState();
 }
 
-class _DotsLoaderState extends State<_DotsLoader> with SingleTickerProviderStateMixin {
+class _DotsLoaderState extends State<_DotsLoader>
+    with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
 
   @override
@@ -592,7 +605,8 @@ class _DotsLoaderState extends State<_DotsLoader> with SingleTickerProviderState
           children: List.generate(3, (i) {
             final delay = i / 3;
             final t = ((_ctrl.value - delay) % 1.0);
-            final opacity = (t < 0.5 ? t * 2 : 1.0 - (t - 0.5) * 2).clamp(0.3, 1.0);
+            final opacity =
+                (t < 0.5 ? t * 2 : 1.0 - (t - 0.5) * 2).clamp(0.3, 1.0);
             return Container(
               margin: const EdgeInsets.only(right: 6),
               width: 8,

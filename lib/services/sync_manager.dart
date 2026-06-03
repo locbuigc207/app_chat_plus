@@ -32,11 +32,11 @@ abstract class SyncJobType {
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum SyncStatus {
-  idle, // nothing to sync
-  syncing, // actively uploading jobs
-  paused, // online but backing off after an error
-  offline, // no network
-  error, // persistent failure (all retries exhausted)
+  idle, // Không có gì cần đồng bộ
+  syncing, // Đang chạy đồng bộ các tác vụ trong hàng đợi
+  paused, // Có kết nối mạng nhưng tạm dừng để chờ hồi phục (backoff) sau lỗi
+  offline, // Mất kết nối mạng hoàn toàn
+  error, // Lỗi nghiêm trọng kéo dài (đã cạn số lần thử lại)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -44,9 +44,9 @@ enum SyncStatus {
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum JobPriority {
-  high, // failed messages being re-sent
-  normal, // new outgoing messages
-  low, // AI responses
+  high, // Tin nhắn bị lỗi cần được gửi lại khẩn cấp
+  normal, // Tin nhắn gửi đi thông thường của người dùng
+  low, // Phản hồi tự động hoặc nội dung từ AI
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -69,13 +69,14 @@ class _SyncResult {
 // SYNC MANAGER
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// Responsibilities:
-//   • Drain the local sync queue to Firestore when online.
-//   • Exponential backoff: 2 s → 4 s → 8 s … capped at 60 s.
-//   • Priority ordering: high > normal > low within each batch.
-//   • `statusStream` lets the UI show a "Syncing…" indicator.
-//   • Periodic heartbeat (30 s) to catch jobs added while the app was idle.
-//   • Safe for concurrent environments: _isSyncing mutex prevents overlap.
+// Trách nhiệm:
+//   • Đẩy hàng đợi đồng bộ cục bộ (Local Sync Queue) lên Firestore khi trực tuyến.
+//   • Tự động giãn cách thời gian thử lại khi lỗi (Exponential backoff): 2s → 4s → 8s … tối đa 60s.
+//   • Đảm bảo thứ tự ưu tiên xử lý tác vụ: high > normal > low trong mỗi batch.
+//   • Cung cấp `statusStream` để UI có thể hiển thị trạng thái đồng bộ ("Syncing…").
+//   • Chu kỳ Heartbeat định kỳ (30s) để quét các tác vụ bị sót khi ứng dụng nhàn rỗi.
+//   • An toàn trong môi trường đồng thời: Sử dụng mutex `_isSyncing` để chặn chồng chéo tác vụ.
+//   • AI Content Bridge: Đẩy dữ liệu plain text đã xóa PII lên để AI xử lý ngầm (fire-and-forget).
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SyncManager {
@@ -87,7 +88,7 @@ class SyncManager {
   // ── Status stream ──────────────────────────────────────────────────────────
   final _statusCtrl = StreamController<SyncStatus>.broadcast();
 
-  /// Subscribe to get real-time sync state changes.
+  /// Đăng ký lắng nghe biến động trạng thái đồng bộ trong thời gian thực.
   Stream<SyncStatus> get statusStream => _statusCtrl.stream;
 
   SyncStatus _status = SyncStatus.idle;
@@ -105,7 +106,7 @@ class SyncManager {
   static const int _maxBatchSize = 20;
   static const Duration _heartbeatInterval = Duration(seconds: 30);
 
-  /// Exponential backoff: 2s, 4s, 8s, 16s … capped at 60s.
+  /// Exponential backoff: 2s, 4s, 8s, 16s … giới hạn trần tại 60s.
   static Duration _backoff(int retries) =>
       Duration(seconds: min(60, pow(2, retries + 1).toInt()));
 
@@ -113,13 +114,14 @@ class SyncManager {
   final _localDb = LocalDbService();
   final _encryption = EncryptionService();
   final _gemini = GeminiService();
+  final _aiContent = AiContentService();
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // ═════════════════════════════════════════════════════════════════════════
   // PUBLIC API
-  // ─────────────────────────────────────────────────────────────────────────
+  // ═════════════════════════════════════════════════════════════════════════
 
-  /// Start listening for connectivity changes and run an initial sync.
-  /// Safe to call multiple times — only registers once.
+  /// Bắt đầu lắng nghe thay đổi trạng thái kết nối và kích hoạt đồng bộ đợt đầu.
+  /// Gọi nhiều lần an toàn — chỉ đăng ký duy nhất một bộ lắng nghe.
   void startListening() {
     if (!_isStarted) {
       _isStarted = true;
@@ -127,7 +129,7 @@ class SyncManager {
       _connectivitySub =
           Connectivity().onConnectivityChanged.listen(_onConnectivity);
 
-      // Periodic heartbeat to flush jobs even if connectivity event missed
+      // Heartbeat định kỳ phòng trường hợp bỏ sót sự kiện thay đổi kết nối của hệ thống
       _heartbeatTimer = Timer.periodic(_heartbeatInterval, (_) {
         if (_isOnline) _trySync();
       });
@@ -135,7 +137,7 @@ class SyncManager {
     _trySync();
   }
 
-  /// Stop all background activity — call when the user logs out.
+  /// Dừng toàn bộ hoạt động chạy nền — thường gọi khi người dùng đăng xuất.
   void stopListening() {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = null;
@@ -146,7 +148,7 @@ class SyncManager {
     debugPrint('[SyncManager] 🛑 Stopped');
   }
 
-  /// Enqueue a message-send job with the correct priority.
+  /// Đưa tác vụ gửi tin nhắn vào hàng đợi đồng bộ với độ ưu tiên chỉ định.
   Future<void> enqueueMessage({
     required String conversationId,
     required String messageId,
@@ -170,10 +172,10 @@ class SyncManager {
         'timestamp': timestamp,
       },
     });
-    _trySync(); // kick immediately
+    _trySync(); // Kích hoạt đồng bộ ngay lập tức
   }
 
-  /// Enqueue an AI-response generation job.
+  /// Đưa tác vụ sinh câu trả lời của AI trợ lý vào hàng đợi.
   Future<void> enqueueAiResponse({
     required String conversationId,
     required String currentUserId,
@@ -191,12 +193,12 @@ class SyncManager {
     _trySync();
   }
 
-  /// Returns the number of jobs currently waiting in the queue.
+  /// Trả về số lượng tác vụ hiện đang xếp hàng chờ xử lý.
   int get pendingJobCount => _localDb.syncQueueLength;
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // CONNECTIVITY
-  // ─────────────────────────────────────────────────────────────────────────
+  // ═════════════════════════════════════════════════════════════════════════
+  // CONNECTIVITY MANAGEMENT
+  // ═════════════════════════════════════════════════════════════════════════
 
   void _onConnectivity(List<ConnectivityResult> results) {
     final online = results.any((r) =>
@@ -216,9 +218,9 @@ class SyncManager {
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // SYNC ENTRY POINT
-  // ─────────────────────────────────────────────────────────────────────────
+  // ═════════════════════════════════════════════════════════════════════════
+  // SYNC PROCESSING ENGINE
+  // ═════════════════════════════════════════════════════════════════════════
 
   Future<void> _trySync() async {
     if (_isSyncing || !_isOnline) return;
@@ -240,7 +242,6 @@ class SyncManager {
         _emit(SyncStatus.idle);
         debugPrint('[SyncManager] ✅ Queue empty');
       } else {
-        // More jobs remain; keep status syncing and let heartbeat catch them
         _emit(SyncStatus.idle);
       }
 
@@ -256,17 +257,13 @@ class SyncManager {
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // BATCH PROCESSOR — priority-sorted, backoff-aware
-  // ─────────────────────────────────────────────────────────────────────────
-
   Future<_SyncResult> _processBatch() async {
-    // Use getReadySyncJobs to respect nextRetryAt backoff timestamps
+    // Chỉ lấy các job đã sẵn sàng (đáp ứng điều kiện thời gian nextRetryAt của backoff)
     final jobs = _localDb.getReadySyncJobs(batchSize: _maxBatchSize);
 
     if (jobs.isEmpty) return const _SyncResult(success: 0, failed: 0);
 
-    // Sort by priority (ascending index = higher priority), then by addedAt
+    // Sắp xếp theo độ ưu tiên trước (index thấp hơn = ưu tiên cao hơn), sau đó xếp theo thời gian lọt hàng đợi (addedAt)
     jobs.sort((a, b) {
       final pa = a.value['priority'] as int? ?? JobPriority.normal.index;
       final pb = b.value['priority'] as int? ?? JobPriority.normal.index;
@@ -294,7 +291,8 @@ class SyncManager {
         ok = switch (jobType) {
           SyncJobType.sendMessage => await _processSendMessage(payload),
           SyncJobType.aiResponse => await _processAiResponse(payload),
-          _ => true, // unknown type — discard
+          _ =>
+            true, // Không xác định được loại tác vụ — tự động loại bỏ khỏi hàng đợi
         };
       } on FirebaseException catch (e) {
         isNetworkError =
@@ -330,7 +328,7 @@ class SyncManager {
 
           if (isNetworkError) {
             netError = true;
-            break; // abort batch on network errors; wait for next connectivity event
+            break; // Ngắt ngang batch khi gặp lỗi mạng hệ thống; chờ đợi tín hiệu mạng kết nối lại
           }
         }
       }
@@ -340,9 +338,9 @@ class SyncManager {
         success: success, failed: failed, networkError: netError);
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // JOB HANDLERS
-  // ─────────────────────────────────────────────────────────────────────────
+  // ═════════════════════════════════════════════════════════════════════════
+  // JOB HANDLERS IMPLEMENTATION
+  // ═════════════════════════════════════════════════════════════════════════
 
   Future<bool> _processSendMessage(Map<String, dynamic> payload) async {
     final conversationId = _str(payload['conversationId']);
@@ -355,7 +353,7 @@ class SyncManager {
 
     if (conversationId.isEmpty || messageId.isEmpty) return false;
 
-    // 1. Encrypt
+    // 1. Mã hóa đầu cuối (End-to-End Encryption)
     String encryptedContent;
     try {
       encryptedContent = await _encryption.encryptPayload(
@@ -369,7 +367,7 @@ class SyncManager {
       return false;
     }
 
-    // 2. Write to Firestore
+    // 2. Ghi tài liệu lên Firestore Collection
     await FirebaseFirestore.instance
         .collection('messages')
         .doc(conversationId)
@@ -384,7 +382,7 @@ class SyncManager {
       'status': MessageStatus.sent,
     });
 
-    // 3. Update conversation metadata
+    // 3. Cập nhật dữ liệu hội thoại (metadata preview)
     await FirebaseFirestore.instance
         .collection('conversations')
         .doc(conversationId)
@@ -392,11 +390,25 @@ class SyncManager {
       'lastMessage': plainContent,
       'lastMessageTime': timestamp,
       'lastMessageType': messageType,
-    }).catchError((_) {}); // non-fatal
+    }).catchError((_) {}); // Bỏ qua nếu lỗi không nghiêm trọng
 
-    // 4. Update local status: pending → sent
+    // 4. Cập nhật trạng thái database cục bộ: pending → sent
     await _localDb.updateMessageStatus(
         conversationId, messageId, MessageStatus.sent);
+
+    // ── AI Content Bridge (Fire-and-Forget) ───────────────────────────────
+    // Đẩy plain text đã được mask sạch PII lên ai_content collection phục vụ hệ thống
+    // báo cáo phân tích tuần weeklyAiRecap và quét độc hại analyzeDecryptedClientMessage.
+    // Chỉ áp dụng với tin nhắn văn bản (text), không block luồng đồng bộ chính.
+    if (messageType == TypeMessage.text && plainContent.isNotEmpty) {
+      _pushAiContent(
+        conversationId: conversationId,
+        messageId: messageId,
+        plainContent: plainContent,
+        idFrom: idFrom,
+      );
+    }
+    // ── END AI Content Bridge ─────────────────────────────────────────────
 
     debugPrint('[SyncManager] 📤 Sent message $messageId');
     return true;
@@ -409,7 +421,7 @@ class SyncManager {
 
     if (conversationId.isEmpty || userMessage.isEmpty) return false;
 
-    // Build history from local cache (up to 30 messages, chronological order)
+    // Trích xuất lịch sử hội thoại cục bộ (tối đa 30 tin nhắn gần nhất) theo thứ tự thời gian tăng dần
     final history = _localDb
         .getMessages(conversationId)
         .take(30)
@@ -421,7 +433,7 @@ class SyncManager {
             })
         .toList();
 
-    // Call Gemini
+    // Gọi Gemini API lấy câu trả lời sinh bởi AI
     final aiText = await _gemini.sendMessage(userMessage, history);
     if (aiText.isEmpty) return false;
 
@@ -437,10 +449,10 @@ class SyncManager {
       'status': MessageStatus.sent,
     };
 
-    // Save locally first (optimistic)
+    // Lưu trữ tạm xuống local cache (Optimistic UI updates)
     await _localDb.saveMessage(conversationId, aiTimestamp, aiMessage);
 
-    // Push to Firestore (AI messages are plaintext — no E2EE)
+    // Đẩy dữ liệu lên Cloud Firestore (Tin nhắn AI gửi là plaintext công khai — không mã hóa E2EE)
     await FirebaseFirestore.instance
         .collection('messages')
         .doc(conversationId)
@@ -455,7 +467,7 @@ class SyncManager {
       'status': MessageStatus.sent,
     });
 
-    // Update conversation preview
+    // Cập nhật lại khung tin nhắn cuối cùng hiển thị ngoài màn hình danh sách chat
     await FirebaseFirestore.instance
         .collection('conversations')
         .doc(conversationId)
@@ -470,9 +482,49 @@ class SyncManager {
     return true;
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // HELPERS
-  // ─────────────────────────────────────────────────────────────────────────
+  // ═════════════════════════════════════════════════════════════════════════
+  // AI CONTENT BRIDGE MECHANICS
+  // ═════════════════════════════════════════════════════════════════════════
+
+  /// Đẩy ngầm plain text (đã che thông tin nhạy cảm) lên bộ nhớ xử lý `ai_content`.
+  /// Không dùng `await`, mọi lỗi phát sinh sẽ chỉ ghi nhận log để không gây nghẽn tiến trình gửi/nhận tin chính.
+  void _pushAiContent({
+    required String conversationId,
+    required String messageId,
+    required String plainContent,
+    required String idFrom,
+  }) {
+    FirebaseFirestore.instance
+        .collection(FirestoreConstants.pathConversationCollection)
+        .doc(conversationId)
+        .get()
+        .then((doc) {
+      final isGroup = doc.data()?['isGroup'] as bool? ?? false;
+      _aiContent.pushAiContent(
+        conversationId: conversationId,
+        messageId: messageId,
+        plainText: plainContent,
+        idFrom: idFrom,
+        messageType: TypeMessage.text,
+        groupId: isGroup ? conversationId : null,
+      );
+    }).catchError((e) {
+      // Dự phòng khi không thể lấy metadata hội thoại, vẫn thực hiện push không chứa thông tin nhóm (groupId = null)
+      _aiContent.pushAiContent(
+        conversationId: conversationId,
+        messageId: messageId,
+        plainText: plainContent,
+        idFrom: idFrom,
+        messageType: TypeMessage.text,
+        groupId: null,
+      );
+      debugPrint('[SyncManager] AiContent conv fetch error (non-critical): $e');
+    });
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // INTERNAL HELPERS
+  // ═════════════════════════════════════════════════════════════════════════
 
   Future<void> _markMessageFailed(Map<String, dynamic> payload) async {
     final conversationId = _str(payload['conversationId']);

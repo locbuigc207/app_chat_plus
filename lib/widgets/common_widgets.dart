@@ -2,9 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
 import 'package:flutter_chat_demo/constants/constants.dart';
-import 'package:flutter_chat_demo/providers/providers.dart';
+import 'package:flutter_chat_demo/models/models.dart';
 
 class LoadingView extends StatefulWidget {
   final String? message;
@@ -15,14 +14,16 @@ class LoadingView extends StatefulWidget {
   State<LoadingView> createState() => _LoadingViewState();
 }
 
-class _LoadingViewState extends State<LoadingView> with SingleTickerProviderStateMixin {
+class _LoadingViewState extends State<LoadingView>
+    with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _fade;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 300));
     _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
     _ctrl.forward();
   }
@@ -85,13 +86,15 @@ class _AnimatedSpinner extends StatefulWidget {
   State<_AnimatedSpinner> createState() => _AnimatedSpinnerState();
 }
 
-class _AnimatedSpinnerState extends State<_AnimatedSpinner> with SingleTickerProviderStateMixin {
+class _AnimatedSpinnerState extends State<_AnimatedSpinner>
+    with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1200))
       ..repeat();
   }
 
@@ -192,7 +195,9 @@ class ReactionPicker extends StatelessWidget {
           ),
         ],
         border: Border.all(
-          color: isDark ? Colors.white.withValues(alpha: 0.07) : Colors.grey.shade100,
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.07)
+              : Colors.grey.shade100,
         ),
       ),
       child: Row(
@@ -220,7 +225,8 @@ class _EmojiBtn extends StatefulWidget {
   State<_EmojiBtn> createState() => _EmojiBtnState();
 }
 
-class _EmojiBtnState extends State<_EmojiBtn> with SingleTickerProviderStateMixin {
+class _EmojiBtnState extends State<_EmojiBtn>
+    with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _scale;
   late Animation<double> _lift;
@@ -304,8 +310,11 @@ class MessageReactionsDisplay extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
             decoration: BoxDecoration(
               color: hasReacted
-                  ? ColorConstants.primaryColor.withValues(alpha: isDark ? 0.25 : 0.12)
-                  : (isDark ? Colors.white.withValues(alpha: 0.06) : Colors.grey.shade100),
+                  ? ColorConstants.primaryColor
+                      .withValues(alpha: isDark ? 0.25 : 0.12)
+                  : (isDark
+                      ? Colors.white.withValues(alpha: 0.06)
+                      : Colors.grey.shade100),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: hasReacted
@@ -365,7 +374,8 @@ class SmartReplyWidget extends StatelessWidget {
                 shaderCallback: (bounds) => const LinearGradient(
                   colors: [Color(0xFF6C63FF), Color(0xFF3B82F6)],
                 ).createShader(bounds),
-                child: const Icon(Icons.auto_awesome_rounded, size: 13, color: Colors.white),
+                child: const Icon(Icons.auto_awesome_rounded,
+                    size: 13, color: Colors.white),
               ),
               const SizedBox(width: 5),
               Text(
@@ -421,14 +431,16 @@ class _SmartReplyChip extends StatefulWidget {
   State<_SmartReplyChip> createState() => _SmartReplyChipState();
 }
 
-class _SmartReplyChipState extends State<_SmartReplyChip> with SingleTickerProviderStateMixin {
+class _SmartReplyChipState extends State<_SmartReplyChip>
+    with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 130));
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 130));
     _scale = Tween<double>(begin: 1.0, end: 0.95)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeIn));
   }
@@ -450,7 +462,8 @@ class _SmartReplyChipState extends State<_SmartReplyChip> with SingleTickerProvi
       onTapCancel: () => _ctrl.reverse(),
       child: AnimatedBuilder(
         animation: _scale,
-        builder: (_, child) => Transform.scale(scale: _scale.value, child: child),
+        builder: (_, child) =>
+            Transform.scale(scale: _scale.value, child: child),
         child: Container(
           margin: EdgeInsets.only(right: 8, left: widget.index == 0 ? 0 : 0),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -492,7 +505,8 @@ class TypingIndicator extends StatefulWidget {
   State<TypingIndicator> createState() => _TypingIndicatorState();
 }
 
-class _TypingIndicatorState extends State<TypingIndicator> with SingleTickerProviderStateMixin {
+class _TypingIndicatorState extends State<TypingIndicator>
+    with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _fade;
 
@@ -536,13 +550,16 @@ class _TypingIndicatorState extends State<TypingIndicator> with SingleTickerProv
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: ColorConstants.primaryColor.withValues(alpha: 0.12),
-                border:
-                    Border.all(color: ColorConstants.primaryColor.withValues(alpha: 0.2), width: 1),
+                border: Border.all(
+                    color: ColorConstants.primaryColor.withValues(alpha: 0.2),
+                    width: 1),
               ),
               child: ClipOval(
                 child: widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty
                     ? Image.network(widget.avatarUrl!,
-                        fit: BoxFit.cover, errorBuilder: (_, __, ___) => _initials(widget.userName))
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) =>
+                            _initials(widget.userName))
                     : _initials(widget.userName),
               ),
             ),
@@ -579,7 +596,8 @@ class _TypingIndicatorState extends State<TypingIndicator> with SingleTickerProv
                           width: 7,
                           height: 7,
                           decoration: BoxDecoration(
-                            color: ColorConstants.primaryColor.withValues(alpha: 0.25 + t * 0.75),
+                            color: ColorConstants.primaryColor
+                                .withValues(alpha: 0.25 + t * 0.75),
                             shape: BoxShape.circle,
                           ),
                         );
@@ -602,7 +620,9 @@ class _TypingIndicatorState extends State<TypingIndicator> with SingleTickerProv
         child: Text(
           name.isNotEmpty ? name[0].toUpperCase() : '?',
           style: const TextStyle(
-              color: ColorConstants.primaryColor, fontSize: 12, fontWeight: FontWeight.bold),
+              color: ColorConstants.primaryColor,
+              fontSize: 12,
+              fontWeight: FontWeight.bold),
         ),
       ),
     );
@@ -654,7 +674,9 @@ class UserAvatarWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorIndex = name.isEmpty ? 0 : name.codeUnitAt(0) % ColorConstants.avatarColors.length;
+    final colorIndex = name.isEmpty
+        ? 0
+        : name.codeUnitAt(0) % ColorConstants.avatarColors.length;
     final avatarColor = ColorConstants.avatarColors[colorIndex];
 
     return Stack(
@@ -741,7 +763,8 @@ class PulsingDot extends StatefulWidget {
   State<PulsingDot> createState() => _PulsingDotState();
 }
 
-class _PulsingDotState extends State<PulsingDot> with SingleTickerProviderStateMixin {
+class _PulsingDotState extends State<PulsingDot>
+    with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _anim;
 
@@ -834,7 +857,9 @@ class EmptyStateWidget extends StatelessWidget {
             Text(
               subtitle,
               style: TextStyle(
-                  fontSize: 14, height: 1.5, color: isDark ? Colors.white38 : Colors.grey.shade500),
+                  fontSize: 14,
+                  height: 1.5,
+                  color: isDark ? Colors.white38 : Colors.grey.shade500),
               textAlign: TextAlign.center,
             ),
             if (action != null) ...[

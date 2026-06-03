@@ -51,7 +51,7 @@ const agoraCertificate = defineSecret("AGORA_APP_CERTIFICATE");
 // ═════════════════════════════════════════════════════════════════════════════
 
 const MODEL_ID             = "gemini-2.0-flash";
-const MODEL_FLASH_LITE     = "gemini-2.0-flash-lite"; // for cheap/fast ops
+const MODEL_FLASH_LITE     = "gemini-2.0-flash-lite"; // dùng cho cheap/fast ops
 const MAX_INPUT_LENGTH     = 4000;
 const MAX_HISTORY_MSGS     = 20;
 const AGORA_TOKEN_TTL_SEC  = 3600;
@@ -59,7 +59,7 @@ const CALL_STALE_SEC       = 90;
 
 const ACTIVE_CALL_STATUSES = ["calling", "ringing", "dialing", "connected", "accepted"];
 
-// Rate limiting: max calls per user per minute (tracked in Firestore)
+// Rate limiting: số lượng yêu cầu tối đa của một user trong 1 phút
 const RATE_LIMIT_AI_CALLS_PER_MIN = 20;
 
 const SCAM_KEYWORDS_VI = [
@@ -77,9 +77,9 @@ const HATE_KEYWORDS_VI = [
   "thằng khùng", "con điên", "đồ khốn", "tao ghét mày",
 ];
 
-// In-memory cache for short-lived results (cleared on cold start)
+// In-memory cache cho các kết quả phân tích ngắn hạn (xóa sạch khi dính Cold Start)
 const _analysisCache = new Map();
-const CACHE_TTL_MS = 30_000; // 30 seconds
+const CACHE_TTL_MS = 30_000; // 30 giây
 
 // ═════════════════════════════════════════════════════════════════════════════
 // SHARED HELPERS
@@ -114,7 +114,7 @@ function safeParseJson(text) {
   }
 }
 
-/** Simple in-memory cache with TTL */
+/** Trích xuất dữ liệu từ in-memory cache bằng TTL */
 function getCached(key) {
   const entry = _analysisCache.get(key);
   if (!entry) return null;
@@ -127,14 +127,14 @@ function getCached(key) {
 
 function setCached(key, value) {
   _analysisCache.set(key, {value, ts: Date.now()});
-  // Evict oldest entries if cache grows too large
+  // Giải phóng bớt các cache cũ nếu kích thước vượt ngưỡng 500 phần tử
   if (_analysisCache.size > 500) {
     const firstKey = _analysisCache.keys().next().value;
     _analysisCache.delete(firstKey);
   }
 }
 
-/** Per-user rate limiter using Firestore counter (sliding 1-minute window) */
+/** Giới hạn tần suất cuộc gọi (Rate Limiting) trên từng User bằng Firestore Transactions */
 async function checkRateLimit(uid, action) {
   const ref = db.collection("_rate_limits").doc(`${uid}_${action}`);
   const now = Date.now();
@@ -160,7 +160,6 @@ async function checkRateLimit(uid, action) {
     });
   } catch (err) {
     if (err instanceof HttpsError) throw err;
-    // If rate limit check itself fails, log but allow through
     logger.warn("[checkRateLimit] Transient error:", err);
   }
 }
@@ -264,12 +263,10 @@ async function sendPushNotification({pushToken, title, body, data = {}}) {
       },
     });
   } catch (err) {
-    // Token may be stale — log but don't throw
     logger.warn("[sendPushNotification]", err?.errorInfo?.code ?? err);
   }
 }
 
-/** Fetch user push token safely */
 async function getUserPushToken(userId) {
   if (!userId) return null;
   try {
@@ -296,7 +293,6 @@ exports.analyzeDecryptedMessage = onCall(
     const safeText = sanitize(plainText);
     if (!safeText) return {status: "SAFE", level: "SAFE"};
 
-    // Check in-memory cache
     const cacheKey = `scam_${Buffer.from(safeText).toString("base64").substring(0, 32)}`;
     const cached = getCached(cacheKey);
     if (cached) return cached;
@@ -358,7 +354,6 @@ exports.analyzeScam = onCall(
     if (!safeMsg) return {status: "SAFE", level: "SAFE"};
     const quick = quickScamCheck(safeMsg);
 
-    // Short-circuit if no keywords and short message
     if (!quick.hasKeywords && safeMsg.length < 30) {
       return {status: "SAFE", level: "SAFE", warningKeywords: []};
     }
@@ -404,7 +399,23 @@ exports.analyzeDecryptedClientMessage = onCall(
     const {plainTextContent, conversationId, messageId, idTo} = request.data;
     if (!plainTextContent) return null;
 
-    const safeText = sanitize(plainTextContent);
+    const safeText = sanitize(plainTextContent, 500);
+
+    // Guard Block: Chặn không xử lý các chuỗi mã hóa Ciphertext bị lọt lên từ Client
+    if (safeText.startsWith('{"iv":') || safeText.startsWith("eyJ")) {
+      logger.warn("[analyzeDecryptedClientMessage] Ciphertext received — skip");
+      return null;
+    }
+
+    // Guard Block: Loại bỏ định dạng mã hóa CBC cũ (base64:base64)
+    if (/^[A-Za-z0-9+/=]+=*:[A-Za-z0-9+/=]+=*$/.test(safeText)) {
+      logger.warn("[analyzeDecryptedClientMessage] Legacy ciphertext — skip");
+      return null;
+    }
+
+    // Guard Block: Bỏ qua tin nhắn quá ngắn không đem lại giá trị phân tích ngữ cảnh
+    if (safeText.trim().length < 10) return null;
+
     try {
       const model    = createGeminiModel(
         geminiApiKey.value(),
@@ -770,7 +781,7 @@ exports.analyzeSentiment = onCall(
     try {
       const raw = await callGeminiWithRetry(model,
         `Phân tích cảm xúc tổng thể cuộc trò chuyện.\n` +
-        `Trả về JSON: {"sentiment":"positive"|"neutral"|"negative","score":0.0-1.0,"emoji":"...","mood":"...","trend":"improving"|"stable"|"declining"}\n\n` +
+        `Trả về JSON: {"sentiment":"positive"|"neutral"|"negative","score":0.0-1.0","emoji":"...","mood":"...","trend":"improving"|"stable"|"declining"}\n\n` +
         `${clean.slice(-10).join("\n")}`,
       );
       return safeParseJson(raw) ?? {sentiment: "neutral", score: 0.5, emoji: "😐", mood: "bình thường"};
@@ -794,7 +805,6 @@ exports.detectHateSpeech = onCall(
 
     const safeMsg = sanitize(message, 1000);
 
-    // Quick keyword pre-check
     if (!quickHateCheck(safeMsg) && safeMsg.length < 20) {
       return {isHateful: false, category: "none", confidence: 0};
     }
@@ -808,7 +818,7 @@ exports.detectHateSpeech = onCall(
     try {
       const raw    = await callGeminiWithRetry(model,
         `Kiểm tra tin nhắn có chứa ngôn ngữ thù ghét, quấy rối, xúc phạm không.\n` +
-        `Trả về JSON: {"isHateful":bool,"category":"hate"|"harassment"|"offensive"|"none","confidence":0.0-1.0,"reason":"..."}\n\n` +
+        `Trả về JSON: {"isHateful":bool,"category":"hate"|"harassment"|"offensive"|"none","confidence":0.0-1.0","reason":"..."}\n\n` +
         `Tin nhắn: "${safeMsg}"`,
       );
       const parsed = safeParseJson(raw);
@@ -903,7 +913,7 @@ exports.requestCallToken = onCall(
 );
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 15. smartReplyWithContext — AI reply composer with full context awareness
+// 15. smartReplyWithContext
 // ═════════════════════════════════════════════════════════════════════════════
 
 exports.smartReplyWithContext = onCall(
@@ -1010,7 +1020,7 @@ exports.generateIcebreakers = onCall(
 );
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 17. analyzeToxicityBatch — Batch analyze multiple messages at once
+// 17. analyzeToxicityBatch
 // ═════════════════════════════════════════════════════════════════════════════
 
 exports.analyzeToxicityBatch = onCall(
@@ -1025,7 +1035,6 @@ exports.analyzeToxicityBatch = onCall(
     if (!Array.isArray(messages) || messages.length === 0) {
       throw new HttpsError("invalid-argument", "Thiếu messages array.");
     }
-    // Limit batch size
     const batch = messages.slice(0, 20).map((m) => ({
       id:   m.id ?? null,
       text: sanitize(String(m.text ?? ""), 500),
@@ -1047,7 +1056,6 @@ exports.analyzeToxicityBatch = onCall(
       if (!Array.isArray(results)) {
         return {results: batch.map((_, i) => ({index: i, isToxic: false, category: "safe", confidence: 0}))};
       }
-      // Map results back with IDs
       return {
         results: results.map((r) => ({
           ...r,
@@ -1063,7 +1071,7 @@ exports.analyzeToxicityBatch = onCall(
 );
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 18. generateMessageTone — Rewrite message in a different tone
+// 18. generateMessageTone
 // ═════════════════════════════════════════════════════════════════════════════
 
 exports.generateMessageTone = onCall(
@@ -1114,7 +1122,7 @@ exports.generateMessageTone = onCall(
 );
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 19. extractKeyMoments — Extract highlights and memorable moments
+// 19. extractKeyMoments
 // ═════════════════════════════════════════════════════════════════════════════
 
 exports.extractKeyMoments = onCall(
@@ -1132,7 +1140,7 @@ exports.extractKeyMoments = onCall(
     );
     try {
       const raw = await callGeminiWithRetry(model,
-        `Phân tích cuộc trò chuyện và trích xuất các khoảnh khắc đáng nhớ, quan trọng.\n` +
+        `Phân tích cuộc trò chuyện và trích xuất các khoảnhâm thực đáng nhớ, quan trọng.\n` +
         `Trả về JSON:\n` +
         `{"moments":[{"type":"funny"|"touching"|"important"|"decision","content":"...","timestamp":null}],` +
         `"highlights":["highlight1","highlight2"],"overallVibes":"..."}\n\n` +
@@ -1154,68 +1162,60 @@ exports.extractKeyMoments = onCall(
 );
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 20. getUserInsights — Per-user behavioral AI insights from their history
+// 20. getUserInsights
 // ═════════════════════════════════════════════════════════════════════════════
 
 exports.getUserInsights = onCall(
-  {
-    secrets:        [geminiApiKey],
-    memory:         "512MiB",
-    timeoutSeconds: 120,
-  },
+  {secrets: [geminiApiKey], memory: "256MiB", timeoutSeconds: 60},
   async (request) => {
     requireAuth(request.auth);
     const uid = request.auth.uid;
-    const {lookbackDays = 7} = request.data;
 
-    const cutoff = (Date.now() - lookbackDays * 86_400_000).toString();
+    // Nhận trực tiếp các tin nhắn đã giải mã và xóa PII từ Client qua LocalDB
+    // Khắc phục hoàn toàn việc đọc Ciphertext lỗi trên Cloud Firestore
+    const {messages, lookbackDays = 7} = request.data;
+
+    if (!Array.isArray(messages) || messages.length < 5) {
+      return {
+        communicationStyle: "unknown",
+        topTopics:          [],
+        activityPattern:    "unknown",
+        personalityTraits:  [],
+        insightSummary:     "Chưa đủ dữ liệu để phân tích.",
+        emojiUsageLevel:    "medium",
+        avgMessageLength:   "medium",
+      };
+    }
+
+    const validMessages = messages
+      .map((m) => sanitize(String(m ?? ""), 200))
+      .filter((m) =>
+        m.length > 5 &&
+        !m.startsWith('{"iv":') &&
+        !m.startsWith("eyJ") &&
+        !/^[A-Za-z0-9+/=]+=*:[A-Za-z0-9+/=]+=*$/.test(m),
+      );
+
+    if (validMessages.length < 5) {
+      return {insightSummary: "Không thể phân tích — dữ liệu không hợp lệ."};
+    }
+
+    const model = createGeminiModel(
+      geminiApiKey.value(),
+      "Chuyên gia tâm lý hành vi và phân tích giao tiếp.",
+      {maxOutputTokens: 768, temperature: 0.4},
+    );
+
     try {
-      // Sample recent sent messages from all conversations
-      const convSnap = await db
-        .collection("conversations")
-        .where("participants", "array-contains", uid)
-        .limit(10)
-        .get();
-
-      const allMessages = [];
-      await Promise.all(convSnap.docs.map(async (conv) => {
-        const msgs = await db
-          .collection("messages").doc(conv.id).collection(conv.id)
-          .where("idFrom", "==", uid)
-          .where("timestamp", ">=", cutoff)
-          .orderBy("timestamp", "desc")
-          .limit(20)
-          .get();
-        msgs.docs.forEach((m) => {
-          const content = m.data().content;
-          if (content && typeof content === "string") {
-            allMessages.push(sanitize(content, 200));
-          }
-        });
-      }));
-
-      if (allMessages.length < 5) {
-        return {
-          communicationStyle: "unknown",
-          topTopics:          [],
-          activityPattern:    "unknown",
-          personalityTraits:  [],
-          insightSummary:     "Chưa đủ dữ liệu để phân tích.",
-        };
-      }
-
-      const model = createGeminiModel(
-        geminiApiKey.value(),
-        "Chuyên gia tâm lý hành vi và phân tích giao tiếp.",
-        {maxOutputTokens: 768, temperature: 0.4},
-      );
-
       const raw = await callGeminiWithRetry(model,
-        `Phân tích phong cách giao tiếp của người dùng qua ${allMessages.length} tin nhắn gửi đi.\n` +
-        `Trả về JSON:\n` +
-        `{"communicationStyle":"formal"|"casual"|"mixed","topTopics":[],"activityPattern":"...","personalityTraits":[],"insightSummary":"...","emojiUsageLevel":"high"|"medium"|"low","avgMessageLength":"short"|"medium"|"long"}\n\n` +
-        `Tin nhắn: ${allMessages.slice(0, 50).join(" | ")}`,
+        `Phân tích phong cách giao tiếp qua ${validMessages.length} tin nhắn.\n` +
+        `Trả về JSON:\n{"communicationStyle":"formal"|"casual"|"mixed",` +
+        `"topTopics":[],"activityPattern":"...","personalityTraits":[],` +
+        `"insightSummary":"...","emojiUsageLevel":"high"|"medium"|"low",` +
+        `"avgMessageLength":"short"|"medium"|"long"}\n\n` +
+        `Tin nhắn:\n${validMessages.slice(0, 50).join("\n")}`,
       );
+
       const insights = safeParseJson(raw);
       if (insights) {
         await db.collection("users").doc(uid).set(
@@ -1266,7 +1266,7 @@ exports.generateAgoraToken = onRequest(
 );
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 22. healthCheck — Service health endpoint
+// 22. healthCheck
 // ═════════════════════════════════════════════════════════════════════════════
 
 exports.healthCheck = onRequest(
@@ -1277,7 +1277,7 @@ exports.healthCheck = onRequest(
         status:    "ok",
         timestamp: new Date().toISOString(),
         region:    "asia-southeast1",
-        version:   "2.0.0",
+        version:   "2.1.0",
       });
     });
   },
@@ -1330,7 +1330,6 @@ exports.sendMessageNotification = onDocumentCreated(
       if (!receiverSnap.exists) return;
 
       const receiverData = receiverSnap.data();
-      // Don't notify if receiver is currently online (they'll see it in real-time)
       if (receiverData?.isOnline) return;
 
       const pushToken = receiverData?.pushToken;
@@ -1341,13 +1340,8 @@ exports.sendMessageNotification = onDocumentCreated(
       const senderAvatar = senderData?.photoUrl ?? "";
 
       const typeLabels = {1: "[Hình ảnh]", 2: "[Video]", 3: "[Tệp đính kèm]", 4: "[Âm thanh]"};
-      const messagePreview = msgData.type === 0 ?
-        "Bạn có tin nhắn mới" :
-        (typeLabels[msgData.type] ?? "[Tệp đính kèm]");
-
-      const encryptedContent = msgData.type === 0 ?
-        (msgData.content ?? "") :
-        (typeLabels[msgData.type] ?? "");
+      const messagePreview = msgData.type === 0 ? "Bạn có tin nhắn mới" : (typeLabels[msgData.type] ?? "[Tệp đính kèm]");
+      const encryptedContent = msgData.type === 0 ? (msgData.content ?? "") : (typeLabels[msgData.type] ?? "");
 
       await sendPushNotification({
         pushToken,
@@ -1599,7 +1593,50 @@ exports.cleanupStaleCalls = onSchedule(
 );
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 32. weeklyAiRecap
+// 32. cleanupExpiredAiContent
+// ═════════════════════════════════════════════════════════════════════════════
+
+exports.cleanupExpiredAiContent = onSchedule(
+  {schedule: "every 24 hours", timeZone: "Asia/Ho_Chi_Minh"},
+  async () => {
+    logger.info("[cleanupExpiredAiContent] Starting cleanup...");
+    const now = new Date();
+    let totalDeleted = 0;
+
+    try {
+      const convDocs = await db.collection("ai_content").listDocuments();
+
+      for (const convRef of convDocs) {
+        try {
+          const convId = convRef.id;
+          const expiredDocs = await db
+            .collection("ai_content")
+            .doc(convId)
+            .collection(convId)
+            .where("expireAt", "<=", now)
+            .limit(500)
+            .get();
+
+          if (expiredDocs.empty) continue;
+
+          const batch = db.batch();
+          expiredDocs.docs.forEach((doc) => batch.delete(doc.ref));
+          await batch.commit();
+          totalDeleted += expiredDocs.size;
+        } catch (convErr) {
+          logger.warn(`[cleanupExpiredAiContent] Error for conv ${convRef.id}:`, convErr);
+        }
+      }
+
+      logger.info(`[cleanupExpiredAiContent] Deleted ${totalDeleted} expired docs`);
+    } catch (err) {
+      logger.error("[cleanupExpiredAiContent]", err);
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 33. weeklyAiRecap
 // ═════════════════════════════════════════════════════════════════════════════
 
 exports.weeklyAiRecap = onSchedule(
@@ -1623,10 +1660,13 @@ exports.weeklyAiRecap = onSchedule(
       let recapped = 0;
       for (const groupDoc of groups.docs) {
         const groupId  = groupDoc.id;
+
+        // Đọc dữ liệu từ bản sao lưu bảo mật ai_content (E2EE Safe plain text)
         const msgsSnap = await db
-          .collection("messages").doc(groupId).collection(groupId)
+          .collection("ai_content")
+          .doc(groupId)
+          .collection(groupId)
           .where("timestamp", ">=", sevenDaysAgo)
-          .where("type",      "==", 0)
           .orderBy("timestamp", "asc")
           .limit(200)
           .get();
@@ -1634,8 +1674,15 @@ exports.weeklyAiRecap = onSchedule(
         if (msgsSnap.empty) continue;
 
         const chatHistory = msgsSnap.docs
-          .map((d) => `User ${d.data().idFrom}: ${sanitize(d.data().content ?? "", 200)}`)
+          .map((d) => {
+            const content = d.data().content ?? "";
+            if (content.startsWith('{"iv":') || content.startsWith("eyJ")) return null;
+            if (content.trim().length < 5) return null;
+            return `${d.data().idFrom}: ${sanitize(content, 200)}`;
+          })
+          .filter(Boolean)
           .join("\n");
+
         if (!chatHistory.trim()) continue;
 
         try {
@@ -1649,6 +1696,26 @@ exports.weeklyAiRecap = onSchedule(
             `dưới 150 chữ: ai nói nhiều nhất, câu nói ấn tượng, trend hài hước, highlight của tuần. ` +
             `Dùng emoji, tiếng lóng Gen Z vừa phải, vui vẻ.\n\nLịch sử:\n${chatHistory}`,
           );
+
+          // Cấu trúc lại bản tóm tắt sang JSON có cấu trúc để phục vụ trang hiển thị WeeklyRecapPage
+          const recapStructured = await (async () => {
+            try {
+              const modelJson = createGeminiModel(
+                geminiApiKey.value(),
+                "Phân tích và trả về JSON hợp lệ.",
+                {maxOutputTokens: 256, temperature: 0.2},
+              );
+              const rawJson = await callGeminiWithRetry(modelJson,
+                `Từ bản tin sau, trích xuất JSON:\n` +
+                `{"summary":"...","highlights":["..."],"sentiment":"positive"|"neutral"|"negative"}\n\n` +
+                `Bản tin: ${recap.trim()}`,
+              );
+              return safeParseJson(rawJson) ?? {};
+            } catch {
+              return {};
+            }
+          })();
+
           const recapText = `🔥 BẢN TIN BÓC PHỐT TUẦN 🔥\n\n${recap.trim()}`;
           const msgId     = Date.now().toString();
 
@@ -1664,11 +1731,28 @@ exports.weeklyAiRecap = onSchedule(
             status:    "sent",
           });
           batch.update(groupDoc.ref, {
-            lastMessage:     recapText,
+            lastMessage:     recapText.substring(0, 100),
             lastMessageTime: msgId,
             lastMessageType: 0,
           });
           await batch.commit();
+
+          // Đồng bộ ghi đè cấu trúc tuần vào Document User của Group để Client-Side bóc tách giao diện tốt hơn
+          await db.collection("users").doc(groupId).set(
+            {
+              weeklyRecap: {
+                summary:     recapStructured.summary ?? recapText,
+                highlights:  recapStructured.highlights ?? [],
+                sentiment:   recapStructured.sentiment ?? "neutral",
+                fullText:    recapText,
+                generatedAt: FieldValue.serverTimestamp(),
+                weekStart:   new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+                messageCount: msgsSnap.size,
+              },
+            },
+            {merge: true},
+          );
+
           recapped++;
         } catch (err) {
           logger.error(`[weeklyAiRecap] Gemini error group ${groupId}:`, err);
@@ -1682,7 +1766,7 @@ exports.weeklyAiRecap = onSchedule(
 );
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 33. dailyConversationDigest — Mon–Fri 08:00 ICT personal digest
+// 34. dailyConversationDigest
 // ═════════════════════════════════════════════════════════════════════════════
 
 exports.dailyConversationDigest = onSchedule(
@@ -1697,7 +1781,6 @@ exports.dailyConversationDigest = onSchedule(
     logger.info("[dailyConversationDigest] Starting...");
 
     try {
-      // Get active users (online in last 7 days)
       const usersSnap = await db
         .collection("users")
         .where("lastSeen", ">=", (Date.now() - 7 * 86_400_000).toString())
@@ -1710,7 +1793,6 @@ exports.dailyConversationDigest = onSchedule(
         const pushToken = userDoc.data()?.pushToken;
         if (!pushToken) continue;
 
-        // Count unread messages for user
         const convSnap = await db
           .collection("conversations")
           .where("participants", "array-contains", uid)

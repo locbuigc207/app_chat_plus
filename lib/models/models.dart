@@ -1,3 +1,4 @@
+export 'ai_models.dart';
 export 'bubble_models.dart';
 export 'call_model.dart';
 export 'conversation.dart';
