@@ -402,7 +402,7 @@ exports.analyzeDecryptedClientMessage = onCall(
     const safeText = sanitize(plainTextContent, 500);
 
     // Guard Block: Chặn không xử lý các chuỗi mã hóa Ciphertext bị lọt lên từ Client
-    if (safeText.startsWith('{"iv":') || safeText.startsWith("eyJ")) {
+    if (safeText.startsWith("{\"iv\":") || safeText.startsWith("eyJ")) {
       logger.warn("[analyzeDecryptedClientMessage] Ciphertext received — skip");
       return null;
     }
@@ -1173,7 +1173,7 @@ exports.getUserInsights = onCall(
 
     // Nhận trực tiếp các tin nhắn đã giải mã và xóa PII từ Client qua LocalDB
     // Khắc phục hoàn toàn việc đọc Ciphertext lỗi trên Cloud Firestore
-    const {messages, lookbackDays = 7} = request.data;
+    const {messages} = request.data;
 
     if (!Array.isArray(messages) || messages.length < 5) {
       return {
@@ -1191,7 +1191,7 @@ exports.getUserInsights = onCall(
       .map((m) => sanitize(String(m ?? ""), 200))
       .filter((m) =>
         m.length > 5 &&
-        !m.startsWith('{"iv":') &&
+        !m.startsWith("{\"iv\":") &&
         !m.startsWith("eyJ") &&
         !/^[A-Za-z0-9+/=]+=*:[A-Za-z0-9+/=]+=*$/.test(m),
       );
@@ -1676,7 +1676,7 @@ exports.weeklyAiRecap = onSchedule(
         const chatHistory = msgsSnap.docs
           .map((d) => {
             const content = d.data().content ?? "";
-            if (content.startsWith('{"iv":') || content.startsWith("eyJ")) return null;
+            if (content.startsWith("{\"iv\":") || content.startsWith("eyJ")) return null;
             if (content.trim().length < 5) return null;
             return `${d.data().idFrom}: ${sanitize(content, 200)}`;
           })

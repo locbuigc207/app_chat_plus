@@ -119,7 +119,7 @@ class AgoraRtcManager extends ChangeNotifier {
   RtcEngine? get engine => _engine;
 
   String get _tokenServerBase => (dotenv.env['AGORA_TOKEN_SERVER'] ??
-          'https://agora-token-service-boa9.onrender.com')
+          'https://asia-southeast1-flutter-chat-app-3e625.cloudfunctions.net/generateAgoraToken')
       .trim();
   String get _appId => (dotenv.env['AGORA_APP_ID'] ?? '').trim();
 
@@ -420,7 +420,7 @@ class AgoraRtcManager extends ChangeNotifier {
     for (int attempt = 0; attempt < maxRetries; attempt++) {
       try {
         final url =
-            Uri.parse('$_tokenServerBase/rtc/$channelName/publisher/uid/$uid');
+            Uri.parse('$_tokenServerBase?channelName=$channelName&uid=$uid');
         final res = await http.get(url).timeout(const Duration(seconds: 15));
 
         if (res.statusCode == 200) {
