@@ -37,7 +37,7 @@ class GroupChatPageState extends State<GroupChatPage>
         TickerProviderStateMixin {
   late String _currentUserId;
   int _limit = 30;
-  final int _limitIncrement = 20;
+  static const int _limitIncrement = 20;
 
   bool _isLoading = false;
   bool _isLoadingMedia = false;
@@ -45,7 +45,7 @@ class GroupChatPageState extends State<GroupChatPage>
   bool _showFeaturesMenu = false;
   bool _isRecording = false;
   bool _showScrollToBottom = false;
-  bool _isLoadingSmartReply = false; // AI loading indicator
+  bool _isLoadingSmartReply = false;
 
   String _recordingDuration = '0:00';
   int _recordingSeconds = 0;
@@ -58,7 +58,6 @@ class GroupChatPageState extends State<GroupChatPage>
   List<DocumentSnapshot> _pinnedMessages = [];
   bool _showMentionSuggestions = false;
   List<Map<String, dynamic>> _memberSuggestions = [];
-
   Map<String, String> _memberNames = {};
   final Map<String, String> _avatarUrlCache = {};
   List<SmartReply> _smartReplies = [];
@@ -68,8 +67,13 @@ class GroupChatPageState extends State<GroupChatPage>
   bool _isAutoPilotOn = false;
   bool _isShowingSwipeCards = false;
   List<String> _swipeReplies = [];
-  String _lastAutoRepliedMessageId = '';
+  String _lastAutoRepliedMsgId = '';
   StreamSubscription? _autoPilotSubscription;
+
+  // ── Bubble state ─────────────────────────────────────────────────────────
+  UnifiedBubbleService? _bubbleService;
+  BubbleContext _bubbleCtx = const BubbleContext();
+  StreamSubscription<BubbleContext>? _bubbleCtxSub;
 
   late final AnimationController _appBarAnim;
   late final AnimationController _fabAnim;
@@ -99,7 +103,9 @@ class GroupChatPageState extends State<GroupChatPage>
 
   String get groupChatId => widget.group.id;
 
-  // ── INIT ────────────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // INIT
+  // ══════════════════════════════════════════════════════════════════════════
 
   @override
   void initState() {
@@ -161,10 +167,29 @@ class GroupChatPageState extends State<GroupChatPage>
           VoiceMessageProvider(firebaseStorage: _chatProvider.firebaseStorage);
     } catch (_) {}
 
+    // ── Init bubble service ──────────────────────────────────────────────
+    try {
+      _bubbleService = context.read<UnifiedBubbleService>();
+    } catch (_) {
+      _bubbleService = UnifiedBubbleService();
+    }
+
+    // ── Listen to bubble context changes ────────────────────────────────
+    _bubbleCtxSub = ContextualBubbleService.instance
+        .contextStream(groupChatId)
+        .listen((ctx) {
+      if (mounted && !resourceManager.isDisposed) {
+        setState(() => _bubbleCtx = ctx);
+      }
+    });
+
     _readLocal();
     _loadPinnedMessages();
     _loadMemberNames();
     _startToxicityMonitor();
+
+    // Notify bubble lifecycle: chat opened
+    BubbleLifecycleObserver.instance.onChatOpened(groupChatId);
   }
 
   void _readLocal() {
@@ -178,6 +203,7 @@ class GroupChatPageState extends State<GroupChatPage>
     _chatProvider.listenToFirebaseChanges(
         groupChatId, _currentUserId, groupChatId);
     _markMessagesAsRead();
+    _listenIncomingGroupMessages(); // ← bubble incoming listener
     resourceManager.addDelayedTimer(const Duration(milliseconds: 500), () {
       if (!resourceManager.isDisposed && mounted) {
         unawaited(_loadSmartReplies());
@@ -185,6 +211,215 @@ class GroupChatPageState extends State<GroupChatPage>
         prefetchLinkPreviews(msgs.take(30).toList());
       }
     });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // BUBBLE METHODS
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Update the group bubble when a message is sent or received
+  Future<void> _updateGroupBubble(String content, int type,
+      {required bool fromUser}) async {
+    if (_bubbleService == null) return;
+    if (!BubbleSettingsService().isEnabled) return;
+
+    // When user has chat open: no need to show bubble
+    if (BubbleSettingsService().settings.autoHideWhenChatOpen && !fromUser)
+      return;
+    if (!_bubbleService!.isBubbleActive(groupChatId)) return;
+
+    final senderLabel = fromUser
+        ? (_memberNames[_currentUserId] ?? 'Bạn')
+        : (_memberNames[_currentUserId] ?? widget.group.groupName);
+
+    final preview = switch (type) {
+      TypeMessage.image => '📷 Hình ảnh',
+      TypeMessage.video => '🎬 Video',
+      3 => '🎤 Tin nhắn thoại',
+      TypeMessage.geoLocked => '📍 Vị trí',
+      TypeMessage.sticker => '😊 Sticker',
+      TypeMessage.document => '📎 Tệp đính kèm',
+      TypeMessage.poll => '📊 Bình chọn',
+      _ => content.length > 55 ? '${content.substring(0, 55)}…' : content,
+    };
+
+    try {
+      await _bubbleService!.sendMessage(
+        userId: groupChatId,
+        userName: widget.group.groupName,
+        message: fromUser ? 'Bạn: $preview' : '$senderLabel: $preview',
+        avatarUrl: widget.group.groupPhotoUrl,
+        messageType: switch (type) {
+          TypeMessage.image => 'image',
+          3 => 'voice',
+          TypeMessage.video => 'video',
+          _ => 'text',
+        },
+      );
+    } catch (e) {
+      debugPrint('❌ GroupBubble update: $e');
+    }
+  }
+
+  /// Show/create group bubble
+  Future<void> _createGroupBubble() async {
+    if (_bubbleService == null) return;
+
+    if (!_bubbleService!.isSupported) {
+      _showToast('Thiết bị không hỗ trợ chat bubble');
+      return;
+    }
+
+    if (!BubbleSettingsService().isEnabled) {
+      final confirm = await _showConfirmDialog(
+        title: 'Bong bóng chat đang tắt',
+        message: 'Mở Cài đặt → Bong bóng chat để bật?',
+        confirmLabel: 'Mở cài đặt',
+      );
+      if (confirm == true && mounted) {
+        Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const BubbleSettingsPage()));
+      }
+      return;
+    }
+
+    final hasPermission = await _bubbleService!.hasOverlayPermission();
+    if (!hasPermission) {
+      final granted = await _bubbleService!.requestOverlayPermission();
+      if (!granted) {
+        _showToast('Cần cấp quyền hiển thị');
+        return;
+      }
+    }
+
+    // Determine mode from current context
+    final ctx = ContextualBubbleService.instance.getContext(groupChatId);
+
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx2) {
+        final p = context.read<ThemeProvider>().palette;
+        final primary = context.read<ThemeProvider>().primaryColor;
+        return _ThemedDialog(
+          title: 'Chat Bubble Nhóm',
+          icon: Icons.bubble_chart_rounded,
+          iconColor: primary,
+          palette: p,
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('Hiện bong bóng cho nhóm\n"${widget.group.groupName}"',
+                style: TextStyle(
+                    color: p.textSecondary, fontSize: 14, height: 1.5)),
+            if (ctx.mode != BubbleMode.normal) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                    color: primary.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10)),
+                child: Text('Mode: ${ctx.mode.name} ${_modeEmoji(ctx.mode)}',
+                    style: TextStyle(
+                        color: primary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13)),
+              ),
+            ],
+          ]),
+          actions: [
+            _ThemedDialogAction(
+                label: 'Tạo Bubble',
+                isPrimary: true,
+                palette: p,
+                primary: primary,
+                onTap: () => Navigator.pop(ctx2, 'bubble')),
+            _ThemedDialogAction(
+                label: 'Huỷ',
+                palette: p,
+                primary: primary,
+                onTap: () => Navigator.pop(ctx2)),
+          ],
+        );
+      },
+    );
+
+    if (choice != 'bubble' || resourceManager.isDisposed) return;
+
+    final ok = await _bubbleService!.showChatBubble(
+        userId: groupChatId,
+        userName: widget.group.groupName,
+        avatarUrl: widget.group.groupPhotoUrl);
+
+    if (ok) {
+      _showToast('🫧 Bubble nhóm đã tạo (${ctx.mode.name})', isSuccess: true);
+    } else {
+      _showToast('❌ Không thể tạo bubble');
+    }
+  }
+
+  /// Listen for incoming group messages to update bubble + sound
+  void _listenIncomingGroupMessages() {
+    if (resourceManager.isDisposed) return;
+    final sub = FirebaseFirestore.instance
+        .collection(FirestoreConstants.pathMessageCollection)
+        .doc(groupChatId)
+        .collection(groupChatId)
+        .where('isRead', isEqualTo: false)
+        .snapshots()
+        .listen((snap) async {
+      if (resourceManager.isDisposed) return;
+      for (final change in snap.docChanges) {
+        if (change.type != DocumentChangeType.added) continue;
+        final data = change.doc.data() as Map<String, dynamic>? ?? {};
+        final idFrom = data['idFrom'] as String? ?? '';
+        if (idFrom == _currentUserId || idFrom.isEmpty) continue;
+
+        final content = data['content'] as String? ?? '';
+        final type = data['type'] as int? ?? 0;
+
+        // Update bubble context from message content
+        ContextualBubbleService.instance
+            .updateContext(conversationId: groupChatId, message: content);
+
+        // Play notification sound
+        final settings = BubbleSettingsService();
+        if (settings.settings.soundEnabled) {
+          final ctx = ContextualBubbleService.instance.getContext(groupChatId);
+          await BubbleSoundService().playReceive(ctx.mode);
+        }
+
+        // Update bubble
+        await _updateGroupBubble(content, type, fromUser: false);
+
+        // Show bubble if app is backgrounded
+        if (settings.isEnabled &&
+            WidgetsBinding.instance.lifecycleState !=
+                AppLifecycleState.resumed) {
+          await _bubbleService?.showChatBubble(
+              userId: groupChatId,
+              userName: widget.group.groupName,
+              avatarUrl: widget.group.groupPhotoUrl);
+        }
+      }
+    });
+    resourceManager.addSubscription(sub);
+  }
+
+  String _modeEmoji(BubbleMode mode) => switch (mode) {
+        BubbleMode.work => '💼',
+        BubbleMode.media => '🎵',
+        BubbleMode.location => '📍',
+        BubbleMode.secure => '🔒',
+        BubbleMode.shared => '🎨',
+        _ => '💬',
+      };
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // LIFECYCLE
+  // ══════════════════════════════════════════════════════════════════════════
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    BubbleLifecycleObserver.instance.didChangeAppLifecycleState(state);
   }
 
   void _scrollListener() {
@@ -197,27 +432,26 @@ class GroupChatPageState extends State<GroupChatPage>
     final show = pos.pixels > 400;
     if (show != _showScrollToBottom && mounted) {
       setState(() => _showScrollToBottom = show);
-      if (show) {
+      if (show)
         _fabAnim.forward();
-      } else {
+      else
         _fabAnim.reverse();
-      }
     }
   }
 
   void _onFocusChange() {
     if (resourceManager.isDisposed || !mounted) return;
-    if (_focusNode.hasFocus) {
+    if (_focusNode.hasFocus)
       setState(() {
         _isShowSticker = false;
         _showFeaturesMenu = false;
       });
-    }
   }
 
   @override
   void dispose() {
     _autoPilotSubscription?.cancel();
+    _bubbleCtxSub?.cancel();
     _recordingTimer?.cancel();
     _scheduledMessages.forEach((_, t) => t.cancel());
     _scheduledMessages.clear();
@@ -231,10 +465,14 @@ class GroupChatPageState extends State<GroupChatPage>
     _listScrollController.dispose();
     _focusNode.dispose();
     WidgetsBinding.instance.removeObserver(this);
+    // Notify bubble lifecycle
+    BubbleLifecycleObserver.instance.onChatClosed(groupChatId);
     super.dispose();
   }
 
-  // ── AI FEATURE METHODS ──────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // AI FEATURES
+  // ══════════════════════════════════════════════════════════════════════════
 
   void _showSummaryAnalysis() {
     final msgs = LocalDbService()
@@ -253,18 +491,16 @@ class GroupChatPageState extends State<GroupChatPage>
         .toList()
         .reversed
         .toList();
-
     if (msgs.length < 3) {
-      _showToast('Cần ít nhất 3 tin nhắn để phân tích');
+      _showToast('Cần ít nhất 3 tin nhắn');
       return;
     }
     showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      useSafeArea: true,
-      builder: (_) => ConversationSummarySheet(messages: msgs),
-    );
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        useSafeArea: true,
+        builder: (_) => ConversationSummarySheet(messages: msgs));
   }
 
   void _showToneRewriter() {
@@ -274,41 +510,34 @@ class GroupChatPageState extends State<GroupChatPage>
       return;
     }
     showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      useSafeArea: true,
-      builder: (_) => ToneRewriterSheet(
-        originalMessage: text,
-        onApply: (rewritten) {
-          _chatInputController.text = rewritten;
-          _focusNode.requestFocus();
-        },
-      ),
-    );
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        useSafeArea: true,
+        builder: (_) => ToneRewriterSheet(
+            originalMessage: text,
+            onApply: (rewritten) {
+              _chatInputController.text = rewritten;
+              _focusNode.requestFocus();
+            }));
   }
 
   void _openInsightsPage() {
     HapticFeedback.lightImpact();
     Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => UserInsightsPage(
-          conversationId: groupChatId,
-          peerName: widget.group.groupName,
-        ),
-      ),
-    );
+        context,
+        MaterialPageRoute(
+            builder: (_) => UserInsightsPage(
+                conversationId: groupChatId,
+                peerName: widget.group.groupName)));
   }
 
   void _openWeeklyRecap() {
     HapticFeedback.lightImpact();
     Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => WeeklyRecapPage(userId: _currentUserId),
-      ),
-    );
+        context,
+        MaterialPageRoute(
+            builder: (_) => WeeklyRecapPage(userId: _currentUserId)));
   }
 
   void _startToxicityMonitor() {
@@ -335,7 +564,6 @@ class GroupChatPageState extends State<GroupChatPage>
           })
           .whereType<ToxicityInput>()
           .toList();
-
       if (newMsgs.isEmpty) return;
       try {
         final results = await AIBackendService().analyzeToxicityBatch(newMsgs);
@@ -350,7 +578,7 @@ class GroupChatPageState extends State<GroupChatPage>
             'isToxic': true,
             'toxicCategory': r.category,
             'toxicConfidence': r.confidence,
-            'toxicFlaggedAt': FieldValue.serverTimestamp(),
+            'toxicFlaggedAt': FieldValue.serverTimestamp()
           }).catchError((_) {});
         }
       } catch (e) {
@@ -360,7 +588,9 @@ class GroupChatPageState extends State<GroupChatPage>
     resourceManager.addSubscription(sub);
   }
 
-  // ── MEMBERS ─────────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // MEMBERS
+  // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _loadMemberNames() async {
     final names = <String, String>{};
@@ -397,7 +627,9 @@ class GroupChatPageState extends State<GroupChatPage>
     resourceManager.addSubscription(sub);
   }
 
-  // ── INPUT HANDLERS ──────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // INPUT HANDLERS
+  // ══════════════════════════════════════════════════════════════════════════
 
   void _handleTextChange(String text) {
     if (resourceManager.isDisposed) return;
@@ -426,8 +658,9 @@ class GroupChatPageState extends State<GroupChatPage>
     } else {
       if (mounted) setState(() => _showMentionSuggestions = false);
     }
-    if (text.isNotEmpty && _smartReplies.isNotEmpty && mounted)
+    if (text.isNotEmpty && _smartReplies.isNotEmpty && mounted) {
       setState(() => _smartReplies = []);
+    }
   }
 
   void _insertMention(String userId, String name) {
@@ -473,7 +706,9 @@ class GroupChatPageState extends State<GroupChatPage>
     ));
   }
 
-  // ── MARK READ ───────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // MARK READ
+  // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _markMessagesAsRead() async {
     if (resourceManager.isDisposed) return;
@@ -491,10 +726,14 @@ class GroupChatPageState extends State<GroupChatPage>
             {'isRead': true, 'readAt': FieldValue.serverTimestamp()});
       }
       await batch.commit();
+      // Clear bubble badge for this group
+      BubbleManager.of(context)?.clearUnread(groupChatId);
     } catch (_) {}
   }
 
-  // ── SEND ────────────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // SEND
+  // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _onSendMessage(String content, int type) async {
     if (resourceManager.isDisposed) return;
@@ -537,14 +776,19 @@ class GroupChatPageState extends State<GroupChatPage>
           groupChatId: groupChatId,
           messageId: DateTime.now().millisecondsSinceEpoch.toString(),
           conversationId: groupChatId);
+
+      // ── Bubble: update context + bubble message ──────────────────────
+      ContextualBubbleService.instance
+          .updateContext(conversationId: groupChatId, message: finalContent);
+      await _updateGroupBubble(finalContent, type, fromUser: true);
     } catch (_) {
       _showToast('Gửi thất bại');
     }
+
     if (_listScrollController.hasClients && !resourceManager.isDisposed) {
       _listScrollController.animateTo(0,
           duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
     }
-
     if (!resourceManager.isDisposed) unawaited(_loadSmartReplies());
   }
 
@@ -552,19 +796,13 @@ class GroupChatPageState extends State<GroupChatPage>
     if (resourceManager.isDisposed) return;
     final messages = LocalDbService().getMessages(groupChatId);
     if (messages.isEmpty) return;
-
     final last = messages.first;
-    // Chỉ gợi ý khi tin nhắn cuối là từ người khác và là text
     if (last['idFrom'] == _currentUserId || last['type'] != TypeMessage.text)
       return;
-
     final content = last['content'] as String? ?? '';
     if (content.isEmpty || content.startsWith('{"iv":')) return;
-
-    if (mounted && !resourceManager.isDisposed) {
+    if (mounted && !resourceManager.isDisposed)
       setState(() => _isLoadingSmartReply = true);
-    }
-
     try {
       final history = messages
           .take(6)
@@ -573,14 +811,11 @@ class GroupChatPageState extends State<GroupChatPage>
           .toList()
           .reversed
           .toList();
-
       final replies = await _smartReplyProvider.getAiSmartReplies(
-        lastMessage: content,
-        recentMessages: history,
-        language: 'vi',
-        replyIntent: 'helpful',
-      );
-
+          lastMessage: content,
+          recentMessages: history,
+          language: 'vi',
+          replyIntent: 'helpful');
       if (mounted && !resourceManager.isDisposed) {
         setState(() {
           _smartReplies = replies;
@@ -598,7 +833,9 @@ class GroupChatPageState extends State<GroupChatPage>
     }
   }
 
-  // ── MEDIA ───────────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // MEDIA
+  // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _onPickImage() async {
     HapticFeedback.lightImpact();
@@ -686,7 +923,9 @@ class GroupChatPageState extends State<GroupChatPage>
     }
   }
 
-  // ── VOICE ───────────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // VOICE
+  // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _startRecording() async {
     if (_voiceProvider == null || resourceManager.isDisposed) {
@@ -730,11 +969,12 @@ class GroupChatPageState extends State<GroupChatPage>
       _showToast('Ghi âm thất bại');
       return;
     }
-    if (mounted && !resourceManager.isDisposed)
+    if (mounted && !resourceManager.isDisposed) {
       setState(() {
         _isRecording = false;
         _isLoading = true;
       });
+    }
     final fileName = 'voice_${DateTime.now().millisecondsSinceEpoch}.aac';
     final uploadResult =
         await _voiceProvider!.uploadVoiceMessage(path, fileName);
@@ -757,7 +997,9 @@ class GroupChatPageState extends State<GroupChatPage>
       setState(() => _isRecording = false);
   }
 
-  // ── LOCATION ────────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // LOCATION / GEOLOCK
+  // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _shareLocation() async {
     if (_locationProvider == null || resourceManager.isDisposed) return;
@@ -788,41 +1030,35 @@ class GroupChatPageState extends State<GroupChatPage>
     } catch (_) {}
   }
 
-  // ── GEO LOCKED ──────────────────────────────────────────────────────────────
-
   Future<void> _sendGeoLockedMessage() async {
     if (resourceManager.isDisposed) return;
     if (mounted) setState(() => _showFeaturesMenu = false);
     _menuAnim.reverse();
 
     final result = await Navigator.push<GeoLockData>(
-      context,
-      PageRouteBuilder(
-        pageBuilder: (_, __, ___) => const GeoLockPickerPage(),
-        transitionsBuilder: (_, anim, __, child) => SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0, 1),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
-          child: child,
-        ),
-        transitionDuration: const Duration(milliseconds: 340),
-        fullscreenDialog: true,
-      ),
-    );
+        context,
+        PageRouteBuilder(
+          pageBuilder: (_, __, ___) => const GeoLockPickerPage(),
+          transitionsBuilder: (_, anim, __, child) => SlideTransition(
+            position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
+                .animate(
+                    CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+            child: child,
+          ),
+          transitionDuration: const Duration(milliseconds: 340),
+          fullscreenDialog: true,
+        ));
 
     if (result == null || resourceManager.isDisposed || !mounted) return;
-
     setState(() => _isLoading = true);
     try {
       final content = jsonEncode(result.toJson());
       await _onSendMessage(content, TypeMessage.geoLocked);
       _showToast(
-        result.hideLocation
-            ? '🔐 Đã gửi tin nhắn ẩn địa điểm'
-            : '📍 Đã gửi tin nhắn khóa địa điểm',
-        isSuccess: true,
-      );
+          result.hideLocation
+              ? '🔐 Đã gửi tin nhắn ẩn địa điểm'
+              : '📍 Đã gửi tin nhắn khóa địa điểm',
+          isSuccess: true);
     } catch (e) {
       debugPrint('❌ GeoLock send error: $e');
       _showToast('Không thể gửi tin nhắn');
@@ -831,24 +1067,22 @@ class GroupChatPageState extends State<GroupChatPage>
     }
   }
 
-  // ── GAME CENTER ─────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // GAME CENTER / AUTO-PILOT
+  // ══════════════════════════════════════════════════════════════════════════
 
   void _openGameCenter() {
     HapticFeedback.lightImpact();
     Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => GameCenterHubPage(
-            groupId: groupChatId,
-            groupName: widget.group.groupName,
-            currentUserId: _currentUserId,
-            currentUserName: _memberNames[_currentUserId] ?? 'Bạn',
-            currentUserAvatar: _avatarUrlCache[_currentUserId] ?? '',
-          ),
-        ));
+            builder: (_) => GameCenterHubPage(
+                groupId: groupChatId,
+                groupName: widget.group.groupName,
+                currentUserId: _currentUserId,
+                currentUserName: _memberNames[_currentUserId] ?? 'Bạn',
+                currentUserAvatar: _avatarUrlCache[_currentUserId] ?? '')));
   }
-
-  // ── AUTO-PILOT ──────────────────────────────────────────────────────────────
 
   void _listenForAutoPilot() {
     _autoPilotSubscription = FirebaseFirestore.instance
@@ -861,14 +1095,14 @@ class GroupChatPageState extends State<GroupChatPage>
         .listen((snap) async {
       if (snap.docs.isEmpty || !_isAutoPilotOn) return;
       final data = snap.docs.first.data();
-      final String idFrom = data['idFrom'] ?? '';
-      final String content = data['content'] ?? '';
-      final String msgId = data['timestamp'] ?? '';
+      final idFrom = data['idFrom'] ?? '';
+      final content = data['content'] ?? '';
+      final msgId = data['timestamp'] ?? '';
       if (idFrom != _currentUserId &&
           idFrom != 'AI_BOT' &&
           !content.startsWith('[AI]') &&
-          msgId != _lastAutoRepliedMessageId) {
-        _lastAutoRepliedMessageId = msgId;
+          msgId != _lastAutoRepliedMsgId) {
+        _lastAutoRepliedMsgId = msgId;
         try {
           final reply = await AIBackendService().generateAutoPilotReply(
               incomingMessage: content,
@@ -926,7 +1160,9 @@ class GroupChatPageState extends State<GroupChatPage>
             messages: recent.reversed.toList(), palette: p, primary: primary));
   }
 
-  // ── MESSAGE OPTIONS ─────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // MESSAGE OPTIONS
+  // ══════════════════════════════════════════════════════════════════════════
 
   void _showMessageOptions(MessageChat message, String messageId) {
     if (resourceManager.isDisposed) return;
@@ -936,21 +1172,20 @@ class GroupChatPageState extends State<GroupChatPage>
         backgroundColor: Colors.transparent,
         isScrollControlled: true,
         builder: (_) => EnhancedMessageOptionsDialog(
-              isOwnMessage: message.idFrom == _currentUserId,
-              isPinned: message.isPinned,
-              isDeleted: message.isDeleted,
-              messageContent: message.content,
-              onEdit: () => _editMessage(messageId, message.content),
-              onDelete: () => _deleteMessage(messageId),
-              onPin: () => _togglePin(messageId, message.isPinned),
-              onCopy: () {
-                Clipboard.setData(ClipboardData(text: message.content));
-                _showToast('📋 Đã sao chép', isSuccess: true);
-              },
-              onReply: () => _setReply(message, messageId),
-              onReminder: () => _setReminder(message, messageId),
-              onTranslate: () => _translateMessage(message.content),
-            ));
+            isOwnMessage: message.idFrom == _currentUserId,
+            isPinned: message.isPinned,
+            isDeleted: message.isDeleted,
+            messageContent: message.content,
+            onEdit: () => _editMessage(messageId, message.content),
+            onDelete: () => _deleteMessage(messageId),
+            onPin: () => _togglePin(messageId, message.isPinned),
+            onCopy: () {
+              Clipboard.setData(ClipboardData(text: message.content));
+              _showToast('📋 Đã sao chép', isSuccess: true);
+            },
+            onReply: () => _setReply(message, messageId),
+            onReminder: () => _setReminder(message, messageId),
+            onTranslate: () => _translateMessage(message.content)));
   }
 
   Future<void> _editMessage(String messageId, String current) async {
@@ -1126,16 +1361,15 @@ class GroupChatPageState extends State<GroupChatPage>
     showDialog(
         context: context,
         builder: (_) => Dialog(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(24)),
-              elevation: 0,
-              backgroundColor: Colors.transparent,
-              child: ReactionPicker(onEmojiSelected: (emoji) {
-                _reactionProvider.toggleReaction(
-                    groupChatId, messageId, _currentUserId, emoji);
-                Navigator.pop(context);
-              }),
-            ));
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+            child: ReactionPicker(onEmojiSelected: (emoji) {
+              _reactionProvider.toggleReaction(
+                  groupChatId, messageId, _currentUserId, emoji);
+              Navigator.pop(context);
+            })));
   }
 
   void _getSticker() {
@@ -1157,9 +1391,8 @@ class GroupChatPageState extends State<GroupChatPage>
     if (_showFeaturesMenu) {
       _menuAnim.forward();
       _focusNode.unfocus();
-    } else {
+    } else
       _menuAnim.reverse();
-    }
   }
 
   void _onBackPress() {
@@ -1274,48 +1507,41 @@ class GroupChatPageState extends State<GroupChatPage>
     switch (value) {
       case 'ai_assistant':
         _showAIContextAnalysis();
-        break;
       case 'summarize':
         _showSummaryAnalysis();
-        break;
       case 'tone_rewriter':
         _showToneRewriter();
-        break;
       case 'insights':
         _openInsightsPage();
-        break;
       case 'weekly':
         _openWeeklyRecap();
-        break;
       case 'info':
         _openGroupInfo();
-        break;
       case 'media':
         Navigator.push(
             context,
             MaterialPageRoute(
                 builder: (_) => GroupMediaPage(
                     groupId: groupChatId, groupName: widget.group.groupName)));
-        break;
       case 'search':
         _openSearch();
-        break;
       case 'autodelete':
         showDialog(
             context: context,
             builder: (_) => AutoDeleteSettingsDialog(
                 conversationId: groupChatId, provider: _autoDeleteProvider));
-        break;
       case 'clear':
         _clearHistory();
-        break;
       case 'leave':
         _leaveGroup();
-        break;
+      case 'bubble':
+        _createGroupBubble(); // ← BUBBLE
+      case 'settings_bubble':
+        Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const BubbleSettingsPage()));
       case 'theme':
         Navigator.push(context,
             MaterialPageRoute(builder: (_) => const ThemeSettingsPage()));
-        break;
     }
   }
 
@@ -1363,13 +1589,14 @@ class GroupChatPageState extends State<GroupChatPage>
             ));
   }
 
-  // ── BUILD ────────────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // BUILD
+  // ══════════════════════════════════════════════════════════════════════════
 
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeProvider>();
     final p = theme.palette;
-
     return Theme(
       data: theme.isDark ? theme.darkTheme : theme.lightTheme,
       child: Scaffold(
@@ -1396,34 +1623,40 @@ class GroupChatPageState extends State<GroupChatPage>
     );
   }
 
-  // ── APP BAR ──────────────────────────────────────────────────────────────────
+  // ── APP BAR ───────────────────────────────────────────────────────────────
 
   PreferredSizeWidget _buildAppBar(ThemePalette p, ThemeProvider theme) {
     return PreferredSize(
-        preferredSize: const Size.fromHeight(64),
-        child: FadeTransition(
-          opacity: _appBarAnim,
-          child: Container(
-            decoration: BoxDecoration(color: p.appBarBackground, boxShadow: [
+      preferredSize: const Size.fromHeight(64),
+      child: FadeTransition(
+        opacity: _appBarAnim,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeOut,
+          decoration: BoxDecoration(
+            // ← App bar colour adapts to BubbleMode
+            color: _appBarColorFromMode(p),
+            boxShadow: [
               BoxShadow(
                   color: p.shadow, blurRadius: 8, offset: const Offset(0, 2))
-            ]),
-            child: AppBar(
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              leading: IconButton(
-                  icon: Icon(Icons.arrow_back_ios_new_rounded,
-                      color: theme.primaryColor, size: 20),
-                  onPressed: _onBackPress),
-              title: InkWell(
-                onTap: _openGroupInfo,
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(children: [
-                    Hero(
-                      tag: 'group_avatar_${widget.group.id}',
-                      child: Container(
+            ],
+          ),
+          child: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: IconButton(
+                icon: Icon(Icons.arrow_back_ios_new_rounded,
+                    color: theme.primaryColor, size: 20),
+                onPressed: _onBackPress),
+            title: InkWell(
+              onTap: _openGroupInfo,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(children: [
+                  Hero(
+                    tag: 'group_avatar_${widget.group.id}',
+                    child: Container(
                         width: 40,
                         height: 40,
                         decoration: BoxDecoration(
@@ -1433,13 +1666,11 @@ class GroupChatPageState extends State<GroupChatPage>
                               theme.primaryColor
                             ]),
                             border: Border.all(
-                                color:
-                                    theme.primaryColor.withValues(alpha: 0.4),
+                                color: theme.primaryColor.withOpacity(0.4),
                                 width: 1.5),
                             boxShadow: [
                               BoxShadow(
-                                  color: theme.primaryColor
-                                      .withValues(alpha: 0.25),
+                                  color: theme.primaryColor.withOpacity(0.25),
                                   blurRadius: 8)
                             ]),
                         child: ClipOval(
@@ -1447,111 +1678,138 @@ class GroupChatPageState extends State<GroupChatPage>
                                 ? Image.network(widget.group.groupPhotoUrl,
                                     fit: BoxFit.cover)
                                 : Icon(Icons.group_rounded,
-                                    size: 20, color: Colors.white)),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                        child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                          Text(widget.group.groupName,
-                              style: TextStyle(
-                                  color: p.textPrimary,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: -0.3),
-                              overflow: TextOverflow.ellipsis),
-                          Text('${widget.group.memberIds.length} thành viên',
-                              style: TextStyle(
-                                  color: p.textSecondary, fontSize: 11.5)),
-                        ])),
-                  ]),
-                ),
-              ),
-              actions: [
-                Row(mainAxisSize: MainAxisSize.min, children: [
-                  Text('Auto',
-                      style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w700,
-                          color: _isAutoPilotOn ? p.successColor : p.textHint)),
-                  Transform.scale(
-                      scale: .75,
-                      child: Switch(
-                        value: _isAutoPilotOn,
-                        activeThumbColor: p.successColor,
-                        activeTrackColor: p.successColor.withValues(alpha: .3),
-                        inactiveThumbColor: p.textHint,
-                        inactiveTrackColor: p.divider,
-                        onChanged: (val) {
-                          setState(() => _isAutoPilotOn = val);
-                          _showToast(
-                              val ? '🤖 Auto-pilot BẬT' : '✋ Auto-pilot TẮT');
-                        },
-                      )),
+                                    size: 20, color: Colors.white))),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                        Row(children: [
+                          Expanded(
+                              child: Text(widget.group.groupName,
+                                  style: TextStyle(
+                                      color: p.textPrimary,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: -0.3),
+                                  overflow: TextOverflow.ellipsis)),
+                          // ← BubbleMode badge
+                          if (_bubbleCtx.mode != BubbleMode.normal)
+                            Container(
+                              margin: const EdgeInsets.only(left: 6),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(8)),
+                              child: Text(_modeEmoji(_bubbleCtx.mode),
+                                  style: const TextStyle(fontSize: 12)),
+                            ),
+                        ]),
+                        Text('${widget.group.memberIds.length} thành viên',
+                            style: TextStyle(
+                                color: p.textSecondary, fontSize: 11.5)),
+                      ])),
                 ]),
-                IconButton(
+              ),
+            ),
+            actions: [
+              // Auto-pilot toggle
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                Text('Auto',
+                    style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: _isAutoPilotOn ? p.successColor : p.textHint)),
+                Transform.scale(
+                    scale: .75,
+                    child: Switch(
+                      value: _isAutoPilotOn,
+                      activeThumbColor: p.successColor,
+                      activeTrackColor: p.successColor.withOpacity(.3),
+                      inactiveThumbColor: p.textHint,
+                      inactiveTrackColor: p.divider,
+                      onChanged: (val) {
+                        setState(() => _isAutoPilotOn = val);
+                        _showToast(
+                            val ? '🤖 Auto-pilot BẬT' : '✋ Auto-pilot TẮT');
+                      },
+                    )),
+              ]),
+              IconButton(
                   icon: Icon(Icons.sports_esports_rounded,
                       color: theme.primaryColor, size: 22),
-                  tooltip: 'Game Center',
-                  onPressed: _openGameCenter,
-                ),
-                GroupVideoCallButton(
-                    groupId: groupChatId,
-                    groupName: widget.group.groupName,
-                    memberIds: widget.group.memberIds),
-                // ── AI Sentiment Indicator ──────────────────────────────────
-                SentimentIndicatorWidget(groupChatId: groupChatId),
-                const SizedBox(width: 2),
-                IconButton(
-                    icon: Icon(Icons.search_rounded,
-                        color: theme.primaryColor, size: 22),
-                    onPressed: _openSearch),
-                PopupMenuButton<String>(
-                  onSelected: _onMenuSelected,
-                  icon: Icon(Icons.more_vert_rounded,
-                      color: p.textSecondary, size: 22),
-                  color: p.surface,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
-                  itemBuilder: (_) => [
-                    _menuItem('ai_assistant', Icons.auto_awesome,
-                        'AI Assistant', const Color(0xFF8B5CF6), p),
-                    _menuItem('info', Icons.info_outline_rounded,
-                        'Thông tin nhóm', theme.primaryColor, p),
-                    _menuItem('media', Icons.perm_media_rounded,
-                        'Media & Files', const Color(0xFF43C6AC), p),
-                    _menuItem('search', Icons.search_rounded, 'Tìm kiếm',
-                        p.textSecondary, p),
-                    const PopupMenuDivider(),
-                    _menuItem('summarize', Icons.summarize_rounded,
-                        'Tóm tắt & Phân tích', const Color(0xFF0EA5E9), p),
-                    _menuItem('tone_rewriter', Icons.edit_note_rounded,
-                        'Viết lại tông giọng', const Color(0xFF8B5CF6), p),
-                    _menuItem('insights', Icons.psychology_rounded,
-                        'AI Insights nhóm', const Color(0xFFF59E0B), p),
-                    _menuItem('weekly', Icons.analytics_rounded, 'Weekly Recap',
-                        const Color(0xFF10B981), p),
-                    const PopupMenuDivider(),
-                    _menuItem('autodelete', Icons.timer_rounded, 'Tự xoá',
-                        p.warningColor, p),
-                    _menuItem('clear', Icons.delete_sweep_rounded,
-                        'Xoá lịch sử', p.warningColor, p),
-                    _menuItem('theme', Icons.palette_rounded, 'Giao diện',
-                        theme.primaryColor, p),
-                    const PopupMenuDivider(),
-                    _menuItem('leave', Icons.exit_to_app_rounded, 'Rời nhóm',
-                        p.dangerColor, p,
-                        isDestructive: true),
-                  ],
-                ),
-                const SizedBox(width: 4),
-              ],
-            ),
+                  onPressed: _openGameCenter),
+              GroupVideoCallButton(
+                  groupId: groupChatId,
+                  groupName: widget.group.groupName,
+                  memberIds: widget.group.memberIds),
+              SentimentIndicatorWidget(groupChatId: groupChatId),
+              const SizedBox(width: 2),
+              IconButton(
+                  icon: Icon(Icons.search_rounded,
+                      color: theme.primaryColor, size: 22),
+                  onPressed: _openSearch),
+              PopupMenuButton<String>(
+                onSelected: _onMenuSelected,
+                icon: Icon(Icons.more_vert_rounded,
+                    color: p.textSecondary, size: 22),
+                color: p.surface,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+                itemBuilder: (_) => [
+                  _menuItem('ai_assistant', Icons.auto_awesome, 'AI Assistant',
+                      const Color(0xFF8B5CF6), p),
+                  _menuItem('info', Icons.info_outline_rounded,
+                      'Thông tin nhóm', theme.primaryColor, p),
+                  _menuItem('media', Icons.perm_media_rounded, 'Media & Files',
+                      const Color(0xFF43C6AC), p),
+                  _menuItem('search', Icons.search_rounded, 'Tìm kiếm',
+                      p.textSecondary, p),
+                  const PopupMenuDivider(),
+                  _menuItem('summarize', Icons.summarize_rounded,
+                      'Tóm tắt & Phân tích', const Color(0xFF0EA5E9), p),
+                  _menuItem('tone_rewriter', Icons.edit_note_rounded,
+                      'Viết lại tông giọng', const Color(0xFF8B5CF6), p),
+                  _menuItem('insights', Icons.psychology_rounded,
+                      'AI Insights nhóm', const Color(0xFFF59E0B), p),
+                  _menuItem('weekly', Icons.analytics_rounded, 'Weekly Recap',
+                      const Color(0xFF10B981), p),
+                  const PopupMenuDivider(),
+                  _menuItem('autodelete', Icons.timer_rounded, 'Tự xoá',
+                      p.warningColor, p),
+                  _menuItem('clear', Icons.delete_sweep_rounded, 'Xoá lịch sử',
+                      p.warningColor, p),
+                  // ← BUBBLE MENU ITEMS
+                  _menuItemWithBadge('bubble', Icons.bubble_chart_rounded,
+                      'Chat Bubble', p.successColor, p, _bubbleCtx.mode),
+                  _menuItem('settings_bubble', Icons.settings_rounded,
+                      'Cài đặt Bubble', Colors.grey, p),
+                  _menuItem('theme', Icons.palette_rounded, 'Giao diện',
+                      theme.primaryColor, p),
+                  const PopupMenuDivider(),
+                  _menuItem('leave', Icons.exit_to_app_rounded, 'Rời nhóm',
+                      p.dangerColor, p,
+                      isDestructive: true),
+                ],
+              ),
+              const SizedBox(width: 4),
+            ],
           ),
-        ));
+        ),
+      ),
+    );
   }
+
+  Color _appBarColorFromMode(ThemePalette p) => switch (_bubbleCtx.mode) {
+        BubbleMode.work => const Color(0xFF162032),
+        BubbleMode.secure => const Color(0xFF0A0E1A),
+        BubbleMode.media => const Color(0xFF880E4F),
+        BubbleMode.location => const Color(0xFF1B5E20),
+        BubbleMode.shared => const Color(0xFF311B92),
+        _ => p.appBarBackground,
+      };
 
   PopupMenuItem<String> _menuItem(String value, IconData icon, String label,
           Color color, ThemePalette p,
@@ -1563,7 +1821,7 @@ class GroupChatPageState extends State<GroupChatPage>
                 width: 30,
                 height: 30,
                 decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.12),
+                    color: color.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(8)),
                 child: Icon(icon, color: color, size: 16)),
             const SizedBox(width: 10),
@@ -1575,7 +1833,40 @@ class GroupChatPageState extends State<GroupChatPage>
                         isDestructive ? FontWeight.w700 : FontWeight.w500)),
           ]));
 
-  // ── CHAT CONTENT ─────────────────────────────────────────────────────────────
+  PopupMenuItem<String> _menuItemWithBadge(String value, IconData icon,
+          String label, Color color, ThemePalette p, BubbleMode mode) =>
+      PopupMenuItem(
+          value: value,
+          child: Row(children: [
+            Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                    color: color.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(8)),
+                child: Icon(icon, color: color, size: 16)),
+            const SizedBox(width: 10),
+            Expanded(
+                child: Text(label,
+                    style: TextStyle(
+                        color: p.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500))),
+            if (mode != BubbleMode.normal)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                    color: color.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(6)),
+                child: Text(mode.name,
+                    style: TextStyle(
+                        fontSize: 9,
+                        color: color,
+                        fontWeight: FontWeight.w700)),
+              ),
+          ]));
+
+  // ── CHAT CONTENT ──────────────────────────────────────────────────────────
 
   List<dynamic> _processMessages(List<Map<dynamic, dynamic>> raw) {
     final grouped = <dynamic>[];
@@ -1658,50 +1949,49 @@ class GroupChatPageState extends State<GroupChatPage>
                   onCancel: () =>
                       setState(() => _isShowingSwipeCards = false))),
         Positioned(
-          right: 12,
-          bottom: _isShowingSwipeCards ? 200 : 90,
-          child: ScaleTransition(
-            scale: CurvedAnimation(parent: _fabAnim, curve: Curves.elasticOut),
-            child: GestureDetector(
-                onTap: () {
-                  _listScrollController.animateTo(0,
+            right: 12,
+            bottom: _isShowingSwipeCards ? 200 : 90,
+            child: ScaleTransition(
+              scale:
+                  CurvedAnimation(parent: _fabAnim, curve: Curves.elasticOut),
+              child: GestureDetector(
+                  onTap: () => _listScrollController.animateTo(0,
                       duration: const Duration(milliseconds: 400),
-                      curve: Curves.easeOutCubic);
-                },
-                child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                        color: p.surface,
-                        shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(color: p.shadow, blurRadius: 8)]),
-                    child: Icon(Icons.keyboard_arrow_down_rounded,
-                        color: p.textSecondary, size: 22))),
-          ),
-        ),
+                      curve: Curves.easeOutCubic),
+                  child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                          color: p.surface,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(color: p.shadow, blurRadius: 8)
+                          ]),
+                      child: Icon(Icons.keyboard_arrow_down_rounded,
+                          color: p.textSecondary, size: 22))),
+            )),
       ]),
     );
   }
 
   Widget _buildMediaOverlay(ThemePalette p, ThemeProvider theme) => Container(
-        color: Colors.black.withValues(alpha: .55),
-        child: Center(
-            child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-          decoration: BoxDecoration(
-              color: p.surface,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [BoxShadow(color: p.shadowStrong, blurRadius: 16)]),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            CircularProgressIndicator(
-                color: theme.primaryColor, strokeWidth: 2.5),
-            const SizedBox(height: 16),
-            Text('Đang tải lên...',
-                style: TextStyle(
-                    color: p.textPrimary, fontWeight: FontWeight.w600)),
-          ]),
-        )),
-      );
+      color: Colors.black.withOpacity(.55),
+      child: Center(
+          child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+        decoration: BoxDecoration(
+            color: p.surface,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [BoxShadow(color: p.shadowStrong, blurRadius: 16)]),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          CircularProgressIndicator(
+              color: theme.primaryColor, strokeWidth: 2.5),
+          const SizedBox(height: 16),
+          Text('Đang tải lên...',
+              style:
+                  TextStyle(color: p.textPrimary, fontWeight: FontWeight.w600)),
+        ]),
+      )));
 
   Widget _buildPinnedMessages(ThemePalette p, ThemeProvider theme) {
     return Container(
@@ -1723,8 +2013,7 @@ class GroupChatPageState extends State<GroupChatPage>
                 color: p.pinnedBackground,
                 borderRadius: BorderRadius.circular(999),
                 border: Border.all(
-                    color: theme.primaryColor.withValues(alpha: .25),
-                    width: .8)),
+                    color: theme.primaryColor.withOpacity(.25), width: .8)),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(Icons.push_pin_rounded, size: 13, color: theme.primaryColor),
               const SizedBox(width: 6),
@@ -1816,86 +2105,87 @@ class GroupChatPageState extends State<GroupChatPage>
         content: first['content'] ?? '',
         type: first['type'] ?? 0,
         isRead: first['status'] == 'sent');
-
     return SwipeToReplyWrapper(
-      isMe: isMe,
-      onSwipe: () => _setReply(representative, msgId),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        child: Column(
-            crossAxisAlignment:
-                isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-            children: [
-              if (!isMe) _buildSenderName(first['idFrom'] as String? ?? '', p),
-              Row(
-                  mainAxisAlignment:
-                      isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    if (!isMe)
-                      _buildGroupAvatar(
-                          first['idFrom'] as String? ?? '', theme),
-                    SizedBox(
-                      width: MediaQuery.of(context).size.width * .7,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(20),
-                        child: GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 2,
-                                  crossAxisSpacing: 2,
-                                  mainAxisSpacing: 2),
-                          itemCount: messages.length,
-                          itemBuilder: (_, i) {
-                            final m = messages[i];
-                            final isVideo = m['type'] == TypeMessage.video;
-                            final url = m['content'] ?? '';
-                            final videoUrl =
-                                isVideo ? url.split('|').first : '';
-                            final thumbUrl = isVideo
-                                ? (url.split('|').length > 1
-                                    ? url.split('|')[1]
-                                    : '')
-                                : url;
-                            return GestureDetector(
-                              onTap: () {
-                                HapticFeedback.lightImpact();
-                                isVideo
-                                    ? Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                            builder: (_) => VideoPlayerPage(
-                                                videoUrl: videoUrl)))
-                                    : Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                            builder: (_) =>
-                                                FullPhotoPage(url: thumbUrl)));
-                              },
-                              child: Stack(fit: StackFit.expand, children: [
-                                Image.network(thumbUrl,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) =>
-                                        Container(color: p.surfaceVariant)),
-                                if (isVideo)
-                                  const Center(
-                                      child: Icon(
-                                          Icons.play_circle_fill_rounded,
-                                          color: Colors.white,
-                                          size: 32)),
-                              ]),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  ]),
-              _buildTimestamp(first['timestamp'] ?? '', isMe, p, theme),
-            ]),
-      ),
-    );
+        isMe: isMe,
+        onSwipe: () => _setReply(representative, msgId),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Column(
+              crossAxisAlignment:
+                  isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                if (!isMe)
+                  _buildSenderName(first['idFrom'] as String? ?? '', p),
+                Row(
+                    mainAxisAlignment:
+                        isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      if (!isMe)
+                        _buildGroupAvatar(
+                            first['idFrom'] as String? ?? '', theme),
+                      SizedBox(
+                          width: MediaQuery.of(context).size.width * .7,
+                          child: ClipRRect(
+                              borderRadius: BorderRadius.circular(20),
+                              child: GridView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                        crossAxisCount: 2,
+                                        crossAxisSpacing: 2,
+                                        mainAxisSpacing: 2),
+                                itemCount: messages.length,
+                                itemBuilder: (_, i) {
+                                  final m = messages[i];
+                                  final isVideo =
+                                      m['type'] == TypeMessage.video;
+                                  final url = m['content'] ?? '';
+                                  final videoUrl =
+                                      isVideo ? url.split('|').first : '';
+                                  final thumbUrl = isVideo
+                                      ? (url.split('|').length > 1
+                                          ? url.split('|')[1]
+                                          : '')
+                                      : url;
+                                  return GestureDetector(
+                                    onTap: () {
+                                      HapticFeedback.lightImpact();
+                                      isVideo
+                                          ? Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                  builder: (_) =>
+                                                      VideoPlayerPage(
+                                                          videoUrl: videoUrl)))
+                                          : Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                  builder: (_) => FullPhotoPage(
+                                                      url: thumbUrl)));
+                                    },
+                                    child:
+                                        Stack(fit: StackFit.expand, children: [
+                                      Image.network(thumbUrl,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) =>
+                                              Container(
+                                                  color: p.surfaceVariant)),
+                                      if (isVideo)
+                                        const Center(
+                                            child: Icon(
+                                                Icons.play_circle_fill_rounded,
+                                                color: Colors.white,
+                                                size: 32)),
+                                    ]),
+                                  );
+                                },
+                              ))),
+                    ]),
+                _buildTimestamp(first['timestamp'] ?? '', isMe, p, theme),
+              ]),
+        ));
   }
 
   Widget _buildItemMessage(
@@ -1924,6 +2214,7 @@ class GroupChatPageState extends State<GroupChatPage>
       return SwipeToReplyWrapper(
           isMe: isMe, onSwipe: () => _setReply(msg, messageId), child: special);
     }
+
     Widget bubble;
     if (msg.type == 3 && _voiceProvider != null) {
       bubble = _buildVoiceMessage(msg, isMe, p, theme);
@@ -1964,19 +2255,18 @@ class GroupChatPageState extends State<GroupChatPage>
       ThemePalette p,
       ThemeProvider theme) {
     Widget wrapRow(Widget child) => Container(
-          margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
-          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-          child: Row(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (!isMe)
-                  isLastInGroup
-                      ? _buildGroupAvatar(msg.idFrom, theme)
-                      : const SizedBox(width: 36),
-                child,
-              ]),
-        );
+        margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (!isMe)
+                isLastInGroup
+                    ? _buildGroupAvatar(msg.idFrom, theme)
+                    : const SizedBox(width: 36),
+              child,
+            ]));
 
     if (localData['isViewOnce'] ?? false) {
       return wrapRow(ViewOnceMessageWidget(
@@ -1988,36 +2278,32 @@ class GroupChatPageState extends State<GroupChatPage>
           isViewed: localData['isViewed'] ?? false,
           provider: _viewOnceProvider));
     }
-    // ── GeoLocked ──────────────────────────────────────────────────────────
     if (msg.type == TypeMessage.geoLocked) {
       return Container(
-        margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
-        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-        child: Column(
-          crossAxisAlignment:
-              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          children: [
-            if (!isMe && isLastInGroup) _buildSenderName(msg.idFrom, p),
-            Row(
-              mainAxisAlignment:
-                  isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-              crossAxisAlignment: CrossAxisAlignment.end,
+          margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+          child: Column(
+              crossAxisAlignment:
+                  isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
               children: [
-                if (!isMe)
-                  isLastInGroup
-                      ? _buildGroupAvatar(msg.idFrom, theme)
-                      : const SizedBox(width: 36),
-                GestureDetector(
-                  onLongPress: () => _showMessageOptions(msg, messageId),
-                  child:
-                      GeoLockedMessageWidget(content: msg.content, isMe: isMe),
-                ),
-              ],
-            ),
-            _buildTimestamp(msg.timestamp, isMe, p, theme),
-          ],
-        ),
-      );
+                if (!isMe && isLastInGroup) _buildSenderName(msg.idFrom, p),
+                Row(
+                    mainAxisAlignment:
+                        isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      if (!isMe)
+                        isLastInGroup
+                            ? _buildGroupAvatar(msg.idFrom, theme)
+                            : const SizedBox(width: 36),
+                      GestureDetector(
+                          onLongPress: () =>
+                              _showMessageOptions(msg, messageId),
+                          child: GeoLockedMessageWidget(
+                              content: msg.content, isMe: isMe)),
+                    ]),
+                _buildTimestamp(msg.timestamp, isMe, p, theme),
+              ]));
     }
     if (msg.type == 7) {
       return wrapRow(TicTacToeMessageWidget(
@@ -2047,63 +2333,62 @@ class GroupChatPageState extends State<GroupChatPage>
         fileData = jsonDecode(msg.content);
       } catch (_) {}
       return Container(
-        margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
-        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-        child: Row(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              if (!isMe)
-                isLastInGroup
-                    ? _buildGroupAvatar(msg.idFrom, theme)
-                    : const SizedBox(width: 36),
-              GestureDetector(
-                onTap: () {
-                  final url = fileData['url'] as String? ?? '';
-                  if (url.isNotEmpty) launchUrl(Uri.parse(url));
-                },
-                onLongPress: () => _showMessageOptions(msg, messageId),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * .7),
-                  decoration: BoxDecoration(
-                      color: isMe ? p.outgoingBubble : p.incomingBubble,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: p.divider, width: .8)),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Container(
-                        padding: const EdgeInsets.all(8),
+          margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+          child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (!isMe)
+                  isLastInGroup
+                      ? _buildGroupAvatar(msg.idFrom, theme)
+                      : const SizedBox(width: 36),
+                GestureDetector(
+                    onTap: () {
+                      final url = fileData['url'] as String? ?? '';
+                      if (url.isNotEmpty) launchUrl(Uri.parse(url));
+                    },
+                    onLongPress: () => _showMessageOptions(msg, messageId),
+                    child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12),
+                        constraints: BoxConstraints(
+                            maxWidth: MediaQuery.of(context).size.width * .7),
                         decoration: BoxDecoration(
-                            color: theme.primaryColor.withValues(alpha: .15),
-                            borderRadius: BorderRadius.circular(8)),
-                        child: Icon(Icons.insert_drive_file_rounded,
-                            color: theme.primaryColor, size: 24)),
-                    const SizedBox(width: 10),
-                    Flexible(
-                        child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                          Text(fileData['name'] as String? ?? 'File',
-                              style: TextStyle(
-                                  color: isMe ? Colors.white : p.textPrimary,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis),
-                          Text(
-                              '${((fileData['size'] as num? ?? 0) / 1024).toStringAsFixed(1)} KB',
-                              style: TextStyle(
-                                  color:
-                                      isMe ? Colors.white70 : p.textSecondary,
-                                  fontSize: 12)),
-                        ])),
-                  ]),
-                ),
-              ),
-            ]),
-      );
+                            color: isMe ? p.outgoingBubble : p.incomingBubble,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: p.divider, width: .8)),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                  color: theme.primaryColor.withOpacity(.15),
+                                  borderRadius: BorderRadius.circular(8)),
+                              child: Icon(Icons.insert_drive_file_rounded,
+                                  color: theme.primaryColor, size: 24)),
+                          const SizedBox(width: 10),
+                          Flexible(
+                              child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                Text(fileData['name'] as String? ?? 'File',
+                                    style: TextStyle(
+                                        color:
+                                            isMe ? Colors.white : p.textPrimary,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis),
+                                Text(
+                                    '${((fileData['size'] as num? ?? 0) / 1024).toStringAsFixed(1)} KB',
+                                    style: TextStyle(
+                                        color: isMe
+                                            ? Colors.white70
+                                            : p.textSecondary,
+                                        fontSize: 12)),
+                              ])),
+                        ]))),
+              ]));
     }
     return null;
   }
@@ -2218,7 +2503,7 @@ class GroupChatPageState extends State<GroupChatPage>
                           boxShadow: [
                             BoxShadow(
                                 color: isMe
-                                    ? theme.primaryColor.withValues(alpha: 0.2)
+                                    ? theme.primaryColor.withOpacity(0.2)
                                     : p.shadow,
                                 blurRadius: 8,
                                 offset: const Offset(0, 3))
@@ -2227,19 +2512,15 @@ class GroupChatPageState extends State<GroupChatPage>
                         child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // ── Scam Warning ───────────────────────────────────
                               if (!isMe && isScamWarning)
                                 _GroupScamBanner(
                                     reason: scamReason, palette: p),
-                              // ── Toxic Badge ────────────────────────────────────
                               if (!isMe && isToxic)
                                 Padding(
-                                  padding: const EdgeInsets.only(bottom: 6),
-                                  child: ToxicMessageBadge(
-                                      category: toxicCategory,
-                                      showDetails: true),
-                                ),
-                              // ── Reminder Banner ────────────────────────────────
+                                    padding: const EdgeInsets.only(bottom: 6),
+                                    child: ToxicMessageBadge(
+                                        category: toxicCategory,
+                                        showDetails: true)),
                               if (!isMe && hasReminder)
                                 _GroupReminderBanner(
                                     msg: msg,
@@ -2247,7 +2528,6 @@ class GroupChatPageState extends State<GroupChatPage>
                                     onSet: _setReminder,
                                     palette: p,
                                     theme: theme),
-                              // ── Content ────────────────────────────────────────
                               if (msg.isDeleted)
                                 Row(mainAxisSize: MainAxisSize.min, children: [
                                   Icon(Icons.block_rounded,
@@ -2274,14 +2554,13 @@ class GroupChatPageState extends State<GroupChatPage>
                                         _openLocationInMaps(location.mapsUrl))
                               else if (hasUrl)
                                 ChatMessageWithLinkPreview(
-                                  content: msg.content,
-                                  isMe: isMe,
-                                  textColor:
-                                      isMe ? Colors.white : p.incomingText,
-                                  fontSize: 15 * fs,
-                                  primaryColor: theme.primaryColor,
-                                  showPreview: true,
-                                )
+                                    content: msg.content,
+                                    isMe: isMe,
+                                    textColor:
+                                        isMe ? Colors.white : p.incomingText,
+                                    fontSize: 15 * fs,
+                                    primaryColor: theme.primaryColor,
+                                    showPreview: true)
                               else
                                 Column(
                                     crossAxisAlignment:
@@ -2298,21 +2577,21 @@ class GroupChatPageState extends State<GroupChatPage>
                                         Align(
                                             alignment: Alignment.centerRight,
                                             child: Padding(
-                                              padding:
-                                                  const EdgeInsets.only(top: 3),
-                                              child: Icon(
-                                                  isPending
-                                                      ? Icons
-                                                          .access_time_rounded
-                                                      : msg.isRead
-                                                          ? Icons
-                                                              .done_all_rounded
-                                                          : Icons.done_rounded,
-                                                  size: 13,
-                                                  color: msg.isRead
-                                                      ? Colors.white
-                                                      : Colors.white38),
-                                            )),
+                                                padding: const EdgeInsets.only(
+                                                    top: 3),
+                                                child: Icon(
+                                                    isPending
+                                                        ? Icons
+                                                            .access_time_rounded
+                                                        : msg.isRead
+                                                            ? Icons
+                                                                .done_all_rounded
+                                                            : Icons
+                                                                .done_rounded,
+                                                    size: 13,
+                                                    color: msg.isRead
+                                                        ? Colors.white
+                                                        : Colors.white38))),
                                     ]),
                             ]),
                       ),
@@ -2328,29 +2607,28 @@ class GroupChatPageState extends State<GroupChatPage>
                     child: ScamWarningWidget(status: _scamResults[messageId]!)),
               if (_scamResults[messageId] == null && !isScamWarning)
                 Padding(
-                  padding: EdgeInsets.only(
-                      left: theme.showAvatarsInChat ? 42 : 4, top: 3),
-                  child: GestureDetector(
-                    onTap: () async {
-                      _showToast('🛡 Đang quét...');
-                      final status =
-                          await AIBackendService().checkScam(msg.content);
-                      if (mounted)
-                        setState(() => _scamResults[messageId] =
-                            status.name.toUpperCase());
-                      if (status.name.toUpperCase() == 'SAFE')
-                        _showToast('✅ Tin nhắn an toàn', isSuccess: true);
-                    },
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.shield_outlined,
-                          size: 13, color: p.successColor),
-                      const SizedBox(width: 4),
-                      Text('Quét AI',
-                          style:
-                              TextStyle(fontSize: 11.5, color: p.successColor)),
-                    ]),
-                  ),
-                ),
+                    padding: EdgeInsets.only(
+                        left: theme.showAvatarsInChat ? 42 : 4, top: 3),
+                    child: GestureDetector(
+                      onTap: () async {
+                        _showToast('🛡 Đang quét...');
+                        final status =
+                            await AIBackendService().checkScam(msg.content);
+                        if (mounted)
+                          setState(() => _scamResults[messageId] =
+                              status.name.toUpperCase());
+                        if (status.name.toUpperCase() == 'SAFE')
+                          _showToast('✅ Tin nhắn an toàn', isSuccess: true);
+                      },
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.shield_outlined,
+                            size: 13, color: p.successColor),
+                        const SizedBox(width: 4),
+                        Text('Quét AI',
+                            style: TextStyle(
+                                fontSize: 11.5, color: p.successColor)),
+                      ]),
+                    )),
             ],
             _buildReactions(messageId, isMe, p, theme),
             _buildTimestamp(msg.timestamp, isMe, p, theme),
@@ -2361,7 +2639,7 @@ class GroupChatPageState extends State<GroupChatPage>
     return AnimatedContainer(
         duration: const Duration(milliseconds: 600),
         decoration: BoxDecoration(
-            color: theme.primaryColor.withValues(alpha: .08),
+            color: theme.primaryColor.withOpacity(.08),
             borderRadius: BorderRadius.circular(16)),
         child: bubble);
   }
@@ -2369,71 +2647,65 @@ class GroupChatPageState extends State<GroupChatPage>
   Widget _buildImageMessage(String messageId, MessageChat msg, bool isMe,
       bool isLastInGroup, bool isPending, ThemePalette p, ThemeProvider theme) {
     return Container(
-      margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
-      child: Column(
-          crossAxisAlignment:
-              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          children: [
-            if (!isMe && isLastInGroup && theme.showAvatarsInChat)
-              _buildSenderName(msg.idFrom, p),
-            Row(
-                mainAxisAlignment:
-                    isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  if (!isMe)
-                    (isLastInGroup && theme.showAvatarsInChat)
-                        ? _buildGroupAvatar(msg.idFrom, theme)
-                        : const SizedBox(width: 36),
-                  GestureDetector(
-                    onTap: () {
-                      if (!isPending) {
-                        HapticFeedback.lightImpact();
-                        Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) =>
-                                    FullPhotoPage(url: msg.content)));
-                      }
-                    },
-                    onLongPress: () {
-                      HapticFeedback.heavyImpact();
-                      _showMessageOptions(msg, messageId);
-                    },
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(18),
-                      child: SizedBox(
-                        width: MediaQuery.of(context).size.width * .62,
-                        height: 210,
-                        child: isPending
-                            ? Container(
-                                color: p.surfaceVariant,
-                                child: Center(
-                                    child: CircularProgressIndicator(
-                                        color: theme.primaryColor,
-                                        strokeWidth: 2)))
-                            : Image.network(msg.content,
-                                fit: BoxFit.cover,
-                                loadingBuilder: (_, child, prog) => prog == null
-                                    ? child
-                                    : Container(
+        margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: Column(
+            crossAxisAlignment:
+                isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            children: [
+              if (!isMe && isLastInGroup && theme.showAvatarsInChat)
+                _buildSenderName(msg.idFrom, p),
+              Row(
+                  mainAxisAlignment:
+                      isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (!isMe)
+                      (isLastInGroup && theme.showAvatarsInChat)
+                          ? _buildGroupAvatar(msg.idFrom, theme)
+                          : const SizedBox(width: 36),
+                    GestureDetector(
+                        onTap: () {
+                          if (!isPending) {
+                            HapticFeedback.lightImpact();
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) =>
+                                        FullPhotoPage(url: msg.content)));
+                          }
+                        },
+                        onLongPress: () => _showMessageOptions(msg, messageId),
+                        child: ClipRRect(
+                            borderRadius: BorderRadius.circular(18),
+                            child: SizedBox(
+                                width: MediaQuery.of(context).size.width * .62,
+                                height: 210,
+                                child: isPending
+                                    ? Container(
                                         color: p.surfaceVariant,
                                         child: Center(
                                             child: CircularProgressIndicator(
                                                 color: theme.primaryColor,
-                                                strokeWidth: 2))),
-                                errorBuilder: (_, __, ___) => Container(
-                                    color: p.surfaceVariant,
-                                    child: Icon(Icons.broken_image_rounded,
-                                        color: p.textHint))),
-                      ),
-                    ),
-                  ),
-                ]),
-            _buildReactions(messageId, isMe, p, theme),
-            _buildTimestamp(msg.timestamp, isMe, p, theme),
-          ]),
-    );
+                                                strokeWidth: 2)))
+                                    : Image.network(msg.content,
+                                        fit: BoxFit.cover,
+                                        loadingBuilder: (_, child, prog) => prog == null
+                                            ? child
+                                            : Container(
+                                                color: p.surfaceVariant,
+                                                child: Center(
+                                                    child: CircularProgressIndicator(
+                                                        color:
+                                                            theme.primaryColor,
+                                                        strokeWidth: 2))),
+                                        errorBuilder: (_, __, ___) => Container(
+                                            color: p.surfaceVariant,
+                                            child: Icon(Icons.broken_image_rounded, color: p.textHint)))))),
+                  ]),
+              _buildReactions(messageId, isMe, p, theme),
+              _buildTimestamp(msg.timestamp, isMe, p, theme),
+            ]));
   }
 
   Widget _buildVideoMessage(String messageId, MessageChat msg, bool isMe,
@@ -2442,98 +2714,74 @@ class GroupChatPageState extends State<GroupChatPage>
     final videoUrl = parts.isNotEmpty ? parts[0] : '';
     final thumbUrl = parts.length > 1 ? parts[1] : '';
     return Container(
-      margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
-      child: Column(
-          crossAxisAlignment:
-              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          children: [
-            if (!isMe && isLastInGroup && theme.showAvatarsInChat)
-              _buildSenderName(msg.idFrom, p),
-            Row(
-                mainAxisAlignment:
-                    isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  if (!isMe)
-                    (isLastInGroup && theme.showAvatarsInChat)
-                        ? _buildGroupAvatar(msg.idFrom, theme)
-                        : const SizedBox(width: 36),
-                  GestureDetector(
-                    onTap: () {
-                      if (!isPending)
-                        Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) =>
-                                    VideoPlayerPage(videoUrl: videoUrl)));
-                    },
-                    onLongPress: () => _showMessageOptions(msg, messageId),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(18),
-                      child: SizedBox(
-                        width: MediaQuery.of(context).size.width * .62,
-                        height: 195,
-                        child: Stack(fit: StackFit.expand, children: [
-                          if (thumbUrl.isNotEmpty)
-                            Image.network(thumbUrl,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) =>
-                                    Container(color: Colors.black))
-                          else
-                            Container(color: Colors.black),
-                          Container(
+        margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: GestureDetector(
+            onTap: () {
+              if (!isPending)
+                Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => VideoPlayerPage(videoUrl: videoUrl)));
+            },
+            onLongPress: () => _showMessageOptions(msg, messageId),
+            child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: SizedBox(
+                    width: MediaQuery.of(context).size.width * .62,
+                    height: 195,
+                    child: Stack(fit: StackFit.expand, children: [
+                      if (thumbUrl.isNotEmpty)
+                        Image.network(thumbUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                const ColoredBox(color: Colors.black))
+                      else
+                        const ColoredBox(color: Colors.black),
+                      Container(
+                          decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                            Colors.transparent,
+                            Colors.black.withOpacity(.6)
+                          ]))),
+                      if (isPending)
+                        const Center(
+                            child: CircularProgressIndicator(
+                                color: Colors.white, strokeWidth: 2))
+                      else
+                        Center(
+                            child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                    color: Colors.black45,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                        color: Colors.white54, width: 1.5)),
+                                child: const Icon(Icons.play_arrow_rounded,
+                                    color: Colors.white, size: 32))),
+                      Positioned(
+                          bottom: 8,
+                          right: 10,
+                          child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
-                                      colors: [
-                                Colors.transparent,
-                                Colors.black.withValues(alpha: .6)
-                              ]))),
-                          if (isPending)
-                            const Center(
-                                child: CircularProgressIndicator(
-                                    color: Colors.white, strokeWidth: 2))
-                          else
-                            Center(
-                                child: Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                        color: Colors.black45,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(
-                                            color: Colors.white54, width: 1.5)),
-                                    child: const Icon(Icons.play_arrow_rounded,
-                                        color: Colors.white, size: 32))),
-                          Positioned(
-                              bottom: 8,
-                              right: 10,
-                              child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                      color: Colors.black54,
-                                      borderRadius: BorderRadius.circular(6)),
-                                  child: const Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.videocam_rounded,
-                                            size: 11, color: Colors.white),
-                                        SizedBox(width: 3),
-                                        Text('Video',
-                                            style: TextStyle(
-                                                fontSize: 10,
-                                                color: Colors.white)),
-                                      ]))),
-                        ]),
-                      ),
-                    ),
-                  ),
-                ]),
-            _buildReactions(messageId, isMe, p, theme),
-            _buildTimestamp(msg.timestamp, isMe, p, theme),
-          ]),
-    );
+                                  color: Colors.black54,
+                                  borderRadius: BorderRadius.circular(6)),
+                              child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.videocam_rounded,
+                                        size: 11, color: Colors.white),
+                                    SizedBox(width: 3),
+                                    Text('Video',
+                                        style: TextStyle(
+                                            fontSize: 10, color: Colors.white)),
+                                  ]))),
+                    ])))));
   }
 
   Widget _buildVoiceMessage(
@@ -2635,6 +2883,8 @@ class GroupChatPageState extends State<GroupChatPage>
             Text(label, style: TextStyle(fontSize: 10.5, color: p.textHint)));
   }
 
+  // ── Typing indicator — uses BubbleTypingIndicator ─────────────────────────
+
   Widget _buildTypingIndicator(ThemePalette p, ThemeProvider theme) {
     if (_presenceProvider == null) return const SizedBox.shrink();
     return StreamBuilder<Map<String, TypingInfo>>(
@@ -2647,11 +2897,19 @@ class GroupChatPageState extends State<GroupChatPage>
             .toList();
         if (typing.isEmpty) return const SizedBox.shrink();
         return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-            child: TypingIndicator(
-                userName: typing.length == 1
-                    ? typing.first
-                    : '${typing.length} người'));
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: Row(children: [
+            const BubbleTypingIndicator.chat(), // ← BUBBLE TYPING INDICATOR
+            const SizedBox(width: 8),
+            Text(
+              typing.length == 1
+                  ? '${typing.first} đang nhập…'
+                  : '${typing.length} người đang nhập…',
+              style: TextStyle(
+                  fontSize: 12, color: p.textHint, fontStyle: FontStyle.italic),
+            ),
+          ]),
+        );
       },
     );
   }
@@ -2683,7 +2941,7 @@ class GroupChatPageState extends State<GroupChatPage>
               dense: true,
               leading: CircleAvatar(
                   radius: 15,
-                  backgroundColor: theme.primaryColor.withValues(alpha: 0.12),
+                  backgroundColor: theme.primaryColor.withOpacity(0.12),
                   child: Text(name.substring(0, 1).toUpperCase(),
                       style: TextStyle(
                           color: theme.primaryColor,
@@ -2805,6 +3063,11 @@ class GroupChatPageState extends State<GroupChatPage>
         setState(() => _showFeaturesMenu = false);
         _scheduleMessage();
       }, const Color(0xFF43C6AC)),
+      // ← BUBBLE menu item
+      _GFeatureItem(Icons.bubble_chart_rounded, 'Bubble', () {
+        setState(() => _showFeaturesMenu = false);
+        _createGroupBubble();
+      }, theme.primaryColor),
       _GFeatureItem(Icons.sports_esports_rounded, 'Game', () {
         setState(() => _showFeaturesMenu = false);
         _openGameCenter();
@@ -2825,47 +3088,46 @@ class GroupChatPageState extends State<GroupChatPage>
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           child: Row(
-              children: items
-                  .map((item) => InkWell(
-                        onTap: resourceManager.isDisposed ? null : item.onTap,
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          width: 68,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 4, vertical: 6),
-                          child:
-                              Column(mainAxisSize: MainAxisSize.min, children: [
-                            Container(
-                                width: 44,
-                                height: 44,
-                                decoration: BoxDecoration(
-                                    color: item.color.withValues(alpha: .12),
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(
-                                        color:
-                                            item.color.withValues(alpha: .25),
-                                        width: .8)),
-                                child: Icon(item.icon,
-                                    color: item.color, size: 22)),
-                            const SizedBox(height: 4),
-                            Text(item.label,
-                                style: TextStyle(
-                                    fontSize: 10.5,
-                                    color: p.textSecondary,
-                                    fontWeight: FontWeight.w500),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.center),
-                          ]),
-                        ),
-                      ))
-                  .toList()),
+            // FIXED: .toList() is now outside the InkWell's closing parenthesis
+            children: items
+                .map((item) => InkWell(
+                    onTap: resourceManager.isDisposed ? null : item.onTap,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                        width: 68,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4, vertical: 6),
+                        child:
+                            Column(mainAxisSize: MainAxisSize.min, children: [
+                          Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                  color: item.color.withOpacity(.12),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                      color: item.color.withOpacity(.25),
+                                      width: .8)),
+                              child:
+                                  Icon(item.icon, color: item.color, size: 22)),
+                          const SizedBox(height: 4),
+                          Text(item.label,
+                              style: TextStyle(
+                                  fontSize: 10.5,
+                                  color: p.textSecondary,
+                                  fontWeight: FontWeight.w500),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center),
+                        ]))))
+                .toList(),
+          ),
         ),
       ),
     );
   }
 
-  // ── INPUT ────────────────────────────────────────────────────────────────────
+  // ── INPUT ─────────────────────────────────────────────────────────────────
 
   Widget _buildInput(ThemePalette p, ThemeProvider theme) {
     final fs = theme.fontSizeMultiplier;
@@ -2937,8 +3199,7 @@ class GroupChatPageState extends State<GroupChatPage>
                           child: Icon(Icons.close_rounded,
                               size: 18, color: p.textHint)),
                     ]),
-                  ),
-                ),
+                  )),
         ),
         if (_isRecording)
           Container(
@@ -2947,7 +3208,7 @@ class GroupChatPageState extends State<GroupChatPage>
             decoration: BoxDecoration(
                 color: p.surface,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: p.dangerColor.withValues(alpha: .4))),
+                border: Border.all(color: p.dangerColor.withOpacity(.4))),
             child: Row(children: [
               _RecDot(color: p.dangerColor),
               const SizedBox(width: 8),
@@ -3018,18 +3279,18 @@ class GroupChatPageState extends State<GroupChatPage>
                     padding:
                         const EdgeInsets.only(right: 8, top: 12, bottom: 12),
                     child: TextField(
-                      controller: _chatInputController,
-                      focusNode: _focusNode,
-                      style: TextStyle(fontSize: 15 * fs, color: p.textPrimary),
-                      maxLines: null,
-                      textInputAction: TextInputAction.newline,
-                      onTapOutside: (_) => Utilities.closeKeyboard(),
-                      decoration: InputDecoration.collapsed(
-                          hintText: 'Nhắn tin... (@đề cập)',
-                          hintStyle:
-                              TextStyle(color: p.textHint, fontSize: 15 * fs)),
-                      onChanged: _handleTextChange,
-                    ))),
+                        controller: _chatInputController,
+                        focusNode: _focusNode,
+                        style:
+                            TextStyle(fontSize: 15 * fs, color: p.textPrimary),
+                        maxLines: null,
+                        textInputAction: TextInputAction.newline,
+                        onTapOutside: (_) => Utilities.closeKeyboard(),
+                        decoration: InputDecoration.collapsed(
+                            hintText: 'Nhắn tin... (@đề cập)',
+                            hintStyle: TextStyle(
+                                color: p.textHint, fontSize: 15 * fs)),
+                        onChanged: _handleTextChange))),
             GestureDetector(
                 onTap: _triggerZeroTypeSwipe,
                 child: Padding(
@@ -3040,52 +3301,51 @@ class GroupChatPageState extends State<GroupChatPage>
                             : p.textHint,
                         size: 24))),
             Padding(
-              padding: const EdgeInsets.all(6),
-              child: ValueListenableBuilder<TextEditingValue>(
-                valueListenable: _chatInputController,
-                builder: (_, val, __) {
-                  final hasText = val.text.trim().isNotEmpty;
-                  return GestureDetector(
-                    onTap: () {
-                      if (hasText) {
-                        _onSendMessage(
-                            _chatInputController.text, TypeMessage.text);
-                      } else {
-                        _startRecording();
-                      }
-                    },
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        gradient: hasText
-                            ? theme.outgoingBubbleGradient(p.isDark)
-                            : null,
-                        color: hasText ? null : p.surfaceVariant,
-                        shape: BoxShape.circle,
-                        boxShadow: hasText
-                            ? [
-                                BoxShadow(
-                                    color: theme.primaryColor
-                                        .withValues(alpha: 0.35),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 3))
-                              ]
-                            : null,
+                padding: const EdgeInsets.all(6),
+                child: ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: _chatInputController,
+                  builder: (_, val, __) {
+                    final hasText = val.text.trim().isNotEmpty;
+                    return GestureDetector(
+                      onTap: () {
+                        if (hasText)
+                          _onSendMessage(
+                              _chatInputController.text, TypeMessage.text);
+                        else
+                          _startRecording();
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                            gradient: hasText
+                                ? theme.outgoingBubbleGradient(p.isDark)
+                                : null,
+                            color: hasText ? null : p.surfaceVariant,
+                            shape: BoxShape.circle,
+                            boxShadow: hasText
+                                ? [
+                                    BoxShadow(
+                                        color: theme.primaryColor
+                                            .withOpacity(0.35),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 3))
+                                  ]
+                                : null),
+                        child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 180),
+                            child: Icon(
+                                hasText
+                                    ? Icons.send_rounded
+                                    : Icons.mic_rounded,
+                                key: ValueKey(hasText),
+                                color: hasText ? Colors.white : p.textHint,
+                                size: 20)),
                       ),
-                      child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 180),
-                          child: Icon(
-                              hasText ? Icons.send_rounded : Icons.mic_rounded,
-                              key: ValueKey(hasText),
-                              color: hasText ? Colors.white : p.textHint,
-                              size: 20)),
-                    ),
-                  );
-                },
-              ),
-            ),
+                    );
+                  },
+                )),
           ]),
         ),
       ]),
@@ -3094,35 +3354,34 @@ class GroupChatPageState extends State<GroupChatPage>
 
   Widget _buildSmartReplyBar(ThemePalette p, ThemeProvider theme) {
     return SizedBox(
-      height: 50,
-      child: _isLoadingSmartReply
-          ? Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(children: [
-                SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: theme.primaryColor)),
-                const SizedBox(width: 10),
-                Text('AI đang gợi ý...',
-                    style: TextStyle(fontSize: 12, color: p.textHint)),
-              ]),
-            )
-          : SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: SmartReplyWidget(
-                  replies: _smartReplies,
-                  onReplySelected: (reply) {
-                    if (!resourceManager.isDisposed) {
-                      _chatInputController.text = reply;
-                      setState(() => _smartReplies = []);
-                      _focusNode.requestFocus();
-                    }
-                  }),
-            ),
-    );
+        height: 50,
+        child: _isLoadingSmartReply
+            ? Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(children: [
+                  SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: theme.primaryColor)),
+                  const SizedBox(width: 10),
+                  Text('AI đang gợi ý...',
+                      style: TextStyle(fontSize: 12, color: p.textHint)),
+                ]))
+            : SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                child: SmartReplyWidget(
+                    replies: _smartReplies,
+                    onReplySelected: (reply) {
+                      if (!resourceManager.isDisposed) {
+                        _chatInputController.text = reply;
+                        setState(() => _smartReplies = []);
+                        _focusNode.requestFocus();
+                      }
+                    })));
   }
 }
 
@@ -3136,35 +3395,31 @@ class _GroupScamBanner extends StatelessWidget {
   final ThemePalette palette;
   @override
   Widget build(BuildContext context) => Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        decoration: BoxDecoration(
-            color: palette.dangerColor.withValues(alpha: .1),
-            borderRadius: BorderRadius.circular(10),
-            border:
-                Border.all(color: palette.dangerColor.withValues(alpha: .4))),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(Icons.warning_amber_rounded,
-              color: palette.dangerColor, size: 15),
-          const SizedBox(width: 6),
-          Flexible(
-              child: Text('AI: $reason',
-                  style: TextStyle(
-                      color: palette.dangerColor,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600))),
-        ]),
-      );
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+          color: palette.dangerColor.withOpacity(.1),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: palette.dangerColor.withOpacity(.4))),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(Icons.warning_amber_rounded, color: palette.dangerColor, size: 15),
+        const SizedBox(width: 6),
+        Flexible(
+            child: Text('AI: $reason',
+                style: TextStyle(
+                    color: palette.dangerColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600))),
+      ]));
 }
 
 class _GroupReminderBanner extends StatelessWidget {
-  const _GroupReminderBanner({
-    required this.msg,
-    required this.messageId,
-    required this.onSet,
-    required this.palette,
-    required this.theme,
-  });
+  const _GroupReminderBanner(
+      {required this.msg,
+      required this.messageId,
+      required this.onSet,
+      required this.palette,
+      required this.theme});
   final MessageChat msg;
   final String messageId;
   final Future<void> Function(MessageChat, String) onSet;
@@ -3172,43 +3427,40 @@ class _GroupReminderBanner extends StatelessWidget {
   final ThemeProvider theme;
   @override
   Widget build(BuildContext context) => Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        decoration: BoxDecoration(
-            color: palette.infoColor.withValues(alpha: .1),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: palette.infoColor.withValues(alpha: .3))),
-        child: Row(children: [
-          Icon(Icons.alarm_add_rounded, color: palette.infoColor, size: 15),
-          const SizedBox(width: 6),
-          Expanded(
-              child: Text('AI: Phát hiện việc cần nhắc nhở',
-                  style: TextStyle(color: palette.infoColor, fontSize: 12))),
-          GestureDetector(
-              onTap: () => onSet(msg, messageId),
-              child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                      color: palette.infoColor.withValues(alpha: .15),
-                      borderRadius: BorderRadius.circular(8)),
-                  child: Text('Đặt',
-                      style: TextStyle(
-                          color: palette.infoColor,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700)))),
-        ]),
-      );
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+          color: palette.infoColor.withOpacity(.1),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: palette.infoColor.withOpacity(.3))),
+      child: Row(children: [
+        Icon(Icons.alarm_add_rounded, color: palette.infoColor, size: 15),
+        const SizedBox(width: 6),
+        Expanded(
+            child: Text('AI: Phát hiện việc cần nhắc nhở',
+                style: TextStyle(color: palette.infoColor, fontSize: 12))),
+        GestureDetector(
+            onTap: () => onSet(msg, messageId),
+            child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                    color: palette.infoColor.withOpacity(.15),
+                    borderRadius: BorderRadius.circular(8)),
+                child: Text('Đặt',
+                    style: TextStyle(
+                        color: palette.infoColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700)))),
+      ]));
 }
 
 class _GroupLocationContent extends StatelessWidget {
-  const _GroupLocationContent({
-    required this.location,
-    required this.isMe,
-    required this.palette,
-    required this.theme,
-    required this.onOpen,
-  });
+  const _GroupLocationContent(
+      {required this.location,
+      required this.isMe,
+      required this.palette,
+      required this.theme,
+      required this.onOpen});
   final dynamic location;
   final bool isMe;
   final ThemePalette palette;
@@ -3239,13 +3491,13 @@ class _GroupLocationContent extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
                   color: isMe
-                      ? Colors.white.withValues(alpha: .15)
+                      ? Colors.white.withOpacity(.15)
                       : palette.primaryContainer,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                       color: isMe
                           ? Colors.white30
-                          : theme.primaryColor.withValues(alpha: .3))),
+                          : theme.primaryColor.withOpacity(.3))),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(Icons.map_rounded,
                     size: 13, color: isMe ? Colors.white : theme.primaryColor),
@@ -3261,14 +3513,13 @@ class _GroupLocationContent extends StatelessWidget {
 }
 
 class _ThemedDialog extends StatelessWidget {
-  const _ThemedDialog({
-    required this.title,
-    required this.icon,
-    required this.iconColor,
-    required this.content,
-    required this.actions,
-    required this.palette,
-  });
+  const _ThemedDialog(
+      {required this.title,
+      required this.icon,
+      required this.iconColor,
+      required this.content,
+      required this.actions,
+      required this.palette});
   final String title;
   final IconData icon;
   final Color iconColor;
@@ -3277,54 +3528,51 @@ class _ThemedDialog extends StatelessWidget {
   final ThemePalette palette;
   @override
   Widget build(BuildContext context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        elevation: 0,
-        backgroundColor: palette.surface,
-        child: Padding(
-            padding: const EdgeInsets.all(22),
-            child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    Container(
-                        width: 42,
-                        height: 42,
-                        decoration: BoxDecoration(
-                            color: iconColor.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(12)),
-                        child: Icon(icon, color: iconColor, size: 22)),
-                    const SizedBox(width: 12),
-                    Expanded(
-                        child: Text(title,
-                            style: TextStyle(
-                                color: palette.textPrimary,
-                                fontSize: 17,
-                                fontWeight: FontWeight.w700))),
-                  ]),
-                  const SizedBox(height: 18),
-                  content,
-                  const SizedBox(height: 20),
-                  Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: actions
-                          .map((a) => Padding(
-                              padding: const EdgeInsets.only(left: 8),
-                              child: a))
-                          .toList()),
-                ])),
-      );
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      elevation: 0,
+      backgroundColor: palette.surface,
+      child: Padding(
+          padding: const EdgeInsets.all(22),
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                          color: iconColor.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(12)),
+                      child: Icon(icon, color: iconColor, size: 22)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                      child: Text(title,
+                          style: TextStyle(
+                              color: palette.textPrimary,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700))),
+                ]),
+                const SizedBox(height: 18),
+                content,
+                const SizedBox(height: 20),
+                Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: actions
+                        .map((a) => Padding(
+                            padding: const EdgeInsets.only(left: 8), child: a))
+                        .toList()),
+              ])));
 }
 
 class _ThemedDialogAction extends StatelessWidget {
-  const _ThemedDialogAction({
-    required this.label,
-    required this.onTap,
-    required this.palette,
-    required this.primary,
-    this.isPrimary = false,
-    this.isDanger = false,
-  });
+  const _ThemedDialogAction(
+      {required this.label,
+      required this.onTap,
+      required this.palette,
+      required this.primary,
+      this.isPrimary = false,
+      this.isDanger = false});
   final String label;
   final VoidCallback onTap;
   final ThemePalette palette;
@@ -3332,7 +3580,7 @@ class _ThemedDialogAction extends StatelessWidget {
   final bool isPrimary, isDanger;
   @override
   Widget build(BuildContext context) {
-    if (isPrimary) {
+    if (isPrimary)
       return FilledButton(
           onPressed: onTap,
           style: FilledButton.styleFrom(
@@ -3342,13 +3590,11 @@ class _ThemedDialogAction extends StatelessWidget {
               padding:
                   const EdgeInsets.symmetric(horizontal: 18, vertical: 10)),
           child: Text(label));
-    }
-    if (isDanger) {
+    if (isDanger)
       return TextButton(
           onPressed: onTap,
           style: TextButton.styleFrom(foregroundColor: palette.dangerColor),
           child: Text(label));
-    }
     return TextButton(
         onPressed: onTap,
         style: TextButton.styleFrom(foregroundColor: palette.textSecondary),
@@ -3357,14 +3603,13 @@ class _ThemedDialogAction extends StatelessWidget {
 }
 
 class _PickerTile extends StatelessWidget {
-  const _PickerTile({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.onTap,
-    required this.palette,
-    required this.primary,
-  });
+  const _PickerTile(
+      {required this.label,
+      required this.value,
+      required this.icon,
+      required this.onTap,
+      required this.palette,
+      required this.primary});
   final String label, value;
   final IconData icon;
   final VoidCallback onTap;
@@ -3425,53 +3670,49 @@ class _RecDotState extends State<_RecDot> with SingleTickerProviderStateMixin {
 }
 
 class _AIAnalysisDialog extends StatelessWidget {
-  const _AIAnalysisDialog({
-    required this.messages,
-    required this.palette,
-    required this.primary,
-  });
+  const _AIAnalysisDialog(
+      {required this.messages, required this.palette, required this.primary});
   final List<String> messages;
   final ThemePalette palette;
   final Color primary;
   @override
   Widget build(BuildContext context) => _ThemedDialog(
-        title: 'AI Phân Tích',
-        icon: Icons.auto_awesome,
-        iconColor: const Color(0xFF8B5CF6),
-        palette: palette,
-        content: FutureBuilder<String?>(
-          future: AIBackendService()
-              .analyzeChatContext(messages, 'work', 'extract_tasks'),
-          builder: (_, snap) {
-            if (snap.connectionState == ConnectionState.waiting) {
-              return const SizedBox(
-                  height: 80,
-                  child: Center(
-                      child: CircularProgressIndicator(
-                          color: Color(0xFF8B5CF6), strokeWidth: 2)));
-            }
-            if (snap.hasError || !snap.hasData) {
-              return Text('AI không khả dụng lúc này.',
-                  style: TextStyle(color: palette.textSecondary));
-            }
-            return ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 260),
-                child: SingleChildScrollView(
-                    child: Text(snap.data!,
-                        style: TextStyle(
-                            color: palette.textPrimary,
-                            fontSize: 14,
-                            height: 1.55))));
-          },
-        ),
-        actions: [
-          _ThemedDialogAction(
-              label: 'Đóng',
-              palette: palette,
-              primary: primary,
-              onTap: () => Navigator.pop(context))
-        ],
-      );
+          title: 'AI Phân Tích',
+          icon: Icons.auto_awesome,
+          iconColor: const Color(0xFF8B5CF6),
+          palette: palette,
+          content: FutureBuilder<String?>(
+            future: AIBackendService()
+                .analyzeChatContext(messages, 'work', 'extract_tasks'),
+            builder: (_, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const SizedBox(
+                    height: 80,
+                    child: Center(
+                        child: CircularProgressIndicator(
+                            color: Color(0xFF8B5CF6), strokeWidth: 2)));
+              }
+              if (snap.hasError || !snap.hasData) {
+                return Text('AI không khả dụng lúc này.',
+                    style: TextStyle(color: palette.textSecondary));
+              }
+              return ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 260),
+                  child: SingleChildScrollView(
+                      child: Text(snap.data!,
+                          style: TextStyle(
+                              color: palette.textPrimary,
+                              fontSize: 14,
+                              height: 1.55))));
+            },
+          ),
+          actions: [
+            _ThemedDialogAction(
+                label: 'Đóng',
+                palette: palette,
+                primary: primary,
+                onTap: () => Navigator.pop(context))
+          ]);
 }
 
 class _GFeatureItem {

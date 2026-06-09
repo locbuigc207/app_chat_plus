@@ -1,14 +1,71 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Bubble dimensions -->
-    <dimen name="bubble_height">600dp</dimen>
-    <dimen name="bubble_width">400dp</dimen>
 
-    <!-- Notification icon size -->
-    <dimen name="notification_icon_size">24dp</dimen>
+    <!-- ── Bubble widget ───────────────────────────────────────────────── -->
+    <dimen name="bubble_outer_size">68dp</dimen>
+    <dimen name="bubble_inner_size">60dp</dimen>
+    <dimen name="bubble_rim_stroke">2dp</dimen>
+    <dimen name="bubble_elevation">10dp</dimen>
+    <dimen name="bubble_shadow_elevation">2dp</dimen>
+    <dimen name="bubble_edge_padding">8dp</dimen>
 
-    <!-- Avatar sizes -->
-    <dimen name="avatar_small">40dp</dimen>
-    <dimen name="avatar_medium">60dp</dimen>
+    <!-- ── Badge ───────────────────────────────────────────────────────── -->
+    <dimen name="badge_height">20dp</dimen>
+    <dimen name="badge_min_width">20dp</dimen>
+    <dimen name="badge_text_size">10sp</dimen>
+    <dimen name="badge_padding_h">5dp</dimen>
+    <dimen name="badge_corner_radius">10dp</dimen>
+    <dimen name="badge_border_width">1.5dp</dimen>
+
+    <!-- ── Online indicator ────────────────────────────────────────────── -->
+    <dimen name="online_wrapper_size">16dp</dimen>
+    <dimen name="online_dot_size">10dp</dimen>
+    <dimen name="online_pulse_size">16dp</dimen>
+
+    <!-- ── Typing indicator ────────────────────────────────────────────── -->
+    <dimen name="typing_dot_size">5dp</dimen>
+    <dimen name="typing_dot_margin">2dp</dimen>
+    <dimen name="typing_bar_height">16dp</dimen>
+
+    <!-- ── Bubble notification (Android 11+) ───────────────────────────── -->
+    <dimen name="bubble_notif_desired_height">640dp</dimen>
+    <dimen name="bubble_notif_width">400dp</dimen>
+
+    <!-- ── Mini chat overlay (Flutter side reference) ──────────────────── -->
+    <dimen name="mini_chat_min_width">300dp</dimen>
+    <dimen name="mini_chat_max_width">420dp</dimen>
+    <dimen name="mini_chat_min_height">420dp</dimen>
+    <dimen name="mini_chat_max_height">680dp</dimen>
+    <dimen name="mini_chat_header_height">56dp</dimen>
+    <dimen name="mini_chat_corner_radius">20dp</dimen>
+    <dimen name="mini_chat_pip_size">72dp</dimen>
+
+    <!-- ── Chat bubbles ────────────────────────────────────────────────── -->
+    <dimen name="msg_bubble_padding">12dp</dimen>
+    <dimen name="msg_bubble_radius">18dp</dimen>
+    <dimen name="msg_bubble_max_width_fraction">0.72</dimen>
+    <dimen name="msg_font_size">15sp</dimen>
+    <dimen name="msg_time_font_size">11sp</dimen>
+
+    <!-- ── Header ──────────────────────────────────────────────────────── -->
+    <dimen name="header_height">56dp</dimen>
+    <dimen name="header_avatar_size">36dp</dimen>
+    <dimen name="header_button_size">30dp</dimen>
+    <dimen name="header_button_radius">9dp</dimen>
+
+    <!-- ── Delete zone ─────────────────────────────────────────────────── -->
+    <dimen name="delete_zone_height">160dp</dimen>
+    <dimen name="delete_icon_radius">30dp</dimen>
+    <dimen name="delete_ring_radius">48dp</dimen>
+
+    <!-- ── Notification icons ───────────────────────────────────────────── -->
+    <dimen name="notif_icon_size">24dp</dimen>
+    <dimen name="notif_large_icon_size">64dp</dimen>
+
+    <!-- ── Avatar sizes ────────────────────────────────────────────────── -->
+    <dimen name="avatar_small">36dp</dimen>
+    <dimen name="avatar_medium">56dp</dimen>
     <dimen name="avatar_large">100dp</dimen>
+    <dimen name="avatar_bubble">120dp</dimen>
+
 </resources>

@@ -1,22 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- ✅ ENHANCED: Chat Bubble Layout with Gradient & Ripple -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="64dp"
-    android:layout_height="64dp"
+    android:layout_width="68dp"
+    android:layout_height="68dp"
     android:clickable="true"
-    android:focusable="true">
+    android:focusable="true"
+    android:importantForAccessibility="yes">
 
-    <!-- Background with Gradient & Shadow -->
-    <RelativeLayout
+    <View
+        android:layout_width="58dp"
+        android:layout_height="58dp"
+        android:layout_gravity="center"
+        android:layout_marginTop="4dp"
+        android:background="@drawable/bubble_shadow"
+        android:elevation="0dp" />
+
+    <FrameLayout
         android:id="@+id/bubble_container"
         android:layout_width="60dp"
         android:layout_height="60dp"
         android:layout_gravity="center"
-        android:background="@drawable/bubble_gradient_bg"
-        android:elevation="8dp"
-        android:foreground="@drawable/bubble_ripple">
+        android:elevation="10dp"
+        android:foreground="@drawable/bubble_ripple"
+        android:background="@drawable/bubble_gradient_bg">
 
-        <!-- Avatar Image -->
         <ImageView
             android:id="@+id/bubble_avatar"
             android:layout_width="match_parent"
@@ -24,47 +30,105 @@
             android:scaleType="centerCrop"
             android:contentDescription="@string/user_avatar" />
 
-        <!-- Online Indicator (Bottom Right) -->
-        <View
-            android:id="@+id/bubble_online_indicator"
-            android:layout_width="14dp"
-            android:layout_height="14dp"
-            android:layout_alignParentBottom="true"
-            android:layout_alignParentEnd="true"
-            android:layout_marginEnd="0dp"
-            android:layout_marginBottom="0dp"
-            android:background="@drawable/online_indicator"
-            android:elevation="10dp"
-            android:visibility="visible" />
-
-        <!-- Unread Badge (Top Right) -->
         <TextView
-            android:id="@+id/bubble_unread_badge"
-            android:layout_width="22dp"
-            android:layout_height="22dp"
-            android:layout_alignParentEnd="true"
-            android:layout_alignParentTop="true"
-            android:layout_marginEnd="-8dp"
-            android:layout_marginTop="-8dp"
-            android:background="@drawable/unread_badge_bg"
+            android:id="@+id/bubble_initials"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
             android:gravity="center"
             android:textColor="@android:color/white"
-            android:textSize="10sp"
+            android:textSize="22sp"
             android:textStyle="bold"
-            android:elevation="12dp"
-            android:visibility="gone"
-            android:maxLength="3" />
-    </RelativeLayout>
+            android:letterSpacing="0.02"
+            android:visibility="gone" />
 
-    <!-- Delete Zone Indicator (shown during drag) -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/bubble_rim" />
+
+    </FrameLayout>
+
+    <FrameLayout
+        android:id="@+id/bubble_online_wrapper"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="2dp"
+        android:layout_marginBottom="2dp"
+        android:elevation="12dp"
+        android:visibility="gone">
+
+        <View
+            android:id="@+id/bubble_online_pulse"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_gravity="center"
+            android:background="@drawable/online_pulse_ring"
+            android:alpha="0.5" />
+
+        <View
+            android:id="@+id/bubble_online_indicator"
+            android:layout_width="10dp"
+            android:layout_height="10dp"
+            android:layout_gravity="center"
+            android:background="@drawable/online_indicator" />
+
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/bubble_unread_badge"
+        android:layout_width="wrap_content"
+        android:layout_height="20dp"
+        android:layout_gravity="top|end"
+        android:layout_marginEnd="0dp"
+        android:layout_marginTop="0dp"
+        android:background="@drawable/unread_badge_bg"
+        android:gravity="center"
+        android:minWidth="20dp"
+        android:paddingStart="5dp"
+        android:paddingEnd="5dp"
+        android:textColor="@android:color/white"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:elevation="14dp"
+        android:visibility="gone"
+        android:maxLength="4" />
+
+    <LinearLayout
+        android:id="@+id/bubble_typing_indicator"
+        android:layout_width="wrap_content"
+        android:layout_height="16dp"
+        android:layout_gravity="bottom|start"
+        android:layout_marginStart="4dp"
+        android:layout_marginBottom="4dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:visibility="gone"
+        android:elevation="12dp">
+
+        <View android:id="@+id/typing_dot1"
+            android:layout_width="5dp" android:layout_height="5dp"
+            android:layout_marginEnd="2dp"
+            android:background="@drawable/typing_dot" />
+        <View android:id="@+id/typing_dot2"
+            android:layout_width="5dp" android:layout_height="5dp"
+            android:layout_marginEnd="2dp"
+            android:background="@drawable/typing_dot" />
+        <View android:id="@+id/typing_dot3"
+            android:layout_width="5dp" android:layout_height="5dp"
+            android:background="@drawable/typing_dot" />
+    </LinearLayout>
+
     <ImageView
         android:id="@+id/delete_indicator"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
+        android:layout_width="26dp"
+        android:layout_height="26dp"
         android:layout_gravity="center"
         android:src="@drawable/ic_delete"
-        android:tint="#FF6B6B"
         android:alpha="0"
-        android:elevation="14dp"
-        android:contentDescription="@string/delete_conversation" />
+        android:elevation="16dp"
+        android:scaleType="fitCenter"
+        android:contentDescription="@string/delete_conversation"
+        android:tint="#FF6B6B" />
+
 </FrameLayout>

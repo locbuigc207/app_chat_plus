@@ -1,3 +1,4 @@
+// android/app/src/main/kotlin/hust/appchat/shortcuts/AvatarLoader.kt
 package hust.appchat.shortcuts
 
 import android.content.Context
@@ -5,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Typeface
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.util.Log
@@ -15,322 +17,211 @@ import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.request.RequestOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlin.math.absoluteValue
+import kotlin.math.abs
 
 /**
- * ✅ GIAI ĐOẠN 6: AVATAR LOADER WITH CACHING
+ * AvatarLoader — Centralised avatar loading & caching for the Bubble system.
  *
- * Features:
- * - LruCache for in-memory caching (10 avatars)
- * - Glide for efficient image loading with disk cache
- * - Automatic default avatar generation with initials
- * - Color generation based on name hash
- * - Circular cropping
- * - Error handling with fallback
+ * Architecture & Features:
+ * • L1 Cache: In-process [LruCache]<String, Icon> with dynamic sizing based on
+ * device heap memory to prevent OutOfMemory errors.
+ * • L2 Cache: Glide disk cache — survives process restarts.
+ * • Fallback: Auto-generates a polished initial-letter avatar with a
+ * deterministic colored background and specular highlight if URL is empty or fails.
+ * • Thread Safety: [loadAvatarIcon] performs blocking IO and must be called on
+ * a background thread. [loadAvatarIconAsync] and [preloadAvatarsBatch] wrap
+ * operations in [Dispatchers.IO] for coroutine safety.
  */
+@RequiresApi(Build.VERSION_CODES.M)
 object AvatarLoader {
-    private const val TAG = "AvatarLoader"
 
-    // ========================================
-    // CACHE CONFIGURATION
-    // ========================================
+    private const val TAG         = "AvatarLoader"
+    private const val AVATAR_SIZE = 120          // px for Glide override
 
-    // LRU Cache for storing loaded Icons
-    // Cache size: 10 avatars (about 1-2MB depending on resolution)
-    private val iconCache = LruCache<String, Icon>(10)
-
-    // Default avatar size
-    private const val AVATAR_SIZE = 100
-
-    // Material Design colors for default avatars
-    private val AVATAR_COLORS = listOf(
-        0xFF2196F3.toInt(), // Blue
-        0xFF4CAF50.toInt(), // Green
-        0xFFFFC107.toInt(), // Amber
-        0xFFE91E63.toInt(), // Pink
-        0xFF9C27B0.toInt(), // Purple
-        0xFFFF5722.toInt(), // Deep Orange
-        0xFF00BCD4.toInt(), // Cyan
-        0xFF8BC34A.toInt(), // Light Green
-        0xFFFF9800.toInt(), // Orange
-        0xFF795548.toInt(), // Brown
+    // ─── Colour palette for initials avatars ──────────────────────────────
+    private val PALETTE = intArrayOf(
+        0xFF1E88E5.toInt(), 0xFF43A047.toInt(), 0xFFE53935.toInt(),
+        0xFF8E24AA.toInt(), 0xFFFF8F00.toInt(), 0xFF00897B.toInt(),
+        0xFF6D4C41.toInt(), 0xFF0288D1.toInt(), 0xFFC62828.toInt(),
+        0xFF2E7D32.toInt(), 0xFF6A1B9A.toInt(), 0xFFAD1457.toInt(),
     )
 
-    // ========================================
+    // ─── LRU cache (Icon wrappers) ────────────────────────────────────────
+    private val cache: LruCache<String, Icon> by lazy {
+        val maxMb    = (Runtime.getRuntime().maxMemory() / 1024 / 1024).toInt()
+        val capacity = minOf(20, maxOf(8, maxMb / 4))
+        Log.d(TAG, "LRU capacity: $capacity (heap=${maxMb}MB)")
+        LruCache(capacity)
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
     // PUBLIC API
-    // ========================================
+    // ═════════════════════════════════════════════════════════════════════
 
     /**
-     * Load avatar icon synchronously
-     *
-     * @param context Android context
-     * @param avatarUrl URL of avatar image (empty for default)
-     * @param userName User's name for default avatar generation
-     * @return Icon ready for use in notifications/shortcuts
+     * Load avatar icon synchronously (call on background thread / IO dispatcher).
+     * Checks L1 cache first; loads via Glide on miss; falls back to initials.
      */
-    @RequiresApi(Build.VERSION_CODES.M)
     @JvmStatic
-    fun loadAvatarIcon(
-        context: Context,
-        avatarUrl: String,
-        userName: String
-    ): Icon {
-        // Check cache first
-        val cacheKey = getCacheKey(avatarUrl, userName)
-        iconCache.get(cacheKey)?.let {
+    fun loadAvatarIcon(context: Context, avatarUrl: String, userName: String): Icon {
+        val key = cacheKey(avatarUrl, userName)
+        cache.get(key)?.let {
             Log.d(TAG, "📦 Using cached avatar: $userName")
             return it
         }
 
-        return try {
+        val icon = try {
             Log.d(TAG, "🔄 Loading avatar: $userName")
-
-            val icon = if (avatarUrl.isEmpty()) {
-                // Generate default avatar
-                createDefaultIcon(context, userName)
-            } else {
-                // Load from URL using Glide
-                loadFromUrl(context, avatarUrl, userName)
-            }
-
-            // Cache the result
-            iconCache.put(cacheKey, icon)
-
-            Log.d(TAG, "✅ Avatar loaded: $userName")
-            icon
-
+            if (avatarUrl.isNotEmpty()) loadFromUrl(context, avatarUrl, userName)
+            else                        createInitialsIcon(userName)
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error loading avatar: $e")
-
-            // Fallback to default
-            createDefaultIcon(context, userName).also {
-                iconCache.put(cacheKey, it)
-            }
+            Log.w(TAG, "⚠️ load failed ($userName): $e, using default")
+            createInitialsIcon(userName)
         }
+
+        cache.put(key, icon)
+        Log.d(TAG, "✅ Avatar loaded: $userName")
+        return icon
     }
 
-    /**
-     * Load avatar icon asynchronously (for coroutines)
-     */
-    @RequiresApi(Build.VERSION_CODES.M)
+    /** Coroutine-safe wrapper — dispatches to [Dispatchers.IO]. */
     suspend fun loadAvatarIconAsync(
-        context: Context,
-        avatarUrl: String,
-        userName: String
+        context: Context, avatarUrl: String, userName: String,
     ): Icon = withContext(Dispatchers.IO) {
         loadAvatarIcon(context, avatarUrl, userName)
     }
 
-    /**
-     * Preload avatar into cache
-     */
-    @RequiresApi(Build.VERSION_CODES.M)
-    fun preloadAvatar(
-        context: Context,
-        avatarUrl: String,
-        userName: String
-    ) {
+    /** Preload avatar into cache safely */
+    fun preloadAvatar(context: Context, avatarUrl: String, userName: String) {
         try {
             loadAvatarIcon(context, avatarUrl, userName)
-            Log.d(TAG, "✅ Preloaded avatar: $userName")
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Preload failed: $e")
+            Log.e(TAG, "❌ preload failed for $userName: $e")
         }
     }
 
-    /**
-     * Clear cache for specific user
-     */
+    /** Preload multiple avatars concurrently */
+    suspend fun preloadAvatarsBatch(
+        context: Context, users: List<Pair<String, String>>,
+    ) = withContext(Dispatchers.IO) {
+        users.forEach { (url, name) ->
+            try {
+                loadAvatarIcon(context, url, name)
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ batch preload $name failed: $e")
+            }
+        }
+        Log.d(TAG, "✅ Batch preload complete (${users.size} avatars)")
+    }
+
+    /** Convert cached Icon to a Bitmap for [android.app.Notification.Builder.setLargeIcon]. */
+    fun iconToBitmap(context: Context, icon: Icon): Bitmap? {
+        return try {
+            val d = icon.loadDrawable(context) ?: return null
+            val w = if (d.intrinsicWidth  > 0) d.intrinsicWidth  else AVATAR_SIZE
+            val h = if (d.intrinsicHeight > 0) d.intrinsicHeight else AVATAR_SIZE
+            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val c   = Canvas(bmp)
+            d.setBounds(0, 0, w, h)
+            d.draw(c)
+            bmp
+        } catch (e: Exception) {
+            Log.w(TAG, "⚠️ iconToBitmap failed: $e")
+            null
+        }
+    }
+
+    /** Public helper to explicitly create a default initials icon */
+    fun createDefaultAvatarIcon(context: Context, name: String): Icon {
+        return createInitialsIcon(name)
+    }
+
+    /** Cache Management */
     fun clearCache(avatarUrl: String, userName: String) {
-        val cacheKey = getCacheKey(avatarUrl, userName)
-        iconCache.remove(cacheKey)
+        cache.remove(cacheKey(avatarUrl, userName))
         Log.d(TAG, "🗑️ Cleared cache for: $userName")
     }
 
-    /**
-     * Clear all cached avatars
-     */
     fun clearAllCache() {
-        iconCache.evictAll()
+        cache.evictAll()
         Log.d(TAG, "🗑️ Cleared all avatar cache")
     }
 
-    /**
-     * Get current cache size
-     */
-    fun getCacheSize(): Int {
-        return iconCache.size()
-    }
+    fun getCacheSize(): Int = cache.size()
 
-    /**
-     * ✅ FIX 1: Create default avatar icon (public helper)
-     *
-     * Used when avatar loading fails or for fallback scenarios
-     */
-    @RequiresApi(Build.VERSION_CODES.M)
-    fun createDefaultAvatarIcon(context: Context, name: String): Icon {
-        return createDefaultIcon(context, name)
-    }
+    fun getCacheStats(): Map<String, Any> = mapOf(
+        "size"          to cache.size(),
+        "maxSize"       to cache.maxSize(),
+        "hitCount"      to cache.hitCount(),
+        "missCount"     to cache.missCount(),
+        "putCount"      to cache.putCount(),
+        "evictionCount" to cache.evictionCount(),
+    )
 
-    // ========================================
+    // ═════════════════════════════════════════════════════════════════════
     // PRIVATE IMPLEMENTATION
-    // ========================================
+    // ═════════════════════════════════════════════════════════════════════
 
-    /**
-     * Generate cache key from URL and name
-     */
-    private fun getCacheKey(avatarUrl: String, userName: String): String {
-        return if (avatarUrl.isEmpty()) {
-            "default_$userName"
-        } else {
-            avatarUrl
-        }
+    private fun loadFromUrl(context: Context, url: String, name: String): Icon {
+        val bmp = Glide.with(context.applicationContext)
+            .asBitmap()
+            .load(url)
+            .apply(
+                RequestOptions()
+                    .circleCrop()
+                    .diskCacheStrategy(DiskCacheStrategy.ALL)
+                    .override(AVATAR_SIZE, AVATAR_SIZE)
+                    .error(0)          // 0 → Glide throws on error → we catch below
+            )
+            .submit()
+            .get()                     // blocking; must be called off main thread
+        return Icon.createWithBitmap(bmp)
     }
 
-    /**
-     * Load avatar from URL using Glide
-     */
-    @RequiresApi(Build.VERSION_CODES.M)
-    private fun loadFromUrl(
-        context: Context,
-        avatarUrl: String,
-        userName: String
-    ): Icon {
-        return try {
-            val bitmap = Glide.with(context)
-                .asBitmap()
-                .load(avatarUrl)
-                .apply(
-                    RequestOptions()
-                        .circleCrop()
-                        .diskCacheStrategy(DiskCacheStrategy.ALL)
-                        .override(AVATAR_SIZE, AVATAR_SIZE)
-                )
-                .submit()
-                .get()
+    private fun createInitialsIcon(name: String): Icon {
+        val bmp    = Bitmap.createBitmap(AVATAR_SIZE, AVATAR_SIZE, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        val r      = AVATAR_SIZE / 2f
 
-            Icon.createWithBitmap(bitmap)
-
-        } catch (e: Exception) {
-            Log.w(TAG, "⚠️ Failed to load from URL, using default: $e")
-            createDefaultIcon(context, userName)
-        }
-    }
-
-    /**
-     * Create default avatar with initials and colored background
-     */
-    @RequiresApi(Build.VERSION_CODES.M)
-    private fun createDefaultIcon(context: Context, name: String): Icon {
-        val bitmap = Bitmap.createBitmap(
-            AVATAR_SIZE,
-            AVATAR_SIZE,
-            Bitmap.Config.ARGB_8888
-        )
-        val canvas = Canvas(bitmap)
-
-        // Draw colored circle background
-        val bgPaint = Paint().apply {
-            color = generateColorFromName(name)
-            isAntiAlias = true
+        // Background circle
+        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = paletteColor(name)
             style = Paint.Style.FILL
         }
-        canvas.drawCircle(
-            AVATAR_SIZE / 2f,
-            AVATAR_SIZE / 2f,
-            AVATAR_SIZE / 2f,
-            bgPaint
-        )
+        canvas.drawCircle(r, r, r, bgPaint)
 
-        // Draw initials text
-        val textPaint = Paint().apply {
-            color = Color.WHITE
-            textSize = AVATAR_SIZE * 0.4f // 40% of size
+        // Specular highlight for a polished look
+        val hiPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color  = Color.argb(40, 255, 255, 255)
+            style  = Paint.Style.FILL
+        }
+        canvas.drawCircle(r * 0.7f, r * 0.6f, r * 0.55f, hiPaint)
+
+        // Initials text
+        val txt = initials(name)
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color     = Color.WHITE
+            textSize  = AVATAR_SIZE * 0.4f
             textAlign = Paint.Align.CENTER
-            isAntiAlias = true
+            typeface  = Typeface.DEFAULT_BOLD
             isFakeBoldText = true
         }
+        val textY = r - (textPaint.descent() + textPaint.ascent()) / 2
+        canvas.drawText(txt, r, textY, textPaint)
 
-        val initials = getInitials(name)
-
-        // Calculate text position (center vertically)
-        val textY = (AVATAR_SIZE / 2f) - ((textPaint.descent() + textPaint.ascent()) / 2)
-
-        canvas.drawText(
-            initials,
-            AVATAR_SIZE / 2f,
-            textY,
-            textPaint
-        )
-
-        return Icon.createWithBitmap(bitmap)
+        return Icon.createWithBitmap(bmp)
     }
 
-    /**
-     * Extract initials from name (max 2 characters)
-     */
-    private fun getInitials(name: String): String {
-        if (name.isEmpty()) return "?"
+    // ─── Helpers ──────────────────────────────────────────────────────────
 
-        return name
-            .trim()
-            .split(" ")
-            .take(2) // First two words
-            .mapNotNull { word ->
-                word.firstOrNull()?.uppercaseChar()
-            }
-            .joinToString("")
-            .ifEmpty { name.first().uppercaseChar().toString() }
-    }
+    private fun cacheKey(url: String, name: String) =
+        if (url.isNotEmpty()) url else "initials:$name"
 
-    /**
-     * Generate consistent color from name hash
-     */
-    private fun generateColorFromName(name: String): Int {
-        if (name.isEmpty()) return AVATAR_COLORS[0]
+    private fun initials(name: String): String =
+        name.trim().split(" ").take(2)
+            .mapNotNull { it.firstOrNull()?.uppercaseChar() }
+            .joinToString("").ifEmpty { "?" }
 
-        // Use hash of name to pick color
-        val index = name.hashCode().absoluteValue % AVATAR_COLORS.size
-        return AVATAR_COLORS[index]
-    }
-
-    // ========================================
-    // BATCH OPERATIONS
-    // ========================================
-
-    /**
-     * Preload multiple avatars (useful for conversation list)
-     */
-    @RequiresApi(Build.VERSION_CODES.M)
-    suspend fun preloadAvatarsBatch(
-        context: Context,
-        users: List<Pair<String, String>> // (avatarUrl, userName)
-    ) = withContext(Dispatchers.IO) {
-        users.forEach { (avatarUrl, userName) ->
-            try {
-                loadAvatarIcon(context, avatarUrl, userName)
-            } catch (e: Exception) {
-                Log.e(TAG, "❌ Batch preload failed for $userName: $e")
-            }
-        }
-        Log.d(TAG, "✅ Batch preload complete: ${users.size} avatars")
-    }
-
-    // ========================================
-    // TESTING & DEBUG
-    // ========================================
-
-    /**
-     * Get cache statistics
-     */
-    fun getCacheStats(): Map<String, Any> {
-        return mapOf(
-            "size" to iconCache.size(),
-            "maxSize" to iconCache.maxSize(),
-            "hitCount" to iconCache.hitCount(),
-            "missCount" to iconCache.missCount(),
-            "putCount" to iconCache.putCount(),
-            "evictionCount" to iconCache.evictionCount()
-        )
-    }
+    private fun paletteColor(name: String): Int =
+        PALETTE[abs(name.hashCode()) % PALETTE.size]
 }

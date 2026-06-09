@@ -1,6 +1,75 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+
+    <!-- ── Brand ───────────────────────────────────────────────────────── -->
+    <color name="brand_blue">#2196F3</color>
+    <color name="brand_blue_dark">#1565C0</color>
+    <color name="brand_blue_darker">#0D47A1</color>
+
+    <!-- ── Bubble gradient ─────────────────────────────────────────────── -->
+    <color name="bubble_grad_start">#2979FF</color>
+    <color name="bubble_grad_mid">#1E88E5</color>
+    <color name="bubble_grad_end">#1565C0</color>
+
+    <!-- ── Work mode ───────────────────────────────────────────────────── -->
+    <color name="work_dark">#0D1B2A</color>
+    <color name="work_mid">#162032</color>
+    <color name="work_light">#1E2D40</color>
+    <color name="work_accent">#66BB6A</color>
+
+    <!-- ── Media mode ──────────────────────────────────────────────────── -->
+    <color name="media_start">#880E4F</color>
+    <color name="media_end">#AD1457</color>
+
+    <!-- ── Location mode ───────────────────────────────────────────────── -->
+    <color name="location_start">#1B5E20</color>
+    <color name="location_end">#388E3C</color>
+
+    <!-- ── Secure mode ─────────────────────────────────────────────────── -->
+    <color name="secure_start">#0A0E1A</color>
+    <color name="secure_end">#1A2A50</color>
+    <color name="secure_accent">#64FFDA</color>
+
+    <!-- ── Shared mode ─────────────────────────────────────────────────── -->
+    <color name="shared_start">#311B92</color>
+    <color name="shared_end">#5E35B1</color>
+
+    <!-- ── Status ──────────────────────────────────────────────────────── -->
+    <color name="online_green">#4CAF50</color>
+    <color name="online_glow">#69F0AE</color>
+    <color name="unread_red">#FF5252</color>
+    <color name="unread_red_dark">#C62828</color>
+
+    <!-- ── Delete zone ─────────────────────────────────────────────────── -->
+    <color name="delete_red">#FF6B6B</color>
+    <color name="delete_red_dark">#DC2626</color>
+
+    <!-- ── Notifications ───────────────────────────────────────────────── -->
     <color name="notification_accent">#2196F3</color>
     <color name="notification_background">#FFFFFF</color>
-    <color name="bubble_background">#F5F5F5</color>
+
+    <!-- ── Background surfaces ─────────────────────────────────────────── -->
+    <color name="bubble_bg">#F5F5F5</color>
+    <color name="mini_chat_bg">#FFFFFF</color>
+    <color name="header_gradient_start">#1E88E5</color>
+    <color name="header_gradient_end">#0D47A1</color>
+
+    <!-- ── Chat bubbles ────────────────────────────────────────────────── -->
+    <color name="my_bubble_start">#2979FF</color>
+    <color name="my_bubble_end">#1565C0</color>
+    <color name="peer_bubble">#F0F0F0</color>
+    <color name="scam_bubble_bg">#FFF3E0</color>
+    <color name="scam_bubble_border">#FFA726</color>
+    <color name="scam_text">#7B3F00</color>
+
+    <!-- ── Transparency helpers ─────────────────────────────────────────── -->
+    <color name="black_10">#1A000000</color>
+    <color name="black_20">#33000000</color>
+    <color name="black_30">#4D000000</color>
+    <color name="white_10">#1AFFFFFF</color>
+    <color name="white_15">#26FFFFFF</color>
+    <color name="white_20">#33FFFFFF</color>
+    <color name="white_50">#80FFFFFF</color>
+    <color name="white_70">#B3FFFFFF</color>
+
 </resources>

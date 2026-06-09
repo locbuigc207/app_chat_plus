@@ -1,5 +1,3 @@
-// ignore_for_file: avoid_print
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -31,7 +29,7 @@ abstract class SyncJobType {
 }
 
 // =============================================================================
-// ChatProvider
+// ChatProvider — with complete bubble integration
 // =============================================================================
 
 class ChatProvider {
@@ -39,6 +37,10 @@ class ChatProvider {
   final SharedPreferences prefs;
   final FirebaseFirestore firebaseFirestore;
   final FirebaseStorage firebaseStorage;
+
+  /// Optional bubble service — set via [attachBubbleService] after construction.
+  /// When null, all bubble-related calls are silently skipped.
+  UnifiedBubbleService? _bubbleService;
 
   final GeminiService _geminiService = GeminiService();
   final MediaCompressionService _compressionService = MediaCompressionService();
@@ -52,7 +54,16 @@ class ChatProvider {
     required this.firebaseStorage,
   });
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
+  // ── Bubble service injection ───────────────────────────────────────────────
+
+  /// Call once in your app's Provider setup:
+  ///   chatProvider.attachBubbleService(ref.read(unifiedBubbleServiceProvider));
+  void attachBubbleService(UnifiedBubbleService? svc) {
+    _bubbleService = svc;
+    _log('🫧 BubbleService attached: ${svc != null}');
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
   static Map<String, dynamic> _toStringMap(dynamic raw) {
     if (raw == null) return {};
@@ -68,7 +79,7 @@ class ChatProvider {
 
   void _log(String message) => debugPrint('[ChatProvider] $message');
 
-  // ─── Storage ──────────────────────────────────────────────────────────────
+  // ── Storage ───────────────────────────────────────────────────────────────
 
   UploadTask uploadFile(File image, String fileName) =>
       firebaseStorage.ref().child(fileName).putFile(image);
@@ -118,7 +129,7 @@ class ChatProvider {
     return mimeMap[ext] ?? 'application/octet-stream';
   }
 
-  // ─── Stream ───────────────────────────────────────────────────────────────
+  // ── Stream ────────────────────────────────────────────────────────────────
 
   Stream<QuerySnapshot> getChatStream(String groupChatId, int limit) =>
       firebaseFirestore
@@ -139,7 +150,139 @@ class ChatProvider {
           .doc(docPath)
           .update(dataNeedUpdate);
 
-  // ─── Send message ─────────────────────────────────────────────────────────
+  // ── URL extraction ────────────────────────────────────────────────────────
+
+  static final _urlRegex = RegExp(
+    r'(https?://[^\s<>"]+|www\.[^\s<>"]+\.[^\s<>"]{2,})',
+    caseSensitive: false,
+  );
+
+  List<String> _extractUrls(String text) {
+    return _urlRegex.allMatches(text).map((m) {
+      var url = m.group(0)!;
+      if (!url.startsWith('http')) url = 'https://$url';
+      return url;
+    }).toList();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BUBBLE — core helpers (no BuildContext, pure service layer)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Map message [type] → bubble messageType string.
+  String _bubbleTypeStr(int type) => switch (type) {
+        TypeMessage.image => 'image',
+        TypeMessage.video => 'video',
+        3 => 'voice', // voice
+        TypeMessage.geoLocked => 'location',
+        TypeMessage.document => 'file',
+        TypeMessage.poll => 'poll',
+        TypeMessage.gameInvite => 'game',
+        TypeMessage.gameResult => 'game',
+        _ => 'text',
+      };
+
+  /// Short display string for bubble notification.
+  String _bubblePreview(String content, int type, {String? senderName}) {
+    final base = switch (type) {
+      TypeMessage.image => '📷 Hình ảnh',
+      TypeMessage.video => '🎬 Video',
+      3 => '🎤 Tin nhắn thoại',
+      TypeMessage.geoLocked => '📍 Tin nhắn vị trí',
+      TypeMessage.document => '📎 Tệp đính kèm',
+      TypeMessage.sticker => '😊 Sticker',
+      TypeMessage.poll => '📊 Bình chọn',
+      TypeMessage.gameInvite => '🎮 Lời mời chơi game',
+      TypeMessage.gameResult => '🏆 Kết quả game',
+      _ => content.contains('maps.google.com') || content.contains('Location:')
+          ? '📍 Vị trí'
+          : (content.length > 60 ? '${content.substring(0, 60)}…' : content),
+    };
+    return senderName != null ? '$senderName: $base' : base;
+  }
+
+  /// Send bubble notification for an INCOMING message (fromUser = false)
+  /// or an OUTGOING message update (fromUser = true).
+  /// Safely no-ops when bubble disabled or not active.
+  Future<void> _tryUpdateBubble({
+    required String conversationId,
+    required String userName,
+    required String avatarUrl,
+    required String content,
+    required int type,
+    required bool fromUser,
+    String? senderName, // for group chats
+  }) async {
+    try {
+      final settings = BubbleSettingsService();
+      if (!settings.isEnabled) return;
+
+      // Do not push bubble when user is actively inside the chat
+      if (settings.settings.autoHideWhenChatOpen && !fromUser) return;
+
+      final svc = _bubbleService;
+      if (svc == null) return;
+      if (!svc.isBubbleActive(conversationId)) return;
+
+      final preview = _bubblePreview(content, type, senderName: senderName);
+
+      await svc.sendMessage(
+        userId: conversationId,
+        userName: userName,
+        message: preview,
+        avatarUrl: avatarUrl,
+        messageType: _bubbleTypeStr(type),
+      );
+    } catch (e) {
+      _log('⚠️ _tryUpdateBubble: $e');
+    }
+  }
+
+  /// Show the bubble popup for a conversation (creates if not already active).
+  /// Called when a message arrives and app is backgrounded.
+  Future<void> _tryShowBubble({
+    required String conversationId,
+    required String userName,
+    required String avatarUrl,
+  }) async {
+    try {
+      final settings = BubbleSettingsService();
+      if (!settings.isEnabled) return;
+      final svc = _bubbleService;
+      if (svc == null || !svc.isSupported) return;
+      await svc.showChatBubble(
+          userId: conversationId, userName: userName, avatarUrl: avatarUrl);
+    } catch (e) {
+      _log('⚠️ _tryShowBubble: $e');
+    }
+  }
+
+  /// Play receive sound based on current BubbleMode for the conversation.
+  Future<void> _tryPlayReceiveSound(String conversationId) async {
+    try {
+      if (!BubbleSettingsService().settings.soundEnabled) return;
+      final ctx = ContextualBubbleService.instance.getContext(conversationId);
+      await BubbleSoundService().playReceive(ctx.mode);
+    } catch (e) {
+      _log('⚠️ _tryPlayReceiveSound: $e');
+    }
+  }
+
+  /// Update conversation context for auto-mode detection.
+  void _updateBubbleContext(String conversationId, String messageContent) {
+    try {
+      ContextualBubbleService.instance.updateContext(
+        conversationId: conversationId,
+        message: messageContent,
+      );
+    } catch (e) {
+      _log('⚠️ _updateBubbleContext: $e');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SEND MESSAGE
+  // ═══════════════════════════════════════════════════════════════════════════
 
   Future<void> sendMessage(
     String content,
@@ -150,7 +293,7 @@ class ChatProvider {
   ) async {
     final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
 
-    // Trích xuất URL đầu tiên để làm bản xem trước link preview
+    // Extract URL for link preview
     String? previewUrl;
     if (type == TypeMessage.text) {
       final urls = _extractUrls(content);
@@ -202,9 +345,19 @@ class ChatProvider {
     }
 
     _syncManager.startListening();
+
+    // ── Bubble: update context + bubble message after send ────────────────
+    _updateBubbleContext(groupChatId, content);
+    unawaited(_tryUpdateBubble(
+      conversationId: groupChatId,
+      userName: peerId,
+      avatarUrl: '',
+      content: content,
+      type: type,
+      fromUser: true,
+    ));
   }
 
-  /// Tạo chuỗi hiển thị tóm tắt thân thiện cho danh sách hội thoại.
   String _previewFor(String content, int type) {
     switch (type) {
       case TypeMessage.image:
@@ -226,22 +379,9 @@ class ChatProvider {
     }
   }
 
-  // ─── URL extraction helper ─────────────────────────────────────────────────
-
-  static final _urlRegex = RegExp(
-    r'(https?://[^\s<>"]+|www\.[^\s<>"]+\.[^\s<>"]{2,})',
-    caseSensitive: false,
-  );
-
-  List<String> _extractUrls(String text) {
-    return _urlRegex.allMatches(text).map((m) {
-      var url = m.group(0)!;
-      if (!url.startsWith('http')) url = 'https://$url';
-      return url;
-    }).toList();
-  }
-
-  // ─── Poll ──────────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  // POLL
+  // ═══════════════════════════════════════════════════════════════════════════
 
   Future<void> sendPollMessage({
     required String question,
@@ -303,8 +443,7 @@ class ChatProvider {
       } catch (e) {
         _log('⚠️ votePoll check attempt $attempt error: $e');
       }
-      final delayMs = baseDelayMs * (attempt + 1);
-      await Future.delayed(Duration(milliseconds: delayMs));
+      await Future.delayed(Duration(milliseconds: baseDelayMs * (attempt + 1)));
     }
 
     if (!docExists) {
@@ -315,9 +454,8 @@ class ChatProvider {
     try {
       await firebaseFirestore.runTransaction((transaction) async {
         final snapshot = await transaction.get(messageRef);
-        if (!snapshot.exists) {
+        if (!snapshot.exists)
           throw Exception('Poll message $messageId không tồn tại.');
-        }
 
         final data = _toStringMap(snapshot.data());
         final contentStr = data[FirestoreConstants.content] as String? ?? '{}';
@@ -349,14 +487,12 @@ class ChatProvider {
 
         final targetIndex =
             options.indexWhere((o) => o['id'].toString() == optionId);
-        if (targetIndex == -1) {
+        if (targetIndex == -1)
           throw Exception('Option $optionId không tồn tại.');
-        }
 
         final isMultipleChoice = (pollData['isMultipleChoice'] ??
             data['isMultipleChoice'] ??
             false) as bool;
-
         if (!isMultipleChoice) {
           for (final opt in options) {
             final votes = List<dynamic>.from(opt['votes'] as List? ?? []);
@@ -364,14 +500,12 @@ class ChatProvider {
             opt['votes'] = votes;
           }
         }
-
         final targetVotes =
             List<dynamic>.from(options[targetIndex]['votes'] as List? ?? []);
-        if (targetVotes.contains(userId)) {
+        if (targetVotes.contains(userId))
           targetVotes.remove(userId);
-        } else {
+        else
           targetVotes.add(userId);
-        }
         options[targetIndex]['votes'] = targetVotes;
         pollData['options'] = options;
 
@@ -390,7 +524,9 @@ class ChatProvider {
     }
   }
 
-  // ─── Firebase listener ────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FIREBASE LISTENER — INCOMING MESSAGES + BUBBLE
+  // ═══════════════════════════════════════════════════════════════════════════
 
   void listenToFirebaseChanges(
     String groupChatId,
@@ -425,6 +561,9 @@ class ChatProvider {
     );
   }
 
+  // ── Track processed messages to avoid duplicate bubble/sound ─────────────
+  final Set<String> _processedIncomingIds = {};
+
   Future<void> _processIncomingDoc({
     required QueryDocumentSnapshot<Map<String, dynamic>> doc,
     required String groupChatId,
@@ -436,6 +575,7 @@ class ChatProvider {
     final isFromMe = data['idFrom'] == currentUserId;
     final type = data['type'] as int? ?? TypeMessage.text;
 
+    // ── Own message: mark as sent ────────────────────────────────────────────
     if (isFromMe) {
       final key = '${groupChatId}_$messageId';
       if (_localDb.messagesBox.containsKey(key)) {
@@ -443,19 +583,18 @@ class ChatProvider {
         final existing = _toStringMap(existingRaw);
         if (existing.isNotEmpty &&
             existing['status'] == MessageStatus.pending) {
-          await _localDb.saveMessage(
-            groupChatId,
-            messageId,
-            {...existing, 'status': MessageStatus.sent},
-          );
+          await _localDb.saveMessage(groupChatId, messageId,
+              {...existing, 'status': MessageStatus.sent});
         }
       }
       return;
     }
 
+    // ── Incoming message ──────────────────────────────────────────────────────
+
     String content = data[FirestoreConstants.content] as String? ?? '';
 
-    // Decrypt đối với tin nhắn văn bản thông thường
+    // Decrypt text messages
     if (type == TypeMessage.text && content.isNotEmpty) {
       try {
         content = await EncryptionService().decryptPayload(
@@ -469,7 +608,7 @@ class ChatProvider {
       }
     }
 
-    // Trích xuất preview link cho các tin nhắn text nhận được
+    // Link preview extraction
     String? previewUrl = data['previewUrl'] as String?;
     if (previewUrl == null && type == TypeMessage.text) {
       final urls = _extractUrls(content);
@@ -504,61 +643,137 @@ class ChatProvider {
         FirestoreConstants.matchStatus: data[FirestoreConstants.matchStatus],
     };
 
-    // ── Auto AI Analysis (parallel, non-blocking) ──────────────────────────
-    // Tiến hành phân tích ngầm tin nhắn text đến từ đối phương có độ dài > 15 ký tự
-    if (!isFromMe &&
-        type == TypeMessage.text &&
+    // Save to local DB first
+    await _localDb.saveMessage(groupChatId, messageId, updatedMessage);
+
+    // ════════════════════════════════════════════════════════════════════════
+    // BUBBLE INTEGRATION for INCOMING messages
+    // ════════════════════════════════════════════════════════════════════════
+
+    // Deduplicate: only trigger bubble+sound once per new message
+    final bubbleKey = '${groupChatId}_${messageId}_bubble';
+    if (!_processedIncomingIds.contains(bubbleKey) &&
+        data['idFrom'] != AppConstants.aiAssistantId &&
+        content.isNotEmpty) {
+      _processedIncomingIds.add(bubbleKey);
+      // Prevent unbounded growth
+      if (_processedIncomingIds.length > 500) {
+        _processedIncomingIds.remove(_processedIncomingIds.first);
+      }
+
+      // 1. Update contextual bubble service — auto-detect mode from content
+      _updateBubbleContext(groupChatId, content);
+
+      // 2. Play notification sound based on BubbleMode
+      unawaited(_tryPlayReceiveSound(groupChatId));
+
+      // 3. Determine peer display info
+      final senderAvatar = await _fetchPeerAvatar(peerId);
+      final senderName = await _fetchPeerName(peerId);
+
+      // 4. Update bubble message (if bubble already active)
+      unawaited(_tryUpdateBubble(
+        conversationId: groupChatId,
+        userName: senderName,
+        avatarUrl: senderAvatar,
+        content: content,
+        type: type,
+        fromUser: false,
+      ));
+
+      // 5. Show bubble if app is in background and no bubble exists yet
+      final settings = BubbleSettingsService();
+      if (settings.isEnabled &&
+          _bubbleService != null &&
+          !_bubbleService!.isBubbleActive(groupChatId)) {
+        unawaited(_tryShowBubble(
+          conversationId: groupChatId,
+          userName: senderName,
+          avatarUrl: senderAvatar,
+        ));
+      }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // AI Auto-Analysis (parallel, non-blocking — unchanged)
+    // ════════════════════════════════════════════════════════════════════════
+
+    if (type == TypeMessage.text &&
         content.isNotEmpty &&
         content.length > 15 &&
         data['idFrom'] != AppConstants.aiAssistantId) {
-      // 1) Quét lừa đảo + tự tạo nhắc nhở công việc + phân tích cảm xúc (fire-and-forget)
-      unawaited(
-        AIBackendService()
-            .analyzeDecryptedClientMessage(
+      // 1) Scam + reminder + sentiment
+      unawaited(AIBackendService()
+          .analyzeDecryptedClientMessage(
               plainTextContent: content,
               conversationId: groupChatId,
               messageId: messageId,
-              idTo: currentUserId,
-            )
-            .catchError((e) => _log('AI analysis skipped: $e')),
-      );
+              idTo: currentUserId)
+          .catchError((e) => _log('AI analysis skipped: $e')));
 
-      // 2) Phát hiện ngôn ngữ thù ghét/độc hại độc lập
+      // 2) Hate speech detection
       unawaited(
-        AIBackendService().detectHateSpeech(content).then((isHateful) async {
-          if (!isHateful) return;
-
-          // Ghi nhận flag isHateful vào cơ sở dữ liệu cục bộ
-          final key = '${groupChatId}_$messageId';
-          final existing = _localDb.messagesBox.get(key);
-          if (existing != null) {
-            await _localDb.saveMessage(
-              groupChatId,
-              messageId,
-              {
-                ...Map<String, dynamic>.from(existing as Map),
-                'isHateful': true,
-                'hateSpeechCategory': 'hate',
-              },
-            );
-          }
-
-          // Cập nhật lên Firestore Document (Best-effort update)
-          firebaseFirestore
-              .collection(FirestoreConstants.pathMessageCollection)
-              .doc(groupChatId)
-              .collection(groupChatId)
-              .doc(messageId)
-              .update({'isHateful': true}).catchError((_) {});
-        }).catchError((e) => _log('HateSpeech check skipped: $e')),
-      );
+          AIBackendService().detectHateSpeech(content).then((isHateful) async {
+        if (!isHateful) return;
+        final key = '${groupChatId}_$messageId';
+        final existing = _localDb.messagesBox.get(key);
+        if (existing != null) {
+          await _localDb.saveMessage(groupChatId, messageId, {
+            ...Map<String, dynamic>.from(existing as Map),
+            'isHateful': true,
+            'hateSpeechCategory': 'hate',
+          });
+        }
+        firebaseFirestore
+            .collection(FirestoreConstants.pathMessageCollection)
+            .doc(groupChatId)
+            .collection(groupChatId)
+            .doc(messageId)
+            .update({'isHateful': true}).catchError((_) {});
+      }).catchError((e) => _log('HateSpeech check skipped: $e')));
     }
-    // ── END Auto AI Analysis ───────────────────────────────────────────────
-
-    await _localDb.saveMessage(groupChatId, messageId, updatedMessage);
   }
 
-  // ─── Media ────────────────────────────────────────────────────────────────
+  // ── Peer info helpers ─────────────────────────────────────────────────────
+
+  /// Simple in-memory cache: userId → avatarUrl
+  final Map<String, String> _avatarCache = {};
+  final Map<String, String> _nameCache = {};
+
+  Future<String> _fetchPeerAvatar(String userId) async {
+    if (_avatarCache.containsKey(userId)) return _avatarCache[userId]!;
+    try {
+      final doc = await firebaseFirestore
+          .collection(FirestoreConstants.pathUserCollection)
+          .doc(userId)
+          .get();
+      final url = doc.data()?[FirestoreConstants.photoUrl] as String? ?? '';
+      _avatarCache[userId] = url;
+      return url;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Future<String> _fetchPeerName(String userId) async {
+    if (_nameCache.containsKey(userId)) return _nameCache[userId]!;
+    try {
+      final doc = await firebaseFirestore
+          .collection(FirestoreConstants.pathUserCollection)
+          .doc(userId)
+          .get();
+      final name =
+          doc.data()?[FirestoreConstants.nickname] as String? ?? 'User';
+      _nameCache[userId] = name;
+      return name;
+    } catch (_) {
+      return 'User';
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MEDIA
+  // ═══════════════════════════════════════════════════════════════════════════
 
   Future<bool> sendMediaMessage({
     required File originalFile,
@@ -574,17 +789,15 @@ class ChatProvider {
     try {
       final ts = DateTime.now().millisecondsSinceEpoch.toString();
       final File compressedFile;
+
       if (isVideo) {
         compressedFile = await _compressionService.compressVideoFile(
-          originalFile,
-          config: compressionConfig,
-          onProgress: onCompressionProgress,
-        );
+            originalFile,
+            config: compressionConfig,
+            onProgress: onCompressionProgress);
       } else {
-        compressedFile = await _compressionService.compressImageFile(
-          originalFile,
-          config: compressionConfig,
-        );
+        compressedFile = await _compressionService
+            .compressImageFile(originalFile, config: compressionConfig);
       }
 
       final ext = isVideo ? 'mp4' : 'jpg';
@@ -604,13 +817,20 @@ class ChatProvider {
         }
       }
 
+      final msgType = isVideo ? TypeMessage.video : TypeMessage.image;
       await sendMessage(
-        contentPayload,
-        isVideo ? TypeMessage.video : TypeMessage.image,
-        groupChatId,
-        currentUserId,
-        peerId,
-      );
+          contentPayload, msgType, groupChatId, currentUserId, peerId);
+
+      // ── Bubble: update with media type immediately ──────────────────────
+      unawaited(_tryUpdateBubble(
+        conversationId: groupChatId,
+        userName: peerId,
+        avatarUrl: '',
+        content: contentPayload,
+        type: msgType,
+        fromUser: true,
+      ));
+
       return true;
     } on MediaCompressionException catch (e) {
       _log('❌ sendMediaMessage compression error: $e');
@@ -639,11 +859,10 @@ class ChatProvider {
     onLoadingStatusChanged(true);
     int successCount = 0;
     try {
-      final compressed = await _compressionService.compressImageBatch(
-        files,
-        config: compressionConfig,
-        onProgress: (done, total) => _log('🗜 Batch compress: $done/$total'),
-      );
+      final compressed = await _compressionService.compressImageBatch(files,
+          config: compressionConfig,
+          onProgress: (done, total) => _log('🗜 Batch compress: $done/$total'));
+
       for (int i = 0; i < compressed.length; i++) {
         try {
           final compressedFile = compressed[i].file;
@@ -674,9 +893,9 @@ class ChatProvider {
   Future<void> cancelMediaCompression() async =>
       _compressionService.cancelCompression();
 
-  // =========================================================================
-  // GAME CENTER METHODS
-  // =========================================================================
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GAME CENTER METHODS + BUBBLE
+  // ═══════════════════════════════════════════════════════════════════════════
 
   Future<String> sendGameInviteMessage({
     required String groupChatId,
@@ -714,19 +933,31 @@ class ChatProvider {
         'status': MessageStatus.sent
       });
 
-      // Preview Text
       final challengeType = payload.targetUserId != null
           ? 'thách @${payload.targetUserName ?? "thành viên"}'
           : 'thách đấu mở';
+      final preview =
+          '${payload.gameType.emoji} ${payload.challengerName} $challengeType ${payload.gameType.displayName}';
+
       await _localDb.updateConversationPreview(
         conversationId: groupChatId,
-        lastMessage:
-            '${payload.gameType.emoji} ${payload.challengerName} $challengeType ${payload.gameType.displayName}',
+        lastMessage: preview,
         lastMessageTime: timestamp,
         lastMessageType: TypeMessage.gameInvite,
       );
 
-      // Kích hoạt thông báo đẩy đích danh cho đối thủ (fire-and-forget)
+      // ── Bubble: game invite notification ─────────────────────────────────
+      _updateBubbleContext(groupChatId, '🎮 game invite');
+      unawaited(_tryUpdateBubble(
+        conversationId: groupChatId,
+        userName: payload.challengerName,
+        avatarUrl: payload.challengerAvatar,
+        content: preview,
+        type: TypeMessage.gameInvite,
+        fromUser: true,
+      ));
+
+      // Push notification to target player
       if (payload.targetUserId?.isNotEmpty == true) {
         unawaited(ChatBubbleService().sendGameChallengeNotification(
           targetUserId: payload.targetUserId!,
@@ -808,6 +1039,18 @@ class ChatProvider {
         lastMessageType: TypeMessage.gameResult,
       );
 
+      // ── Bubble: game result notification ─────────────────────────────────
+      unawaited(_tryUpdateBubble(
+        conversationId: groupChatId,
+        userName: payload.player1Name,
+        avatarUrl: '',
+        content: previewText,
+        type: TypeMessage.gameResult,
+        fromUser: false,
+      ));
+      // Play special sound for game result
+      unawaited(_tryPlayReceiveSound(groupChatId));
+
       _log('🏁 Game result sent: ${payload.matchId} → $groupChatId');
       return timestamp;
     } catch (e) {
@@ -829,14 +1072,11 @@ class ChatProvider {
           .collection(groupChatId)
           .doc(messageId);
 
-      // Sử dụng Transaction để triệt tiêu race-condition khi có nhiều người cùng xem hoặc vào trận
       await firebaseFirestore.runTransaction((tx) async {
         final doc = await tx.get(docRef);
         if (!doc.exists) return;
-
         final data = doc.data()!;
         final currentType = data[FirestoreConstants.type] as int? ?? 0;
-
         if (currentType != TypeMessage.gameInvite &&
             currentType != TypeMessage.gameLive &&
             currentType != TypeMessage.gameResult) return;
@@ -846,16 +1086,13 @@ class ChatProvider {
         try {
           final payloadMap = jsonDecode(rawContent) as Map<String, dynamic>;
           payloadMap['matchStatus'] = newStatus.name;
-          if (spectatorCount != null) {
+          if (spectatorCount != null)
             payloadMap['spectatorCount'] = spectatorCount;
-          }
           updatedContent = jsonEncode(payloadMap);
         } catch (_) {}
 
-        // Chuyển sang gameLive (type 13) khi trạng thái chuyển qua live
         final newType =
             newStatus == MatchStatus.live ? TypeMessage.gameLive : currentType;
-
         tx.update(docRef, {
           FirestoreConstants.matchStatus: newStatus.name,
           FirestoreConstants.content: updatedContent,
@@ -863,11 +1100,10 @@ class ChatProvider {
         });
       });
 
-      // Đồng bộ cơ sở dữ liệu cục bộ Local DB
+      // Sync local DB
       final localKey = '${groupChatId}_$messageId';
       final existingRaw = _localDb.messagesBox.get(localKey);
       final existing = _toStringMap(existingRaw);
-
       if (existing.isNotEmpty) {
         final rawContent =
             existing[FirestoreConstants.content] as String? ?? '{}';
@@ -875,16 +1111,13 @@ class ChatProvider {
         try {
           final payloadMap = jsonDecode(rawContent) as Map<String, dynamic>;
           payloadMap['matchStatus'] = newStatus.name;
-          if (spectatorCount != null) {
+          if (spectatorCount != null)
             payloadMap['spectatorCount'] = spectatorCount;
-          }
           updatedContent = jsonEncode(payloadMap);
         } catch (_) {}
-
         final currentType = existing[FirestoreConstants.type] as int? ?? 0;
         final newType =
             newStatus == MatchStatus.live ? TypeMessage.gameLive : currentType;
-
         await _localDb.saveMessage(groupChatId, messageId, {
           ...existing,
           FirestoreConstants.matchStatus: newStatus.name,
@@ -892,6 +1125,19 @@ class ChatProvider {
           FirestoreConstants.type: newType,
         });
       }
+
+      // ── Bubble: live game status update ───────────────────────────────────
+      if (newStatus == MatchStatus.live) {
+        unawaited(_tryUpdateBubble(
+          conversationId: groupChatId,
+          userName: 'Game',
+          avatarUrl: '',
+          content: '🔴 Trận đấu đang diễn ra trực tiếp!',
+          type: TypeMessage.gameLive,
+          fromUser: false,
+        ));
+      }
+
       _log('🔄 Game message status updated: $messageId → ${newStatus.name}');
     } catch (e) {
       _log('❌ updateGameMessageStatus error: $e');

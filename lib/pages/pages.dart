@@ -1,4 +1,5 @@
 export 'archived_chats_page.dart';
+export 'bubble_settings_page.dart';
 export 'call_history_page.dart';
 export 'call_page.dart';
 export 'chat_page.dart';

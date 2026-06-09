@@ -1,7 +1,12 @@
 export 'agora_rtc_manager.dart';
 export 'ai_backend_service.dart';
 export 'ai_content_service.dart';
+export 'bubble_fcm_handler.dart';
+export 'bubble_lifecycle_observer.dart';
+export 'bubble_reaction_service.dart';
 export 'bubble_service_v2.dart';
+export 'bubble_settings_service.dart';
+export 'bubble_sound_service.dart';
 export 'call_service.dart';
 export 'chat_bubble_service.dart';
 export 'contextual_bubble_service.dart';

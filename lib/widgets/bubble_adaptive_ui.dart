@@ -1,27 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
 import 'package:flutter_chat_demo/models/bubble_models.dart';
 
+// ─── Design Tokens ─────────────────────────────────────────────────────────
 class _C {
+  // Blues
   static const blue500 = Color(0xFF2196F3);
   static const blue700 = Color(0xFF1976D2);
   static const blue900 = Color(0xFF0D47A1);
-
+  // Dark
   static const dark900 = Color(0xFF0D1B2A);
   static const dark800 = Color(0xFF162032);
   static const dark700 = Color(0xFF1E2D40);
-
+  // Green
   static const green700 = Color(0xFF388E3C);
   static const green800 = Color(0xFF2E7D32);
   static const green900 = Color(0xFF1B5E20);
-
+  // Pink
   static const pink700 = Color(0xFFAD1457);
   static const pink900 = Color(0xFF880E4F);
-
+  // Purple
   static const purple700 = Color(0xFF5E35B1);
   static const purple900 = Color(0xFF311B92);
-
+  // Utils
   static const white = Colors.white;
   static const w70 = Color(0xB3FFFFFF);
   static const w50 = Color(0x80FFFFFF);
@@ -33,6 +34,12 @@ class _C {
   static const borderR = BorderRadius.vertical(top: Radius.circular(16));
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// BUBBLE ADAPTIVE HEADER
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Morphs between Normal / Work / Media / Location / Shared / Secure
+/// depending on [BubbleContext.mode].
 class BubbleAdaptiveHeader extends StatefulWidget {
   final BubbleContext bubbleCtx;
   final String peerName;
@@ -57,7 +64,8 @@ class BubbleAdaptiveHeader extends StatefulWidget {
   State<BubbleAdaptiveHeader> createState() => _BubbleAdaptiveHeaderState();
 }
 
-class _BubbleAdaptiveHeaderState extends State<BubbleAdaptiveHeader> with TickerProviderStateMixin {
+class _BubbleAdaptiveHeaderState extends State<BubbleAdaptiveHeader>
+    with TickerProviderStateMixin {
   late AnimationController _modeAnim;
   late AnimationController _pulseAnim;
   bool _mediaPlaying = false;
@@ -159,6 +167,7 @@ class _BubbleAdaptiveHeaderState extends State<BubbleAdaptiveHeader> with Ticker
   }
 }
 
+// ─── Shared Mixin ──────────────────────────────────────────────────────────
 mixin _WindowActions {
   Widget buildButtons({
     required VoidCallback onMinimize,
@@ -221,7 +230,9 @@ class _Avatar extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: _C.w20, width: 1.5),
         color: _C.w20,
-        image: url.isNotEmpty ? DecorationImage(image: NetworkImage(url), fit: BoxFit.cover) : null,
+        image: url.isNotEmpty
+            ? DecorationImage(image: NetworkImage(url), fit: BoxFit.cover)
+            : null,
       ),
       child: url.isEmpty
           ? Center(
@@ -239,6 +250,7 @@ class _Avatar extends StatelessWidget {
   }
 }
 
+// ─── Normal Header ─────────────────────────────────────────────────────────
 class _NormalHeader extends StatelessWidget with _WindowActions {
   final String peerName;
   final String peerAvatar;
@@ -278,8 +290,10 @@ class _NormalHeader extends StatelessWidget with _WindowActions {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(peerName,
-                    style:
-                        const TextStyle(color: _C.white, fontWeight: FontWeight.w700, fontSize: 14),
+                    style: const TextStyle(
+                        color: _C.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
                 Row(
@@ -290,7 +304,8 @@ class _NormalHeader extends StatelessWidget with _WindowActions {
                     ],
                     Text(
                       isOnline ? 'Đang trực tuyến' : 'Ngoại tuyến',
-                      style: TextStyle(color: isOnline ? _C.w70 : _C.w50, fontSize: 11),
+                      style: TextStyle(
+                          color: isOnline ? _C.w70 : _C.w50, fontSize: 11),
                     ),
                   ],
                 ),
@@ -313,7 +328,8 @@ class _OnlineDot extends StatefulWidget {
   State<_OnlineDot> createState() => _OnlineDotState();
 }
 
-class _OnlineDotState extends State<_OnlineDot> with SingleTickerProviderStateMixin {
+class _OnlineDotState extends State<_OnlineDot>
+    with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
 
   @override
@@ -340,10 +356,12 @@ class _OnlineDotState extends State<_OnlineDot> with SingleTickerProviderStateMi
         height: 7,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: Color.lerp(const Color(0xFF69F0AE), const Color(0xFF00E676), _ctrl.value),
+          color: Color.lerp(
+              const Color(0xFF69F0AE), const Color(0xFF00E676), _ctrl.value),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF69F0AE).withValues(alpha: 0.5 * _ctrl.value),
+              color:
+                  const Color(0xFF69F0AE).withValues(alpha: 0.5 * _ctrl.value),
               blurRadius: 6,
               spreadRadius: 1,
             ),
@@ -354,6 +372,7 @@ class _OnlineDotState extends State<_OnlineDot> with SingleTickerProviderStateMi
   }
 }
 
+// ─── Work Header ───────────────────────────────────────────────────────────
 class _WorkHeader extends StatelessWidget with _WindowActions {
   final String peerName;
   final String peerAvatar;
@@ -405,14 +424,19 @@ class _WorkHeader extends StatelessWidget with _WindowActions {
                   children: [
                     Text(peerName,
                         style: const TextStyle(
-                            color: _C.white, fontWeight: FontWeight.w700, fontSize: 14),
+                            color: _C.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis),
                     _TopicBadge(topic: topic),
                   ],
                 ),
               ),
-              buildButtons(onMinimize: onMinimize, onClose: onClose, onFullScreen: onFullScreen),
+              buildButtons(
+                  onMinimize: onMinimize,
+                  onClose: onClose,
+                  onFullScreen: onFullScreen),
             ],
           ),
           const SizedBox(height: 8),
@@ -451,11 +475,14 @@ class _TopicBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF66BB6A).withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(5),
-        border: Border.all(color: const Color(0xFF66BB6A).withValues(alpha: 0.35), width: 1),
+        border: Border.all(
+            color: const Color(0xFF66BB6A).withValues(alpha: 0.35), width: 1),
       ),
       child: Text('$emoji $label',
-          style:
-              const TextStyle(color: Color(0xFF66BB6A), fontSize: 10, fontWeight: FontWeight.w600)),
+          style: const TextStyle(
+              color: Color(0xFF66BB6A),
+              fontSize: 10,
+              fontWeight: FontWeight.w600)),
     );
   }
 }
@@ -464,20 +491,23 @@ class _WorkActionBtn extends StatefulWidget {
   final IconData icon;
   final String label;
   final Color color;
-  const _WorkActionBtn({required this.icon, required this.label, required this.color});
+  const _WorkActionBtn(
+      {required this.icon, required this.label, required this.color});
 
   @override
   State<_WorkActionBtn> createState() => _WorkActionBtnState();
 }
 
-class _WorkActionBtnState extends State<_WorkActionBtn> with SingleTickerProviderStateMixin {
+class _WorkActionBtnState extends State<_WorkActionBtn>
+    with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 100));
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 100));
     _scale = Tween<double>(begin: 1.0, end: 0.85)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeIn));
   }
@@ -505,14 +535,18 @@ class _WorkActionBtnState extends State<_WorkActionBtn> with SingleTickerProvide
           decoration: BoxDecoration(
             color: widget.color.withValues(alpha: 0.13),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: widget.color.withValues(alpha: 0.3), width: 1),
+            border: Border.all(
+                color: widget.color.withValues(alpha: 0.3), width: 1),
           ),
           child: Column(
             children: [
               Icon(widget.icon, size: 15, color: widget.color),
               const SizedBox(height: 2),
               Text(widget.label,
-                  style: TextStyle(color: widget.color, fontSize: 9, fontWeight: FontWeight.w600)),
+                  style: TextStyle(
+                      color: widget.color,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w600)),
             ],
           ),
         ),
@@ -521,6 +555,7 @@ class _WorkActionBtnState extends State<_WorkActionBtn> with SingleTickerProvide
   }
 }
 
+// ─── Media Header ──────────────────────────────────────────────────────────
 class _MediaHeader extends StatelessWidget with _WindowActions {
   final String peerName;
   final String peerAvatar;
@@ -552,7 +587,9 @@ class _MediaHeader extends StatelessWidget with _WindowActions {
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-            colors: [_C.pink900, _C.pink700], begin: Alignment.topLeft, end: Alignment.bottomRight),
+            colors: [_C.pink900, _C.pink700],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight),
         borderRadius: _C.borderR,
       ),
       child: Column(
@@ -564,8 +601,10 @@ class _MediaHeader extends StatelessWidget with _WindowActions {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(peerName,
-                    style:
-                        const TextStyle(color: _C.white, fontWeight: FontWeight.w700, fontSize: 14),
+                    style: const TextStyle(
+                        color: _C.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
               ),
@@ -577,11 +616,14 @@ class _MediaHeader extends StatelessWidget with _WindowActions {
                 child: Container(
                   width: 34,
                   height: 34,
-                  decoration: const BoxDecoration(color: _C.w20, shape: BoxShape.circle),
+                  decoration: const BoxDecoration(
+                      color: _C.w20, shape: BoxShape.circle),
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 180),
                     child: Icon(
-                      isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      isPlaying
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
                       key: ValueKey(isPlaying),
                       color: _C.white,
                       size: 20,
@@ -598,9 +640,13 @@ class _MediaHeader extends StatelessWidget with _WindowActions {
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(color: _C.w15, borderRadius: BorderRadius.circular(4)),
+                decoration: BoxDecoration(
+                    color: _C.w15, borderRadius: BorderRadius.circular(4)),
                 child: const Text('🎵 Media',
-                    style: TextStyle(color: _C.w70, fontSize: 9, fontWeight: FontWeight.w600)),
+                    style: TextStyle(
+                        color: _C.w70,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600)),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -615,7 +661,7 @@ class _MediaHeader extends StatelessWidget with _WindowActions {
                 ),
               ),
               const SizedBox(width: 6),
-              Text('${_fmt(position)}/${_fmt(duration)}',
+              Text(_fmt(position) + '/' + _fmt(duration),
                   style: const TextStyle(color: _C.w70, fontSize: 10)),
             ],
           ),
@@ -631,6 +677,7 @@ class _MediaHeader extends StatelessWidget with _WindowActions {
   }
 }
 
+// ─── Location Header ───────────────────────────────────────────────────────
 class _LocationHeader extends StatelessWidget with _WindowActions {
   final String peerName;
   final String peerAvatar;
@@ -674,13 +721,16 @@ class _LocationHeader extends StatelessWidget with _WindowActions {
               height: 38,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: _C.white.withValues(alpha: 0.08 + pulseAnim.value * 0.12),
+                color:
+                    _C.white.withValues(alpha: 0.08 + pulseAnim.value * 0.12),
                 border: Border.all(
-                  color: _C.white.withValues(alpha: 0.2 + pulseAnim.value * 0.25),
+                  color:
+                      _C.white.withValues(alpha: 0.2 + pulseAnim.value * 0.25),
                   width: 1.5,
                 ),
               ),
-              child: const Icon(Icons.location_on_rounded, color: _C.white, size: 20),
+              child: const Icon(Icons.location_on_rounded,
+                  color: _C.white, size: 20),
             ),
           ),
           const SizedBox(width: 10),
@@ -690,11 +740,14 @@ class _LocationHeader extends StatelessWidget with _WindowActions {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(peerName,
-                    style:
-                        const TextStyle(color: _C.white, fontWeight: FontWeight.w700, fontSize: 14),
+                    style: const TextStyle(
+                        color: _C.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
-                Text('📍 Cách bạn $distStr', style: const TextStyle(color: _C.w70, fontSize: 11)),
+                Text('📍 Cách bạn $distStr',
+                    style: const TextStyle(color: _C.w70, fontSize: 11)),
               ],
             ),
           ),
@@ -712,7 +765,10 @@ class _LocationHeader extends StatelessWidget with _WindowActions {
                   Icon(Icons.map_rounded, color: _C.white, size: 14),
                   SizedBox(width: 4),
                   Text('Bản đồ',
-                      style: TextStyle(color: _C.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                      style: TextStyle(
+                          color: _C.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600)),
                 ],
               ),
             ),
@@ -725,6 +781,7 @@ class _LocationHeader extends StatelessWidget with _WindowActions {
   }
 }
 
+// ─── Shared Header ─────────────────────────────────────────────────────────
 class _SharedHeader extends StatelessWidget with _WindowActions {
   final String peerName;
   final String peerAvatar;
@@ -754,7 +811,8 @@ class _SharedHeader extends StatelessWidget with _WindowActions {
           Container(
             width: 36,
             height: 36,
-            decoration: BoxDecoration(color: _C.w20, borderRadius: BorderRadius.circular(10)),
+            decoration: BoxDecoration(
+                color: _C.w20, borderRadius: BorderRadius.circular(10)),
             child: const Icon(Icons.palette_rounded, color: _C.white, size: 20),
           ),
           const SizedBox(width: 10),
@@ -764,8 +822,10 @@ class _SharedHeader extends StatelessWidget with _WindowActions {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(peerName,
-                    style:
-                        const TextStyle(color: _C.white, fontWeight: FontWeight.w700, fontSize: 14),
+                    style: const TextStyle(
+                        color: _C.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
                 const Text('🎨 Shared Space đang mở',
@@ -780,6 +840,7 @@ class _SharedHeader extends StatelessWidget with _WindowActions {
   }
 }
 
+// ─── Secure Header ─────────────────────────────────────────────────────────
 class _SecureHeader extends StatelessWidget with _WindowActions {
   final String peerName;
   final String peerAvatar;
@@ -806,7 +867,8 @@ class _SecureHeader extends StatelessWidget with _WindowActions {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                Color.lerp(const Color(0xFF0A0E1A), const Color(0xFF0D1F3C), t * 0.4)!,
+                Color.lerp(
+                    const Color(0xFF0A0E1A), const Color(0xFF0D1F3C), t * 0.4)!,
                 const Color(0xFF1A2A50),
               ],
               begin: Alignment.topLeft,
@@ -814,7 +876,8 @@ class _SecureHeader extends StatelessWidget with _WindowActions {
             ),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
             border: Border(
-              bottom: BorderSide(color: _C.teal.withValues(alpha: 0.2 + t * 0.25)),
+              bottom:
+                  BorderSide(color: _C.teal.withValues(alpha: 0.2 + t * 0.25)),
             ),
           ),
           child: Row(
@@ -825,7 +888,8 @@ class _SecureHeader extends StatelessWidget with _WindowActions {
                 decoration: BoxDecoration(
                   color: _C.teal.withValues(alpha: 0.1 + t * 0.08),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: _C.teal.withValues(alpha: 0.3 + t * 0.3)),
+                  border: Border.all(
+                      color: _C.teal.withValues(alpha: 0.3 + t * 0.3)),
                 ),
                 child: Icon(Icons.shield_rounded,
                     color: _C.teal.withValues(alpha: 0.8 + t * 0.2), size: 19),
@@ -838,11 +902,15 @@ class _SecureHeader extends StatelessWidget with _WindowActions {
                   children: [
                     Text(peerName,
                         style: const TextStyle(
-                            color: _C.white, fontWeight: FontWeight.w700, fontSize: 14),
+                            color: _C.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis),
                     Text('🔒 Bảo mật đầu cuối',
-                        style: TextStyle(color: _C.teal.withValues(alpha: 0.7), fontSize: 10)),
+                        style: TextStyle(
+                            color: _C.teal.withValues(alpha: 0.7),
+                            fontSize: 10)),
                   ],
                 ),
               ),

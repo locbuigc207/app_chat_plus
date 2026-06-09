@@ -1,108 +1,298 @@
-// ignore_for_file: avoid_print
-
+// lib/services/contextual_bubble_service.dart
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
+import '../models/bubble_models.dart';
 import '../models/models.dart';
 
-class ContextualBubbleService extends ChangeNotifier {
-  static final ContextualBubbleService _instance = ContextualBubbleService._internal();
-  factory ContextualBubbleService() => _instance;
-  ContextualBubbleService._internal();
+// ═══════════════════════════════════════════════════════════════════════════
+// CONTEXTUAL BUBBLE SERVICE (Singleton, Business Logic)
+// ═══════════════════════════════════════════════════════════════════════════
 
-  BubbleContext _ctx = BubbleContext(
-    mode: BubbleMode.normal,
-    updatedAt: DateTime.now(),
-  );
+class ContextualBubbleService {
+  ContextualBubbleService._();
+  static final ContextualBubbleService instance = ContextualBubbleService._();
 
-  BubbleContext get currentContext => _ctx;
-  BubbleMode get currentMode => _ctx.mode;
+  static const int typeText = 0;
+  static const int typeImage = 1;
+  static const int typeVideo = 2;
+  static const int typeAudio = 3;
+  static const int typeFile = 4;
+  static const int typeLocation = 5;
+  static const int typeSticker = 6;
+  static const int typeGif = 7;
 
-  final _streamCtrl = StreamController<BubbleContext>.broadcast();
-  Stream<BubbleContext> get contextStream => _streamCtrl.stream;
-
-  int _recentMediaCount = 0;
-  Timer? _mediaResetTimer;
   static const _mediaThreshold = 2;
   static const _mediaResetWindow = Duration(minutes: 5);
-
-  Timer? _normalResetTimer;
   static const _autoResetDelay = Duration(minutes: 15);
   static const _locationResetDelay = Duration(minutes: 30);
 
-  static const _typeText = 0;
-  static const _typeImage = 1;
-  static const _typeVideo = 2;
-  static const _typeAudio = 3;
-  static const _typeFile = 4;
-  static const _typeLocation = 5;
-  static const _typeSticker = 6;
-  static const _typeGif = 7;
+  final _contexts = <String, BubbleContext>{};
+  final _controllers = <String, StreamController<BubbleContext>>{};
 
-  static const _workKeywords = <String>[
-    'task',
-    'tasks',
-    'deadline',
-    'deadlines',
-    'meeting',
-    'meetings',
-    'project',
-    'projects',
-    'report',
-    'reports',
-    'review',
-    'reviews',
-    'sprint',
-    'ticket',
-    'tickets',
-    'jira',
-    'trello',
-    'asana',
-    'figma',
-    'notion',
-    'pr ',
-    'pull request',
-    'deploy',
-    'deployment',
-    'release',
-    'bug',
-    'fix',
-    'hotfix',
-    'issue',
-    'issues',
-    'milestone',
-    'urgent',
-    'asap',
-    'priority',
-    'schedule',
-    'calendar',
-    'action item',
-    'follow up',
-    'follow-up',
-    'deliverable',
-    'okr',
-    'kpi',
-    'công việc',
-    'nhiệm vụ',
-    'họp',
-    'dự án',
-    'báo cáo',
-    'kế hoạch',
-    'tiến độ',
-    'gửi file',
-    'nộp báo cáo',
-    'hạn chót',
-    'khẩn',
-    'quan trọng',
-    'cần làm ngay',
-    'lịch họp',
-    'tài liệu',
-    'trình bày',
-  ];
+  final _mediaCounts = <String, int>{};
+  final _mediaTimers = <String, Timer>{};
+  final _resetTimers = <String, Timer>{};
 
-  static const _locationKeywords = <String>[
+  static BubbleContext analyzeMessage({
+    required String message,
+    Map<String, dynamic>? extraData,
+  }) {
+    final lower = message.toLowerCase();
+
+    if (_matchesAny(lower, _locationPatterns)) {
+      return BubbleContext(
+        mode: BubbleMode.location,
+        extraData: {
+          if (_extractMapsUrl(message) != null)
+            'mapsUrl': _extractMapsUrl(message),
+          ...?extraData,
+        },
+        updatedAt: DateTime.now(),
+      );
+    }
+
+    if (_matchesAny(lower, _securePatterns)) {
+      return BubbleContext(mode: BubbleMode.secure, updatedAt: DateTime.now());
+    }
+
+    if (_matchesAny(lower, _mediaPatterns)) {
+      return BubbleContext(mode: BubbleMode.media, updatedAt: DateTime.now());
+    }
+
+    for (final entry in _workTopics.entries) {
+      if (_matchesAny(lower, entry.value)) {
+        return BubbleContext(
+          mode: BubbleMode.work,
+          detectedTopic: entry.key,
+          updatedAt: DateTime.now(),
+        );
+      }
+    }
+
+    if (_matchesAny(lower, _sharedPatterns)) {
+      return BubbleContext(mode: BubbleMode.shared, updatedAt: DateTime.now());
+    }
+
+    return BubbleContext(mode: BubbleMode.normal, updatedAt: DateTime.now());
+  }
+
+  BubbleContext getContext(String conversationId) =>
+      _contexts[conversationId] ?? BubbleContext(updatedAt: DateTime.now());
+
+  BubbleContext updateContext({
+    required String conversationId,
+    required String message,
+    int messageType = typeText,
+    Map<String, dynamic>? extraData,
+  }) {
+    final prev = getContext(conversationId);
+    BubbleContext next;
+
+    if (messageType == typeLocation) {
+      next = BubbleContext(
+        mode: BubbleMode.location,
+        extraData: {
+          if (_extractMapsUrl(message) != null)
+            'mapsUrl': _extractMapsUrl(message),
+          ...?extraData,
+        },
+        updatedAt: DateTime.now(),
+      );
+    } else if (messageType == typeFile) {
+      next = BubbleContext(
+        mode: BubbleMode.work,
+        detectedTopic: 'file',
+        extraData: {'fileName': extraData?['fileName']},
+        updatedAt: DateTime.now(),
+      );
+    } else if (messageType == typeImage ||
+        messageType == typeVideo ||
+        messageType == typeAudio ||
+        messageType == typeGif) {
+      int count = (_mediaCounts[conversationId] ?? 0) + 1;
+      _mediaCounts[conversationId] = count;
+
+      _mediaTimers[conversationId]?.cancel();
+      _mediaTimers[conversationId] = Timer(_mediaResetWindow, () {
+        _mediaCounts[conversationId] = 0;
+        if (getContext(conversationId).mode == BubbleMode.media) {
+          _scheduleAutoReset(conversationId, _autoResetDelay);
+        }
+      });
+
+      if (count >= _mediaThreshold) {
+        next = BubbleContext(
+          mode: BubbleMode.media,
+          extraData: {'mediaCount': count, 'lastType': messageType},
+          updatedAt: DateTime.now(),
+        );
+      } else {
+        next = prev;
+      }
+    } else {
+      next = analyzeMessage(message: message, extraData: extraData);
+    }
+
+    if (next.mode != BubbleMode.secure && prev.mode == BubbleMode.secure) {
+      next = prev;
+    }
+    if (next.mode != BubbleMode.shared &&
+        prev.mode == BubbleMode.shared &&
+        next.mode != BubbleMode.normal) {
+      next = prev;
+    }
+
+    if (prev.mode != next.mode || prev.detectedTopic != next.detectedTopic) {
+      _contexts[conversationId] = next;
+      _controllers[conversationId]?.add(next);
+
+      if (next.mode == BubbleMode.location) {
+        _scheduleAutoReset(conversationId, _locationResetDelay);
+      } else if (next.mode != BubbleMode.secure &&
+          next.mode != BubbleMode.shared &&
+          next.mode != BubbleMode.normal) {
+        _scheduleAutoReset(conversationId, _autoResetDelay);
+      }
+    }
+
+    return next;
+  }
+
+  void updateLocationData({
+    required String conversationId,
+    required double myLat,
+    required double myLng,
+    required double peerLat,
+    required double peerLng,
+    String? peerName,
+    String? mapsUrl,
+  }) {
+    final ctx = getContext(conversationId);
+    if (ctx.mode != BubbleMode.location) return;
+
+    final distance = _haversineKm(myLat, myLng, peerLat, peerLng);
+    final updatedCtx = ctx.copyWith(
+      extraData: {
+        ...?ctx.extraData,
+        'myLat': myLat,
+        'myLng': myLng,
+        'peerLat': peerLat,
+        'peerLng': peerLng,
+        'distance': distance,
+        if (peerName != null) 'peerName': peerName,
+        if (mapsUrl != null) 'mapsUrl': mapsUrl,
+      },
+      updatedAt: DateTime.now(),
+    );
+
+    overrideContext(conversationId, updatedCtx);
+  }
+
+  void _scheduleAutoReset(String conversationId, Duration delay) {
+    _resetTimers[conversationId]?.cancel();
+    _resetTimers[conversationId] = Timer(delay, () {
+      final ctx = getContext(conversationId);
+      if (ctx.mode != BubbleMode.secure && ctx.mode != BubbleMode.shared) {
+        overrideContext(conversationId,
+            BubbleContext(mode: BubbleMode.normal, updatedAt: DateTime.now()));
+      }
+    });
+  }
+
+  Stream<BubbleContext> contextStream(String conversationId) {
+    _controllers.putIfAbsent(
+      conversationId,
+      () => StreamController<BubbleContext>.broadcast(),
+    );
+    return _controllers[conversationId]!.stream;
+  }
+
+  void overrideContext(String conversationId, BubbleContext ctx) {
+    _contexts[conversationId] = ctx;
+    _controllers[conversationId]?.add(ctx);
+  }
+
+  void clearContext(String conversationId) {
+    _contexts.remove(conversationId);
+    _controllers[conversationId]?.close();
+    _controllers.remove(conversationId);
+    _resetTimers[conversationId]?.cancel();
+    _resetTimers.remove(conversationId);
+    _mediaTimers[conversationId]?.cancel();
+    _mediaTimers.remove(conversationId);
+    _mediaCounts.remove(conversationId);
+  }
+
+  void dispose() {
+    for (final c in _controllers.values) {
+      c.close();
+    }
+    _controllers.clear();
+    _contexts.clear();
+
+    for (final t in _resetTimers.values) {
+      t.cancel();
+    }
+    _resetTimers.clear();
+
+    for (final t in _mediaTimers.values) {
+      t.cancel();
+    }
+    _mediaTimers.clear();
+    _mediaCounts.clear();
+  }
+
+  static String labelFor(BubbleMode mode) {
+    switch (mode) {
+      case BubbleMode.work:
+        return 'Work';
+      case BubbleMode.media:
+        return 'Media';
+      case BubbleMode.location:
+        return 'Location';
+      case BubbleMode.shared:
+        return 'Shared';
+      case BubbleMode.secure:
+        return 'Secure';
+      default:
+        return 'Normal';
+    }
+  }
+
+  static double _haversineKm(
+      double lat1, double lon1, double lat2, double lon2) {
+    const R = 6371.0;
+    final dLat = _rad(lat2 - lat1);
+    final dLon = _rad(lon2 - lon1);
+    final a = math.pow(math.sin(dLat / 2), 2) +
+        math.cos(_rad(lat1)) *
+            math.cos(_rad(lat2)) *
+            math.pow(math.sin(dLon / 2), 2);
+    final c = 2 * math.asin(math.sqrt(a.clamp(0.0, 1.0)));
+    return R * c;
+  }
+
+  static double _rad(double deg) => deg * math.pi / 180;
+
+  static final _googleMapsPattern = RegExp(
+      r'https?://(?:www\.)?(?:google\.com/maps|goo\.gl/maps|maps\.app\.goo\.gl)[^\s]*');
+
+  static String? _extractMapsUrl(String content) {
+    final match = _googleMapsPattern.firstMatch(content);
+    return match?.group(0);
+  }
+
+  static const _locationPatterns = [
+    'maps.google',
+    'maps.apple',
+    'waze.com',
+    'location:',
+    '📍',
+    'latitude',
+    'longitude',
     'where are you',
     'your location',
     'location',
@@ -126,231 +316,211 @@ class ContextualBubbleService extends ChangeNotifier {
     'ở đây',
     'chỗ này',
     'nơi này',
+    'tọa độ'
   ];
 
-  static final _googleMapsPattern =
-      RegExp(r'https?://(?:www\.)?(?:google\.com/maps|goo\.gl/maps|maps\.app\.goo\.gl)[^\s]*');
-  static final _locationEmojiPattern = RegExp(r'📍');
+  static const _securePatterns = [
+    '🔒',
+    'secret',
+    'bí mật',
+    'mã hóa',
+    'encrypted',
+    'confidential',
+    'bảo mật',
+    'private',
+  ];
 
-  void analyzeMessage({
-    required String content,
-    required int messageType,
-    bool isFromCurrentUser = true,
-    Map<String, dynamic>? extra,
-  }) {
-    try {
-      _analyzeInternal(
-        content: content,
-        messageType: messageType,
-        isFromCurrentUser: isFromCurrentUser,
-        extra: extra,
-      );
-    } catch (e, st) {
-      debugPrint('ContextualBubbleService.analyzeMessage error: $e\n$st');
-    }
-  }
+  static const _mediaPatterns = [
+    '🎵',
+    '🎶',
+    '🎸',
+    '🎤',
+    '🎬',
+    '🎥',
+    'youtube.com',
+    'youtu.be',
+    'spotify.com',
+    'tiktok.com',
+    'soundcloud.com',
+    'đang phát',
+    'now playing',
+  ];
 
-  void activateSharedMode({Map<String, dynamic>? extraData}) =>
-      _transition(BubbleMode.shared, extraData: extraData);
+  static const _sharedPatterns = [
+    'figma.com',
+    'miro.com',
+    'notion.so',
+    'docs.google',
+    'shared ',
+    'chia sẻ',
+    'cùng xem',
+    'collaborate',
+    'whiteboard',
+  ];
 
-  void activateSecureMode() => _transition(BubbleMode.secure);
+  static const _workTopics = <String, List<String>>{
+    'task': [
+      'task',
+      'tasks',
+      'todo',
+      'công việc',
+      'nhiệm vụ',
+      'ticket',
+      'tickets',
+      'jira',
+      'asana',
+      'trello',
+      'okr',
+      'kpi',
+      'action item',
+      'deliverable'
+    ],
+    'meeting': [
+      'meeting',
+      'meetings',
+      'họp',
+      'cuộc họp',
+      'zoom',
+      'teams',
+      'google meet',
+      'schedule',
+      'lịch họp',
+      'calendar'
+    ],
+    'deadline': [
+      'deadline',
+      'deadlines',
+      'hạn chót',
+      'due date',
+      'due by',
+      'submit by',
+      'nộp trước',
+      'urgent',
+      'khẩn cấp',
+      'khẩn',
+      'quan trọng',
+      'cần làm ngay',
+      'asap',
+      'priority'
+    ],
+    'bug': [
+      'bug',
+      'lỗi',
+      'error',
+      'crash',
+      'issue',
+      'issues',
+      'fix',
+      'patch',
+      'hotfix',
+      'regression'
+    ],
+    'engineering': [
+      'deploy',
+      'deployment',
+      'release',
+      'build',
+      'ci/cd',
+      'pull request',
+      'pr ',
+      'merge',
+      'code review',
+      'staging',
+      'production',
+      'rollback',
+      'sprint',
+      'milestone'
+    ],
+    'file': [
+      '.pdf',
+      '.docx',
+      '.xlsx',
+      '.pptx',
+      '.zip',
+      'drive.google',
+      'dropbox',
+      'file://',
+      'tải lên',
+      'gửi file',
+      'nộp báo cáo',
+      'tài liệu',
+      'báo cáo',
+      'report',
+      'reports'
+    ],
+  };
 
-  void resetToNormal() => _transition(BubbleMode.normal);
+  static bool _matchesAny(String lower, List<String> patterns) =>
+      patterns.any((p) => lower.contains(p));
+}
 
-  void updateLocationData({
-    required double myLat,
-    required double myLng,
-    required double peerLat,
-    required double peerLng,
-    String? peerName,
-    String? mapsUrl,
-  }) {
-    if (_ctx.mode != BubbleMode.location) return;
-    final distance = _haversineKm(myLat, myLng, peerLat, peerLng);
-    _transition(BubbleMode.location, extraData: {
-      ...?_ctx.extraData,
-      'myLat': myLat,
-      'myLng': myLng,
-      'peerLat': peerLat,
-      'peerLng': peerLng,
-      'distance': distance,
-      if (peerName != null) 'peerName': peerName,
-      if (mapsUrl != null) 'mapsUrl': mapsUrl,
+// ═══════════════════════════════════════════════════════════════════════════
+// BUBBLE CONTEXT PROVIDER WIDGET
+// ═══════════════════════════════════════════════════════════════════════════
+
+class BubbleContextProvider extends StatefulWidget {
+  final String conversationId;
+  final Widget child;
+  final BubbleContext initialContext;
+
+  const BubbleContextProvider({
+    super.key,
+    required this.conversationId,
+    required this.child,
+    this.initialContext = const BubbleContext(),
+  });
+
+  @override
+  State<BubbleContextProvider> createState() => _BubbleContextProviderState();
+
+  static BubbleContext of(BuildContext context) =>
+      context
+          .dependOnInheritedWidgetOfExactType<_BubbleContextScope>()
+          ?.context ??
+      BubbleContext(updatedAt: DateTime.now());
+}
+
+class _BubbleContextProviderState extends State<BubbleContextProvider> {
+  late BubbleContext _current;
+  StreamSubscription<BubbleContext>? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    _current = ContextualBubbleService.instance
+                .getContext(widget.conversationId)
+                .mode ==
+            BubbleMode.normal
+        ? widget.initialContext
+        : ContextualBubbleService.instance.getContext(widget.conversationId);
+
+    _sub = ContextualBubbleService.instance
+        .contextStream(widget.conversationId)
+        .listen((ctx) {
+      if (mounted) setState(() => _current = ctx);
     });
   }
-
-  static String labelFor(BubbleMode mode) {
-    switch (mode) {
-      case BubbleMode.work:
-        return 'Work';
-      case BubbleMode.media:
-        return 'Media';
-      case BubbleMode.location:
-        return 'Location';
-      case BubbleMode.shared:
-        return 'Shared';
-      case BubbleMode.secure:
-        return 'Secure';
-      default:
-        return 'Normal';
-    }
-  }
-
-  void _analyzeInternal({
-    required String content,
-    required int messageType,
-    required bool isFromCurrentUser,
-    Map<String, dynamic>? extra,
-  }) {
-    if (messageType == _typeLocation) {
-      final mapsUrl = extra?['mapsUrl'] as String? ?? _extractMapsUrl(content);
-      _transition(BubbleMode.location, extraData: {
-        if (mapsUrl != null) 'mapsUrl': mapsUrl,
-        ...?extra,
-      });
-      return;
-    }
-
-    if (messageType == _typeImage ||
-        messageType == _typeVideo ||
-        messageType == _typeAudio ||
-        messageType == _typeGif) {
-      _recentMediaCount++;
-      _mediaResetTimer?.cancel();
-      _mediaResetTimer = Timer(_mediaResetWindow, () {
-        _recentMediaCount = 0;
-        if (_ctx.mode == BubbleMode.media) _scheduleAutoReset(_autoResetDelay);
-      });
-      if (_recentMediaCount >= _mediaThreshold) {
-        _transition(BubbleMode.media, extraData: {
-          'mediaCount': _recentMediaCount,
-          'lastType': messageType,
-        });
-        return;
-      }
-    }
-
-    if (messageType == _typeFile) {
-      _transition(BubbleMode.work,
-          detectedTopic: 'file', extraData: {'fileName': extra?['fileName']});
-      return;
-    }
-
-    if (messageType != _typeText) return;
-
-    if (_isLocationContent(content)) {
-      _transition(BubbleMode.location, extraData: {
-        'mapsUrl': _extractMapsUrl(content),
-      });
-      return;
-    }
-
-    if (_hasWorkKeyword(content)) {
-      _transition(BubbleMode.work, detectedTopic: _extractWorkTopic(content));
-      return;
-    }
-
-    if (_ctx.mode != BubbleMode.secure && _ctx.mode != BubbleMode.shared) {
-      _scheduleAutoReset(_autoResetDelay);
-    }
-  }
-
-  void _transition(
-    BubbleMode mode, {
-    String? detectedTopic,
-    Map<String, dynamic>? extraData,
-  }) {
-    if (mode != BubbleMode.secure && _ctx.mode == BubbleMode.secure) return;
-    if (mode != BubbleMode.shared && _ctx.mode == BubbleMode.shared && mode != BubbleMode.normal) {
-      return;
-    }
-
-    final newCtx = _ctx.copyWith(
-      mode: mode,
-      detectedTopic: detectedTopic,
-      extraData: extraData,
-    );
-    if (newCtx == _ctx) return;
-
-    _normalResetTimer?.cancel();
-    _ctx = newCtx;
-    _streamCtrl.add(newCtx);
-    notifyListeners();
-
-    debugPrint('🎯 BubbleMode → ${mode.name}'
-        '${detectedTopic != null ? " ($detectedTopic)" : ""}');
-
-    if (mode == BubbleMode.location) {
-      _scheduleAutoReset(_locationResetDelay);
-    }
-  }
-
-  void _scheduleAutoReset(Duration delay) {
-    _normalResetTimer?.cancel();
-    _normalResetTimer = Timer(delay, () {
-      if (_ctx.mode != BubbleMode.secure && _ctx.mode != BubbleMode.shared) {
-        _transition(BubbleMode.normal);
-      }
-    });
-  }
-
-  bool _isLocationContent(String content) {
-    if (_locationEmojiPattern.hasMatch(content)) return true;
-    if (_googleMapsPattern.hasMatch(content)) return true;
-    final lower = content.toLowerCase();
-    return _locationKeywords.any((kw) => lower.contains(kw));
-  }
-
-  String? _extractMapsUrl(String content) {
-    final match = _googleMapsPattern.firstMatch(content);
-    return match?.group(0);
-  }
-
-  bool _hasWorkKeyword(String content) {
-    final lower = content.toLowerCase();
-    return _workKeywords.any((kw) => lower.contains(kw));
-  }
-
-  String _extractWorkTopic(String content) {
-    final lower = content.toLowerCase();
-    if (lower.contains('task') || lower.contains('nhiệm vụ') || lower.contains('việc')) {
-      return 'task';
-    }
-    if (lower.contains('meeting') || lower.contains('họp') || lower.contains('lịch họp')) {
-      return 'meeting';
-    }
-    if (lower.contains('deadline') || lower.contains('hạn chót')) {
-      return 'deadline';
-    }
-    if (lower.contains('file') || lower.contains('tài liệu') || lower.contains('gửi file')) {
-      return 'file';
-    }
-    if (lower.contains('deploy') || lower.contains('release') || lower.contains('sprint')) {
-      return 'engineering';
-    }
-    if (lower.contains('bug') || lower.contains('fix') || lower.contains('issue')) {
-      return 'bug';
-    }
-    return 'work';
-  }
-
-  static double _haversineKm(double lat1, double lon1, double lat2, double lon2) {
-    const R = 6371.0;
-    final dLat = _rad(lat2 - lat1);
-    final dLon = _rad(lon2 - lon1);
-    final a = math.pow(math.sin(dLat / 2), 2) +
-        math.cos(_rad(lat1)) * math.cos(_rad(lat2)) * math.pow(math.sin(dLon / 2), 2);
-    final c = 2 * math.asin(math.sqrt(a.clamp(0.0, 1.0)));
-    return R * c;
-  }
-
-  static double _rad(double deg) => deg * math.pi / 180;
 
   @override
   void dispose() {
-    _streamCtrl.close();
-    _mediaResetTimer?.cancel();
-    _normalResetTimer?.cancel();
+    _sub?.cancel();
     super.dispose();
   }
+
+  @override
+  Widget build(BuildContext context) => _BubbleContextScope(
+        context: _current,
+        child: widget.child,
+      );
+}
+
+class _BubbleContextScope extends InheritedWidget {
+  final BubbleContext context;
+  const _BubbleContextScope({required this.context, required super.child});
+
+  @override
+  bool updateShouldNotify(_BubbleContextScope old) =>
+      old.context.mode != context.mode ||
+      old.context.detectedTopic != context.detectedTopic ||
+      old.context.updatedAt != context.updatedAt;
 }

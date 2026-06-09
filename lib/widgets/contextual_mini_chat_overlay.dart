@@ -1,10 +1,12 @@
+// lib/widgets/contextual_mini_chat_overlay.dart
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../models/models.dart';
-import '../services/services.dart';
+import '../models/bubble_models.dart';
+import '../services/contextual_bubble_service.dart'; // Import Service chuẩn
 import 'bubble_adaptive_ui.dart';
 import 'secure_view_once_widget.dart';
 import 'shared_space_widget.dart';
@@ -14,9 +16,12 @@ const _kCollapsedHeight = 56.0;
 const _kExpandedHeight = 540.0;
 const _kSharedHeight = 500.0;
 const _kBorderRadius = 18.0;
-const _kShadowBlur = 32.0;
 const _kDefaultTopOffset = 90.0;
 const _kDefaultLeftOffset = 18.0;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONTEXTUAL MINI CHAT OVERLAY
+// ═══════════════════════════════════════════════════════════════════════════
 
 class ContextualMiniChatOverlay extends StatefulWidget {
   final String userId;
@@ -43,13 +48,17 @@ class ContextualMiniChatOverlay extends StatefulWidget {
   });
 
   @override
-  State<ContextualMiniChatOverlay> createState() => _ContextualMiniChatOverlayState();
+  State<ContextualMiniChatOverlay> createState() =>
+      _ContextualMiniChatOverlayState();
 }
 
 class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     with TickerProviderStateMixin {
-  final _ctxSvc = ContextualBubbleService();
-  BubbleContext _ctx = BubbleContext(mode: BubbleMode.normal, updatedAt: DateTime.now());
+  // Sử dụng Singleton instance của Service
+  final _ctxSvc = ContextualBubbleService.instance;
+
+  BubbleContext _ctx =
+      BubbleContext(mode: BubbleMode.normal, updatedAt: DateTime.now());
   StreamSubscription<BubbleContext>? _ctxSub;
 
   Offset _pos = const Offset(_kDefaultLeftOffset, _kDefaultTopOffset);
@@ -71,7 +80,8 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
   void initState() {
     super.initState();
 
-    _slideIn = AnimationController(vsync: this, duration: const Duration(milliseconds: 420))
+    _slideIn = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 420))
       ..forward();
 
     _expandAnim = AnimationController(
@@ -79,15 +89,22 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
       duration: const Duration(milliseconds: 340),
       value: 1.0,
     );
-    _expandCurve = CurvedAnimation(parent: _expandAnim, curve: Curves.easeInOutCubic);
+    _expandCurve =
+        CurvedAnimation(parent: _expandAnim, curve: Curves.easeInOutCubic);
 
-    _sharedAnim = AnimationController(vsync: this, duration: const Duration(milliseconds: 380));
+    _sharedAnim = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 380));
 
-    _dragScale = AnimationController(vsync: this, duration: const Duration(milliseconds: 120));
+    _dragScale = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 120));
     _dragScaleCurve = Tween<double>(begin: 1.0, end: 0.97)
         .animate(CurvedAnimation(parent: _dragScale, curve: Curves.easeIn));
 
-    _ctxSub = _ctxSvc.contextStream.listen((ctx) {
+    // Khởi tạo state ban đầu
+    _ctx = _ctxSvc.getContext(widget.conversationId);
+
+    // Lắng nghe sự thay đổi context của riêng conversation này
+    _ctxSub = _ctxSvc.contextStream(widget.conversationId).listen((ctx) {
       if (mounted) setState(() => _ctx = ctx);
     });
   }
@@ -129,22 +146,38 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
   void _toggleShared() {
     setState(() => _isSharedOpen = !_isSharedOpen);
     _isSharedOpen ? _sharedAnim.forward() : _sharedAnim.reverse();
-    _isSharedOpen ? _ctxSvc.activateSharedMode() : _ctxSvc.resetToNormal();
+
+    if (_isSharedOpen) {
+      _ctxSvc.overrideContext(widget.conversationId,
+          BubbleContext(mode: BubbleMode.shared, updatedAt: DateTime.now()));
+    } else {
+      _ctxSvc.overrideContext(widget.conversationId,
+          BubbleContext(mode: BubbleMode.normal, updatedAt: DateTime.now()));
+    }
     HapticFeedback.mediumImpact();
   }
 
   void _toggleSecure() {
     setState(() => _isSecureOn = !_isSecureOn);
-    _isSecureOn ? _ctxSvc.activateSecureMode() : _ctxSvc.resetToNormal();
+
+    if (_isSecureOn) {
+      _ctxSvc.overrideContext(widget.conversationId,
+          BubbleContext(mode: BubbleMode.secure, updatedAt: DateTime.now()));
+    } else {
+      _ctxSvc.overrideContext(widget.conversationId,
+          BubbleContext(mode: BubbleMode.normal, updatedAt: DateTime.now()));
+    }
     HapticFeedback.heavyImpact();
   }
 
   void _setMode(BubbleMode mode) {
     if (_ctx.mode == mode) {
-      _ctxSvc.resetToNormal();
+      _ctxSvc.overrideContext(widget.conversationId,
+          BubbleContext(mode: BubbleMode.normal, updatedAt: DateTime.now()));
     } else {
-      _ctxSvc.analyzeMessage(
-        content: mode.name,
+      _ctxSvc.updateContext(
+        conversationId: widget.conversationId,
+        message: mode.name,
         messageType: 0,
       );
     }
@@ -190,7 +223,8 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     _lastScreenWidth = screen.width;
 
     final clampedX = _pos.dx.clamp(0.0, screen.width - _kOverlayWidth);
-    final clampedY = _pos.dy.clamp(0.0, screen.height - _targetHeight.clamp(0, screen.height));
+    final clampedY = _pos.dy
+        .clamp(0.0, screen.height - _targetHeight.clamp(0, screen.height));
 
     return Positioned(
       left: clampedX,
@@ -314,7 +348,8 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 280),
-      transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
+      transitionBuilder: (child, anim) =>
+          FadeTransition(opacity: anim, child: child),
       child: _activeTab == 1
           ? SharedSpaceWidget(
               key: const ValueKey('shared'),
@@ -342,7 +377,9 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
       child: Row(
         children: [
           _BottomBarBtn(
-            icon: _isExpanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_up_rounded,
+            icon: _isExpanded
+                ? Icons.keyboard_arrow_down_rounded
+                : Icons.keyboard_arrow_up_rounded,
             label: _isExpanded ? 'Thu gọn' : 'Mở rộng',
             onTap: _toggleExpand,
           ),
@@ -495,7 +532,8 @@ class _BottomBarBtn extends StatelessWidget {
           children: [
             Icon(icon, size: 14, color: const Color(0xFF9AA5B8)),
             const SizedBox(width: 3),
-            Text(label, style: const TextStyle(color: Color(0xFF9AA5B8), fontSize: 10)),
+            Text(label,
+                style: const TextStyle(color: Color(0xFF9AA5B8), fontSize: 10)),
           ],
         ),
       ),
@@ -529,7 +567,9 @@ class _QuickModeBtn extends StatelessWidget {
           height: 30,
           margin: const EdgeInsets.only(right: 3),
           decoration: BoxDecoration(
-            color: isActive ? const Color(0xFF1E88E5).withValues(alpha: 0.12) : Colors.transparent,
+            color: isActive
+                ? const Color(0xFF1E88E5).withValues(alpha: 0.12)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(

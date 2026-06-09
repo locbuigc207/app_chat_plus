@@ -10,7 +10,7 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     final notificationsPlugin = FlutterLocalNotificationsPlugin();
 
-    await tester.pumpWidget(MyApp(
+    await tester.pumpWidget(ChatApp(
       prefs: prefs,
       notificationsPlugin: notificationsPlugin,
       chatBubbleService: ChatBubbleService(),
@@ -18,6 +18,6 @@ void main() {
       unifiedBubbleService: UnifiedBubbleService(),
     ));
 
-    expect(find.byType(MyApp), findsOneWidget);
+    expect(find.byType(ChatApp), findsOneWidget);
   });
 }

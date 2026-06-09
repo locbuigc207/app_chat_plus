@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FileProvider path configuration.
+  Save to: android/app/src/main/res/xml/file_paths.xml
+
+  Used by the <provider> declaration in AndroidManifest.xml:
+    android:authorities="${applicationId}.fileprovider"
+
+  Paths exposed:
+   • external-files-path — app-specific external storage (no extra permission)
+   • files-path          — internal app files
+   • cache-path          — internal app cache (voice messages, thumbnails)
+   • external-cache-path — external cache
+-->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- App-specific external storage: Android/data/hust.appchat/files/ -->
+    <external-files-path
+        name="external_files"
+        path="." />
+
+    <!-- Internal files: /data/data/hust.appchat/files/ -->
+    <files-path
+        name="internal_files"
+        path="." />
+
+    <!-- Internal cache: /data/data/hust.appchat/cache/
+         Used for: voice recordings, compressed images before sharing -->
+    <cache-path
+        name="cache"
+        path="." />
+
+    <!-- External cache: Android/data/hust.appchat/cache/ -->
+    <external-cache-path
+        name="external_cache"
+        path="." />
+
+    <!-- Download directory (for saved media) -->
+    <external-path
+        name="external_storage"
+        path="." />
+
+</paths>

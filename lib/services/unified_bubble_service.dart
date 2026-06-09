@@ -2,16 +2,27 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-
 import 'package:flutter_chat_demo/models/bubble_models.dart';
 import 'package:flutter_chat_demo/services/bubble_service_v2.dart';
 import 'package:flutter_chat_demo/services/chat_bubble_service.dart';
 
+/// Single entry-point for bubble operations across the whole app.
+///
+/// Automatically selects:
+///  • [BubbleServiceV2]   → Android 11+ (Bubble API, no overlay permission needed)
+///  • [ChatBubbleService] → Android < 11 (WindowManager overlay)
+///  • none                → Non-Android / Web
+///
+/// All public methods are safe to call before init completes — they are queued
+/// and replayed once the implementation is detected.
 class UnifiedBubbleService {
+  // ── Implementations ───────────────────────────────────────────────────────
   late final BubbleServiceV2 _bubbleApi;
   late final ChatBubbleService _windowMgr;
 
-  static final UnifiedBubbleService _instance = UnifiedBubbleService._internal();
+  // ── Singleton ─────────────────────────────────────────────────────────────
+  static final UnifiedBubbleService _instance =
+      UnifiedBubbleService._internal();
   factory UnifiedBubbleService() => _instance;
 
   UnifiedBubbleService._internal() {
@@ -20,6 +31,7 @@ class UnifiedBubbleService {
     _initialize();
   }
 
+  // ── State ─────────────────────────────────────────────────────────────────
   bool _isInitialized = false;
   Completer<void>? _initCompleter;
   BubbleImplementation _impl = BubbleImplementation.unknown;
@@ -29,6 +41,7 @@ class UnifiedBubbleService {
 
   final List<StreamSubscription> _subs = [];
 
+  // ── Controllers ───────────────────────────────────────────────────────────
   StreamController<BubbleClickEvent>? _clickCtrl;
   StreamController<Map<String, BubbleData>>? _bubblesCtrl;
   StreamController<MiniChatMessage>? _miniMsgCtrl;
@@ -60,6 +73,10 @@ class UnifiedBubbleService {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // INITIALISATION
+  // ═══════════════════════════════════════════════════════════════════════════
+
   Future<void> _initialize() async {
     if (_isInitialized) return;
     if (_initCompleter != null) return _initCompleter!.future;
@@ -89,6 +106,10 @@ class UnifiedBubbleService {
     }
     return BubbleImplementation.windowManager;
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STREAM FORWARDING
+  // ═══════════════════════════════════════════════════════════════════════════
 
   void _forwardStreams() {
     for (final s in _subs) {
@@ -122,7 +143,6 @@ class UnifiedBubbleService {
       forwardBubbles(_bubbleApi.activeBubblesStream);
     } else if (_impl == BubbleImplementation.windowManager) {
       forwardClick(_windowMgr.bubbleClickStream);
-
       forwardBubbles(_windowMgr.activeBubblesStream);
       _subs.add(_windowMgr.miniChatMessageStream.listen(
         (m) {
@@ -133,6 +153,10 @@ class UnifiedBubbleService {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PERMISSIONS
+  // ═══════════════════════════════════════════════════════════════════════════
+
   Future<bool> hasOverlayPermission() async {
     if (_impl == BubbleImplementation.bubbleApi) return true;
     return _windowMgr.hasOverlayPermission();
@@ -142,6 +166,10 @@ class UnifiedBubbleService {
     if (_impl == BubbleImplementation.bubbleApi) return true;
     return _windowMgr.requestOverlayPermission();
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BUBBLE OPERATIONS (all queued for thread-safety)
+  // ═══════════════════════════════════════════════════════════════════════════
 
   Future<bool> showChatBubble({
     required String userId,
@@ -178,7 +206,8 @@ class UnifiedBubbleService {
         if (_impl == BubbleImplementation.bubbleApi) {
           await _bubbleApi.updateBubble(userId: userId, message: message);
         } else if (_impl == BubbleImplementation.windowManager) {
-          await _windowMgr.updateBubbleMessage(userId: userId, message: message);
+          await _windowMgr.updateBubbleMessage(
+              userId: userId, message: message);
         }
       });
 
@@ -207,6 +236,8 @@ class UnifiedBubbleService {
         }
       });
 
+  // ── Mini Chat (WindowManager only) ────────────────────────────────────────
+
   Future<bool> showMiniChat({
     required String userId,
     required String userName,
@@ -230,6 +261,8 @@ class UnifiedBubbleService {
         }
         return false;
       }).then((v) => v ?? false);
+
+  // ── Advanced (BubbleApi only) ──────────────────────────────────────────────
 
   Future<bool> sendMessage({
     required String userId,
@@ -276,6 +309,9 @@ class UnifiedBubbleService {
     }
   }
 
+  // ── Migration ─────────────────────────────────────────────────────────────
+
+  /// Attempt to migrate from WindowManager → Bubble API (e.g. after OS upgrade).
   Future<bool> migrateToModernApi() async {
     if (_impl == BubbleImplementation.bubbleApi) return true;
     final supported = await _bubbleApi.checkBubbleApiSupport();
@@ -305,6 +341,10 @@ class UnifiedBubbleService {
     }).then((v) => v ?? false);
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GETTERS
+  // ═══════════════════════════════════════════════════════════════════════════
+
   bool get isSupported => _impl != BubbleImplementation.none;
   bool get isInitialized => _isInitialized;
   BubbleImplementation get currentImplementation => _impl;
@@ -330,8 +370,10 @@ class UnifiedBubbleService {
   }
 
   Map<String, BubbleData> get activeBubbles {
-    if (_impl == BubbleImplementation.bubbleApi) return _bubbleApi.activeBubbles;
-    if (_impl == BubbleImplementation.windowManager) return _windowMgr.activeBubbles;
+    if (_impl == BubbleImplementation.bubbleApi)
+      return _bubbleApi.activeBubbles;
+    if (_impl == BubbleImplementation.windowManager)
+      return _windowMgr.activeBubbles;
     return {};
   }
 
@@ -342,7 +384,12 @@ class UnifiedBubbleService {
         BubbleImplementation.unknown => 'Detecting...',
       };
 
-  String getMessageTypeFromContent(String content, int typeCode) => _resolveType(content, typeCode);
+  String getMessageTypeFromContent(String content, int typeCode) =>
+      _resolveType(content, typeCode);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // OPERATION QUEUE
+  // ═══════════════════════════════════════════════════════════════════════════
 
   Future<T?> _queue<T>(Future<T> Function() op) {
     final completer = Completer<T?>();
@@ -374,14 +421,23 @@ class UnifiedBubbleService {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // HELPERS
+  // ═══════════════════════════════════════════════════════════════════════════
+
   String _resolveType(String content, int typeCode) => switch (typeCode) {
         1 => 'image',
         2 => 'text',
         3 => 'voice',
         4 => 'location',
-        _ when content.contains('maps.google') || content.contains('📍') => 'location',
+        _ when content.contains('maps.google') || content.contains('📍') =>
+          'location',
         _ => 'text',
       };
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LIFECYCLE
+  // ═══════════════════════════════════════════════════════════════════════════
 
   void dispose() {
     for (final s in _subs) {

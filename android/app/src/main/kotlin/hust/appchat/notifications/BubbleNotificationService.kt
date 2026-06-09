@@ -8,19 +8,35 @@ import androidx.annotation.RequiresApi
 import hust.appchat.bubble.BubbleManager
 import hust.appchat.shortcuts.AvatarLoader
 import hust.appchat.shortcuts.ShortcutHelper
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 
+/**
+ * BubbleNotificationService — Central orchestrator for chat bubbles.
+ *
+ * Responsibilities:
+ * • Android 11+: Create/push shortcuts → show Bubble API notification.
+ * • Android < 11: Delegate to BubbleManager (WindowManager overlay).
+ * • Manage active-bubble set, stats, avatar cache, and shortcut sync.
+ * • Expose lifecycle hooks (onAppPaused / onAppResumed).
+ *
+ * Threading & Architecture:
+ * • All coroutines run on an IO Dispatcher with a SupervisorJob (one failure
+ * doesn't cancel siblings).
+ * • activeBubbles tracking is thread-safe using synchronized blocks.
+ */
 object BubbleNotificationService {
+
     internal const val TAG = "BubbleNotifService"
 
-    internal val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    internal var isInitialized = false
+    // Use IO dispatcher for background operations like shortcut creation and cache access
+    internal val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    internal val activeBubbleNotifications = mutableSetOf<String>()
+    @Volatile
+    var isInitialized = false
+        private set
+
+    // userId -> true means a Bubble-API notification exists for that user.
+    internal val activeBubbles = LinkedHashSet<String>()
 
     // ========================================
     // INITIALIZATION
@@ -37,7 +53,6 @@ object BubbleNotificationService {
 
             if (ShortcutHelper.isShortcutsSupported()) {
                 Log.d(TAG, "✅ Shortcuts supported")
-
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     preloadRecentAvatars(context)
                 }
@@ -56,49 +71,26 @@ object BubbleNotificationService {
     // AVATAR PRELOADING
     // ========================================
 
-    @RequiresApi(Build.VERSION_CODES.M)
     private fun preloadRecentAvatars(context: Context) {
         scope.launch {
             try {
+                val bubbles = BubbleManager.getActiveBubbles()
+                if (bubbles.isEmpty()) return@launch
+
                 Log.d(TAG, "🔄 Preloading recent avatars...")
-
-                val activeBubbles = BubbleManager.getActiveBubbles()
-
-                if (activeBubbles.isNotEmpty()) {
-                    val userList = activeBubbles.map { (_, bubble) ->
-                        bubble.avatarUrl to bubble.userName
-                    }
-
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    val userList = bubbles.map { (_, b) -> b.avatarUrl to b.userName }
                     AvatarLoader.preloadAvatarsBatch(context, userList)
-                    Log.d(TAG, "✅ Preloaded ${activeBubbles.size} avatars")
+                    Log.d(TAG, "✅ Preloaded ${bubbles.size} avatars")
                 }
-
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Avatar preload failed: $e")
             }
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.M)
-    suspend fun preloadAvatarForNotification(
-        context: Context,
-        avatarUrl: String,
-        userName: String
-    ) {
-        try {
-            AvatarLoader.loadAvatarIconAsync(
-                context = context,
-                avatarUrl = avatarUrl,
-                userName = userName
-            )
-            Log.d(TAG, "✅ Avatar preloaded for: $userName")
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Preload failed: $e")
-        }
-    }
-
     // ========================================
-    // BUBBLE NOTIFICATION WITH MESSAGE HISTORY
+    // BUBBLE NOTIFICATION SHOW/UPDATE
     // ========================================
 
     fun showBubbleNotification(
@@ -116,83 +108,48 @@ object BubbleNotificationService {
         scope.launch {
             try {
                 Log.d(TAG, "🎈 Creating bubble notification: $userName")
-
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        preloadAvatarForNotification(context, avatarUrl, userName)
-                    }
-
-                    val shortcutExists = ShortcutHelper.shortcutExists(context, userId)
-
-                    if (!shortcutExists) {
-                        Log.d(TAG, "🔗 Shortcut missing, creating for: $userName")
-
-                        ShortcutHelper.createShortcut(
-                            context = context,
-                            userId = userId,
-                            userName = userName,
-                            avatarUrl = avatarUrl
-                        )
-
-                        delay(500)
-
-                        val verifyShortcut = ShortcutHelper.shortcutExists(context, userId)
-                        if (!verifyShortcut) {
-                            Log.e(TAG, "❌ Failed to create shortcut for: $userName")
-                            BubbleManager.showBubble(
-                                context = context,
-                                userId = userId,
-                                userName = userName,
-                                avatarUrl = avatarUrl,
-                                message = message
-                            )
-                            return@launch
-                        }
-                    } else {
-                        Log.d(TAG, "✅ Shortcut already exists for: $userName")
-                    }
-
-                    BubbleNotificationManager.addMessage(
-                        context = context,
-                        userId = userId,
-                        userName = userName,
-                        message = message,
-                        avatarUrl = avatarUrl,
-                        isFromUser = false,
-                        messageType = BubbleNotificationManager.MessageType.TEXT
-                    )
-
-                    activeBubbleNotifications.add(userId)
-                    Log.d(TAG, "✅ Bubble notification created with message history")
-
+                    showModernBubble(context, userId, userName, message, avatarUrl)
                 } else {
                     Log.d(TAG, "⚠️ Android < 11, using WindowManager fallback")
-                    BubbleManager.showBubble(
-                        context = context,
-                        userId = userId,
-                        userName = userName,
-                        avatarUrl = avatarUrl,
-                        message = message
-                    )
+                    BubbleManager.showBubble(context, userId, userName, avatarUrl, message)
                 }
-
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Failed to create bubble notification: $e")
-
-                try {
-                    BubbleManager.showBubble(
-                        context = context,
-                        userId = userId,
-                        userName = userName,
-                        avatarUrl = avatarUrl,
-                        message = message
-                    )
-                    Log.d(TAG, "✅ Fallback to WindowManager successful")
-                } catch (fallbackError: Exception) {
-                    Log.e(TAG, "❌ Fallback also failed: $fallbackError")
-                }
+                fallbackToOverlay(context, userId, userName, avatarUrl, message)
             }
         }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private suspend fun showModernBubble(
+        context: Context,
+        userId: String,
+        userName: String,
+        message: String,
+        avatarUrl: String
+    ) {
+        // 1. Preload avatar
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            AvatarLoader.loadAvatarIconAsync(context, avatarUrl, userName)
+        }
+
+        // 2. Ensure shortcut exists (required for Bubble API)
+        ensureShortcut(context, userId, userName, avatarUrl)
+
+        // 3. Push notification with bubble metadata
+        BubbleNotificationManager.addMessage(
+            context = context,
+            userId = userId,
+            userName = userName,
+            message = message,
+            avatarUrl = avatarUrl,
+            fromUser = false,
+            type = BubbleNotificationManager.MessageType.TEXT
+        )
+
+        synchronized(activeBubbles) { activeBubbles.add(userId) }
+        Log.d(TAG, "✅ Modern bubble shown: $userName")
     }
 
     fun updateBubbleNotification(
@@ -204,36 +161,20 @@ object BubbleNotificationService {
     ) {
         scope.launch {
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-                    activeBubbleNotifications.contains(userId)) {
-
-                    ShortcutHelper.ensureShortcutForNotification(
-                        context = context,
-                        userId = userId,
-                        userName = userName,
-                        avatarUrl = avatarUrl
-                    )
-
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && isBubbleActive(userId)) {
+                    ensureShortcut(context, userId, userName, avatarUrl)
                     BubbleNotificationManager.addMessage(
                         context = context,
                         userId = userId,
                         userName = userName,
                         message = message,
                         avatarUrl = avatarUrl,
-                        isFromUser = false,
-                        messageType = BubbleNotificationManager.MessageType.TEXT
+                        fromUser = false,
+                        type = BubbleNotificationManager.MessageType.TEXT
                     )
-
                     Log.d(TAG, "✅ Bubble notification updated: $userName")
-
                 } else {
-                    BubbleManager.showBubble(
-                        context = context,
-                        userId = userId,
-                        userName = userName,
-                        avatarUrl = avatarUrl,
-                        message = message
-                    )
+                    BubbleManager.showBubble(context, userId, userName, avatarUrl, message)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Update bubble notification failed: $e")
@@ -241,8 +182,23 @@ object BubbleNotificationService {
         }
     }
 
+    private fun fallbackToOverlay(
+        context: Context,
+        userId: String,
+        userName: String,
+        avatarUrl: String,
+        message: String
+    ) {
+        try {
+            BubbleManager.showBubble(context, userId, userName, avatarUrl, message)
+            Log.d(TAG, "✅ Fallback to WindowManager successful for $userName")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Fallback also failed: $e")
+        }
+    }
+
     // ========================================
-    // SEND MESSAGE FROM USER
+    // SEND MESSAGE FROM USER (OUTGOING)
     // ========================================
 
     fun sendMessage(
@@ -253,21 +209,20 @@ object BubbleNotificationService {
         avatarUrl: String,
         messageType: BubbleNotificationManager.MessageType = BubbleNotificationManager.MessageType.TEXT
     ) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+
         scope.launch {
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    BubbleNotificationManager.addMessage(
-                        context = context,
-                        userId = userId,
-                        userName = userName,
-                        message = message,
-                        avatarUrl = avatarUrl,
-                        isFromUser = true,
-                        messageType = messageType
-                    )
-
-                    Log.d(TAG, "✅ User message added to bubble: $message")
-                }
+                BubbleNotificationManager.addMessage(
+                    context = context,
+                    userId = userId,
+                    userName = userName,
+                    message = message,
+                    avatarUrl = avatarUrl,
+                    fromUser = true,
+                    type = messageType
+                )
+                Log.d(TAG, "✅ User message added to bubble: $message")
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Failed to send message: $e")
             }
@@ -289,12 +244,10 @@ object BubbleNotificationService {
 
                     NotificationHelper.cancelNotification(context, userId)
 
-                    activeBubbleNotifications.remove(userId)
-                    Log.d(TAG, "✅ Bubble dismissed")
+                    synchronized(activeBubbles) { activeBubbles.remove(userId) }
                 }
-
                 BubbleManager.removeBubble(context, userId)
-
+                Log.d(TAG, "✅ Bubble dismissed: $userId")
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Dismiss bubble failed: $e")
             }
@@ -312,13 +265,10 @@ object BubbleNotificationService {
 
                     NotificationHelper.cancelAllNotifications(context)
 
-                    activeBubbleNotifications.clear()
+                    synchronized(activeBubbles) { activeBubbles.clear() }
                 }
-
                 BubbleManager.cleanup()
-
                 Log.d(TAG, "✅ All bubbles dismissed")
-
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Dismiss all bubbles failed: $e")
             }
@@ -326,12 +276,65 @@ object BubbleNotificationService {
     }
 
     // ========================================
-    // STATE QUERIES
+    // SHORTCUT UTILITIES
+    // ========================================
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private suspend fun ensureShortcut(
+        context: Context,
+        userId: String,
+        userName: String,
+        avatarUrl: String
+    ) {
+        if (ShortcutHelper.shortcutExists(context, userId)) {
+            Log.d(TAG, "✅ Shortcut already exists for: $userName")
+            return
+        }
+
+        Log.d(TAG, "🔗 Shortcut missing, creating for: $userName")
+        ShortcutHelper.createShortcut(context, userId, userName, avatarUrl)
+
+        delay(400) // Brief delay to let the system index the shortcut
+
+        if (!ShortcutHelper.shortcutExists(context, userId)) {
+            Log.e(TAG, "❌ Shortcut creation failed for $userName")
+            throw IllegalStateException("Shortcut not created")
+        }
+    }
+
+    fun syncShortcuts(context: Context) {
+        scope.launch {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    Log.d(TAG, "🔄 Syncing shortcuts with active bubbles")
+                    val managerBubbles = BubbleManager.getActiveBubbles()
+                    managerBubbles.forEach { (uid, b) ->
+                        ShortcutHelper.ensureShortcutForNotification(
+                            context = context,
+                            userId = uid,
+                            userName = b.userName,
+                            avatarUrl = b.avatarUrl
+                        )
+                    }
+                    Log.d(TAG, "✅ Shortcuts synced: ${managerBubbles.size} shortcuts")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Sync shortcuts failed: $e")
+            }
+        }
+    }
+
+    fun getShortcutCount(context: Context): Int = ShortcutHelper.getShortcutCount(context)
+    fun canCreateMoreShortcuts(context: Context): Boolean = ShortcutHelper.canCreateMoreShortcuts(context)
+    fun isShortcutsSupported(): Boolean = ShortcutHelper.isShortcutsSupported()
+
+    // ========================================
+    // STATE QUERIES & STATS
     // ========================================
 
     fun isBubbleActive(userId: String): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            activeBubbleNotifications.contains(userId)
+            synchronized(activeBubbles) { activeBubbles.contains(userId) }
         } else {
             BubbleManager.isBubbleActive(userId)
         }
@@ -339,7 +342,7 @@ object BubbleNotificationService {
 
     fun getActiveBubbleCount(): Int {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            activeBubbleNotifications.size
+            synchronized(activeBubbles) { activeBubbles.size }
         } else {
             BubbleManager.getActiveBubbles().size
         }
@@ -347,23 +350,22 @@ object BubbleNotificationService {
 
     fun getActiveBubbleUserIds(): Set<String> {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            activeBubbleNotifications.toSet()
+            synchronized(activeBubbles) { activeBubbles.toSet() }
         } else {
             BubbleManager.getActiveBubbles().keys.toSet()
         }
     }
 
-    // ========================================
-    // STATISTICS
-    // ========================================
-
     fun getBubbleStats(): Map<String, Any> {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            BubbleNotificationManager.getStats()
+            BubbleNotificationManager.getStats() + mapOf(
+                "implementation" to "BubbleAPI",
+                "activeBubbles"  to getActiveBubbleCount()
+            )
         } else {
             mapOf(
                 "implementation" to "WindowManager",
-                "activeBubbles" to BubbleManager.getActiveBubbles().size
+                "activeBubbles"  to BubbleManager.getActiveBubbles().size
             )
         }
     }
@@ -373,11 +375,15 @@ object BubbleNotificationService {
             BubbleNotificationManager.logState()
         }
 
-        Log.d(TAG, "Active bubble notifications: ${activeBubbleNotifications.size}")
-        activeBubbleNotifications.forEach { userId ->
-            val count = BubbleNotificationManager.getMessageCount(userId)
-            val lastMsg = BubbleNotificationManager.getLastMessage(userId)
-            Log.d(TAG, "  - $userId: $count messages, last: ${lastMsg?.text?.take(30)}")
+        Log.d(TAG, "Active bubble notifications: ${getActiveBubbleCount()}")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            synchronized(activeBubbles) {
+                activeBubbles.forEach { userId ->
+                    val count = BubbleNotificationManager.getMessageCount(userId)
+                    val lastMsg = BubbleNotificationManager.getLastMessage(userId)
+                    Log.d(TAG, "  - $userId: $count messages, last: ${lastMsg?.text?.take(30)}")
+                }
+            }
         }
     }
 
@@ -385,9 +391,7 @@ object BubbleNotificationService {
     // AVATAR CACHE UTILITIES
     // ========================================
 
-    fun getAvatarCacheStats(): Map<String, Any> {
-        return AvatarLoader.getCacheStats()
-    }
+    fun getAvatarCacheStats(): Map<String, Any> = AvatarLoader.getCacheStats()
 
     fun clearAvatarCache() {
         AvatarLoader.clearAllCache()
@@ -403,14 +407,12 @@ object BubbleNotificationService {
         scope.launch {
             try {
                 AvatarLoader.clearCache(avatarUrl, userName)
-
                 ShortcutHelper.refreshShortcutAvatar(
                     context = context,
                     userId = userId,
                     userName = userName,
                     avatarUrl = avatarUrl
                 )
-
                 Log.d(TAG, "✅ Avatar refreshed for: $userName")
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Avatar refresh failed: $e")
@@ -419,56 +421,13 @@ object BubbleNotificationService {
     }
 
     // ========================================
-    // SHORTCUT UTILITIES
-    // ========================================
-
-    fun getShortcutCount(context: Context): Int {
-        return ShortcutHelper.getShortcutCount(context)
-    }
-
-    fun canCreateMoreShortcuts(context: Context): Boolean {
-        return ShortcutHelper.canCreateMoreShortcuts(context)
-    }
-
-    fun isShortcutsSupported(): Boolean {
-        return ShortcutHelper.isShortcutsSupported()
-    }
-
-    fun syncShortcuts(context: Context) {
-        scope.launch {
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    Log.d(TAG, "🔄 Syncing shortcuts with active bubbles")
-
-                    val activeBubbles = BubbleManager.getActiveBubbles()
-
-                    activeBubbles.forEach { (userId, bubble) ->
-                        ShortcutHelper.ensureShortcutForNotification(
-                            context = context,
-                            userId = userId,
-                            userName = bubble.userName,
-                            avatarUrl = bubble.avatarUrl
-                        )
-                    }
-
-                    Log.d(TAG, "✅ Shortcuts synced: ${activeBubbles.size} shortcuts")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "❌ Sync shortcuts failed: $e")
-            }
-        }
-    }
-
-    // ========================================
     // UTILITIES
     // ========================================
 
-    fun shouldUseBubbleApi(): Boolean {
-        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
-    }
+    fun shouldUseBubbleApi(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
 
     fun getImplementationType(): String {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        return if (shouldUseBubbleApi()) {
             "Bubble API + Shortcuts + Avatar Cache + Message History"
         } else {
             "WindowManager"
@@ -485,11 +444,8 @@ object BubbleNotificationService {
 
     fun onAppResumed(context: Context) {
         Log.d(TAG, "▶️ App resumed")
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            syncBubbleState(context)
-            syncShortcuts(context)
-
+            syncState(context)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 preloadRecentAvatars(context)
             }
@@ -498,25 +454,21 @@ object BubbleNotificationService {
         }
     }
 
-    private fun syncBubbleState(context: Context) {
+    private fun syncState(context: Context) {
         scope.launch {
             try {
-                val managerBubbles = BubbleManager.getActiveBubbles()
-
-                activeBubbleNotifications.clear()
-                activeBubbleNotifications.addAll(managerBubbles.keys)
-
-                Log.d(TAG, "✅ Bubble state synced: ${activeBubbleNotifications.size} active")
-
+                val managerKeys = BubbleManager.getActiveBubbles().keys
+                synchronized(activeBubbles) {
+                    activeBubbles.clear()
+                    activeBubbles.addAll(managerKeys)
+                }
+                syncShortcuts(context)
+                Log.d(TAG, "✅ State synced: ${managerKeys.size} bubbles active")
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Sync bubble state failed: $e")
             }
         }
     }
-
-    // ========================================
-    // CLEANUP
-    // ========================================
 
     fun cleanup(context: Context) {
         try {
@@ -524,11 +476,10 @@ object BubbleNotificationService {
             NotificationHelper.cleanup()
             ShortcutHelper.cleanup()
 
-            activeBubbleNotifications.clear()
+            synchronized(activeBubbles) { activeBubbles.clear() }
             isInitialized = false
 
             Log.d(TAG, "✅ Cleanup complete")
-
         } catch (e: Exception) {
             Log.e(TAG, "❌ Cleanup failed: $e")
         }

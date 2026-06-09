@@ -6,7 +6,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Person
 import android.content.Context
-import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.Icon
@@ -14,319 +13,269 @@ import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
 import hust.appchat.BubbleActivity
-import hust.appchat.R
 import hust.appchat.shortcuts.AvatarLoader
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * FIXES APPLIED:
+ * BubbleNotificationManager — Android 11+ Bubble API.
  *
- * FIX-A — getNotificationIconSafe() dùng Resources.getIdentifier() thực sự:
- *   Trước: try { R.drawable.ic_notification } catch — vô nghĩa vì
- *          R.drawable.ic_notification là compile-time constant, không throw.
- *   Sau:  Dùng Resources.getIdentifier() để check resource tồn tại runtime.
- *         Fallback chain: ic_notification → ic_launcher → android default.
- *
- * FIX-B — loadAvatarBitmapSafe() null-safe với drawable bounds check:
- *   Trước: drawable.setBounds() không check width/height > 0 → có thể
- *          tạo bitmap 0×0 gây IllegalArgumentException.
- *   Sau:  Kiểm tra drawable intrinsicWidth/Height, dùng fallback 100×100
- *         nếu không có kích thước hợp lệ.
- *
- * FIX-C — PendingIntent requestCode unique per userId:
- *   Đã đúng nhưng thêm abs() để tránh negative hashCode.
- *
- * FIX-D — Thread-safe message history với synchronized blocks:
- *   ConcurrentHashMap đã được dùng nhưng list bên trong vẫn cần sync.
+ * Architecture & Fixes:
+ * • FIX-A (Resource Safety): getNotificationIconSafe() uses Resources.getIdentifier()
+ * at runtime to avoid try-catch on compile-time constants.
+ * • FIX-B (Bitmap Bounds): iconToBitmap() guards against zero-size intrinsic
+ * dimensions, producing a 100×100 fallback bitmap to prevent crashes.
+ * • FIX-C (PendingIntent): requestCode uses Math.abs(hashCode) to avoid negative IDs.
+ * • FIX-D (Thread-Safety): Message history uses CopyOnWriteArrayList for lock-free,
+ * safe iteration across threads.
+ * • FIX-E (Smart Suppression): Tracks expanded state via `expandedUsers` to dynamically
+ * suppress Heads-Up notifications if the conversation bubble is already open.
  */
 @RequiresApi(Build.VERSION_CODES.R)
 object BubbleNotificationManager {
-    private const val TAG = "BubbleNotifManager"
-    private const val MAX_MESSAGE_HISTORY = 10
-    private const val BASE_NOTIFICATION_ID = 1000
-    private const val CHANNEL_ID = "chat_messages"
 
-    private val messageHistory = ConcurrentHashMap<String, MutableList<Message>>()
+    private const val TAG                = "BubbleNotifManager"
+    private const val MAX_HISTORY        = 12
+    private const val BASE_ID            = 2_000
+    private const val CHANNEL_MESSAGES   = "chat_messages"
 
-    // ========================================
-    // DATA MODELS
-    // ========================================
+    // Thread-safe message history tracking
+    private val history = ConcurrentHashMap<String, CopyOnWriteArrayList<Message>>()
+
+    // Users whose bubble window is currently expanded
+    private val expandedUsers = ConcurrentHashMap.newKeySet<String>()
+
+    // ─── Data models ──────────────────────────────────────────────────────
 
     data class Message(
-        val text: String,
-        val timestamp: Long,
-        val isFromUser: Boolean,
-        val type: MessageType = MessageType.TEXT
+        val text      : String,
+        val timestamp : Long,
+        val fromUser  : Boolean,
+        val type      : MessageType = MessageType.TEXT,
     )
 
-    enum class MessageType {
-        TEXT, IMAGE, VOICE, LOCATION
-    }
+    enum class MessageType { TEXT, IMAGE, VOICE, LOCATION }
 
-    // ========================================
+    // ═════════════════════════════════════════════════════════════════════
     // PUBLIC API
-    // ========================================
+    // ═════════════════════════════════════════════════════════════════════
 
+    /**
+     * Add an incoming message and refresh the bubble notification.
+     * Returns the notification ID for the conversation.
+     */
     fun addMessage(
-        context: Context,
-        userId: String,
-        userName: String,
-        message: String,
-        avatarUrl: String,
-        isFromUser: Boolean,
-        messageType: MessageType = MessageType.TEXT
-    ) {
-        try {
-            Log.d(TAG, "📨 Adding message for: $userName")
-            val messages = messageHistory.getOrPut(userId) { mutableListOf() }
-            // FIX-D: sync trên list riêng
-            synchronized(messages) {
-                messages.add(Message(
-                    text       = message,
-                    timestamp  = System.currentTimeMillis(),
-                    isFromUser = isFromUser,
-                    type       = messageType
-                ))
-                while (messages.size > MAX_MESSAGE_HISTORY) {
-                    messages.removeAt(0)
-                }
-            }
-            val snapshot: List<Message> = synchronized(messages) { messages.toList() }
-            updateNotification(context, userId, userName, avatarUrl, snapshot)
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to add message: $e")
-        }
+        context   : Context,
+        userId    : String,
+        userName  : String,
+        message   : String,
+        avatarUrl : String,
+        fromUser  : Boolean,
+        type      : MessageType = MessageType.TEXT,
+    ): Int {
+        val msgs = history.getOrPut(userId) { CopyOnWriteArrayList() }
+        msgs.add(Message(message, System.currentTimeMillis(), fromUser, type))
+
+        // Trim to max history size
+        while (msgs.size > MAX_HISTORY) msgs.removeAt(0)
+
+        val notifId = notifId(userId)
+        postNotification(context, userId, userName, avatarUrl, msgs.toList(), notifId)
+        return notifId
     }
 
     fun updateNotification(
-        context: Context,
-        userId: String,
-        userName: String,
-        message: String,
-        avatarUrl: String
+        context   : Context,
+        userId    : String,
+        userName  : String,
+        message   : String,
+        avatarUrl : String,
     ) {
-        try {
-            if (!messageHistory.containsKey(userId)) {
-                addMessage(context, userId, userName, message, avatarUrl, false)
-                return
-            }
-            val messages = messageHistory[userId] ?: return
-            val snapshot: List<Message> = synchronized(messages) { messages.toList() }
-            updateNotification(context, userId, userName, avatarUrl, snapshot)
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to update notification: $e")
+        if (!history.containsKey(userId)) {
+            addMessage(context, userId, userName, message, avatarUrl, fromUser = false)
+            return
         }
+        val msgs = history[userId] ?: return
+        postNotification(context, userId, userName, avatarUrl, msgs.toList(), notifId(userId))
     }
 
+    fun markExpanded(userId: String)   { expandedUsers.add(userId) }
+    fun markCollapsed(userId: String)  { expandedUsers.remove(userId) }
+    fun isExpanded(userId: String)     = expandedUsers.contains(userId)
+
     fun clearHistory(userId: String) {
-        messageHistory.remove(userId)
-        Log.d(TAG, "🗑️ Cleared history: $userId")
+        history.remove(userId)
+        expandedUsers.remove(userId)
+        Log.d(TAG, "🗑️ History cleared: $userId")
     }
 
     fun clearAllHistory() {
-        messageHistory.clear()
-        Log.d(TAG, "🗑️ Cleared all history")
+        history.clear()
+        expandedUsers.clear()
     }
 
-    fun getMessageCount(userId: String): Int = messageHistory[userId]?.size ?: 0
+    fun getMessageCount(userId: String) = history[userId]?.size ?: 0
 
-    fun getLastMessage(userId: String): Message? {
-        val messages = messageHistory[userId] ?: return null
-        return synchronized(messages) { messages.lastOrNull() }
-    }
+    fun getLastMessage(userId: String)  = history[userId]?.lastOrNull()
 
-    // ========================================
-    // PRIVATE IMPLEMENTATION
-    // ========================================
+    fun getStats(): Map<String, Any> = mapOf(
+        "conversations" to history.size,
+        "totalMessages" to history.values.sumOf { it.size },
+        "expandedCount" to expandedUsers.size,
+    )
 
-    private fun getNotificationId(userId: String): Int =
-        BASE_NOTIFICATION_ID + (userId.hashCode() and 0x7FFFFFFF) % 1000
-
-    private fun updateNotification(
-        context: Context,
-        userId: String,
-        userName: String,
-        avatarUrl: String,
-        messages: List<Message>
-    ) {
-        try {
-            val avatarIcon = try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    AvatarLoader.loadAvatarIcon(context, avatarUrl, userName)
-                } else {
-                    createFallbackIcon(context)
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "⚠️ Avatar load failed, using fallback: $e")
-                createFallbackIcon(context)
-            }
-
-            val person = Person.Builder()
-                .setName(userName)
-                .setIcon(avatarIcon)
-                .setKey(userId)
-                .setImportant(true)
-                .build()
-
-            val style = Notification.MessagingStyle(person)
-                .setConversationTitle(userName)
-
-            messages.forEach { msg ->
-                style.addMessage(
-                    formatMessageText(msg),
-                    msg.timestamp,
-                    if (msg.isFromUser) person else null
-                )
-            }
-
-            val bubbleMetadata = createBubbleMetadata(
-                context, userId, userName, avatarUrl, avatarIcon)
-
-            val notification = Notification.Builder(context, CHANNEL_ID)
-                .setSmallIcon(getNotificationIconSafe(context))
-                .apply {
-                    val bmp = loadAvatarBitmapSafe(context, avatarIcon)
-                    if (bmp != null) setLargeIcon(bmp)
-                }
-                .setStyle(style)
-                .setBubbleMetadata(bubbleMetadata)
-                .setShortcutId(userId)
-                .setCategory(Notification.CATEGORY_MESSAGE)
-                .setShowWhen(true)
-                .setAutoCancel(true)
-                .setPriority(Notification.PRIORITY_HIGH)
-                .setVisibility(Notification.VISIBILITY_PUBLIC)
-                .build()
-
-            val notificationId = getNotificationId(userId)
-            context.getSystemService(NotificationManager::class.java)
-                ?.notify(notificationId, notification)
-
-            Log.d(TAG, "✅ Notification updated (id=$notificationId, count=${messages.size})")
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to update notification: $e")
+    fun logState() {
+        Log.d(TAG, "📊 BubbleNotifManager — ${history.size} conversations")
+        history.forEach { (uid, msgs) ->
+            Log.d(TAG, "  $uid: ${msgs.size} msg — last: ${msgs.lastOrNull()?.text?.take(30)}")
         }
     }
 
-    /**
-     * FIX-A: Dùng Resources.getIdentifier() để check resource tồn tại thực sự.
-     * R.drawable.xxx là compile-time constant → không thể dùng try-catch để detect.
-     */
-    private fun getNotificationIconSafe(context: Context): Int {
-        val res = context.resources
-        val pkg = context.packageName
+    // ═════════════════════════════════════════════════════════════════════
+    // PRIVATE IMPLEMENTATION
+    // ═════════════════════════════════════════════════════════════════════
 
-        // Thử ic_notification trước
-        val icNotif = res.getIdentifier("ic_notification", "drawable", pkg)
-        if (icNotif != 0) return icNotif
+    private fun postNotification(
+        context   : Context,
+        userId    : String,
+        userName  : String,
+        avatarUrl : String,
+        messages  : List<Message>,
+        notifId   : Int,
+    ) {
+        try {
+            val avatarIcon = safeLoadIcon(context, avatarUrl, userName)
+            val person     = buildPerson(userName, userId, avatarIcon)
+            val style      = buildStyle(person, userName, messages)
+            val bubbleMeta = buildBubble(context, userId, userName, avatarUrl, avatarIcon)
 
-        Log.w(TAG, "⚠️ ic_notification not found, falling back to ic_launcher")
+            val notif = Notification.Builder(context, CHANNEL_MESSAGES)
+                .setSmallIcon(notifIconRes(context))
+                .setLargeIcon(iconToBitmap(context, avatarIcon))
+                .setStyle(style)
+                .setBubbleMetadata(bubbleMeta)
+                .setShortcutId(userId)
+                .setCategory(Notification.CATEGORY_MESSAGE)
+                .setPriority(Notification.PRIORITY_HIGH)
+                .setShowWhen(true)
+                .setAutoCancel(false)
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
+                .build()
 
-        // Fallback: ic_launcher từ mipmap
-        val icLauncher = res.getIdentifier("ic_launcher", "mipmap", pkg)
-        if (icLauncher != 0) return icLauncher
+            context.getSystemService(NotificationManager::class.java)
+                ?.notify(notifId, notif)
 
-        Log.w(TAG, "⚠️ ic_launcher not found, using system default")
+            Log.d(TAG, "✅ Notification posted id=$notifId user=$userName msgs=${messages.size}")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ postNotification: $e")
+        }
+    }
+
+    private fun buildPerson(name: String, key: String, icon: Icon): Person =
+        Person.Builder()
+            .setName(name)
+            .setKey(key)
+            .setIcon(icon)
+            .setImportant(true)
+            .build()
+
+    private fun buildStyle(
+        person  : Person,
+        title   : String,
+        messages: List<Message>,
+    ): Notification.MessagingStyle {
+        val style = Notification.MessagingStyle(person).setConversationTitle(title)
+        messages.forEach { m ->
+            style.addMessage(
+                formatText(m),
+                m.timestamp,
+                if (!m.fromUser) person else null,
+            )
+        }
+        return style
+    }
+
+    private fun buildBubble(
+        context   : Context,
+        userId    : String,
+        userName  : String,
+        avatarUrl : String,
+        icon      : Icon,
+    ): Notification.BubbleMetadata {
+        val intent = BubbleActivity.createIntent(context, userId, userName, avatarUrl)
+
+        // FIX-C: Math.abs() to prevent negative request codes
+        val reqCode = Math.abs(userId.hashCode()) % Int.MAX_VALUE
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        else
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+
+        val pi = PendingIntent.getActivity(context, reqCode, intent, flags)
+
+        return Notification.BubbleMetadata.Builder(pi, icon)
+            .setDesiredHeight(640)
+            .setAutoExpandBubble(false)
+            // Suppress heads-up banner when bubble window is already open
+            .setSuppressNotification(isExpanded(userId))
+            .build()
+    }
+
+    private fun formatText(m: Message) = when (m.type) {
+        MessageType.TEXT     -> m.text
+        MessageType.IMAGE    -> "📷 Hình ảnh"
+        MessageType.VOICE    -> "🎤 Tin nhắn thoại"
+        MessageType.LOCATION -> "📍 Vị trí"
+    }
+
+    // ─── Icon helpers ─────────────────────────────────────────────────────
+
+    /** FIX-A: Runtime resource check via getIdentifier() */
+    private fun notifIconRes(ctx: Context): Int {
+        val r   = ctx.resources
+        val pkg = ctx.packageName
+        val id  = r.getIdentifier("ic_notification", "drawable", pkg)
+        if (id != 0) return id
+
+        val lc = r.getIdentifier("ic_launcher", "mipmap", pkg)
+        if (lc != 0) return lc
+
+        Log.w(TAG, "⚠️ ic_notification not found; using android default")
         return android.R.drawable.ic_dialog_info
     }
 
     @RequiresApi(Build.VERSION_CODES.M)
-    private fun createFallbackIcon(context: Context): Icon {
+    private fun safeLoadIcon(ctx: Context, url: String, name: String): Icon {
         return try {
-            // FIX-A: dùng getNotificationIconSafe thay vì hardcode R.drawable
-            val iconRes = getNotificationIconSafe(context)
-            Icon.createWithResource(context, iconRes)
+            AvatarLoader.loadAvatarIcon(ctx, url, name)
         } catch (e: Exception) {
-            Icon.createWithResource(context, android.R.drawable.ic_menu_myplaces)
+            Log.w(TAG, "⚠️ Avatar icon load failed: $e")
+            fallbackIcon(ctx)
         }
     }
 
-    private fun formatMessageText(message: Message): String = when (message.type) {
-        MessageType.TEXT     -> message.text
-        MessageType.IMAGE    -> "📷 Photo"
-        MessageType.VOICE    -> "🎤 Voice message"
-        MessageType.LOCATION -> "📍 Location"
-    }
+    @RequiresApi(Build.VERSION_CODES.M)
+    private fun fallbackIcon(ctx: Context): Icon =
+        Icon.createWithResource(ctx, notifIconRes(ctx))
 
-    private fun createBubbleMetadata(
-        context: Context,
-        userId: String,
-        userName: String,
-        avatarUrl: String,
-        avatarIcon: Icon
-    ): Notification.BubbleMetadata {
-        val intent = BubbleActivity.createIntent(
-            context   = context,
-            userId    = userId,
-            userName  = userName,
-            avatarUrl = avatarUrl
-        )
-
-        // FIX-C: abs() để đảm bảo requestCode không âm
-        val requestCode = Math.abs(userId.hashCode()) % Int.MAX_VALUE
-
-        val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        } else {
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-        }
-
-        val pendingIntent = PendingIntent.getActivity(
-            context, requestCode, intent, pendingIntentFlags)
-
-        return Notification.BubbleMetadata.Builder(pendingIntent, avatarIcon)
-            .setDesiredHeight(600)
-            .setAutoExpandBubble(false)
-            .setSuppressNotification(false)
-            .build()
-    }
-
-    /**
-     * FIX-B: Null-safe + bounds check trước khi tạo Bitmap.
-     */
-    private fun loadAvatarBitmapSafe(context: Context, icon: Icon): Bitmap? {
+    /** FIX-B: Guard against zero-size intrinsic dimensions */
+    private fun iconToBitmap(ctx: Context, icon: Icon): Bitmap? {
         return try {
-            val drawable = icon.loadDrawable(context) ?: run {
-                Log.w(TAG, "⚠️ Icon.loadDrawable() returned null")
-                return null
-            }
-
-            // FIX-B: check kích thước hợp lệ
+            val drawable = icon.loadDrawable(ctx) ?: return null
             val w = if (drawable.intrinsicWidth  > 0) drawable.intrinsicWidth  else 100
             val h = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 100
 
-            val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(bitmap)
-            drawable.setBounds(0, 0, canvas.width, canvas.height)
+            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bmp)
+            drawable.setBounds(0, 0, w, h)
             drawable.draw(canvas)
-            bitmap
+            bmp
         } catch (e: Exception) {
-            Log.w(TAG, "⚠️ Failed to convert icon to bitmap: $e")
+            Log.w(TAG, "⚠️ iconToBitmap failed: $e")
             null
         }
     }
 
-    // ========================================
-    // STATS & DEBUG
-    // ========================================
-
-    fun getStats(): Map<String, Any> = mapOf(
-        "activeConversations" to messageHistory.size,
-        "totalMessages"       to messageHistory.values.sumOf { it.size },
-        "averageMessages"     to if (messageHistory.isEmpty()) 0
-        else messageHistory.values.sumOf { it.size } / messageHistory.size
-    )
-
-    fun logState() {
-        Log.d(TAG, "📊 === Bubble Notification State ===")
-        Log.d(TAG, "Active conversations: ${messageHistory.size}")
-        messageHistory.forEach { (userId, messages) ->
-            val snapshot = synchronized(messages) { messages.takeLast(3).toList() }
-            Log.d(TAG, "  - $userId: ${messages.size} messages")
-            snapshot.forEach { msg ->
-                val dir = if (msg.isFromUser) "→" else "←"
-                Log.d(TAG, "    $dir ${msg.text.take(30)}")
-            }
-        }
-    }
+    private fun notifId(userId: String) =
+        BASE_ID + (Math.abs(userId.hashCode()) % 1_000)
 }

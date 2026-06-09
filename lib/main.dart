@@ -10,11 +10,13 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+// ── App Constants, Pages, Utils & Widgets ──────────────────────────────────
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/firebase_options.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:flutter_chat_demo/providers/phone_auth_provider.dart'
-    as custom_auth;
+as custom_auth;
 import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_chat_demo/utils/utils.dart';
@@ -27,23 +29,42 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
+// ── Bubble Services ────────────────────────────────────────────────────────
+import 'services/bubble_fcm_handler.dart';
+import 'services/bubble_lifecycle_observer.dart';
+import 'services/bubble_settings_service.dart';
+import 'services/bubble_sound_service.dart';
+import 'services/contextual_bubble_service.dart';
+import 'services/unified_bubble_service.dart';
+import 'widgets/bubble_manager.dart';
+import 'widgets/bubble_theme.dart';
+import 'widgets/bubble_integration_demo.dart'; // Đã thêm để sửa lỗi BubbleSystemWrapper
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Globals
 // ─────────────────────────────────────────────────────────────────────────────
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-    FlutterLocalNotificationsPlugin();
+FlutterLocalNotificationsPlugin();
 
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+// Đã đổi tên để tránh lỗi circular reference trong AppRouter
+final GlobalKey<NavigatorState> globalNavigatorKey =
+GlobalKey<NavigatorState>();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FCM background handler
+// FCM background handler (Must be top-level)
 // ─────────────────────────────────────────────────────────────────────────────
 
 @pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+Future<void> _onBackgroundMessage(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   debugPrint('🔔 Background FCM: ${message.messageId}');
+
+  try {
+    await BubbleFcmHandler.processMessage(message, fromBackground: true);
+  } catch (e) {
+    debugPrint('⚠️ BubbleFcmHandler process error in background: $e');
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -52,7 +73,6 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   await dotenv.load(fileName: '.env');
 
   if (!kIsWeb) {
@@ -64,29 +84,46 @@ Future<void> main() async {
 
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
+    statusBarBrightness: Brightness.dark,
     statusBarIconBrightness: Brightness.dark,
     systemNavigationBarColor: Colors.white,
     systemNavigationBarIconBrightness: Brightness.dark,
   ));
 
+  // ── 1. Firebase Init ───────────────────────────────────────────────────────
   await _initializeFirebase();
   await ErrorLogger.initialize();
 
+  // ── 2. Timezone Init ───────────────────────────────────────────────────────
   tz.initializeTimeZones();
   tz.setLocalLocation(tz.getLocation('Asia/Ho_Chi_Minh'));
 
   final prefs = await SharedPreferences.getInstance();
 
+  // ── 3. Background Services & Bubbles ───────────────────────────────────────
   if (!kIsWeb) {
+    FirebaseMessaging.onBackgroundMessage(_onBackgroundMessage);
     await _initializeLocalNotifications(flutterLocalNotificationsPlugin);
+
+    // Khởi tạo theo đúng thứ tự
+    await BubbleSettingsService().load();
+    await BubbleSoundService().initialize();
+
+    try {
+      await LinkMetadataService().loadFromDisk();
+    } catch (_) {}
+
+    await BubbleLifecycleObserver.instance.initialize();
+    await BubbleFcmHandler.initialize();
     await _initializeFcm();
   }
 
+  // ── 4. Setup Base Services ─────────────────────────────────────────────────
   final unifiedBubbleService = UnifiedBubbleService();
   final chatBubbleService = ChatBubbleService();
   final notificationService = NotificationService();
 
-  runApp(MyApp(
+  runApp(ChatApp(
     prefs: prefs,
     notificationsPlugin: flutterLocalNotificationsPlugin,
     chatBubbleService: chatBubbleService,
@@ -117,15 +154,16 @@ Future<void> _initializeFirebase() async {
 
     await FirebaseAppCheck.instance.activate(
       androidProvider:
-          kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+      kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
       appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
     );
 
-    await LocalDbService().initialize();
-    debugPrint('✅ LocalDbService khởi tạo xong');
-
-    SyncManager().startListening();
-    debugPrint('✅ SyncManager đang lắng nghe');
+    try {
+      await LocalDbService().initialize();
+      debugPrint('✅ LocalDbService khởi tạo xong');
+      SyncManager().startListening();
+      debugPrint('✅ SyncManager đang lắng nghe');
+    } catch (_) {}
   } catch (e, stack) {
     debugPrint('❌ Firebase init lỗi: $e');
     await ErrorLogger.logError(e, stack, context: 'Firebase.initializeApp');
@@ -138,10 +176,7 @@ Future<void> _initializeFirebase() async {
 
 Future<void> _initializeFcm() async {
   try {
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
     final messaging = FirebaseMessaging.instance;
-
     final settings = await messaging.requestPermission(
       alert: true,
       badge: true,
@@ -151,16 +186,31 @@ Future<void> _initializeFcm() async {
 
     debugPrint('🔔 FCM permission: ${settings.authorizationStatus.name}');
 
-    final token = await messaging.getToken();
-    if (token != null) {
-      debugPrint('📱 FCM Token: ${token.substring(0, 20)}...');
-      // TODO: Lưu token lên Firestore theo userId khi đăng nhập
+    // Persistent Token Init Manager
+    try {
+      await FcmTokenManager.initialize(
+        onTokenAvailable: (token) async {
+          debugPrint('📱 FCM Token mới: ${token.substring(0, 20)}...');
+          // Lưu token vào Firestore
+          final uid = firebase_auth.FirebaseAuth.instance.currentUser?.uid;
+          if (uid != null) {
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(uid)
+                .update({'fcmToken': token});
+          }
+        },
+      );
+    } catch (_) {
+      // Fallback
+      final token = await messaging.getToken();
+      if (token != null) {
+        debugPrint('📱 FCM Token (Fallback): ${token.substring(0, 20)}...');
+      }
+      messaging.onTokenRefresh.listen((newToken) {
+        debugPrint('🔄 FCM Token refreshed');
+      });
     }
-
-    messaging.onTokenRefresh.listen((newToken) {
-      debugPrint('🔄 FCM Token refreshed');
-      // TODO: Cập nhật token mới lên Firestore
-    });
   } catch (e) {
     debugPrint('⚠️ FCM init lỗi: $e');
   }
@@ -171,12 +221,10 @@ Future<void> _initializeFcm() async {
 // ─────────────────────────────────────────────────────────────────────────────
 
 Future<void> _initializeLocalNotifications(
-  FlutterLocalNotificationsPlugin plugin,
-) async {
+    FlutterLocalNotificationsPlugin plugin) async {
   try {
     const androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
-
+    AndroidInitializationSettings('@mipmap/ic_launcher');
     final iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -192,29 +240,23 @@ Future<void> _initializeLocalNotifications(
       ],
     );
 
-    final initSettings = InitializationSettings(
-      android: androidSettings,
-      iOS: iosSettings,
-    );
+    final initSettings =
+    InitializationSettings(android: androidSettings, iOS: iosSettings);
 
     await plugin.initialize(
       initSettings,
       onDidReceiveNotificationResponse: _onNotificationTapped,
       onDidReceiveBackgroundNotificationResponse:
-          _onBackgroundNotificationTapped,
+      _onBackgroundNotificationTapped,
     );
 
-    if (Platform.isAndroid) {
-      await _setupAndroidNotificationChannels(plugin);
-    }
-
+    if (Platform.isAndroid) await _setupAndroidNotificationChannels(plugin);
     if (Platform.isIOS) {
       await plugin
           .resolvePlatformSpecificImplementation<
-              IOSFlutterLocalNotificationsPlugin>()
+          IOSFlutterLocalNotificationsPlugin>()
           ?.requestPermissions(alert: true, badge: true, sound: true);
     }
-
     debugPrint('✅ Local Notifications khởi tạo xong');
   } catch (e, stack) {
     debugPrint('❌ Notification init lỗi: $e');
@@ -224,14 +266,12 @@ Future<void> _initializeLocalNotifications(
 }
 
 Future<void> _setupAndroidNotificationChannels(
-  FlutterLocalNotificationsPlugin plugin,
-) async {
+    FlutterLocalNotificationsPlugin plugin) async {
   final androidPlugin = plugin.resolvePlatformSpecificImplementation<
       AndroidFlutterLocalNotificationsPlugin>();
   if (androidPlugin == null) return;
 
   await androidPlugin.requestNotificationsPermission();
-
   try {
     await androidPlugin.requestExactAlarmsPermission();
   } catch (e) {
@@ -274,15 +314,13 @@ Future<void> _setupAndroidNotificationChannels(
 void _onNotificationTapped(NotificationResponse response) {
   final payload = response.payload;
   if (payload == null) return;
-
   debugPrint('🔔 Notification tapped: $payload');
-
   try {
     final parts = payload.split('|');
     if (parts.length >= 2) {
-      _navigateToChat(
+      AppRouter.pushChatFromNotification(
         peerId: parts[0],
-        peerNickname: parts[1],
+        peerName: parts[1],
         peerAvatar: parts.length > 2 ? parts[2] : '',
       );
     }
@@ -294,33 +332,6 @@ void _onNotificationTapped(NotificationResponse response) {
 @pragma('vm:entry-point')
 void _onBackgroundNotificationTapped(NotificationResponse response) {
   debugPrint('🔔 Background notification tapped: ${response.payload}');
-}
-
-void _navigateToChat({
-  required String peerId,
-  required String peerNickname,
-  required String peerAvatar,
-}) {
-  final state = navigatorKey.currentState;
-  if (state == null) return;
-
-  state.pushNamedAndRemoveUntil(
-    '/',
-    (route) => route.isFirst,
-  );
-
-  state.push(
-    MaterialPageRoute(
-      settings: const RouteSettings(name: '/chat'),
-      builder: (_) => ChatPage(
-        arguments: ChatPageArguments(
-          peerId: peerId,
-          peerNickname: peerNickname,
-          peerAvatar: peerAvatar,
-        ),
-      ),
-    ),
-  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -343,9 +354,7 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
   @override
   void initState() {
     super.initState();
-    if (!kIsWeb) {
-      _channel.setMethodCallHandler(_handleMethodCall);
-    }
+    if (!kIsWeb) _channel.setMethodCallHandler(_handleMethodCall);
   }
 
   @override
@@ -360,8 +369,8 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
       case 'navigateToChat':
         return _handleNavigateToChat(call.arguments);
       case 'onBackPressed':
-        if (navigatorKey.currentState?.canPop() == true) {
-          navigatorKey.currentState!.pop();
+        if (globalNavigatorKey.currentState?.canPop() == true) {
+          globalNavigatorKey.currentState!.pop();
         }
       case 'openApp':
         SystemNavigator.pop();
@@ -382,30 +391,26 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
     if (_recentNavigations.contains(dedupKey)) return;
     _recentNavigations.add(dedupKey);
     Future.delayed(
-      const Duration(seconds: 10),
-      () => _recentNavigations.remove(dedupKey),
-    );
+        const Duration(seconds: 10), () => _recentNavigations.remove(dedupKey));
 
     await _waitForNavigator();
 
-    if (navigatorKey.currentState == null) {
+    if (globalNavigatorKey.currentState == null) {
       _recentNavigations.remove(dedupKey);
       return;
     }
 
     try {
-      final args = ChatPageArguments(
+      final chatArgs = ChatPageArguments(
         peerId: peerId,
         peerNickname: peerNickname,
         peerAvatar: peerAvatar,
       );
-      navigatorKey.currentState!.push(
+      globalNavigatorKey.currentState!.push(
         MaterialPageRoute(
           settings: const RouteSettings(name: '/chat'),
-          builder: (_) => ChatPage(
-            arguments: args,
-            isBubbleMode: isBubbleMode,
-          ),
+          builder: (_) =>
+              ChatPage(arguments: chatArgs, isBubbleMode: isBubbleMode),
         ),
       );
     } catch (e, stack) {
@@ -417,7 +422,7 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
 
   Future<void> _waitForNavigator({int maxRetries = 5}) async {
     for (int i = 0; i < maxRetries; i++) {
-      if (navigatorKey.currentState != null) return;
+      if (globalNavigatorKey.currentState != null) return;
       await Future.delayed(Duration(milliseconds: 100 * (1 << i)));
     }
   }
@@ -427,7 +432,7 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MiniChatOverlayManager
+// MiniChatOverlayManager & Overlay Logic
 // ─────────────────────────────────────────────────────────────────────────────
 
 class MiniChatOverlayManager extends StatefulWidget {
@@ -572,13 +577,8 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
   void initState() {
     super.initState();
     _animCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 280),
-    );
-    _scaleAnim = CurvedAnimation(
-      parent: _animCtrl,
-      curve: Curves.easeOutBack,
-    );
+        vsync: this, duration: const Duration(milliseconds: 280));
+    _scaleAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutBack);
     _animCtrl.forward();
   }
 
@@ -587,10 +587,8 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
     super.didChangeDependencies();
     if (!_positionInitialized) {
       final size = MediaQuery.sizeOf(context);
-      _position = Offset(
-        (size.width - _width) / 2,
-        (size.height - _height) / 2,
-      );
+      _position =
+          Offset((size.width - _width) / 2, (size.height - _height) / 2);
       _positionInitialized = true;
     }
   }
@@ -632,9 +630,8 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: const Color(0xFF1E88E5).withValues(alpha: 0.6),
-            width: 1.5,
-          ),
+              color: const Color(0xFF1E88E5).withValues(alpha: 0.6),
+              width: 1.5),
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(20),
@@ -668,21 +665,19 @@ class _MiniChatHeader extends StatelessWidget {
   final String userName, avatarUrl;
   final VoidCallback onMinimize, onClose;
 
-  const _MiniChatHeader({
-    required this.userName,
-    required this.avatarUrl,
-    required this.onMinimize,
-    required this.onClose,
-  });
+  const _MiniChatHeader(
+      {required this.userName,
+        required this.avatarUrl,
+        required this.onMinimize,
+        required this.onClose});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFF1E88E5), Color(0xFF1565C0)],
-        ),
+        gradient:
+        LinearGradient(colors: [Color(0xFF1E88E5), Color(0xFF1565C0)]),
       ),
       child: Row(
         children: [
@@ -690,13 +685,11 @@ class _MiniChatHeader extends StatelessWidget {
             radius: 17,
             backgroundColor: Colors.white24,
             backgroundImage:
-                avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+            avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
             child: avatarUrl.isEmpty
-                ? Text(
-                    userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                    style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.bold),
-                  )
+                ? Text(userName.isNotEmpty ? userName[0].toUpperCase() : '?',
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.bold))
                 : null,
           ),
           const SizedBox(width: 9),
@@ -705,35 +698,23 @@ class _MiniChatHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  userName,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const Text(
-                  'Mini Chat',
-                  style: TextStyle(
-                    color: Colors.white60,
-                    fontSize: 10,
-                  ),
-                ),
+                Text(userName,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14),
+                    overflow: TextOverflow.ellipsis),
+                const Text('Mini Chat',
+                    style: TextStyle(color: Colors.white60, fontSize: 10)),
               ],
             ),
           ),
           _HeaderButton(
-            icon: Icons.remove_rounded,
-            onTap: onMinimize,
-            tooltip: 'Thu nhỏ',
-          ),
+              icon: Icons.remove_rounded,
+              onTap: onMinimize,
+              tooltip: 'Thu nhỏ'),
           _HeaderButton(
-            icon: Icons.close_rounded,
-            onTap: onClose,
-            tooltip: 'Đóng',
-          ),
+              icon: Icons.close_rounded, onTap: onClose, tooltip: 'Đóng'),
         ],
       ),
     );
@@ -745,11 +726,8 @@ class _HeaderButton extends StatelessWidget {
   final VoidCallback onTap;
   final String tooltip;
 
-  const _HeaderButton({
-    required this.icon,
-    required this.onTap,
-    required this.tooltip,
-  });
+  const _HeaderButton(
+      {required this.icon, required this.onTap, required this.tooltip});
 
   @override
   Widget build(BuildContext context) {
@@ -759,9 +737,8 @@ class _HeaderButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(20),
         child: Padding(
-          padding: const EdgeInsets.all(6),
-          child: Icon(icon, color: Colors.white, size: 20),
-        ),
+            padding: const EdgeInsets.all(6),
+            child: Icon(icon, color: Colors.white, size: 20)),
       ),
     );
   }
@@ -769,9 +746,7 @@ class _HeaderButton extends StatelessWidget {
 
 class BubbleModeDetector {
   BubbleModeDetector._();
-
   static const _channel = MethodChannel('bubble_chat_channel');
-
   static Future<bool> isBubbleMode() async {
     if (kIsWeb) return false;
     try {
@@ -783,240 +758,6 @@ class BubbleModeDetector {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MyApp
-// ─────────────────────────────────────────────────────────────────────────────
-
-class MyApp extends StatelessWidget {
-  final SharedPreferences prefs;
-  final FlutterLocalNotificationsPlugin notificationsPlugin;
-  final ChatBubbleService chatBubbleService;
-  final NotificationService notificationService;
-  final UnifiedBubbleService unifiedBubbleService;
-
-  const MyApp({
-    super.key,
-    required this.prefs,
-    required this.notificationsPlugin,
-    required this.chatBubbleService,
-    required this.notificationService,
-    required this.unifiedBubbleService,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final firebaseFirestore = FirebaseFirestore.instance;
-    final firebaseStorage = FirebaseStorage.instance;
-    final firebaseAuth = firebase_auth.FirebaseAuth.instance;
-
-    Widget appTree = AppInitializer(
-      notificationService: notificationService,
-      child: const SplashPage(),
-    );
-
-    if (!kIsWeb) {
-      appTree = BubbleChatChannelManager(
-        child: GroupCallListener(
-          child: CallListener(
-            child: BubbleManager(
-              child: MiniChatOverlayManager(
-                child: appTree,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return MultiProvider(
-      providers: _buildProviders(
-        firebaseFirestore: firebaseFirestore,
-        firebaseStorage: firebaseStorage,
-        firebaseAuth: firebaseAuth,
-      ),
-      child: Consumer<ThemeProvider>(
-        builder: (context, themeProvider, _) {
-          return MaterialApp(
-            title: AppConstants.appTitle,
-            debugShowCheckedModeBanner: false,
-            navigatorKey: navigatorKey,
-            themeMode: themeProvider.flutterThemeMode,
-            theme: themeProvider.lightTheme,
-            darkTheme: themeProvider.darkTheme,
-            routes: AppRoutes.routes,
-            onGenerateRoute: AppRoutes.onGenerateRoute,
-            builder: (context, child) => _AppBuilder(child: child),
-            home: appTree,
-          );
-        },
-      ),
-    );
-  }
-
-  List<SingleChildWidget> _buildProviders({
-    required FirebaseFirestore firebaseFirestore,
-    required FirebaseStorage firebaseStorage,
-    required firebase_auth.FirebaseAuth firebaseAuth,
-  }) {
-    return [
-      ChangeNotifierProvider<AppModeProvider>(
-        create: (_) => AppModeProvider(),
-      ),
-      ChangeNotifierProvider<AuthProvider>(
-        create: (_) => AuthProvider(
-          firebaseAuth: firebaseAuth,
-          prefs: prefs,
-          firebaseFirestore: firebaseFirestore,
-        ),
-      ),
-      ChangeNotifierProvider<custom_auth.PhoneAuthProvider>(
-        create: (_) => custom_auth.PhoneAuthProvider(
-          firebaseAuth: firebaseAuth,
-          firebaseFirestore: firebaseFirestore,
-          prefs: prefs,
-        ),
-      ),
-      ChangeNotifierProvider<ThemeProvider>(
-        create: (_) => ThemeProvider(prefs: prefs),
-      ),
-      ChangeNotifierProvider<TelemetryProvider>(
-        create: (_) => TelemetryProvider(),
-      ),
-      ChangeNotifierProvider<StoryProvider>(
-        create: (_) => StoryProvider(
-          firebaseFirestore: firebaseFirestore,
-          firebaseStorage: firebaseStorage,
-        ),
-      ),
-      Provider<SettingProvider>(
-        create: (_) => SettingProvider(
-          prefs: prefs,
-          firebaseFirestore: firebaseFirestore,
-          firebaseStorage: firebaseStorage,
-        ),
-      ),
-      Provider<HomeProvider>(
-        create: (_) => HomeProvider(firebaseFirestore: firebaseFirestore),
-      ),
-      Provider<ChatProvider>(
-        create: (_) => ChatProvider(
-          prefs: prefs,
-          firebaseFirestore: firebaseFirestore,
-          firebaseStorage: firebaseStorage,
-        ),
-      ),
-      Provider<FriendProvider>(
-        create: (_) => FriendProvider(firebaseFirestore: firebaseFirestore),
-      ),
-      Provider<ReactionProvider>(
-        create: (_) => ReactionProvider(firebaseFirestore: firebaseFirestore),
-      ),
-      Provider<MessageProvider>(
-        create: (_) => MessageProvider(firebaseFirestore: firebaseFirestore),
-      ),
-      Provider<ConversationProvider>(
-        create: (_) =>
-            ConversationProvider(firebaseFirestore: firebaseFirestore),
-      ),
-      Provider<ReminderProvider>(
-        create: (_) => ReminderProvider(
-          firebaseFirestore: firebaseFirestore,
-          notificationsPlugin: notificationsPlugin,
-        ),
-      ),
-      Provider<AutoDeleteProvider>(
-        create: (_) => AutoDeleteProvider(firebaseFirestore: firebaseFirestore),
-      ),
-      Provider<ConversationLockProvider>(
-        create: (_) =>
-            ConversationLockProvider(firebaseFirestore: firebaseFirestore),
-      ),
-      Provider<ViewOnceProvider>(
-        create: (_) => ViewOnceProvider(firebaseFirestore: firebaseFirestore),
-      ),
-      Provider<SmartReplyProvider>(
-        create: (_) => SmartReplyProvider(),
-      ),
-      Provider<UserPresenceProvider>(
-        create: (_) =>
-            UserPresenceProvider(firebaseFirestore: firebaseFirestore),
-      ),
-      Provider<LocationProvider>(
-        create: (_) => LocationProvider(),
-      ),
-      Provider<TranslationProvider>(
-        create: (_) => TranslationProvider(),
-      ),
-      Provider<ChatBubbleService>(create: (_) => chatBubbleService),
-      Provider<UnifiedBubbleService>(create: (_) => unifiedBubbleService),
-      Provider<NotificationService>(create: (_) => notificationService),
-    ];
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// _AppBuilder
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _AppBuilder extends StatelessWidget {
-  final Widget? child;
-  const _AppBuilder({this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return MediaQuery(
-      data: MediaQuery.of(context).copyWith(
-        textScaler: TextScaler.linear(
-          MediaQuery.textScalerOf(context).scale(1.0).clamp(0.8, 1.3),
-        ),
-      ),
-      child: child ?? const SizedBox.shrink(),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// AppRoutes
-// ─────────────────────────────────────────────────────────────────────────────
-
-class AppRoutes {
-  AppRoutes._();
-
-  static const home = '/';
-  static const chat = '/chat';
-  static const profile = '/profile';
-  static const settings = '/settings';
-  static const login = '/login';
-
-  static Map<String, WidgetBuilder> get routes => {};
-
-  static Route<dynamic>? onGenerateRoute(RouteSettings settings) {
-    switch (settings.name) {
-      case chat:
-        final args = settings.arguments;
-        if (args is ChatPageArguments) {
-          return MaterialPageRoute(
-            settings: settings,
-            builder: (_) => ChatPage(arguments: args),
-          );
-        }
-        return _errorRoute('Chat page: arguments không hợp lệ');
-
-      default:
-        return null;
-    }
-  }
-
-  static Route<dynamic> _errorRoute(String message) {
-    return MaterialPageRoute(
-      builder: (_) => Scaffold(
-        appBar: AppBar(title: const Text('Lỗi')),
-        body: Center(child: Text(message)),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // AppInitializer
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1024,11 +765,8 @@ class AppInitializer extends StatefulWidget {
   final NotificationService notificationService;
   final Widget child;
 
-  const AppInitializer({
-    super.key,
-    required this.notificationService,
-    required this.child,
-  });
+  const AppInitializer(
+      {super.key, required this.notificationService, required this.child});
 
   @override
   State<AppInitializer> createState() => _AppInitializerState();
@@ -1055,23 +793,21 @@ class _AppInitializerState extends State<AppInitializer>
   void _startNotificationService() {
     _authSub =
         firebase_auth.FirebaseAuth.instance.authStateChanges().listen((user) {
-      if (user != null && !_notificationStarted) {
-        widget.notificationService.listenForNewMessages(user.uid);
-        _notificationStarted = true;
-
-        ErrorLogger.setUserId(user.uid);
-      } else if (user == null) {
-        widget.notificationService.stopListening();
-        _notificationStarted = false;
-        ErrorLogger.clearUserId();
-      }
-    });
+          if (user != null && !_notificationStarted) {
+            widget.notificationService.listenForNewMessages(user.uid);
+            _notificationStarted = true;
+            ErrorLogger.setUserId(user.uid);
+          } else if (user == null) {
+            widget.notificationService.stopListening();
+            _notificationStarted = false;
+            ErrorLogger.clearUserId();
+          }
+        });
   }
 
   void _handleFcmForegroundMessages() {
     FirebaseMessaging.onMessage.listen((message) {
       debugPrint('📩 Foreground FCM: ${message.notification?.title}');
-      // TODO: Hiển thị in-app notification banner
     });
 
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
@@ -1079,9 +815,9 @@ class _AppInitializerState extends State<AppInitializer>
       final peerId = message.data['peerId'] as String?;
       final peerNickname = message.data['peerNickname'] as String?;
       if (peerId != null && peerNickname != null) {
-        _navigateToChat(
+        AppRouter.pushChatFromNotification(
           peerId: peerId,
-          peerNickname: peerNickname,
+          peerName: peerNickname,
           peerAvatar: message.data['peerAvatar'] ?? '',
         );
       }
@@ -1091,15 +827,15 @@ class _AppInitializerState extends State<AppInitializer>
   Future<void> _handleNotificationLaunch() async {
     try {
       final initialMessage =
-          await FirebaseMessaging.instance.getInitialMessage();
+      await FirebaseMessaging.instance.getInitialMessage();
       if (initialMessage != null) {
         final peerId = initialMessage.data['peerId'] as String?;
         final peerNickname = initialMessage.data['peerNickname'] as String?;
         if (peerId != null && peerNickname != null) {
           await Future.delayed(const Duration(milliseconds: 800));
-          _navigateToChat(
+          AppRouter.pushChatFromNotification(
             peerId: peerId,
-            peerNickname: peerNickname,
+            peerName: peerNickname,
             peerAvatar: initialMessage.data['peerAvatar'] ?? '',
           );
         }
@@ -1112,7 +848,6 @@ class _AppInitializerState extends State<AppInitializer>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-
     ErrorLogger.addBreadcrumb(state.name, category: 'lifecycle');
 
     switch (state) {
@@ -1147,4 +882,317 @@ class _AppInitializerState extends State<AppInitializer>
 
   @override
   Widget build(BuildContext context) => widget.child;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ChatApp (Main Application Widget)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class ChatApp extends StatefulWidget {
+  final SharedPreferences prefs;
+  final FlutterLocalNotificationsPlugin notificationsPlugin;
+  final ChatBubbleService chatBubbleService;
+  final NotificationService notificationService;
+  final UnifiedBubbleService unifiedBubbleService;
+
+  const ChatApp({
+    super.key,
+    required this.prefs,
+    required this.notificationsPlugin,
+    required this.chatBubbleService,
+    required this.notificationService,
+    required this.unifiedBubbleService,
+  });
+
+  @override
+  State<ChatApp> createState() => _ChatAppState();
+}
+
+class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
+  @override
+  Widget build(BuildContext context) {
+    final firebaseFirestore = FirebaseFirestore.instance;
+    final firebaseStorage = FirebaseStorage.instance;
+    final firebaseAuth = firebase_auth.FirebaseAuth.instance;
+
+    Widget appTree = AppInitializer(
+      notificationService: widget.notificationService,
+      child: const SplashPage(),
+    );
+
+    if (!kIsWeb) {
+      appTree = BubbleChatChannelManager(
+        child: GroupCallListener(
+          child: CallListener(
+            child: BubbleManager(
+              child: MiniChatOverlayManager(
+                child: appTree,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return MultiProvider(
+      providers: _buildProviders(
+        firebaseFirestore: firebaseFirestore,
+        firebaseStorage: firebaseStorage,
+        firebaseAuth: firebaseAuth,
+      ),
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, _) {
+          return BubbleSystemWrapper(
+            child: MaterialApp(
+              title: AppConstants.appTitle,
+              debugShowCheckedModeBanner: false,
+              navigatorKey:
+              AppRouter.navigatorKey, // Using unified AppRouter Key
+              themeMode: themeProvider.flutterThemeMode ?? ThemeMode.system,
+              theme: themeProvider.lightTheme ??
+                  _buildFallbackTheme(Brightness.light),
+              darkTheme: themeProvider.darkTheme ??
+                  _buildFallbackTheme(Brightness.dark),
+              initialRoute: AppRouter.splash,
+              onGenerateRoute: AppRouter.onGenerateRoute,
+              builder: (context, child) => _AppBuilder(child: child!),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  ThemeData _buildFallbackTheme(Brightness brightness) {
+    final isDark = brightness == Brightness.dark;
+    return ThemeData(
+      useMaterial3: true,
+      brightness: brightness,
+      colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF2979FF), brightness: brightness),
+      fontFamily: 'Inter',
+      scaffoldBackgroundColor:
+      isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF4F7FF),
+      appBarTheme: AppBarTheme(
+        backgroundColor:
+        isDark ? const Color(0xFF1A1A2E) : const Color(0xFF2979FF),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        systemOverlayStyle: SystemUiOverlayStyle.light,
+      ),
+      extensions: [BubbleTheme.of(brightness)],
+    );
+  }
+
+  List<SingleChildWidget> _buildProviders({
+    required FirebaseFirestore firebaseFirestore,
+    required FirebaseStorage firebaseStorage,
+    required firebase_auth.FirebaseAuth firebaseAuth,
+  }) {
+    return [
+      ChangeNotifierProvider<AppModeProvider>(create: (_) => AppModeProvider()),
+      ChangeNotifierProvider<AuthProvider>(
+        create: (_) => AuthProvider(
+            firebaseAuth: firebaseAuth,
+            prefs: widget.prefs,
+            firebaseFirestore: firebaseFirestore),
+      ),
+      ChangeNotifierProvider<custom_auth.PhoneAuthProvider>(
+        create: (_) => custom_auth.PhoneAuthProvider(
+            firebaseAuth: firebaseAuth,
+            firebaseFirestore: firebaseFirestore,
+            prefs: widget.prefs),
+      ),
+      ChangeNotifierProvider<ThemeProvider>(
+          create: (_) => ThemeProvider(prefs: widget.prefs)),
+      ChangeNotifierProvider<TelemetryProvider>(
+          create: (_) => TelemetryProvider()),
+      ChangeNotifierProvider<StoryProvider>(
+        create: (_) => StoryProvider(
+            firebaseFirestore: firebaseFirestore,
+            firebaseStorage: firebaseStorage),
+      ),
+      Provider<SettingProvider>(
+        create: (_) => SettingProvider(
+            prefs: widget.prefs,
+            firebaseFirestore: firebaseFirestore,
+            firebaseStorage: firebaseStorage),
+      ),
+      Provider<HomeProvider>(
+          create: (_) => HomeProvider(firebaseFirestore: firebaseFirestore)),
+      Provider<ChatProvider>(
+        create: (_) => ChatProvider(
+            prefs: widget.prefs,
+            firebaseFirestore: firebaseFirestore,
+            firebaseStorage: firebaseStorage),
+      ),
+      Provider<FriendProvider>(
+          create: (_) => FriendProvider(firebaseFirestore: firebaseFirestore)),
+      Provider<ReactionProvider>(
+          create: (_) =>
+              ReactionProvider(firebaseFirestore: firebaseFirestore)),
+      Provider<MessageProvider>(
+          create: (_) => MessageProvider(firebaseFirestore: firebaseFirestore)),
+      Provider<ConversationProvider>(
+          create: (_) =>
+              ConversationProvider(firebaseFirestore: firebaseFirestore)),
+      Provider<ReminderProvider>(
+        create: (_) => ReminderProvider(
+            firebaseFirestore: firebaseFirestore,
+            notificationsPlugin: widget.notificationsPlugin),
+      ),
+      Provider<AutoDeleteProvider>(
+          create: (_) =>
+              AutoDeleteProvider(firebaseFirestore: firebaseFirestore)),
+      Provider<ConversationLockProvider>(
+          create: (_) =>
+              ConversationLockProvider(firebaseFirestore: firebaseFirestore)),
+      Provider<ViewOnceProvider>(
+          create: (_) =>
+              ViewOnceProvider(firebaseFirestore: firebaseFirestore)),
+      Provider<SmartReplyProvider>(create: (_) => SmartReplyProvider()),
+      Provider<UserPresenceProvider>(
+          create: (_) =>
+              UserPresenceProvider(firebaseFirestore: firebaseFirestore)),
+      Provider<LocationProvider>(create: (_) => LocationProvider()),
+      Provider<TranslationProvider>(create: (_) => TranslationProvider()),
+
+      // Bubble Services
+      Provider<ChatBubbleService>(create: (_) => widget.chatBubbleService),
+      Provider<UnifiedBubbleService>(
+          create: (_) => widget.unifiedBubbleService,
+          dispose: (_, s) => s.dispose()),
+      Provider<NotificationService>(create: (_) => widget.notificationService),
+      ChangeNotifierProvider<BubbleSettingsService>(
+          create: (_) => BubbleSettingsService()),
+      Provider<BubbleSoundService>(create: (_) => BubbleSoundService()),
+      Provider<ContextualBubbleService>(
+          create: (_) => ContextualBubbleService.instance),
+    ];
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AppBuilder — Overlays, Text Scaling
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _AppBuilder extends StatelessWidget {
+  final Widget child;
+  const _AppBuilder({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return MediaQuery(
+      data: MediaQuery.of(context).copyWith(
+        textScaler: TextScaler.linear(
+            MediaQuery.textScalerOf(context).scale(1.0).clamp(0.8, 1.3)),
+      ),
+      child: child,
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AppRouter
+// ─────────────────────────────────────────────────────────────────────────────
+
+class AppRouter {
+  static final navigatorKey = globalNavigatorKey; // Trỏ về global top-level key
+
+  static const splash = '/';
+  static const login = '/login';
+  static const home = '/home';
+  static const chat = '/chat';
+  static const profile = '/profile';
+  static const settings = '/settings';
+  static const bubbleSettings = '/bubble-settings';
+
+  static Route<dynamic>? onGenerateRoute(RouteSettings settings) {
+    switch (settings.name) {
+      case splash:
+        return _fade(const SplashPage());
+      case login:
+        return _fade(const LoginPage());
+      case home:
+        return _fade(const HomePage());
+      case chat:
+        final args = settings.arguments as ChatPageArguments?;
+        if (args == null) {
+          return _errorRoute('Chat page: arguments không hợp lệ');
+        }
+        return _slide(ChatPage(arguments: args));
+      case bubbleSettings:
+        return _slide(const BubbleSettingsPage());
+      default:
+        return _fade(const _NotFoundPage());
+    }
+  }
+
+  static PageRouteBuilder _fade(Widget page) => PageRouteBuilder(
+    pageBuilder: (_, __, ___) => page,
+    transitionDuration: const Duration(milliseconds: 220),
+    transitionsBuilder: (_, anim, __, child) =>
+        FadeTransition(opacity: anim, child: child),
+  );
+
+  static PageRouteBuilder _slide(Widget page) => PageRouteBuilder(
+    pageBuilder: (_, __, ___) => page,
+    transitionDuration: const Duration(milliseconds: 260),
+    transitionsBuilder: (_, anim, sec, child) {
+      final tween =
+      Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+          .chain(CurveTween(curve: Curves.easeOutCubic));
+      return SlideTransition(position: anim.drive(tween), child: child);
+    },
+  );
+
+  static void pushChatFromNotification({
+    required String peerId,
+    required String peerName,
+    required String peerAvatar,
+  }) {
+    globalNavigatorKey.currentState?.pushNamed(
+      chat,
+      arguments: ChatPageArguments(
+        peerId: peerId,
+        peerNickname: peerName,
+        peerAvatar: peerAvatar,
+      ),
+    );
+  }
+
+  static Route<dynamic> _errorRoute(String message) {
+    return MaterialPageRoute(
+      builder: (_) => Scaffold(
+        appBar: AppBar(title: const Text('Lỗi')),
+        body: Center(child: Text(message)),
+      ),
+    );
+  }
+}
+
+// ─── 404 Page ─────────────────────────────────────────────────────────────
+class _NotFoundPage extends StatelessWidget {
+  const _NotFoundPage();
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.error_outline_rounded,
+              size: 64, color: Colors.grey),
+          const SizedBox(height: 16),
+          Text('Trang không tồn tại',
+              style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: () => AppRouter.navigatorKey.currentState
+                ?.pushReplacementNamed(AppRouter.home),
+            child: const Text('Về trang chủ'),
+          ),
+        ],
+      ),
+    ),
+  );
 }

@@ -1,6 +1,7 @@
+// lib/widgets/contextual_bubble_universe_manager.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
+// Đảm bảo bạn gọi file Service duy nhất vừa tạo ở Bước 1
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
 
@@ -13,17 +14,18 @@ class ContextualBubbleUniverseManager extends StatefulWidget {
   });
 
   static ContextualBubbleUniverseManagerState? of(BuildContext context) {
-    return context.findAncestorStateOfType<ContextualBubbleUniverseManagerState>();
+    return context
+        .findAncestorStateOfType<ContextualBubbleUniverseManagerState>();
   }
 
   @override
-  State<ContextualBubbleUniverseManager> createState() => ContextualBubbleUniverseManagerState();
+  State<ContextualBubbleUniverseManager> createState() =>
+      ContextualBubbleUniverseManagerState();
 }
 
-class ContextualBubbleUniverseManagerState extends State<ContextualBubbleUniverseManager> {
+class ContextualBubbleUniverseManagerState
+    extends State<ContextualBubbleUniverseManager> {
   static const _channel = MethodChannel('mini_chat_channel');
-
-  final _contextService = ContextualBubbleService();
 
   OverlayEntry? _overlayEntry;
 
@@ -45,7 +47,6 @@ class ContextualBubbleUniverseManagerState extends State<ContextualBubbleUnivers
   void dispose() {
     _safeRemoveOverlay();
     _channel.setMethodCallHandler(null);
-    _contextService.dispose();
     super.dispose();
   }
 
@@ -66,9 +67,6 @@ class ContextualBubbleUniverseManagerState extends State<ContextualBubbleUnivers
         break;
 
       case 'minimize':
-        _safeRemoveOverlay();
-        break;
-
       case 'close':
         _safeRemoveOverlay();
         break;
@@ -93,7 +91,8 @@ class ContextualBubbleUniverseManagerState extends State<ContextualBubbleUnivers
     _currentUserName = userName;
     _currentAvatarUrl = avatarUrl;
     _myUserId = myUserId ?? '';
-    _currentConversationId = conversationId ?? _buildConversationId(myUserId ?? '', userId);
+    _currentConversationId =
+        conversationId ?? _buildConversationId(myUserId ?? '', userId);
 
     _overlayEntry = OverlayEntry(
       builder: (ctx) => _BubbleOverlayWrapper(
@@ -115,12 +114,14 @@ class ContextualBubbleUniverseManagerState extends State<ContextualBubbleUnivers
 
   void _onMinimize() {
     _safeRemoveOverlay();
-    _channel.invokeMethod('minimize', {'userId': _currentUserId}).catchError((_) {});
+    _channel.invokeMethod(
+        'minimize', {'userId': _currentUserId}).catchError((_) {});
   }
 
   void _onClose() {
     _safeRemoveOverlay();
-    _channel.invokeMethod('close', {'userId': _currentUserId}).catchError((_) {});
+    _channel
+        .invokeMethod('close', {'userId': _currentUserId}).catchError((_) {});
   }
 
   void _safeRemoveOverlay() {
@@ -242,19 +243,18 @@ class _FallbackChatContent extends StatelessWidget {
 }
 
 mixin ContextualBubbleMixin<T extends StatefulWidget> on State<T> {
-  final _ctxSvc = ContextualBubbleService();
-
   void notifyBubbleOfMessage({
+    String conversationId = 'default_conversation',
     required String content,
     required int messageType,
     bool isFromCurrentUser = true,
     Map<String, dynamic>? extra,
   }) {
-    _ctxSvc.analyzeMessage(
-      content: content,
+    ContextualBubbleService.instance.updateContext(
+      conversationId: conversationId,
+      message: content,
       messageType: messageType,
-      isFromCurrentUser: isFromCurrentUser,
-      extra: extra,
+      extraData: extra,
     );
   }
 }

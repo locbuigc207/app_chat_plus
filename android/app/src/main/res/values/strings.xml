@@ -1,45 +1,71 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+
     <string name="app_name">flutter_chat</string>
-
-    <string name="user_avatar">User Avatar</string>
-    <string name="user_name_placeholder">User Name</string>
-    <string name="minimize">Minimize</string>
-    <string name="close">Close</string>
-    <string name="attach">Attach File</string>
-    <string name="send">Send Message</string>
-    <string name="type_message">Type a message…</string>
-    <string name="typing">Typing</string>
-
-    <string name="no_messages">No Messages</string>
-    <string name="no_messages_yet">No messages yet.\nStart a conversation!</string>
-
-    <string name="error">Error</string>
-    <string name="failed_to_load_messages">Failed to load messages</string>
-    <string name="retry">Retry</string>
-    <string name="connection_error">Connection error. Please check your internet.</string>
-
-    <string name="new_message">New message</string>
-    <string name="unread_messages">%1$d unread messages</string>
-    <string name="chat_bubble_notification">Chat bubble active</string>
-
-    <string name="mark_as_read">Mark as Read</string>
-    <string name="delete_conversation">Delete Conversation</string>
-    <string name="message_sent">Message sent</string>
-    <string name="message_failed">Failed to send message</string>
-
-    <string name="overlay_permission_required">Overlay permission is required for chat bubbles</string>
-    <string name="grant_permission">Grant Permission</string>
-
-    <string name="message_from">Message from %1$s</string>
-    <string name="tap_to_open">Tap to open</string>
-    <string name="notification_channel_name">Chat Messages</string>
-    <string name="notification_channel_desc">Notifications for chat messages with bubble support</string>
-    <string name="notification_title">New message</string>
-    <string name="notification_tap_to_reply">Tap to reply</string>
-    <string name="bubble_reply">Reply</string>
-    <string name="bubble_dismiss">Dismiss</string>
-    <string name="bubble_open">Open conversation</string>
-
     <string name="firebase_app_check_debug_token">f47ac10b-58cc-4372-a567-0e02b2c3d479</string>
+
+    <string name="user_avatar">Avatar người dùng</string>
+    <string name="user_name_placeholder">Tên người dùng</string>
+    <string name="delete_conversation">Xoá cuộc trò chuyện</string>
+
+    <string name="new_message">Tin nhắn mới</string>
+    <string name="unread_messages">%1$d tin nhắn chưa đọc</string>
+    <string name="chat_bubble_active">Bong bóng chat đang hoạt động</string>
+    <string name="chat_bubble_notification">Bong bóng chat đang hoạt động</string>
+    <string name="drag_to_delete">Kéo vào để xoá</string>
+    <string name="release_to_delete">Thả để xoá</string>
+
+    <string name="minimize">Thu nhỏ</string>
+    <string name="close">Đóng</string>
+    <string name="expand_to_full">Mở rộng</string>
+    <string name="attach">Đính kèm tệp</string>
+    <string name="send">Gửi tin nhắn</string>
+    <string name="type_message">Nhập tin nhắn…</string>
+    <string name="typing">Đang nhập…</string>
+    <string name="typing_indicator">đang nhập…</string>
+    <string name="online_status">Đang trực tuyến</string>
+    <string name="offline_status">Ngoại tuyến</string>
+
+    <string name="no_messages">Chưa có tin nhắn</string>
+    <string name="no_messages_yet">Chưa có tin nhắn.\nBắt đầu cuộc trò chuyện nào!</string>
+    <string name="no_messages_hint">Bắt đầu cuộc trò chuyện nào!</string>
+    <string name="error">Lỗi</string>
+    <string name="failed_to_load_messages">Tải tin nhắn thất bại</string>
+    <string name="failed_to_load">Tải thất bại</string>
+    <string name="retry">Thử lại</string>
+    <string name="connection_error">Lỗi kết nối. Vui lòng kiểm tra mạng.</string>
+
+    <string name="notification_channel_name">Tin nhắn</string>
+    <string name="notif_channel_messages_name">Tin nhắn</string>
+    <string name="notification_channel_desc">Thông báo tin nhắn với bong bóng chat</string>
+    <string name="notif_channel_messages_desc">Thông báo tin nhắn với bong bóng chat</string>
+    <string name="notif_channel_service_name">Dịch vụ bong bóng</string>
+    <string name="notif_channel_service_desc">Duy trì bong bóng chat trong nền</string>
+
+    <string name="notification_title">Tin nhắn mới</string>
+    <string name="notif_title">Tin nhắn mới</string>
+    <string name="notification_tap_to_reply">Nhấn để trả lời</string>
+    <string name="notif_tap_reply">Nhấn để trả lời</string>
+    <string name="bubble_reply">Trả lời</string>
+    <string name="notif_reply_action">Trả lời</string>
+    <string name="bubble_dismiss">Bỏ qua</string>
+    <string name="notif_dismiss_action">Bỏ qua</string>
+    <string name="bubble_open">Mở cuộc trò chuyện</string>
+    <string name="notif_open_action">Mở cuộc trò chuyện</string>
+    <string name="message_from">Tin nhắn từ %1$s</string>
+    <string name="tap_to_open">Nhấn để mở</string>
+
+    <string name="overlay_permission_required">Cần quyền hiển thị nổi để dùng bong bóng chat</string>
+    <string name="grant_permission">Cấp quyền</string>
+    <string name="permission_denied">Quyền bị từ chối</string>
+
+    <string name="mark_as_read">Đánh dấu đã đọc</string>
+    <string name="message_sent">Đã gửi</string>
+    <string name="message_failed">Gửi thất bại</string>
+
+    <string name="msg_type_image">📷 Hình ảnh</string>
+    <string name="msg_type_voice">🎤 Tin nhắn thoại</string>
+    <string name="msg_type_location">📍 Vị trí</string>
+    <string name="msg_type_file">📎 Tệp đính kèm</string>
+
 </resources>

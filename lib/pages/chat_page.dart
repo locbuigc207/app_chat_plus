@@ -26,7 +26,6 @@ class ChatPageArguments {
   final String peerId;
   final String peerAvatar;
   final String peerNickname;
-
   const ChatPageArguments({
     required this.peerId,
     required this.peerAvatar,
@@ -42,7 +41,6 @@ class ChatPage extends StatefulWidget {
     this.isBubbleMode = false,
     this.isWebMode = false,
   });
-
   final ChatPageArguments arguments;
   final bool isMiniChat;
   final bool isBubbleMode;
@@ -52,12 +50,29 @@ class ChatPage extends StatefulWidget {
   ChatPageState createState() => ChatPageState();
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// STATE — includes BubbleChatPageMixin
+// ════════════════════════════════════════════════════════════════════════════
+
 class ChatPageState extends State<ChatPage>
     with
         WidgetsBindingObserver,
         ResourceManagerMixin,
-        TickerProviderStateMixin {
-  // ── State ────────────────────────────────────────────────────────────────
+        TickerProviderStateMixin,
+        BubbleChatPageMixin {
+  // ← BUBBLE MIXIN
+
+  // ── BubbleChatPageMixin required overrides ─────────────────────────────
+  @override
+  String get bubblePeerId => widget.arguments.peerId;
+  @override
+  String get bubblePeerName => widget.arguments.peerNickname;
+  @override
+  String get bubblePeerAvatar => widget.arguments.peerAvatar;
+  @override
+  bool get isMiniChatMode => widget.isMiniChat || widget.isBubbleMode;
+
+  // ── State ─────────────────────────────────────────────────────────────────
   late final String _currentUserId;
   String _groupChatId = '';
 
@@ -75,7 +90,7 @@ class ChatPageState extends State<ChatPage>
   static const _miniChatChannel = MethodChannel('mini_chat_channel');
   static const _bubbleChannel = MethodChannel('bubble_chat_channel');
 
-  // ── Providers ────────────────────────────────────────────────────────────
+  // ── Providers ──────────────────────────────────────────────────────────────
   late ChatProvider _chatProvider;
   late AuthProvider _authProvider;
   late MessageProvider _messageProvider;
@@ -91,10 +106,9 @@ class ChatPageState extends State<ChatPage>
   VoiceMessageProvider? _voiceProvider;
   LocationProvider? _locationProvider;
 
-  // ── UI State ─────────────────────────────────────────────────────────────
+  // ── UI State ───────────────────────────────────────────────────────────────
   int _limit = 30;
-  final int _limitIncrement = 20;
-
+  static const int _limitIncrement = 20;
   bool _isLoading = false;
   bool _isShowSticker = false;
   bool _isLoadingMedia = false;
@@ -122,7 +136,9 @@ class ChatPageState extends State<ChatPage>
   final Set<String> _expandedPreviews = {};
   final ImagePicker _picker = ImagePicker();
 
-  // ── Lifecycle ────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // LIFECYCLE
+  // ══════════════════════════════════════════════════════════════════════════
 
   @override
   void initState() {
@@ -158,7 +174,6 @@ class ChatPageState extends State<ChatPage>
       ..addFocusNode(_focusNode);
 
     WidgetsBinding.instance.addObserver(this);
-
     _focusNode.addListener(_onFocusChange);
     _scrollController.addListener(_onScroll);
     _inputController.addListener(_onInputChanged);
@@ -170,21 +185,24 @@ class ChatPageState extends State<ChatPage>
       ..addDisposer(() => WidgetsBinding.instance.removeObserver(this));
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!resourceManager.isDisposed && mounted) {
-        _initProviders(context);
-      }
+      if (!resourceManager.isDisposed && mounted) _initProviders(context);
     });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
+    // Sync bubble lifecycle observer
+    BubbleLifecycleObserver.instance.didChangeAppLifecycleState(state);
+
     if (resourceManager.isDisposed || _currentUserId.isEmpty) return;
     if (state == AppLifecycleState.paused) {
       _presenceProvider?.setUserOffline(_currentUserId);
     } else if (state == AppLifecycleState.resumed) {
       _presenceProvider?.setUserOnline(_currentUserId);
       _markRead();
+      // When app resumes with this chat open, clear bubble unread
+      BubbleManager.of(context)?.clearUnread(widget.arguments.peerId);
     }
   }
 
@@ -211,10 +229,14 @@ class ChatPageState extends State<ChatPage>
     try {
       _voiceProvider?.dispose();
     } catch (_) {}
+    // Notify bubble lifecycle that this chat is closed
+    BubbleLifecycleObserver.instance.onChatClosed(widget.arguments.peerId);
     super.dispose();
   }
 
-  // ── Init ─────────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // INIT
+  // ══════════════════════════════════════════════════════════════════════════
 
   void _initProviders(BuildContext ctx) {
     if (resourceManager.isDisposed) return;
@@ -230,7 +252,13 @@ class ChatPageState extends State<ChatPage>
     _smartReplyProvider = ctx.read<SmartReplyProvider>();
     _telemetryProvider = ctx.read<TelemetryProvider>();
     _presenceProvider = ctx.read<UserPresenceProvider>();
-    _bubbleService = ctx.read<UnifiedBubbleService>();
+
+    // Bubble service
+    try {
+      _bubbleService = ctx.read<UnifiedBubbleService>();
+    } catch (_) {
+      _bubbleService = UnifiedBubbleService();
+    }
 
     PushNotificationService.initialize()
         .catchError((e) => debugPrint('⚠️ Push: $e'));
@@ -255,6 +283,8 @@ class ChatPageState extends State<ChatPage>
 
     if (_presenceProvider != null && _currentUserId.isNotEmpty) {
       _presenceProvider!.setUserOnline(_currentUserId);
+      // Notify bubble system: this chat is open
+      BubbleLifecycleObserver.instance.onChatOpened(widget.arguments.peerId);
     }
 
     ErrorLogger.logScreenView('chat_page');
@@ -293,7 +323,9 @@ class ChatPageState extends State<ChatPage>
     });
   }
 
-  // ── Scroll ───────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // SCROLL
+  // ══════════════════════════════════════════════════════════════════════════
 
   void _onScroll() {
     if (resourceManager.isDisposed || !_scrollController.hasClients) return;
@@ -307,11 +339,10 @@ class ChatPageState extends State<ChatPage>
     final show = pos.pixels > 400;
     if (show != _showScrollToBottom && mounted) {
       setState(() => _showScrollToBottom = show);
-      if (show) {
+      if (show)
         _fabAnim.forward();
-      } else {
+      else
         _fabAnim.reverse();
-      }
     }
   }
 
@@ -322,14 +353,15 @@ class ChatPageState extends State<ChatPage>
         curve: Curves.easeOutCubic);
   }
 
-  // ── Input ────────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // INPUT
+  // ══════════════════════════════════════════════════════════════════════════
 
   void _onInputChanged() {
-    if (_inputController.text.trim().isNotEmpty) {
+    if (_inputController.text.trim().isNotEmpty)
       _sendBtnAnim.forward();
-    } else {
+    else
       _sendBtnAnim.reverse();
-    }
   }
 
   void _onFocusChange() {
@@ -399,7 +431,19 @@ class ChatPageState extends State<ChatPage>
     ));
   }
 
-  // ── Send ──────────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // SEND
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Converts TypeMessage int to bubble-compatible string
+  String _typeToString(int type) => switch (type) {
+        TypeMessage.image => 'image',
+        TypeMessage.video => 'video',
+        3 => 'voice',
+        TypeMessage.geoLocked => 'location',
+        TypeMessage.sticker => 'sticker',
+        _ => 'text',
+      };
 
   Future<void> _onSend(String content, int type) async {
     if (resourceManager.isDisposed) return;
@@ -427,6 +471,11 @@ class ChatPageState extends State<ChatPage>
           _currentUserId, widget.arguments.peerId);
       ErrorLogger.logMessageSent(
           conversationId: _groupChatId, messageType: type);
+
+      // ── Bubble mixin: auto-update context + bubble message ──────────────
+      onUserSentMessage(finalContent, type: _typeToString(type));
+
+      // ── Native bubble update ────────────────────────────────────────────
       await _updateBubble(finalContent, type, fromUser: true);
     } catch (e) {
       ErrorLogger.logError(e, null, context: 'SendMessage');
@@ -454,32 +503,28 @@ class ChatPageState extends State<ChatPage>
   Future<void> _updateBubble(String content, int type,
       {required bool fromUser}) async {
     if (_bubbleService == null || resourceManager.isDisposed) return;
+
+    // Check master setting
+    final settings = BubbleSettingsService();
+    if (!settings.isEnabled) return;
+
+    // If user is actively viewing the chat, don't show bubble
+    if (settings.settings.autoHideWhenChatOpen && !fromUser) return;
+
     if (!_bubbleService!.isBubbleActive(widget.arguments.peerId)) return;
-    String msgType = 'text', display = content;
-    switch (type) {
-      case TypeMessage.image:
-        msgType = 'image';
-        display = '📷 Ảnh';
-        break;
-      case TypeMessage.video:
-        msgType = 'video';
-        display = '🎬 Video';
-        break;
-      case 3:
-        msgType = 'voice';
-        display = '🎤 Thoại';
-        break;
-      case TypeMessage.geoLocked:
-        msgType = 'text';
-        display = '🔐 Tin nhắn ẩn địa điểm';
-        break;
-      default:
-        if (content.contains('maps.google.com') ||
-            content.contains('Location:')) {
-          msgType = 'location';
-          display = '📍 Vị trí';
-        }
-    }
+
+    String msgType = _typeToString(type);
+    String display = switch (type) {
+      TypeMessage.image => '📷 Ảnh',
+      TypeMessage.video => '🎬 Video',
+      3 => '🎤 Thoại',
+      TypeMessage.geoLocked => '🔐 Tin nhắn vị trí',
+      TypeMessage.sticker => '😊 Sticker',
+      _ => content.contains('maps.google.com') || content.contains('Location:')
+          ? '📍 Vị trí'
+          : (content.length > 60 ? '${content.substring(0, 60)}…' : content),
+    };
+
     try {
       await _bubbleService!.sendMessage(
           userId: widget.arguments.peerId,
@@ -488,12 +533,13 @@ class ChatPageState extends State<ChatPage>
           avatarUrl: widget.arguments.peerAvatar,
           messageType: msgType);
     } catch (e) {
-      debugPrint('❌ Bubble: $e');
+      debugPrint('❌ Bubble update: $e');
     }
   }
 
   Future<void> _showBubbleIfNeeded() async {
     if (resourceManager.isDisposed) return;
+    if (!BubbleSettingsService().isEnabled) return;
     if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
       await _bubbleService?.showChatBubble(
           userId: widget.arguments.peerId,
@@ -502,7 +548,198 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ── Media ────────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // LISTEN INCOMING MESSAGES
+  // ══════════════════════════════════════════════════════════════════════════
+
+  void _listenIncoming() {
+    if (resourceManager.isDisposed ||
+        _groupChatId.isEmpty ||
+        _currentUserId.isEmpty) return;
+
+    final sub = FirebaseFirestore.instance
+        .collection(FirestoreConstants.pathMessageCollection)
+        .doc(_groupChatId)
+        .collection(_groupChatId)
+        .where(FirestoreConstants.idTo, isEqualTo: _currentUserId)
+        .where('isRead', isEqualTo: false)
+        .snapshots()
+        .listen((snap) async {
+      if (resourceManager.isDisposed || _isProcessingMsg) return;
+      _isProcessingMsg = true;
+      try {
+        for (final change in snap.docChanges) {
+          if (resourceManager.isDisposed) break;
+          if (change.type != DocumentChangeType.added) continue;
+          final id = change.doc.id;
+          if (_processedIds.contains(id)) continue;
+          _processedIds.add(id);
+          if (_processedIds.length > 200) {
+            _processedIds.removeAll(_processedIds.take(100).toList());
+          }
+
+          final data = change.doc.data();
+          final content = data?[FirestoreConstants.content] as String? ?? '';
+          final type = data?[FirestoreConstants.type] as int? ?? 0;
+
+          // ── Mixin: clear unread + update bubble context ──────────────────
+          onIncomingMessage(content, type: _typeToString(type));
+
+          // ── Play notification sound based on current mode ────────────────
+          final svcSettings = BubbleSettingsService();
+          if (svcSettings.settings.soundEnabled) {
+            final ctx = ContextualBubbleService.instance
+                .getContext(widget.arguments.peerId);
+            await BubbleSoundService().playReceive(ctx.mode);
+          }
+
+          // ── Update bubble with real content ──────────────────────────────
+          await _updateBubble(content, type, fromUser: false);
+
+          // ── Show bubble if app backgrounded ──────────────────────────────
+          _showBubbleIfNeeded();
+        }
+      } finally {
+        _isProcessingMsg = false;
+      }
+    }, onError: (_) => _isProcessingMsg = false);
+    resourceManager.addSubscription(sub);
+  }
+
+  Future<void> _markRead() async {
+    if (resourceManager.isDisposed) return;
+    try {
+      final unread = await FirebaseFirestore.instance
+          .collection(FirestoreConstants.pathMessageCollection)
+          .doc(_groupChatId)
+          .collection(_groupChatId)
+          .where(FirestoreConstants.idTo, isEqualTo: _currentUserId)
+          .where('isRead', isEqualTo: false)
+          .get();
+      if (unread.docs.isEmpty) return;
+      final batch = FirebaseFirestore.instance.batch();
+      for (final doc in unread.docs) {
+        batch.update(doc.reference,
+            {'isRead': true, 'readAt': FieldValue.serverTimestamp()});
+      }
+      await batch.commit();
+      _presenceProvider?.markMessagesAsRead(
+          conversationId: _groupChatId, userId: _currentUserId);
+      // Clear bubble badge
+      BubbleManager.of(context)?.clearUnread(widget.arguments.peerId);
+    } catch (e) {
+      ErrorLogger.logError(e, null, context: 'MarkRead');
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // BUBBLE MANAGEMENT
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Future<void> _createBubble() async {
+    if (_bubbleService == null) return;
+    if (!_bubbleService!.isSupported) {
+      _toast('Thiết bị không hỗ trợ chat bubble');
+      return;
+    }
+
+    // Check master toggle
+    if (!BubbleSettingsService().isEnabled) {
+      final confirm = await _confirm(
+        title: 'Bong bóng chat đang tắt',
+        message: 'Bật bong bóng trong Cài đặt?',
+        confirmLabel: 'Mở cài đặt',
+        icon: Icons.chat_bubble_rounded,
+      );
+      if (confirm == true && mounted) {
+        Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const BubbleSettingsPage()));
+      }
+      return;
+    }
+
+    final hasPermission = await _bubbleService!.hasOverlayPermission();
+    if (!hasPermission) {
+      final granted = await _bubbleService!.requestOverlayPermission();
+      if (!granted) {
+        _toast('Cần quyền hiển thị');
+        return;
+      }
+    }
+
+    final choice = await _showBubbleChoiceDialog();
+    if (choice == null || resourceManager.isDisposed) return;
+
+    // Detect current context mode
+    final ctx =
+        ContextualBubbleService.instance.getContext(widget.arguments.peerId);
+
+    if (choice == 'bubble') {
+      final ok = await _bubbleService!.showChatBubble(
+          userId: widget.arguments.peerId,
+          userName: widget.arguments.peerNickname,
+          avatarUrl: widget.arguments.peerAvatar);
+      if (ok) {
+        _toast('🫧 Bubble đã tạo (${ctx.mode.name})', isSuccess: true);
+      } else {
+        _toast('❌ Không thể tạo bubble');
+      }
+    } else if (choice == 'minichat') {
+      final ctrl = BubbleManager.of(context);
+      if (ctrl != null) {
+        await ctrl.showMiniChat(
+            userId: widget.arguments.peerId,
+            userName: widget.arguments.peerNickname,
+            avatarUrl: widget.arguments.peerAvatar);
+        _toast('💬 Mini chat đã mở', isSuccess: true);
+      } else {
+        final ok = await _bubbleService!.showMiniChat(
+            userId: widget.arguments.peerId,
+            userName: widget.arguments.peerNickname,
+            avatarUrl: widget.arguments.peerAvatar);
+        _toast(ok ? '💬 Mini chat đã mở' : '⚠️ Không hỗ trợ', isSuccess: ok);
+      }
+    }
+  }
+
+  Future<String?> _showBubbleChoiceDialog() {
+    final p = context.read<ThemeProvider>().palette;
+    final primary = context.read<ThemeProvider>().primaryColor;
+    return showDialog<String>(
+        context: context,
+        builder: (ctx) => _ThemedDialog(
+              title: 'Tạo Chat Bubble',
+              icon: Icons.bubble_chart_rounded,
+              iconColor: primary,
+              palette: p,
+              content: Text('Chọn cách hiển thị:',
+                  style: TextStyle(color: p.textSecondary)),
+              actions: [
+                _ThemedDialogAction(
+                    label: 'Bubble',
+                    isPrimary: true,
+                    palette: p,
+                    primary: primary,
+                    onTap: () => Navigator.pop(ctx, 'bubble')),
+                if (_bubbleService!.currentImplementation ==
+                    BubbleImplementation.windowManager)
+                  _ThemedDialogAction(
+                      label: 'Mini Chat',
+                      palette: p,
+                      primary: primary,
+                      onTap: () => Navigator.pop(ctx, 'minichat')),
+                _ThemedDialogAction(
+                    label: 'Huỷ',
+                    palette: p,
+                    primary: primary,
+                    onTap: () => Navigator.pop(ctx)),
+              ],
+            ));
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // MEDIA
+  // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _pickImage() async {
     HapticFeedback.lightImpact();
@@ -528,8 +765,7 @@ class ChatPageState extends State<ChatPage>
     if (resourceManager.isDisposed) return;
     final confirmed = await _confirm(
         title: 'Gửi ${isVideo ? 'Video' : 'Ảnh'}',
-        message:
-            'Gửi ${isVideo ? 'video' : 'ảnh'} này đến ${widget.arguments.peerNickname}?',
+        message: 'Gửi ${isVideo ? 'video' : 'ảnh'} này?',
         confirmLabel: 'Gửi',
         icon: isVideo ? Icons.videocam_rounded : Icons.image_rounded);
     if (confirmed != true || resourceManager.isDisposed) return;
@@ -559,7 +795,9 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ── Sticker & Menu ───────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // STICKER / MENU
+  // ══════════════════════════════════════════════════════════════════════════
 
   void _toggleSticker() {
     if (resourceManager.isDisposed) return;
@@ -572,7 +810,9 @@ class ChatPageState extends State<ChatPage>
     _menuAnim.reverse();
   }
 
-  // ── Voice ────────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // VOICE
+  // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _startRec() async {
     if (_voiceProvider == null) {
@@ -639,7 +879,9 @@ class ChatPageState extends State<ChatPage>
     HapticFeedback.heavyImpact();
   }
 
-  // ── Location ─────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // LOCATION
+  // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _shareLocation() async {
     if (_locationProvider == null) return;
@@ -663,7 +905,9 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ── GeoLock ───────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // GEOLOCK
+  // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _sendGeoLockedMessage() async {
     if (resourceManager.isDisposed) return;
@@ -674,24 +918,22 @@ class ChatPageState extends State<ChatPage>
     _menuAnim.reverse();
 
     final result = await Navigator.push<GeoLockData>(
-      context,
-      PageRouteBuilder(
-        pageBuilder: (_, __, ___) => const GeoLockPickerPage(),
-        transitionsBuilder: (_, anim, __, child) => SlideTransition(
-          position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
-              .animate(
-                  CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
-          child: child,
-        ),
-        transitionDuration: const Duration(milliseconds: 340),
-        fullscreenDialog: true,
-      ),
-    );
+        context,
+        PageRouteBuilder(
+          pageBuilder: (_, __, ___) => const GeoLockPickerPage(),
+          transitionsBuilder: (_, anim, __, child) => SlideTransition(
+            position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
+                .animate(
+                    CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+            child: child,
+          ),
+          transitionDuration: const Duration(milliseconds: 340),
+          fullscreenDialog: true,
+        ));
     if (result == null || resourceManager.isDisposed || !mounted) return;
     setState(() => _isLoading = true);
     try {
-      final content = jsonEncode(result.toJson());
-      await _onSend(content, TypeMessage.geoLocked);
+      await _onSend(jsonEncode(result.toJson()), TypeMessage.geoLocked);
       _toast(
           result.hideLocation
               ? '🔐 Đã gửi tin nhắn ẩn địa điểm'
@@ -705,8 +947,6 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ── Maps ──────────────────────────────────────────────────────────────────
-
   Future<void> _openMaps(String url) async {
     try {
       final uri = Uri.parse(url);
@@ -715,7 +955,9 @@ class ChatPageState extends State<ChatPage>
     } catch (_) {}
   }
 
-  // ── Scheduled Message ────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // SCHEDULED / SMART REPLY / AI
+  // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _scheduleMessage() async {
     if (resourceManager.isDisposed) return;
@@ -745,24 +987,17 @@ class ChatPageState extends State<ChatPage>
         isSuccess: true);
   }
 
-  // ── Smart Reply (AI) ─────────────────────────────────────────────────────
-
   Future<void> _loadSmartReplies() async {
     if (resourceManager.isDisposed) return;
     final msgs = LocalDbService().getMessages(_groupChatId);
     if (msgs.isEmpty) return;
-
     final last = msgs.first;
     if (last['idFrom'] == _currentUserId || last['type'] != TypeMessage.text)
       return;
-
     final content = last['content'] as String? ?? '';
     if (content.isEmpty || content.startsWith('{"iv":')) return;
-
-    if (mounted && !resourceManager.isDisposed) {
+    if (mounted && !resourceManager.isDisposed)
       setState(() => _isLoadingSmartReply = true);
-    }
-
     try {
       final history = msgs
           .take(6)
@@ -771,14 +1006,11 @@ class ChatPageState extends State<ChatPage>
           .toList()
           .reversed
           .toList();
-
       final replies = await _smartReplyProvider.getAiSmartReplies(
-        lastMessage: content,
-        recentMessages: history,
-        language: 'vi',
-        replyIntent: 'helpful',
-      );
-
+          lastMessage: content,
+          recentMessages: history,
+          language: 'vi',
+          replyIntent: 'helpful');
       if (mounted && !resourceManager.isDisposed) {
         setState(() {
           _smartReplies = replies;
@@ -796,7 +1028,9 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ── Pinned & Listen ───────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // PINNED / AI FEATURES
+  // ══════════════════════════════════════════════════════════════════════════
 
   void _loadPinned() {
     if (resourceManager.isDisposed) return;
@@ -805,85 +1039,6 @@ class ChatPageState extends State<ChatPage>
       setState(() => _pinned = snap.docs);
     }, onError: (e) => ErrorLogger.logError(e, null, context: 'LoadPinned'));
     resourceManager.addSubscription(sub);
-  }
-
-  void _listenIncoming() {
-    if (resourceManager.isDisposed ||
-        _groupChatId.isEmpty ||
-        _currentUserId.isEmpty) return;
-    final sub = FirebaseFirestore.instance
-        .collection(FirestoreConstants.pathMessageCollection)
-        .doc(_groupChatId)
-        .collection(_groupChatId)
-        .where(FirestoreConstants.idTo, isEqualTo: _currentUserId)
-        .where('isRead', isEqualTo: false)
-        .snapshots()
-        .listen((snap) async {
-      if (resourceManager.isDisposed || _isProcessingMsg) return;
-      _isProcessingMsg = true;
-      try {
-        for (final change in snap.docChanges) {
-          if (resourceManager.isDisposed) break;
-          if (change.type != DocumentChangeType.added) continue;
-          final id = change.doc.id;
-          if (_processedIds.contains(id)) continue;
-          _processedIds.add(id);
-          if (_processedIds.length > 200) {
-            _processedIds.removeAll(_processedIds.take(100).toList());
-          }
-          final data = change.doc.data();
-          if (data != null) {
-            final type = data[FirestoreConstants.type] as int? ?? 0;
-            await _updateBubble('Tin nhắn mới', type, fromUser: false);
-          }
-          _showBubbleIfNeeded();
-        }
-      } finally {
-        _isProcessingMsg = false;
-      }
-    }, onError: (_) => _isProcessingMsg = false);
-    resourceManager.addSubscription(sub);
-  }
-
-  Future<void> _markRead() async {
-    if (resourceManager.isDisposed) return;
-    try {
-      final unread = await FirebaseFirestore.instance
-          .collection(FirestoreConstants.pathMessageCollection)
-          .doc(_groupChatId)
-          .collection(_groupChatId)
-          .where(FirestoreConstants.idTo, isEqualTo: _currentUserId)
-          .where('isRead', isEqualTo: false)
-          .get();
-      if (unread.docs.isEmpty) return;
-      final batch = FirebaseFirestore.instance.batch();
-      for (final doc in unread.docs) {
-        batch.update(doc.reference,
-            {'isRead': true, 'readAt': FieldValue.serverTimestamp()});
-      }
-      await batch.commit();
-      _presenceProvider?.markMessagesAsRead(
-          conversationId: _groupChatId, userId: _currentUserId);
-    } catch (e) {
-      ErrorLogger.logError(e, null, context: 'MarkRead');
-    }
-  }
-
-  // ── Game & AI Features ───────────────────────────────────────────────────
-
-  void _openGameCenter() {
-    HapticFeedback.lightImpact();
-    Navigator.push(
-        context,
-        MaterialPageRoute(
-            builder: (_) => GameCenterHubPage(
-                  groupId: _groupChatId,
-                  groupName: widget.arguments.peerNickname,
-                  currentUserId: _currentUserId,
-                  currentUserName:
-                      _authProvider.userFirebaseId ?? _currentUserId,
-                  currentUserAvatar: '',
-                )));
   }
 
   void _showSummarySheet() {
@@ -903,18 +1058,16 @@ class ChatPageState extends State<ChatPage>
         .toList()
         .reversed
         .toList();
-
     if (msgs.length < 3) {
       _toast('Cần ít nhất 3 tin nhắn để phân tích');
       return;
     }
     showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      useSafeArea: true,
-      builder: (_) => ConversationSummarySheet(messages: msgs),
-    );
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        useSafeArea: true,
+        builder: (_) => ConversationSummarySheet(messages: msgs));
   }
 
   void _showToneRewriter() {
@@ -924,18 +1077,16 @@ class ChatPageState extends State<ChatPage>
       return;
     }
     showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      useSafeArea: true,
-      builder: (_) => ToneRewriterSheet(
-        originalMessage: text,
-        onApply: (rewritten) {
-          _inputController.text = rewritten;
-          _focusNode.requestFocus();
-        },
-      ),
-    );
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        useSafeArea: true,
+        builder: (_) => ToneRewriterSheet(
+            originalMessage: text,
+            onApply: (rewritten) {
+              _inputController.text = rewritten;
+              _focusNode.requestFocus();
+            }));
   }
 
   void _openInsightsPage() {
@@ -943,11 +1094,9 @@ class ChatPageState extends State<ChatPage>
     Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => UserInsightsPage(
-            conversationId: _groupChatId,
-            peerName: widget.arguments.peerNickname,
-          ),
-        ));
+            builder: (_) => UserInsightsPage(
+                conversationId: _groupChatId,
+                peerName: widget.arguments.peerNickname)));
   }
 
   void _openWeeklyRecap() {
@@ -955,67 +1104,61 @@ class ChatPageState extends State<ChatPage>
     Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => WeeklyRecapPage(userId: _currentUserId),
-        ));
+            builder: (_) => WeeklyRecapPage(userId: _currentUserId)));
   }
 
   void _showRelationshipMemory() {
     HapticFeedback.lightImpact();
     final p = context.read<ThemeProvider>().palette;
     showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      useSafeArea: true,
-      builder: (_) => Container(
-        padding: EdgeInsets.fromLTRB(
-            16, 20, 16, MediaQuery.of(context).viewInsets.bottom + 32),
-        decoration: BoxDecoration(
-          color: p.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          boxShadow: [
-            BoxShadow(
-                color: p.shadowStrong,
-                blurRadius: 24,
-                offset: const Offset(0, -4))
-          ],
-        ),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 18),
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        useSafeArea: true,
+        builder: (_) => Container(
+              padding: EdgeInsets.fromLTRB(
+                  16, 20, 16, MediaQuery.of(context).viewInsets.bottom + 32),
               decoration: BoxDecoration(
-                  color: p.divider, borderRadius: BorderRadius.circular(999)),
-            ),
-          ),
-          RelationshipMemoryWidget(
-            conversationId: _groupChatId,
-            peerName: widget.arguments.peerNickname,
-          ),
-          const SizedBox(height: 16),
-        ]),
-      ),
-    );
+                  color: p.surface,
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(28)),
+                  boxShadow: [
+                    BoxShadow(
+                        color: p.shadowStrong,
+                        blurRadius: 24,
+                        offset: const Offset(0, -4))
+                  ]),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Center(
+                    child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 18),
+                        decoration: BoxDecoration(
+                            color: p.divider,
+                            borderRadius: BorderRadius.circular(999)))),
+                RelationshipMemoryWidget(
+                    conversationId: _groupChatId,
+                    peerName: widget.arguments.peerNickname),
+                const SizedBox(height: 16),
+              ]),
+            ));
   }
 
   void _showIcebreakers() {
     HapticFeedback.lightImpact();
     showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      useSafeArea: true,
-      builder: (_) => IcebreakerPanel(
-        peerId: widget.arguments.peerId,
-        peerName: widget.arguments.peerNickname,
-        onSelect: (text) {
-          _inputController.text = text;
-          _focusNode.requestFocus();
-        },
-      ),
-    );
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        useSafeArea: true,
+        builder: (_) => IcebreakerPanel(
+            peerId: widget.arguments.peerId,
+            peerName: widget.arguments.peerNickname,
+            onSelect: (text) {
+              _inputController.text = text;
+              _focusNode.requestFocus();
+            }));
   }
 
   void _showAI() {
@@ -1045,29 +1188,42 @@ class ChatPageState extends State<ChatPage>
             primary: context.read<ThemeProvider>().primaryColor));
   }
 
-  // ── Message Options ───────────────────────────────────────────────────────
+  void _openGameCenter() {
+    HapticFeedback.lightImpact();
+    Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (_) => GameCenterHubPage(
+                groupId: _groupChatId,
+                groupName: widget.arguments.peerNickname,
+                currentUserId: _currentUserId,
+                currentUserName: _authProvider.userFirebaseId ?? _currentUserId,
+                currentUserAvatar: '')));
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // MESSAGE OPTIONS
+  // ══════════════════════════════════════════════════════════════════════════
 
   void _showMsgOptions(MessageChat msg, String msgId) {
     if (resourceManager.isDisposed) return;
     HapticFeedback.mediumImpact();
     showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => EnhancedMessageOptionsDialog(
-        isOwnMessage: msg.idFrom == _currentUserId,
-        isPinned: msg.isPinned,
-        isDeleted: msg.isDeleted,
-        messageContent: msg.content,
-        onEdit: () => _editMsg(msgId, msg.content),
-        onDelete: () => _deleteMsg(msgId),
-        onPin: () => _pinMsg(msgId, msg.isPinned),
-        onCopy: () => _copyMsg(msg.content),
-        onReply: () => _setReply(msg),
-        onReminder: () => _setReminder(msg, msgId),
-        onTranslate: () => _translate(msg.content),
-      ),
-    );
+        context: context,
+        backgroundColor: Colors.transparent,
+        isScrollControlled: true,
+        builder: (_) => EnhancedMessageOptionsDialog(
+            isOwnMessage: msg.idFrom == _currentUserId,
+            isPinned: msg.isPinned,
+            isDeleted: msg.isDeleted,
+            messageContent: msg.content,
+            onEdit: () => _editMsg(msgId, msg.content),
+            onDelete: () => _deleteMsg(msgId),
+            onPin: () => _pinMsg(msgId, msg.isPinned),
+            onCopy: () => _copyMsg(msg.content),
+            onReply: () => _setReply(msg),
+            onReminder: () => _setReminder(msg, msgId),
+            onTranslate: () => _translate(msg.content)));
   }
 
   Future<void> _editMsg(String id, String current) async {
@@ -1118,16 +1274,15 @@ class ChatPageState extends State<ChatPage>
     showDialog(
         context: context,
         builder: (_) => Dialog(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(24)),
-              elevation: 0,
-              backgroundColor: Colors.transparent,
-              child: ReactionPicker(onEmojiSelected: (emoji) {
-                _reactionProvider.toggleReaction(
-                    _groupChatId, msgId, _currentUserId, emoji);
-                Navigator.pop(context);
-              }),
-            ));
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+            child: ReactionPicker(onEmojiSelected: (emoji) {
+              _reactionProvider.toggleReaction(
+                  _groupChatId, msgId, _currentUserId, emoji);
+              Navigator.pop(context);
+            })));
   }
 
   Future<void> _setReminder(MessageChat msg, String msgId) async {
@@ -1162,7 +1317,9 @@ class ChatPageState extends State<ChatPage>
         builder: (_) => TranslationDialog(originalMessage: content));
   }
 
-  // ── Lock ──────────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // LOCK
+  // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _checkLock() async {
     if (resourceManager.isDisposed) return;
@@ -1237,7 +1394,9 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // ── Search ────────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // SEARCH
+  // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _openSearch() async {
     if (resourceManager.isDisposed) return;
@@ -1276,75 +1435,9 @@ class ChatPageState extends State<ChatPage>
     if (mounted) setState(() => _pendingScrollId = null);
   }
 
-  // ── Bubble ────────────────────────────────────────────────────────────────
-
-  Future<void> _createBubble() async {
-    if (_bubbleService == null) return;
-    if (!_bubbleService!.isSupported) {
-      _toast('Thiết bị không hỗ trợ');
-      return;
-    }
-    final hasPermission = await _bubbleService!.hasOverlayPermission();
-    if (!hasPermission) {
-      final granted = await _bubbleService!.requestOverlayPermission();
-      if (!granted) {
-        _toast('Cần quyền hiển thị');
-        return;
-      }
-    }
-    final choice = await _showBubbleChoiceDialog();
-    if (choice == null) return;
-    if (choice == 'bubble') {
-      final ok = await _bubbleService!.showChatBubble(
-          userId: widget.arguments.peerId,
-          userName: widget.arguments.peerNickname,
-          avatarUrl: widget.arguments.peerAvatar);
-      _toast(ok ? '💬 Chat bubble đã tạo' : '❌ Không thể tạo', isSuccess: ok);
-    } else if (choice == 'minichat') {
-      final ok = await _bubbleService!.showMiniChat(
-          userId: widget.arguments.peerId,
-          userName: widget.arguments.peerNickname,
-          avatarUrl: widget.arguments.peerAvatar);
-      _toast(ok ? '💬 Mini chat đã mở' : '⚠️ Không hỗ trợ', isSuccess: ok);
-    }
-  }
-
-  Future<String?> _showBubbleChoiceDialog() {
-    final p = context.read<ThemeProvider>().palette;
-    final primary = context.read<ThemeProvider>().primaryColor;
-    return showDialog<String>(
-        context: context,
-        builder: (ctx) => _ThemedDialog(
-              title: 'Tạo Chat Bubble',
-              icon: Icons.bubble_chart_rounded,
-              iconColor: primary,
-              palette: p,
-              content: Text('Chọn cách hiển thị:',
-                  style: TextStyle(color: p.textSecondary)),
-              actions: [
-                _ThemedDialogAction(
-                    label: 'Bubble',
-                    isPrimary: true,
-                    palette: p,
-                    primary: primary,
-                    onTap: () => Navigator.pop(ctx, 'bubble')),
-                if (_bubbleService!.currentImplementation ==
-                    BubbleImplementation.windowManager)
-                  _ThemedDialogAction(
-                      label: 'Mini Chat',
-                      palette: p,
-                      primary: primary,
-                      onTap: () => Navigator.pop(ctx, 'minichat')),
-                _ThemedDialogAction(
-                    label: 'Huỷ',
-                    palette: p,
-                    primary: primary,
-                    onTap: () => Navigator.pop(ctx)),
-              ],
-            ));
-  }
-
-  // ── Navigation ────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // NAVIGATION / HELPERS
+  // ══════════════════════════════════════════════════════════════════════════
 
   void _onBack() {
     if (_isShowSticker || _showMenu) {
@@ -1360,8 +1453,6 @@ class ChatPageState extends State<ChatPage>
       Navigator.pop(context);
     }
   }
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
 
   void _toast(String msg, {bool isSuccess = false}) {
     final p = context.read<ThemeProvider>().palette;
@@ -1416,8 +1507,21 @@ class ChatPageState extends State<ChatPage>
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // BUILD
+  // BUILD — AppBar colour adapts to BubbleMode
   // ══════════════════════════════════════════════════════════════════════════
+
+  /// Returns app bar background colour based on current BubbleMode context
+  Color _appBarColorFromMode(ThemePalette p) {
+    if (widget.isBubbleMode || widget.isMiniChat) return p.appBarBackground;
+    return switch (currentBubbleContext.mode) {
+      BubbleMode.work => const Color(0xFF162032),
+      BubbleMode.secure => const Color(0xFF0A0E1A),
+      BubbleMode.media => const Color(0xFF880E4F),
+      BubbleMode.location => const Color(0xFF1B5E20),
+      BubbleMode.shared => const Color(0xFF311B92),
+      _ => p.appBarBackground,
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1489,12 +1593,11 @@ class ChatPageState extends State<ChatPage>
         appBar: _buildAppBar(p, theme),
         body: SafeArea(
           child: PopScope(
-            canPop: false,
-            onPopInvokedWithResult: (d, _) {
-              if (!d) _onBack();
-            },
-            child: _buildBody(p, theme),
-          ),
+              canPop: false,
+              onPopInvokedWithResult: (d, _) {
+                if (!d) _onBack();
+              },
+              child: _buildBody(p, theme)),
         ),
       );
 
@@ -1503,9 +1606,12 @@ class ChatPageState extends State<ChatPage>
         preferredSize: const Size.fromHeight(64),
         child: FadeTransition(
           opacity: _appBarAnim,
-          child: Container(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeOut,
             decoration: BoxDecoration(
-              color: p.appBarBackground,
+              // ← Colour adapts to BubbleMode
+              color: _appBarColorFromMode(p),
               boxShadow: [
                 BoxShadow(
                     color: p.shadow, blurRadius: 8, offset: const Offset(0, 2))
@@ -1527,6 +1633,7 @@ class ChatPageState extends State<ChatPage>
                   peerAvatar: widget.arguments.peerAvatar,
                   palette: p,
                   theme: theme,
+                  bubbleMode: currentBubbleContext.mode, // ← PASS MODE
                   onTap: () async {
                     final doc = await FirebaseFirestore.instance
                         .collection(FirestoreConstants.pathUserCollection)
@@ -1552,93 +1659,13 @@ class ChatPageState extends State<ChatPage>
                 SentimentIndicatorWidget(groupChatId: _groupChatId),
                 const SizedBox(width: 2),
                 PopupMenuButton<String>(
-                  onSelected: (v) {
-                    switch (v) {
-                      case 'ai':
-                        _showAI();
-                        break;
-                      case 'summarize':
-                        _showSummarySheet();
-                        break;
-                      case 'tone':
-                        _showToneRewriter();
-                        break;
-                      case 'insights':
-                        _openInsightsPage();
-                        break;
-                      case 'weekly':
-                        _openWeeklyRecap();
-                        break;
-                      case 'relationship':
-                        _showRelationshipMemory();
-                        break;
-                      case 'icebreaker':
-                        _showIcebreakers();
-                        break;
-                      case 'search':
-                        _openSearch();
-                        break;
-                      case 'reminders':
-                        _showReminders();
-                        break;
-                      case 'lock':
-                        _showLockOptions();
-                        break;
-                      case 'bubble':
-                        _createBubble();
-                        break;
-                      case 'game':
-                        _openGameCenter();
-                        break;
-                      case 'theme':
-                        Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const ThemeSettingsPage()));
-                        break;
-                    }
-                  },
+                  onSelected: (v) => _handleMenuSelect(v, p, theme),
                   icon: Icon(Icons.more_vert_rounded,
                       size: 22, color: p.textSecondary),
                   color: p.surface,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16)),
-                  itemBuilder: (_) {
-                    final msgCount =
-                        LocalDbService().getMessages(_groupChatId).length;
-                    return [
-                      _popItem('ai', Icons.auto_awesome_rounded, 'AI Assistant',
-                          const Color(0xFF8B5CF6), p),
-                      _popItem('game', Icons.sports_esports_rounded,
-                          'Game Center', const Color(0xFF9C27B0), p),
-                      const PopupMenuDivider(),
-                      _popItem('summarize', Icons.summarize_rounded,
-                          'Tóm tắt & Phân tích', const Color(0xFF0EA5E9), p),
-                      _popItem('tone', Icons.edit_note_rounded,
-                          'Viết lại tông giọng', const Color(0xFF8B5CF6), p),
-                      _popItem('insights', Icons.psychology_rounded,
-                          'AI Insights', const Color(0xFFF59E0B), p),
-                      _popItem('relationship', Icons.favorite_outline_rounded,
-                          'Mối quan hệ', const Color(0xFFEC4899), p),
-                      _popItem('weekly', Icons.analytics_rounded,
-                          'Weekly Recap', const Color(0xFF10B981), p),
-                      if (msgCount < 3)
-                        _popItem('icebreaker', Icons.waving_hand_rounded,
-                            'Gợi ý mở đầu', const Color(0xFF10B981), p),
-                      const PopupMenuDivider(),
-                      _popItem('search', Icons.search_rounded, 'Tìm kiếm',
-                          theme.primaryColor, p),
-                      _popItem('reminders', Icons.alarm_rounded, 'Nhắc nhở',
-                          p.warningColor, p),
-                      const PopupMenuDivider(),
-                      _popItem('lock', Icons.lock_rounded, 'Khoá chat',
-                          p.infoColor, p),
-                      _popItem('bubble', Icons.bubble_chart_rounded,
-                          'Chat Bubble', p.successColor, p),
-                      _popItem('theme', Icons.palette_rounded, 'Giao diện',
-                          theme.primaryColor, p),
-                    ];
-                  },
+                  itemBuilder: (_) => _buildMenuItems(p, theme),
                 ),
                 const SizedBox(width: 4),
               ],
@@ -1646,6 +1673,79 @@ class ChatPageState extends State<ChatPage>
           ),
         ),
       );
+
+  void _handleMenuSelect(String v, ThemePalette p, ThemeProvider theme) {
+    switch (v) {
+      case 'ai':
+        _showAI();
+      case 'summarize':
+        _showSummarySheet();
+      case 'tone':
+        _showToneRewriter();
+      case 'insights':
+        _openInsightsPage();
+      case 'weekly':
+        _openWeeklyRecap();
+      case 'relationship':
+        _showRelationshipMemory();
+      case 'icebreaker':
+        _showIcebreakers();
+      case 'search':
+        _openSearch();
+      case 'reminders':
+        _showReminders();
+      case 'lock':
+        _showLockOptions();
+      case 'bubble':
+        _createBubble();
+      case 'game':
+        _openGameCenter();
+      case 'settings_bubble':
+        Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const BubbleSettingsPage()));
+      case 'theme':
+        Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const ThemeSettingsPage()));
+    }
+  }
+
+  List<PopupMenuEntry<String>> _buildMenuItems(
+      ThemePalette p, ThemeProvider theme) {
+    final msgCount = LocalDbService().getMessages(_groupChatId).length;
+    return [
+      _popItem('ai', Icons.auto_awesome_rounded, 'AI Assistant',
+          const Color(0xFF8B5CF6), p),
+      _popItem('game', Icons.sports_esports_rounded, 'Game Center',
+          const Color(0xFF9C27B0), p),
+      const PopupMenuDivider(),
+      _popItem('summarize', Icons.summarize_rounded, 'Tóm tắt & Phân tích',
+          const Color(0xFF0EA5E9), p),
+      _popItem('tone', Icons.edit_note_rounded, 'Viết lại tông giọng',
+          const Color(0xFF8B5CF6), p),
+      _popItem('insights', Icons.psychology_rounded, 'AI Insights',
+          const Color(0xFFF59E0B), p),
+      _popItem('relationship', Icons.favorite_outline_rounded, 'Mối quan hệ',
+          const Color(0xFFEC4899), p),
+      _popItem('weekly', Icons.analytics_rounded, 'Weekly Recap',
+          const Color(0xFF10B981), p),
+      if (msgCount < 3)
+        _popItem('icebreaker', Icons.waving_hand_rounded, 'Gợi ý mở đầu',
+            const Color(0xFF10B981), p),
+      const PopupMenuDivider(),
+      _popItem(
+          'search', Icons.search_rounded, 'Tìm kiếm', theme.primaryColor, p),
+      _popItem('reminders', Icons.alarm_rounded, 'Nhắc nhở', p.warningColor, p),
+      const PopupMenuDivider(),
+      _popItem('lock', Icons.lock_rounded, 'Khoá chat', p.infoColor, p),
+      // ← BUBBLE với context mode indicator
+      _popItemWithBadge('bubble', Icons.bubble_chart_rounded, 'Chat Bubble',
+          p.successColor, p, currentBubbleContext.mode),
+      _popItem('settings_bubble', Icons.settings_rounded, 'Cài đặt Bubble',
+          Colors.grey, p),
+      _popItem(
+          'theme', Icons.palette_rounded, 'Giao diện', theme.primaryColor, p),
+    ];
+  }
 
   PopupMenuItem<String> _popItem(String value, IconData icon, String label,
           Color color, ThemePalette p) =>
@@ -1656,7 +1756,7 @@ class ChatPageState extends State<ChatPage>
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
+                    color: color.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8)),
                 child: Icon(icon, color: color, size: 17)),
             const SizedBox(width: 10),
@@ -1667,29 +1767,68 @@ class ChatPageState extends State<ChatPage>
                     fontWeight: FontWeight.w500)),
           ]));
 
-  // ── Body ──────────────────────────────────────────────────────────────────
+  PopupMenuItem<String> _popItemWithBadge(String value, IconData icon,
+          String label, Color color, ThemePalette p, BubbleMode mode) =>
+      PopupMenuItem(
+          value: value,
+          child: Row(children: [
+            Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8)),
+                child: Icon(icon, color: color, size: 17)),
+            const SizedBox(width: 10),
+            Expanded(
+                child: Text(label,
+                    style: TextStyle(
+                        color: p.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500))),
+            if (mode != BubbleMode.normal)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                    color: color.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8)),
+                child: Text(mode.name,
+                    style: TextStyle(
+                        fontSize: 10,
+                        color: color,
+                        fontWeight: FontWeight.w700)),
+              ),
+          ]));
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // BODY — wrapped with BubbleContextProvider
+  // ══════════════════════════════════════════════════════════════════════════
 
   Widget _buildBody(ThemePalette p, ThemeProvider theme) {
-    return ChatWallpaperWidget(
-      wallpaper: theme.chatWallpaper,
-      color: theme.primaryColor,
-      opacity: theme.chatWallpaperOpacity,
-      child: Stack(children: [
-        Column(children: [
-          const OfflineIndicator(),
-          _buildPinnedBar(p, theme),
-          _buildMsgList(p, theme),
-          _buildTypingBar(p, theme),
-          if (_isShowSticker && !widget.isMiniChat && !widget.isBubbleMode)
-            _buildStickerPanel(p, theme),
-          if (_showMenu && !widget.isMiniChat && !widget.isBubbleMode)
-            _buildFeatureMenu(p, theme),
-          _buildInput(p, theme),
+    return BubbleContextProvider(
+      conversationId: _groupChatId,
+      initialContext: currentBubbleContext,
+      child: ChatWallpaperWidget(
+        wallpaper: theme.chatWallpaper,
+        color: theme.primaryColor,
+        opacity: theme.chatWallpaperOpacity,
+        child: Stack(children: [
+          Column(children: [
+            const OfflineIndicator(),
+            _buildPinnedBar(p, theme),
+            _buildMsgList(p, theme),
+            _buildTypingBar(p, theme),
+            if (_isShowSticker && !widget.isMiniChat && !widget.isBubbleMode)
+              _buildStickerPanel(p, theme),
+            if (_showMenu && !widget.isMiniChat && !widget.isBubbleMode)
+              _buildFeatureMenu(p, theme),
+            _buildInput(p, theme),
+          ]),
+          if (_isLoading) const Positioned.fill(child: LoadingView()),
+          if (_isLoadingMedia)
+            Positioned.fill(child: _buildMediaOverlay(p, theme)),
         ]),
-        if (_isLoading) const Positioned.fill(child: LoadingView()),
-        if (_isLoadingMedia)
-          Positioned.fill(child: _buildMediaOverlay(p, theme)),
-      ]),
+      ),
     );
   }
 
@@ -1714,8 +1853,7 @@ class ChatPageState extends State<ChatPage>
               color: p.pinnedBackground,
               borderRadius: BorderRadius.circular(999),
               border: Border.all(
-                  color: theme.primaryColor.withValues(alpha: 0.25),
-                  width: 0.8),
+                  color: theme.primaryColor.withOpacity(0.25), width: 0.8),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(Icons.push_pin_rounded, size: 12, color: theme.primaryColor),
@@ -1743,7 +1881,6 @@ class ChatPageState extends State<ChatPage>
               builder: (_, Box box, __) {
                 final all = LocalDbService().getMessages(_groupChatId);
                 final display = all.take(_limit).toList();
-
                 if (display.isEmpty) {
                   return Center(
                       child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -1765,9 +1902,7 @@ class ChatPageState extends State<ChatPage>
                         style: TextStyle(color: p.textHint, fontSize: 13)),
                   ]));
                 }
-
                 prefetchLinkPreviews(display);
-
                 return Stack(children: [
                   ListView.builder(
                     controller: _scrollController,
@@ -1823,7 +1958,6 @@ class ChatPageState extends State<ChatPage>
               int.tryParse(msg.timestamp) ?? 0),
           palette: p);
     }
-
     final bubble = _buildBubble(
         msgId: data['messageId'] ?? '',
         msg: msg,
@@ -1833,7 +1967,6 @@ class ChatPageState extends State<ChatPage>
         isPending: isPending,
         p: p,
         theme: theme);
-
     return Column(children: [
       SwipeToReplyWrapper(
           isMe: msg.idFrom == _currentUserId,
@@ -1854,13 +1987,12 @@ class ChatPageState extends State<ChatPage>
     required ThemeProvider theme,
   }) {
     final isMe = msg.idFrom == _currentUserId;
-
     Widget wrap(Widget child) {
       if (!isHighlighted) return child;
       return AnimatedContainer(
           duration: const Duration(milliseconds: 400),
           decoration: BoxDecoration(
-              color: theme.primaryColor.withValues(alpha: 0.06),
+              color: theme.primaryColor.withOpacity(0.06),
               borderRadius: BorderRadius.circular(16)),
           child: child);
     }
@@ -1917,12 +2049,12 @@ class ChatPageState extends State<ChatPage>
     }
     if (msg.type == TypeMessage.geoLocked) {
       return wrap(Container(
-        margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
-        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-        child: GestureDetector(
-            onLongPress: () => _showMsgOptions(msg, msgId),
-            child: GeoLockedMessageWidget(content: msg.content, isMe: isMe)),
-      ));
+          margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+          child: GestureDetector(
+              onLongPress: () => _showMsgOptions(msg, msgId),
+              child:
+                  GeoLockedMessageWidget(content: msg.content, isMe: isMe))));
     }
     return wrap(_buildTextBubble(
         msgId: msgId,
@@ -1954,13 +2086,13 @@ class ChatPageState extends State<ChatPage>
     required ThemeProvider theme,
   }) {
     final location = _locationProvider?.parseLocationFromMessage(msg.content);
-    final isAI = msg.idFrom == AppConstants.aiAssistantId;
     final fs = theme.fontSizeMultiplier;
     final hasUrl = !msg.isDeleted &&
         msg.type == TypeMessage.text &&
         location == null &&
-        !isAI &&
+        !msg.isDeleted &&
         UrlDetector.containsUrl(msg.content);
+    final isAI = msg.idFrom == AppConstants.aiAssistantId;
 
     return Container(
       margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
@@ -1979,9 +2111,8 @@ class ChatPageState extends State<ChatPage>
                     radius: 16,
                     primary: theme.primaryColor),
                 const SizedBox(width: 6),
-              ] else if (!isMe) ...[
-                SizedBox(width: theme.showAvatarsInChat ? 38 : 0)
-              ],
+              ] else if (!isMe)
+                SizedBox(width: theme.showAvatarsInChat ? 38 : 0),
               GestureDetector(
                 onLongPress: () {
                   HapticFeedback.heavyImpact();
@@ -2011,7 +2142,7 @@ class ChatPageState extends State<ChatPage>
                       boxShadow: [
                         BoxShadow(
                             color: isMe
-                                ? theme.primaryColor.withValues(alpha: 0.25)
+                                ? theme.primaryColor.withOpacity(0.25)
                                 : p.shadow,
                             blurRadius: 8,
                             offset: const Offset(0, 3))
@@ -2028,12 +2159,10 @@ class ChatPageState extends State<ChatPage>
                           _ScamWarning(reason: scamReason, palette: p),
                         if (!isMe && isHateful)
                           Padding(
-                            padding: const EdgeInsets.only(bottom: 6),
-                            child: ToxicMessageBadge(
-                              category: hateSpeechCategory,
-                              showDetails: true,
-                            ),
-                          ),
+                              padding: const EdgeInsets.only(bottom: 6),
+                              child: ToxicMessageBadge(
+                                  category: hateSpeechCategory,
+                                  showDetails: true)),
                         if (!isMe && hasReminder)
                           _ReminderHint(onView: _showReminders, palette: p),
                         if (msg.isDeleted)
@@ -2067,13 +2196,12 @@ class ChatPageState extends State<ChatPage>
                                       height: 1.5)))
                         else if (hasUrl)
                           ChatMessageWithLinkPreview(
-                            content: msg.content,
-                            isMe: isMe,
-                            textColor: isMe ? Colors.white : p.incomingText,
-                            fontSize: 15 * fs,
-                            primaryColor: theme.primaryColor,
-                            showPreview: true,
-                          )
+                              content: msg.content,
+                              isMe: isMe,
+                              textColor: isMe ? Colors.white : p.incomingText,
+                              fontSize: 15 * fs,
+                              primaryColor: theme.primaryColor,
+                              showPreview: true)
                         else
                           Text(msg.content,
                               style: TextStyle(
@@ -2090,8 +2218,8 @@ class ChatPageState extends State<ChatPage>
                                   Text('(đã sửa) ',
                                       style: TextStyle(
                                           fontSize: 10,
-                                          color: Colors.white
-                                              .withValues(alpha: 0.6))),
+                                          color:
+                                              Colors.white.withOpacity(0.6))),
                                 Icon(
                                     isPending
                                         ? Icons.schedule_rounded
@@ -2160,15 +2288,14 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  Widget _buildImageBubble({
-    required String msgId,
-    required MessageChat msg,
-    required bool isMe,
-    required bool isLastInGroup,
-    required bool isPending,
-    required ThemePalette p,
-    required ThemeProvider theme,
-  }) {
+  Widget _buildImageBubble(
+      {required String msgId,
+      required MessageChat msg,
+      required bool isMe,
+      required bool isLastInGroup,
+      required bool isPending,
+      required ThemePalette p,
+      required ThemeProvider theme}) {
     return Container(
       margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -2182,8 +2309,8 @@ class ChatPageState extends State<ChatPage>
         },
         onLongPress: () => _showMsgOptions(msg, msgId),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: SizedBox(
+            borderRadius: BorderRadius.circular(20),
+            child: SizedBox(
               width: MediaQuery.of(context).size.width * 0.62,
               height: 220,
               child: isPending
@@ -2204,21 +2331,20 @@ class ChatPageState extends State<ChatPage>
                       errorBuilder: (_, __, ___) => _MediaPlaceholder(
                           isLoading: false,
                           palette: p,
-                          primary: theme.primaryColor))),
-        ),
+                          primary: theme.primaryColor)),
+            )),
       ),
     );
   }
 
-  Widget _buildVideoBubble({
-    required String msgId,
-    required MessageChat msg,
-    required bool isMe,
-    required bool isLastInGroup,
-    required bool isPending,
-    required ThemePalette p,
-    required ThemeProvider theme,
-  }) {
+  Widget _buildVideoBubble(
+      {required String msgId,
+      required MessageChat msg,
+      required bool isMe,
+      required bool isLastInGroup,
+      required bool isPending,
+      required ThemePalette p,
+      required ThemeProvider theme}) {
     final parts = msg.content.split('|');
     final videoUrl = parts.isNotEmpty ? parts[0] : '';
     final thumbUrl = parts.length > 1 ? parts[1] : '';
@@ -2265,11 +2391,11 @@ class ChatPageState extends State<ChatPage>
                       width: 54,
                       height: 54,
                       decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.92),
+                          color: Colors.white.withOpacity(0.92),
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.2),
+                                color: Colors.black.withOpacity(0.2),
                                 blurRadius: 8)
                           ]),
                       child: const Icon(Icons.play_arrow_rounded,
@@ -2296,17 +2422,44 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
+  // ── Typing bar — uses BubbleTypingIndicator ────────────────────────────────
+
   Widget _buildTypingBar(ThemePalette p, ThemeProvider theme) {
     if (_presenceProvider == null) return const SizedBox.shrink();
     return StreamBuilder<Map<String, TypingInfo>>(
       stream: _presenceProvider!.getTypingStatusStream(_groupChatId),
       builder: (_, snap) {
-        if (!snap.hasData) return const SizedBox.shrink();
-        final isTyping = snap.data![widget.arguments.peerId]?.isTyping ?? false;
-        if (!isTyping) return const SizedBox.shrink();
-        return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-            child: TypingIndicator(userName: widget.arguments.peerNickname));
+        final isTyping = snap.data?[widget.arguments.peerId]?.isTyping ?? false;
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 220),
+          child: isTyping
+              ? Padding(
+                  key: const ValueKey('typing'),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                  child: Row(children: [
+                    CircleAvatar(
+                      radius: 13,
+                      backgroundImage: widget.arguments.peerAvatar.isNotEmpty
+                          ? NetworkImage(widget.arguments.peerAvatar)
+                          : null,
+                      backgroundColor: theme.primaryColor.withOpacity(0.12),
+                      child: widget.arguments.peerAvatar.isEmpty
+                          ? Text(
+                              widget.arguments.peerNickname.isNotEmpty
+                                  ? widget.arguments.peerNickname[0]
+                                      .toUpperCase()
+                                  : '?',
+                              style: TextStyle(
+                                  fontSize: 11, color: theme.primaryColor))
+                          : null,
+                    ),
+                    const SizedBox(width: 8),
+                    const BubbleTypingIndicator
+                        .chat(), // ← BUBBLE TYPING INDICATOR
+                  ]),
+                )
+              : const SizedBox.shrink(key: ValueKey('idle')),
+        );
       },
     );
   }
@@ -2401,36 +2554,33 @@ class ChatPageState extends State<ChatPage>
                           item.onTap();
                         },
                         child: Container(
-                            width: 72,
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 4, vertical: 6),
-                            child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                      width: 46,
-                                      height: 46,
-                                      decoration: BoxDecoration(
-                                          color:
-                                              item.color.withValues(alpha: 0.1),
-                                          borderRadius:
-                                              BorderRadius.circular(14),
-                                          border: Border.all(
-                                              color: item.color
-                                                  .withValues(alpha: 0.2),
-                                              width: 0.8)),
-                                      child: Icon(item.icon,
-                                          color: item.color, size: 22)),
-                                  const SizedBox(height: 5),
-                                  Text(item.label,
-                                      style: TextStyle(
-                                          fontSize: 10.5,
-                                          color: p.textSecondary,
-                                          fontWeight: FontWeight.w500),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      textAlign: TextAlign.center),
-                                ])),
+                          width: 72,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 4, vertical: 6),
+                          child:
+                              Column(mainAxisSize: MainAxisSize.min, children: [
+                            Container(
+                                width: 46,
+                                height: 46,
+                                decoration: BoxDecoration(
+                                    color: item.color.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                        color: item.color.withOpacity(0.2),
+                                        width: 0.8)),
+                                child: Icon(item.icon,
+                                    color: item.color, size: 22)),
+                            const SizedBox(height: 5),
+                            Text(item.label,
+                                style: TextStyle(
+                                    fontSize: 10.5,
+                                    color: p.textSecondary,
+                                    fontWeight: FontWeight.w500),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center),
+                          ]),
+                        ),
                       ))
                   .toList()),
         ),
@@ -2443,9 +2593,9 @@ class ChatPageState extends State<ChatPage>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-          color: p.dangerColor.withValues(alpha: 0.05),
-          border: Border(
-              top: BorderSide(color: p.dangerColor.withValues(alpha: 0.2)))),
+          color: p.dangerColor.withOpacity(0.05),
+          border:
+              Border(top: BorderSide(color: p.dangerColor.withOpacity(0.2)))),
       child: Row(children: [
         _RecDot(color: p.dangerColor),
         const SizedBox(width: 10),
@@ -2471,7 +2621,6 @@ class ChatPageState extends State<ChatPage>
   Widget _buildInput(ThemePalette p, ThemeProvider theme) {
     final full = !widget.isBubbleMode && !widget.isMiniChat;
     final fs = theme.fontSizeMultiplier;
-
     return Column(mainAxisSize: MainAxisSize.min, children: [
       if (full && (_smartReplies.isNotEmpty || _isLoadingSmartReply))
         _buildSmartReplyBar(p, theme),
@@ -2512,16 +2661,13 @@ class ChatPageState extends State<ChatPage>
                                   fontSize: 12.5,
                                   fontWeight: FontWeight.w500))),
                       GestureDetector(
-                        onTap: () {
-                          if (mounted) {
-                            setState(() => _replyingTo = null);
+                          onTap: () {
+                            if (mounted) setState(() => _replyingTo = null);
                             _replyAnim.reverse();
                             _focusNode.requestFocus();
-                          }
-                        },
-                        child: Icon(Icons.close_rounded,
-                            size: 17, color: p.textHint),
-                      ),
+                          },
+                          child: Icon(Icons.close_rounded,
+                              size: 17, color: p.textHint)),
                     ])),
           ),
           Container(
@@ -2547,9 +2693,8 @@ class ChatPageState extends State<ChatPage>
                     if (_showMenu) {
                       _menuAnim.forward();
                       _focusNode.unfocus();
-                    } else {
+                    } else
                       _menuAnim.reverse();
-                    }
                   },
                   child: Padding(
                       padding: const EdgeInsets.all(10),
@@ -2616,11 +2761,9 @@ class ChatPageState extends State<ChatPage>
                     final hasText = val.text.trim().isNotEmpty;
                     return GestureDetector(
                       onTap: () {
-                        if (hasText) {
+                        if (hasText)
                           _onSend(_inputController.text, TypeMessage.text);
-                        } else if (full) {
-                          _startRec();
-                        }
+                        else if (full) _startRec();
                       },
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 180),
@@ -2635,8 +2778,8 @@ class ChatPageState extends State<ChatPage>
                           boxShadow: hasText
                               ? [
                                   BoxShadow(
-                                      color: theme.primaryColor
-                                          .withValues(alpha: 0.35),
+                                      color:
+                                          theme.primaryColor.withOpacity(0.35),
                                       blurRadius: 10,
                                       offset: const Offset(0, 3))
                                 ]
@@ -2678,8 +2821,7 @@ class ChatPageState extends State<ChatPage>
                 const SizedBox(width: 10),
                 Text('AI đang gợi ý...',
                     style: TextStyle(fontSize: 12, color: p.textHint)),
-              ]),
-            )
+              ]))
           : SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -2697,29 +2839,28 @@ class ChatPageState extends State<ChatPage>
   }
 
   Widget _buildMediaOverlay(ThemePalette p, ThemeProvider theme) => Container(
-        color: Colors.black54,
-        child: Center(
-            child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-          decoration: BoxDecoration(
-              color: p.surface,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [BoxShadow(color: p.shadowStrong, blurRadius: 16)]),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            CircularProgressIndicator(
-                color: theme.primaryColor, strokeWidth: 2.5),
-            const SizedBox(height: 16),
-            Text('Đang nén & tải lên...',
-                style: TextStyle(
-                    color: p.textPrimary, fontWeight: FontWeight.w600)),
-          ]),
-        )),
-      );
+      color: Colors.black54,
+      child: Center(
+          child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+        decoration: BoxDecoration(
+            color: p.surface,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [BoxShadow(color: p.shadowStrong, blurRadius: 16)]),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          CircularProgressIndicator(
+              color: theme.primaryColor, strokeWidth: 2.5),
+          const SizedBox(height: 16),
+          Text('Đang nén & tải lên...',
+              style:
+                  TextStyle(color: p.textPrimary, fontWeight: FontWeight.w600)),
+        ]),
+      )));
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// PRIVATE SUB-WIDGETS
-// ═════════════════════════════════════════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────────────────────
+// PRIVATE SUB-WIDGETS (unchanged from original)
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _AppBarTitle extends StatelessWidget {
   const _AppBarTitle({
@@ -2729,11 +2870,13 @@ class _AppBarTitle extends StatelessWidget {
     required this.palette,
     required this.theme,
     required this.onTap,
+    this.bubbleMode = BubbleMode.normal,
   });
   final String peerId, peerNickname, peerAvatar;
   final ThemePalette palette;
   final ThemeProvider theme;
   final VoidCallback onTap;
+  final BubbleMode bubbleMode;
 
   @override
   Widget build(BuildContext context) => GestureDetector(
@@ -2750,17 +2893,41 @@ class _AppBarTitle extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                Text(peerNickname,
-                    style: TextStyle(
-                        color: palette.textPrimary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.3),
-                    overflow: TextOverflow.ellipsis),
+                Row(children: [
+                  Expanded(
+                      child: Text(peerNickname,
+                          style: TextStyle(
+                              color: palette.textPrimary,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.3),
+                          overflow: TextOverflow.ellipsis)),
+                  // ← Show BubbleMode badge when not normal
+                  if (bubbleMode != BubbleMode.normal)
+                    Container(
+                      margin: const EdgeInsets.only(left: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8)),
+                      child: Text(_modeEmoji(bubbleMode),
+                          style: const TextStyle(fontSize: 12)),
+                    ),
+                ]),
                 UserStatusIndicator(userId: peerId, showText: true, size: 8),
               ])),
         ]),
       );
+
+  String _modeEmoji(BubbleMode mode) => switch (mode) {
+        BubbleMode.work => '💼',
+        BubbleMode.media => '🎵',
+        BubbleMode.location => '📍',
+        BubbleMode.secure => '🔒',
+        BubbleMode.shared => '🎨',
+        _ => '',
+      };
 }
 
 class _OverlayHeader extends StatelessWidget {
@@ -2826,11 +2993,10 @@ class _Avatar extends StatelessWidget {
   final String photoUrl;
   final double radius;
   final Color primary;
-
   @override
   Widget build(BuildContext context) => CircleAvatar(
         radius: radius,
-        backgroundColor: primary.withValues(alpha: 0.12),
+        backgroundColor: primary.withOpacity(0.12),
         backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
         child: photoUrl.isEmpty
             ? Icon(Icons.person_rounded, size: radius, color: primary)
@@ -2844,14 +3010,12 @@ class _QuickBtn extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
   final ThemePalette palette;
-
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Padding(
-            padding: const EdgeInsets.all(4),
-            child: Icon(icon, size: 16, color: palette.textHint)),
-      );
+      onTap: onTap,
+      child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Icon(icon, size: 16, color: palette.textHint)));
 }
 
 class _IconBtn extends StatelessWidget {
@@ -2864,14 +3028,12 @@ class _IconBtn extends StatelessWidget {
   final Color color;
   final VoidCallback onTap;
   final double size;
-
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Padding(
-            padding: const EdgeInsets.all(4),
-            child: Icon(icon, color: color, size: size)),
-      );
+      onTap: onTap,
+      child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Icon(icon, color: color, size: size)));
 }
 
 class _ScrollFab extends StatelessWidget {
@@ -2880,27 +3042,24 @@ class _ScrollFab extends StatelessWidget {
   final VoidCallback onTap;
   final ThemePalette palette;
   final ThemeProvider theme;
-
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-                color: palette.surface,
-                shape: BoxShape.circle,
-                boxShadow: [BoxShadow(color: palette.shadow, blurRadius: 8)]),
-            child: Icon(Icons.keyboard_arrow_down_rounded,
-                color: palette.textSecondary, size: 22)),
-      );
+      onTap: onTap,
+      child: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+              color: palette.surface,
+              shape: BoxShape.circle,
+              boxShadow: [BoxShadow(color: palette.shadow, blurRadius: 8)]),
+          child: Icon(Icons.keyboard_arrow_down_rounded,
+              color: palette.textSecondary, size: 22)));
 }
 
 class _DateDivider extends StatelessWidget {
   const _DateDivider({required this.date, required this.palette});
   final DateTime date;
   final ThemePalette palette;
-
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
@@ -2947,7 +3106,6 @@ class _MediaPlaceholder extends StatelessWidget {
   final ThemePalette palette;
   final Color primary;
   final double? progress;
-
   @override
   Widget build(BuildContext context) => ColoredBox(
       color: palette.surfaceVariant,
@@ -2962,7 +3120,6 @@ class _MediaPlaceholder extends StatelessWidget {
 class _RecDot extends StatefulWidget {
   const _RecDot({required this.color});
   final Color color;
-
   @override
   State<_RecDot> createState() => _RecDotState();
 }
@@ -2971,7 +3128,6 @@ class _RecDotState extends State<_RecDot> with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 700))
     ..repeat(reverse: true);
-
   @override
   void dispose() {
     _ctrl.dispose();
@@ -2992,7 +3148,6 @@ class _StickerItem extends StatelessWidget {
   const _StickerItem({required this.name, required this.onTap});
   final String name;
   final VoidCallback onTap;
-
   @override
   Widget build(BuildContext context) => GestureDetector(
       onTap: onTap,
@@ -3010,16 +3165,14 @@ class _ScamWarning extends StatelessWidget {
   const _ScamWarning({required this.reason, required this.palette});
   final String reason;
   final ThemePalette palette;
-
   @override
   Widget build(BuildContext context) => Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-            color: palette.dangerColor.withValues(alpha: 0.08),
+            color: palette.dangerColor.withOpacity(0.08),
             borderRadius: BorderRadius.circular(10),
-            border:
-                Border.all(color: palette.dangerColor.withValues(alpha: 0.3))),
+            border: Border.all(color: palette.dangerColor.withOpacity(0.3))),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Icon(Icons.warning_rounded, color: palette.dangerColor, size: 14),
           const SizedBox(width: 6),
@@ -3037,13 +3190,12 @@ class _ReminderHint extends StatelessWidget {
   const _ReminderHint({required this.onView, required this.palette});
   final VoidCallback onView;
   final ThemePalette palette;
-
   @override
   Widget build(BuildContext context) => Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
-            color: palette.infoColor.withValues(alpha: 0.08),
+            color: palette.infoColor.withOpacity(0.08),
             borderRadius: BorderRadius.circular(10)),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(Icons.alarm_add_rounded, color: palette.infoColor, size: 13),
@@ -3074,7 +3226,6 @@ class _LocationContent extends StatelessWidget {
   final ThemePalette palette;
   final ThemeProvider theme;
   final VoidCallback onOpen;
-
   @override
   Widget build(BuildContext context) =>
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -3100,13 +3251,13 @@ class _LocationContent extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
                   color: isMe
-                      ? Colors.white.withValues(alpha: 0.18)
+                      ? Colors.white.withOpacity(0.18)
                       : palette.primaryContainer,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                       color: isMe
-                          ? Colors.white.withValues(alpha: 0.3)
-                          : theme.primaryColor.withValues(alpha: 0.3))),
+                          ? Colors.white.withOpacity(0.3)
+                          : theme.primaryColor.withOpacity(0.3))),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(Icons.map_rounded,
                     size: 13, color: isMe ? Colors.white : theme.primaryColor),
@@ -3132,7 +3283,6 @@ class _ScamScanWidget extends StatelessWidget {
   final dynamic result;
   final void Function(String) onScan;
   final ThemePalette palette;
-
   @override
   Widget build(BuildContext context) {
     if (result != null && result != 'SAFE')
@@ -3153,11 +3303,10 @@ class _ScamScanWidget extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-              color: palette.successColor.withValues(alpha: 0.08),
+              color: palette.successColor.withOpacity(0.08),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                  color: palette.successColor.withValues(alpha: 0.3),
-                  width: 0.8)),
+                  color: palette.successColor.withOpacity(0.3), width: 0.8)),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(Icons.shield_outlined, size: 13, color: palette.successColor),
             const SizedBox(width: 4),
@@ -3186,7 +3335,6 @@ class _ReactionRow extends StatelessWidget {
   final bool isMe;
   final ReactionProvider provider;
   final void Function(String emoji) onTap;
-
   @override
   Widget build(BuildContext context) => StreamBuilder<QuerySnapshot>(
         stream: provider.getReactions(groupChatId, msgId),
@@ -3226,7 +3374,6 @@ class _ThemedDialog extends StatelessWidget {
   final Widget content;
   final List<Widget> actions;
   final ThemePalette palette;
-
   @override
   Widget build(BuildContext context) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
@@ -3243,7 +3390,7 @@ class _ThemedDialog extends StatelessWidget {
                         width: 42,
                         height: 42,
                         decoration: BoxDecoration(
-                            color: iconColor.withValues(alpha: 0.1),
+                            color: iconColor.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(12)),
                         child: Icon(icon, color: iconColor, size: 22)),
                     const SizedBox(width: 12),
@@ -3281,10 +3428,9 @@ class _ThemedDialogAction extends StatelessWidget {
   final ThemePalette palette;
   final Color primary;
   final bool isPrimary, isDanger;
-
   @override
   Widget build(BuildContext context) {
-    if (isPrimary) {
+    if (isPrimary)
       return FilledButton(
           onPressed: onTap,
           style: FilledButton.styleFrom(
@@ -3294,7 +3440,6 @@ class _ThemedDialogAction extends StatelessWidget {
               padding:
                   const EdgeInsets.symmetric(horizontal: 18, vertical: 10)),
           child: Text(label));
-    }
     if (isDanger)
       return TextButton(
           onPressed: onTap,
@@ -3348,7 +3493,6 @@ class _ReminderPickerDialog extends StatefulWidget {
 
 class _ReminderPickerDialogState extends State<_ReminderPickerDialog> {
   DateTime _selected = DateTime.now().add(const Duration(hours: 1));
-
   @override
   Widget build(BuildContext context) {
     final p = context.read<ThemeProvider>().palette;
@@ -3421,7 +3565,6 @@ class _PickerTile extends StatelessWidget {
   final VoidCallback onTap;
   final ThemePalette palette;
   final Color primary;
-
   @override
   Widget build(BuildContext context) => GestureDetector(
         onTap: onTap,
@@ -3455,89 +3598,89 @@ class _RemindersPage extends StatelessWidget {
       {required this.currentUserId, required this.reminderProvider});
   final String currentUserId;
   final ReminderProvider reminderProvider;
-
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeProvider>();
     final p = theme.palette;
     return Theme(
-      data: theme.isDark ? theme.darkTheme : theme.lightTheme,
-      child: Scaffold(
-        backgroundColor: p.background,
-        appBar: AppBar(
-            title: Text('Nhắc nhở',
-                style: TextStyle(
-                    color: p.textPrimary,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 17)),
-            backgroundColor: p.appBarBackground,
-            elevation: 0,
-            leading: IconButton(
-              icon: Icon(Icons.arrow_back_ios_new_rounded,
-                  size: 20, color: theme.primaryColor),
-              onPressed: () => Navigator.pop(context),
-            )),
-        body: StreamBuilder<List<MessageReminder>>(
-          stream: reminderProvider.getUserRemindersStream(currentUserId),
-          builder: (_, snap) {
-            if (!snap.hasData)
-              return Center(
-                  child: CircularProgressIndicator(
-                      color: theme.primaryColor, strokeWidth: 2));
-            final reminders = snap.data!;
-            if (reminders.isEmpty)
-              return Center(
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.alarm_off_rounded, size: 60, color: p.textHint),
-                const SizedBox(height: 14),
-                Text('Chưa có nhắc nhở',
+        data: theme.isDark ? theme.darkTheme : theme.lightTheme,
+        child: Scaffold(
+            backgroundColor: p.background,
+            appBar: AppBar(
+                title: Text('Nhắc nhở',
                     style: TextStyle(
-                        color: p.textSecondary, fontWeight: FontWeight.w500)),
-              ]));
-            return ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: reminders.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (_, i) {
-                final r = reminders[i];
-                return Container(
-                  decoration: BoxDecoration(
-                      color: p.surface,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [BoxShadow(color: p.shadow, blurRadius: 8)]),
-                  child: ListTile(
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    leading: Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                            color: theme.primaryColor.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(12)),
-                        child: Icon(Icons.alarm_rounded,
-                            color: theme.primaryColor)),
-                    title: Text(r.message,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                        color: p.textPrimary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 17)),
+                backgroundColor: p.appBarBackground,
+                elevation: 0,
+                leading: IconButton(
+                    icon: Icon(Icons.arrow_back_ios_new_rounded,
+                        size: 20, color: theme.primaryColor),
+                    onPressed: () => Navigator.pop(context))),
+            body: StreamBuilder<List<MessageReminder>>(
+              stream: reminderProvider.getUserRemindersStream(currentUserId),
+              builder: (_, snap) {
+                if (!snap.hasData)
+                  return Center(
+                      child: CircularProgressIndicator(
+                          color: theme.primaryColor, strokeWidth: 2));
+                final reminders = snap.data!;
+                if (reminders.isEmpty)
+                  return Center(
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.alarm_off_rounded, size: 60, color: p.textHint),
+                    const SizedBox(height: 14),
+                    Text('Chưa có nhắc nhở',
                         style: TextStyle(
-                            color: p.textPrimary,
-                            fontSize: 14,
+                            color: p.textSecondary,
                             fontWeight: FontWeight.w500)),
-                    subtitle: Text(
-                        DateFormat('dd/MM/yyyy HH:mm').format(r.reminderTime),
-                        style: TextStyle(fontSize: 11, color: p.textHint)),
-                    trailing: GestureDetector(
-                        onTap: () => reminderProvider.deleteReminder(r.id),
-                        child: Icon(Icons.delete_outline_rounded,
-                            color: p.dangerColor)),
-                  ),
+                  ]));
+                return ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: reminders.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (_, i) {
+                    final r = reminders[i];
+                    return Container(
+                      decoration: BoxDecoration(
+                          color: p.surface,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(color: p.shadow, blurRadius: 8)
+                          ]),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        leading: Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                                color: theme.primaryColor.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12)),
+                            child: Icon(Icons.alarm_rounded,
+                                color: theme.primaryColor)),
+                        title: Text(r.message,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                color: p.textPrimary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500)),
+                        subtitle: Text(
+                            DateFormat('dd/MM/yyyy HH:mm')
+                                .format(r.reminderTime),
+                            style: TextStyle(fontSize: 11, color: p.textHint)),
+                        trailing: GestureDetector(
+                            onTap: () => reminderProvider.deleteReminder(r.id),
+                            child: Icon(Icons.delete_outline_rounded,
+                                color: p.dangerColor)),
+                      ),
+                    );
+                  },
                 );
               },
-            );
-          },
-        ),
-      ),
-    );
+            )));
   }
 }
 
@@ -3547,7 +3690,6 @@ class _AIDialog extends StatelessWidget {
   final List<String> messages;
   final ThemePalette palette;
   final Color primary;
-
   @override
   Widget build(BuildContext context) => _ThemedDialog(
         title: 'AI Phân Tích',
@@ -3565,19 +3707,17 @@ class _AIDialog extends StatelessWidget {
                       child: CircularProgressIndicator(
                           color: Color(0xFF8B5CF6), strokeWidth: 2)));
             }
-            if (!snap.hasData) {
+            if (!snap.hasData)
               return Text('Không thể kết nối AI lúc này.',
                   style: TextStyle(color: palette.textSecondary));
-            }
             return SizedBox(
                 height: 280,
                 child: SingleChildScrollView(
-                  child: MarkdownBody(
-                      data: snap.data!,
-                      styleSheet: MarkdownStyleSheet(
-                          p: TextStyle(
-                              color: palette.textPrimary, height: 1.6))),
-                ));
+                    child: MarkdownBody(
+                        data: snap.data!,
+                        styleSheet: MarkdownStyleSheet(
+                            p: TextStyle(
+                                color: palette.textPrimary, height: 1.6)))));
           },
         ),
         actions: [

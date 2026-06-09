@@ -3,13 +3,22 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-
 import 'package:flutter_chat_demo/models/bubble_models.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:flutter_chat_demo/services/unified_bubble_service.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// BUBBLE MANAGER WIDGET
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Root-level widget that:
+/// • Manages the [UnifiedBubbleService] lifecycle
+/// • Listens for bubble click events and routes navigation
+/// • Shows the mini-chat overlay as an [OverlayEntry]
+/// • Handles app lifecycle (pause → hide bubbles, resume → restore)
+/// • Provides a [BubbleManagerController] down the tree via [InheritedWidget]
 class BubbleManager extends StatefulWidget {
   final Widget child;
   const BubbleManager({super.key, required this.child});
@@ -17,17 +26,22 @@ class BubbleManager extends StatefulWidget {
   @override
   State<BubbleManager> createState() => _BubbleManagerState();
 
+  /// Get the controller from anywhere in the tree.
   static BubbleManagerController? of(BuildContext context) {
-    return context.dependOnInheritedWidgetOfExactType<_BubbleManagerScope>()?.controller;
+    return context
+        .dependOnInheritedWidgetOfExactType<_BubbleManagerScope>()
+        ?.controller;
   }
 }
 
-class _BubbleManagerState extends State<BubbleManager> with WidgetsBindingObserver {
+class _BubbleManagerState extends State<BubbleManager>
+    with WidgetsBindingObserver {
   late final UnifiedBubbleService _service;
   late final BubbleManagerController _controller;
 
   final List<StreamSubscription> _subs = [];
 
+  // ── Mini-chat overlay ────────────────────────────────────────────────────
   OverlayEntry? _miniOverlay;
   String? _miniUserId;
 
@@ -46,6 +60,8 @@ class _BubbleManagerState extends State<BubbleManager> with WidgetsBindingObserv
     _attachListeners();
   }
 
+  // ─── Stream subscriptions ─────────────────────────────────────────────
+
   void _attachListeners() {
     if (kIsWeb || !Platform.isAndroid) return;
 
@@ -60,7 +76,8 @@ class _BubbleManagerState extends State<BubbleManager> with WidgetsBindingObserv
     _subs.add(
       _service.miniChatMessageStream.listen(
         _onMiniChatMessage,
-        onError: (Object e) => debugPrint('❌ BubbleManager miniChat stream: $e'),
+        onError: (Object e) =>
+            debugPrint('❌ BubbleManager miniChat stream: $e'),
         cancelOnError: false,
       ),
     );
@@ -73,6 +90,8 @@ class _BubbleManagerState extends State<BubbleManager> with WidgetsBindingObserv
     );
   }
 
+  // ─── App lifecycle ────────────────────────────────────────────────────
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
@@ -82,7 +101,7 @@ class _BubbleManagerState extends State<BubbleManager> with WidgetsBindingObserv
         break;
       case AppLifecycleState.resumed:
         debugPrint('📱 App resumed');
-        _hideMiniChatOverlay();
+        _hideMiniChatOverlay(); // Dismiss overlay when user re-opens app
         break;
       case AppLifecycleState.detached:
         _service.hideAllBubbles();
@@ -91,6 +110,8 @@ class _BubbleManagerState extends State<BubbleManager> with WidgetsBindingObserv
         break;
     }
   }
+
+  // ─── Bubble click handler ─────────────────────────────────────────────
 
   void _onBubbleClick(BubbleClickEvent event) {
     if (!mounted) return;
@@ -138,9 +159,11 @@ class _BubbleManagerState extends State<BubbleManager> with WidgetsBindingObserv
     );
   }
 
+  // ─── Mini chat message handler ────────────────────────────────────────
+
   void _onMiniChatMessage(MiniChatMessage msg) {
     if (!mounted) return;
-
+    // Show a subtle in-app snackbar when message arrives via mini-chat
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -166,12 +189,15 @@ class _BubbleManagerState extends State<BubbleManager> with WidgetsBindingObserv
     );
   }
 
+  // ─── Mini-chat overlay ────────────────────────────────────────────────
+
   Future<void> _showMiniChatOverlay({
     required String userId,
     required String userName,
     required String avatarUrl,
   }) async {
     if (_miniUserId == userId) {
+      // Already showing for this user — just bring to front
       return;
     }
     _hideMiniChatOverlay();
@@ -215,15 +241,21 @@ class _BubbleManagerState extends State<BubbleManager> with WidgetsBindingObserv
   }
 
   void _minimizeMiniChat() {
+    // Minimized state: hide overlay but keep bubble visible
     _hideMiniChatOverlay();
     debugPrint('⬇️ Mini-chat minimized');
   }
 
+  // ─── Helpers ──────────────────────────────────────────────────────────
+
   Route<T> _fadeRoute<T>(Widget page) => PageRouteBuilder(
         pageBuilder: (_, __, ___) => page,
-        transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+        transitionsBuilder: (_, anim, __, child) =>
+            FadeTransition(opacity: anim, child: child),
         transitionDuration: const Duration(milliseconds: 250),
       );
+
+  // ─── Build ────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -245,6 +277,11 @@ class _BubbleManagerState extends State<BubbleManager> with WidgetsBindingObserv
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// BUBBLE MANAGER CONTROLLER
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Exposes bubble operations to descendant widgets via [BubbleManager.of].
 class BubbleManagerController {
   final UnifiedBubbleService _service;
   final Future<void> Function({
@@ -279,7 +316,8 @@ class BubbleManagerController {
 
   Future<void> hideAll() => _service.hideAllBubbles();
 
-  Future<void> updateMessage({required String userId, required String message}) =>
+  Future<void> updateMessage(
+          {required String userId, required String message}) =>
       _service.updateBubbleMessage(userId: userId, message: message);
 
   Future<void> clearUnread(String userId) => _service.clearUnread(userId);
@@ -298,8 +336,13 @@ class BubbleManagerController {
 
   Stream<BubbleClickEvent> get clickStream => _service.bubbleClickStream;
 
-  Stream<Map<String, BubbleData>> get bubblesStream => _service.activeBubblesStream;
+  Stream<Map<String, BubbleData>> get bubblesStream =>
+      _service.activeBubblesStream;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INHERITED WIDGET SCOPE
+// ═══════════════════════════════════════════════════════════════════════════
 
 class _BubbleManagerScope extends InheritedWidget {
   final BubbleManagerController controller;
@@ -310,8 +353,13 @@ class _BubbleManagerScope extends InheritedWidget {
   });
 
   @override
-  bool updateShouldNotify(_BubbleManagerScope old) => controller != old.controller;
+  bool updateShouldNotify(_BubbleManagerScope old) =>
+      controller != old.controller;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BUBBLE ACTION SHEET
+// ═══════════════════════════════════════════════════════════════════════════
 
 class _BubbleActionSheet extends StatelessWidget {
   final BubbleClickEvent event;
@@ -345,6 +393,7 @@ class _BubbleActionSheet extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Handle
           Center(
             child: Container(
               margin: const EdgeInsets.only(top: 12, bottom: 4),
@@ -356,6 +405,8 @@ class _BubbleActionSheet extends StatelessWidget {
               ),
             ),
           ),
+
+          // User info banner
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             child: Row(
@@ -368,14 +419,16 @@ class _BubbleActionSheet extends StatelessWidget {
                     children: [
                       Text(
                         event.userName,
-                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                        style: theme.textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       if (event.message.isNotEmpty)
                         Text(
                           event.message,
-                          style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: theme.hintColor),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -385,8 +438,11 @@ class _BubbleActionSheet extends StatelessWidget {
               ],
             ),
           ),
+
           Divider(height: 0, thickness: 0.5, color: theme.dividerColor),
           const SizedBox(height: 6),
+
+          // Actions
           _SheetAction(
             icon: Icons.chat_bubble_rounded,
             iconColor: const Color(0xFF2196F3),
@@ -409,6 +465,7 @@ class _BubbleActionSheet extends StatelessWidget {
             onTap: onDismiss,
             isDestructive: true,
           ),
+
           const SizedBox(height: 8),
         ],
       ),
@@ -510,6 +567,12 @@ class _SheetAction extends StatelessWidget {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// BUBBLE PERMISSION GATE
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Wraps a widget and shows a permission prompt if overlay permission
+/// is not granted. Useful to wrap the chat page's "enable bubble" button.
 class BubblePermissionGate extends StatefulWidget {
   final Widget child;
   final Widget? permissionDeniedWidget;
@@ -524,7 +587,8 @@ class BubblePermissionGate extends StatefulWidget {
   State<BubblePermissionGate> createState() => _BubblePermissionGateState();
 }
 
-class _BubblePermissionGateState extends State<BubblePermissionGate> with WidgetsBindingObserver {
+class _BubblePermissionGateState extends State<BubblePermissionGate>
+    with WidgetsBindingObserver {
   bool? _hasPermission;
   final _service = UnifiedBubbleService();
 
@@ -585,7 +649,8 @@ class _PermissionPrompt extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.bubble_chart_rounded, size: 32, color: Color(0xFFF57C00)),
+          const Icon(Icons.bubble_chart_rounded,
+              size: 32, color: Color(0xFFF57C00)),
           const SizedBox(height: 8),
           const Text(
             'Cần quyền hiển thị nổi',
@@ -606,7 +671,8 @@ class _PermissionPrompt extends StatelessWidget {
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFF57C00),
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
           ),
         ],
@@ -615,6 +681,11 @@ class _PermissionPrompt extends StatelessWidget {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ACTIVE BUBBLES PANEL (debug / settings view)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Shows a list of all currently active bubbles with management controls.
 class ActiveBubblesPanel extends StatelessWidget {
   final UnifiedBubbleService service;
   const ActiveBubblesPanel({super.key, required this.service});
@@ -633,7 +704,8 @@ class ActiveBubblesPanel extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.bubble_chart_rounded, size: 40, color: Colors.grey),
+                  Icon(Icons.bubble_chart_rounded,
+                      size: 40, color: Colors.grey),
                   SizedBox(height: 8),
                   Text('Không có bong bóng nào đang hoạt động',
                       style: TextStyle(color: Colors.grey)),
@@ -652,7 +724,8 @@ class ActiveBubblesPanel extends StatelessWidget {
                 children: [
                   Text(
                     '${bubbles.length} bong bóng đang hoạt động',
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 13),
                   ),
                   TextButton.icon(
                     onPressed: () => service.hideAllBubbles(),
@@ -692,8 +765,11 @@ class _BubbleTile extends StatelessWidget {
       leading: Stack(
         children: [
           CircleAvatar(
-            backgroundImage: data.avatarUrl.isNotEmpty ? NetworkImage(data.avatarUrl) : null,
-            child: data.avatarUrl.isEmpty ? Text(data.userName[0].toUpperCase()) : null,
+            backgroundImage:
+                data.avatarUrl.isNotEmpty ? NetworkImage(data.avatarUrl) : null,
+            child: data.avatarUrl.isEmpty
+                ? Text(data.userName[0].toUpperCase())
+                : null,
           ),
           if (data.unreadCount > 0)
             Positioned(
@@ -708,13 +784,16 @@ class _BubbleTile extends StatelessWidget {
                 child: Text(
                   data.unreadCount > 99 ? '99+' : '${data.unreadCount}',
                   style: const TextStyle(
-                      color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700),
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700),
                 ),
               ),
             ),
         ],
       ),
-      title: Text(data.userName, style: const TextStyle(fontWeight: FontWeight.w600)),
+      title: Text(data.userName,
+          style: const TextStyle(fontWeight: FontWeight.w600)),
       subtitle: Text(
         data.lastMessage ?? 'Không có tin nhắn',
         maxLines: 1,

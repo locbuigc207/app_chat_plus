@@ -1,26 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Main bubble background: 3-layer oval
+     Layer 1 – deep gradient fill (blue spectrum)
+     Layer 2 – specular highlight (top-left quarter, 10 % white)
+     Layer 3 – white rim stroke (50 % opacity)                      -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Shadow Layer -->
-    <item>
-        <shape android:shape="oval">
-            <solid android:color="#40000000" />
-        </shape>
-    </item>
 
-    <!-- Main Gradient Layer -->
-    <item
-        android:bottom="2dp"
-        android:right="2dp">
+    <!-- Fill -->
+    <item>
         <shape android:shape="oval">
             <gradient
                 android:angle="135"
-                android:startColor="#2196F3"
+                android:startColor="#2979FF"
                 android:centerColor="#1E88E5"
-                android:endColor="#1976D2"
+                android:endColor="#1565C0"
                 android:type="linear" />
-            <stroke
-                android:width="2dp"
-                android:color="@android:color/white" />
         </shape>
     </item>
+
+    <!-- Specular highlight (top-left quadrant) -->
+    <item
+        android:top="2dp"
+        android:left="2dp"
+        android:right="24dp"
+        android:bottom="24dp">
+        <shape android:shape="oval">
+            <solid android:color="#18FFFFFF" />
+        </shape>
+    </item>
+
+    <!-- Rim -->
+    <item>
+        <shape android:shape="oval">
+            <stroke
+                android:width="2dp"
+                android:color="#60FFFFFF" />
+            <solid android:color="@android:color/transparent" />
+        </shape>
+    </item>
+
 </layer-list>

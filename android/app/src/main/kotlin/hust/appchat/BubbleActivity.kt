@@ -5,10 +5,12 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
-import androidx.activity.ComponentActivity          // FIX-BACK: needed for K2 compiler cast
+import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -17,116 +19,100 @@ import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.MethodChannel
 
 /**
- * CHANGES vs original:
+ * BubbleActivity — embeddable Flutter activity for Android Bubble API.
  *
- * FIX-BACK — Migrate onBackPressed() → OnBackPressedCallback:
- *   onBackPressed() bị deprecated từ API 33 (Android 13) và bị ignore hoàn toàn
- *   trên Android 14+ khi enableOnBackInvokedCallback="true" trong manifest.
- *   Sau: Dùng onBackPressedDispatcher.addCallback() trong onCreate().
- *   Behavior giữ nguyên: moveTaskToBack(true) thay vì finish().
- *
- *   FIX-BACK-K2: Kotlin 2.x K2 compiler không tự resolve 'onBackPressedDispatcher'
- *   từ ComponentActivity qua FlutterActivity inheritance chain. Fix: explicit cast
- *   (this as ComponentActivity).onBackPressedDispatcher trước khi addCallback.
- *
- * FIX-A/B/C/D/E giữ nguyên từ bản gốc.
+ * Design decisions & Fixes
+ * ─────────────────
+ * • Uses a SHARED engine (SHARED_ENGINE_ID) cached in [FlutterEngineCache].
+ * warmUpSharedEngine() should be called from MainActivity.onCreate() so
+ * the engine is hot when a bubble is first opened.
+ * • onBackPressed → moveTaskToBack(true): keeps the bubble alive rather
+ * than destroying it.
+ * • Navigation is sent via MethodChannel "bubble_chat_channel" →
+ * navigateToChat(). Retried until Flutter reports "flutterReady".
+ * • State is persisted across process-death via onSaveInstanceState.
+ * • K2-compiler-safe (FIX-BACK-K2): explicit `(this as ComponentActivity)` cast
+ * for onBackPressedDispatcher to resolve inheritance issues.
  */
 class BubbleActivity : FlutterActivity() {
 
+    // ─── Constants ────────────────────────────────────────────────────────
     companion object {
         private const val TAG = "BubbleActivity"
-
         const val SHARED_ENGINE_ID = "shared_flutter_engine"
 
-        private const val CHANNEL = "bubble_chat_channel"
+        private const val CHANNEL        = "bubble_chat_channel"
+        private const val EXTRA_UID      = "userId"
+        private const val EXTRA_NAME     = "userName"
+        private const val EXTRA_AVATAR   = "avatarUrl"
 
-        private const val EXTRA_USER_ID   = "userId"
-        private const val EXTRA_USER_NAME = "userName"
-        private const val EXTRA_AVATAR_URL = "avatarUrl"
+        private const val RETRY_INTERVAL_MS    = 60L
+        private const val MAX_RETRIES          = 60          // ~3.6 s
+        private const val FALLBACK_READY_MS    = 600L
+        private const val KEYBOARD_DELAY_MS    = 350L
+        private const val MAX_NAV_CACHE        = 50
 
-        private const val ENGINE_WARMUP_TIMEOUT_MS = 2000L
-        private const val RETRY_INTERVAL_MS = 50L
-        private const val MAX_NAVIGATION_CACHE = 50
-
-        fun createIntent(
-            context: Context,
-            userId: String,
-            userName: String,
-            avatarUrl: String
-        ): Intent = Intent(context, BubbleActivity::class.java).apply {
-            putExtra(EXTRA_USER_ID, userId)
-            putExtra(EXTRA_USER_NAME, userName)
-            putExtra(EXTRA_AVATAR_URL, avatarUrl)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT)
-            addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
-        }
-
-        fun warmUpSharedEngine(context: Context) {
+        /** Idempotent — safe to call multiple times. */
+        fun warmUpSharedEngine(ctx: Context) {
             val cache = FlutterEngineCache.getInstance()
-            val existing = cache.get(SHARED_ENGINE_ID)
+            cache.get(SHARED_ENGINE_ID)
+                ?.takeIf { it.dartExecutor.isExecutingDart }
+                ?.also { Log.d(TAG, "♻️ Engine already warm"); return }
 
-            if (existing != null && existing.dartExecutor.isExecutingDart) {
-                Log.d(TAG, "♻️ Shared engine already warmed up and running")
-                return
-            }
-
-            if (existing != null) {
-                Log.w(TAG, "⚠️ Stale engine found in cache, recreating...")
+            cache.get(SHARED_ENGINE_ID)?.let {
+                Log.w(TAG, "⚠️ Stale engine — evicting")
                 cache.remove(SHARED_ENGINE_ID)
             }
 
-            Log.d(TAG, "🔥 Warming up shared Flutter engine...")
-            val engine = FlutterEngine(context.applicationContext)
-            engine.dartExecutor.executeDartEntrypoint(
+            Log.d(TAG, "🔥 Warming shared engine…")
+            val eng = FlutterEngine(ctx.applicationContext)
+            eng.dartExecutor.executeDartEntrypoint(
                 DartExecutor.DartEntrypoint.createDefault()
             )
-            engine.lifecycleChannel.appIsResumed()
+            eng.lifecycleChannel.appIsResumed()
+            cache.put(SHARED_ENGINE_ID, eng)
+            Log.d(TAG, "✅ Shared engine warm")
+        }
 
-            cache.put(SHARED_ENGINE_ID, engine)
-            Log.d(TAG, "✅ Shared engine warmed up (dart executing: ${engine.dartExecutor.isExecutingDart})")
+        fun createIntent(
+            ctx: Context,
+            userId: String,
+            userName: String,
+            avatarUrl: String
+        ): Intent = Intent(ctx, BubbleActivity::class.java).apply {
+            putExtra(EXTRA_UID,    userId)
+            putExtra(EXTRA_NAME,   userName)
+            putExtra(EXTRA_AVATAR, avatarUrl)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT)
+            addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
         }
     }
 
-    // ========================================
-    // STATE
-    // ========================================
-    private var methodChannel: MethodChannel? = null
-
-    private var currentUserId: String?   = null
-    private var currentUserName: String? = null
-    private var currentAvatarUrl: String? = null
-
-    private var pendingUserId: String?    = null
-    private var pendingUserName: String?  = null
-    private var pendingAvatarUrl: String? = null
-
+    // ─── State ────────────────────────────────────────────────────────────
+    private var channel        : MethodChannel? = null
     private var isFlutterReady = false
 
-    private val navigationCompletedForUser = LinkedHashSet<String>()
+    private var currentUid    : String? = null
+    private var currentName   : String? = null
+    private var currentAvatar : String? = null
 
-    private val maxRetries = (ENGINE_WARMUP_TIMEOUT_MS / RETRY_INTERVAL_MS).toInt()
+    private var pendingUid    : String? = null
+    private var pendingName   : String? = null
+    private var pendingAvatar : String? = null
 
-    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val navigatedUsers = LinkedHashSet<String>()
+    private val mainHandler    = Handler(Looper.getMainLooper())
 
-    // ========================================
-    // LIFECYCLE
-    // ========================================
+    // ─── Lifecycle ────────────────────────────────────────────────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.d(TAG, "✅ onCreate")
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            Log.w(TAG, "⚠️ Android < 11 not supported for BubbleActivity, finishing.")
-            finish()
-            return
+            Log.w(TAG, "⚠️ Bubble API requires Android 11+"); finish(); return
         }
 
-        // FIX-BACK + FIX-BACK-K2:
-        // With Kotlin 2.x K2 compiler, 'onBackPressedDispatcher' inherited from
-        // ComponentActivity is not automatically resolved on 'this' (FlutterActivity).
-        // Explicit cast (this as ComponentActivity) forces the compiler to look up
-        // the property on the correct type.
+        // Back = minimise, not finish (K2 compiler safe cast)
         (this as ComponentActivity).onBackPressedDispatcher
             .addCallback(this, object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
@@ -135,132 +121,99 @@ class BubbleActivity : FlutterActivity() {
                 }
             })
 
-        if (savedInstanceState == null) {
-            extractUserFromIntent(intent)
-        }
+        if (savedInstanceState == null) readExtras(intent)
+        if (!validateUser()) { Log.e(TAG, "❌ Missing user info"); finish(); return }
 
-        Log.d(TAG, "📋 User: $currentUserName (ID: $currentUserId)")
-
-        if (!validateCurrentUser()) {
-            Log.e(TAG, "❌ Missing user data, finishing")
-            finish()
-            return
-        }
+        Log.d(TAG, "✅ onCreate — user: $currentName ($currentUid)")
     }
 
-    // ========================================
-    // FLUTTER ENGINE
-    // ========================================
-
-    override fun provideFlutterEngine(context: Context): FlutterEngine? {
+    override fun provideFlutterEngine(ctx: Context): FlutterEngine? {
         val cache = FlutterEngineCache.getInstance()
-        var engine = cache.get(SHARED_ENGINE_ID)
+        var eng = cache.get(SHARED_ENGINE_ID)
 
-        if (engine != null && !engine.dartExecutor.isExecutingDart) {
-            Log.w(TAG, "⚠️ Cached engine is dead, recreating...")
-            cache.remove(SHARED_ENGINE_ID)
-            engine = null
+        if (eng != null && !eng.dartExecutor.isExecutingDart) {
+            Log.w(TAG, "⚠️ Cached engine dead — recreating")
+            cache.remove(SHARED_ENGINE_ID); eng = null
         }
 
-        if (engine == null) {
-            Log.d(TAG, "🔧 Creating new shared Flutter engine")
-            engine = FlutterEngine(context.applicationContext)
-            engine.dartExecutor.executeDartEntrypoint(
+        if (eng == null) {
+            Log.d(TAG, "🔧 Creating new shared engine")
+            eng = FlutterEngine(ctx.applicationContext)
+            eng.dartExecutor.executeDartEntrypoint(
                 DartExecutor.DartEntrypoint.createDefault()
             )
-            engine.lifecycleChannel.appIsResumed()
-            cache.put(SHARED_ENGINE_ID, engine)
-            Log.d(TAG, "✅ Shared engine created and cached")
+            eng.lifecycleChannel.appIsResumed()
+            cache.put(SHARED_ENGINE_ID, eng)
         } else {
-            Log.d(TAG, "♻️ Reusing shared engine (running: ${engine.dartExecutor.isExecutingDart})")
+            Log.d(TAG, "♻️ Reusing shared engine")
         }
-
-        return engine
+        return eng
     }
 
-    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-        super.configureFlutterEngine(flutterEngine)
-        Log.d(TAG, "🔧 Configuring Flutter engine")
-
-        setupWindowForInput()
-        setupMethodChannel(flutterEngine)
-
-        setPendingFromCurrent()
-        scheduleNavigationWithRetry()
+    override fun configureFlutterEngine(engine: FlutterEngine) {
+        super.configureFlutterEngine(engine)
+        configureWindow()
+        setupChannel(engine)
+        setPending()
+        scheduleNav(0)
     }
 
-    // ========================================
-    // NAVIGATION (PENDING / RETRY)
-    // ========================================
-
-    private fun setPendingFromCurrent() {
-        pendingUserId   = currentUserId
-        pendingUserName = currentUserName
-        pendingAvatarUrl = currentAvatarUrl
-        Log.d(TAG, "📌 Pending set: $pendingUserName")
+    override fun onResume() {
+        super.onResume()
+        val uid = pendingUid ?: return
+        if (isFlutterReady && !navigatedUsers.contains(uid)) scheduleNav(0)
     }
 
-    private fun scheduleNavigationWithRetry(attempt: Int = 0) {
-        if (isFinishing) return
-
-        val uid   = pendingUserId   ?: return
-        val uname = pendingUserName ?: return
-        val avatar = pendingAvatarUrl ?: ""
-
-        if (navigationCompletedForUser.contains(uid)) {
-            Log.d(TAG, "ℹ️ Already navigated to $uname")
-            return
-        }
-
-        if (!isFlutterReady) {
-            if (attempt >= maxRetries) {
-                Log.e(TAG, "❌ Flutter not ready after $maxRetries retries")
-                return
-            }
-            mainHandler.postDelayed({
-                scheduleNavigationWithRetry(attempt + 1)
-            }, RETRY_INTERVAL_MS)
-            return
-        }
-
-        navigateToChat(uid, uname, avatar)
+    override fun onPause() {
+        super.onPause()
+        hideKeyboard()
     }
 
-    private fun navigateToChat(userId: String, userName: String, avatarUrl: String) {
-        if (isFinishing) return
-        try {
-            Log.d(TAG, "📤 Navigating to chat: $userName")
-            methodChannel?.invokeMethod(
-                "navigateToChat",
-                mapOf(
-                    "peerId"       to userId,
-                    "peerNickname" to userName,
-                    "peerAvatar"   to avatarUrl,
-                    "isBubbleMode" to true
-                )
-            )
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val newUid  = intent.getStringExtra(EXTRA_UID)  ?: return
+        val newName = intent.getStringExtra(EXTRA_NAME) ?: return
+        if (newUid == currentUid) return           // same user — no re-nav
 
-            if (navigationCompletedForUser.size >= MAX_NAVIGATION_CACHE) {
-                val oldest = navigationCompletedForUser.iterator().next()
-                navigationCompletedForUser.remove(oldest)
-                Log.d(TAG, "🗑️ Evicted oldest nav entry: $oldest")
-            }
-            navigationCompletedForUser.add(userId)
-            Log.d(TAG, "✅ Navigation sent for: $userName")
-
-            mainHandler.postDelayed({
-                if (!isFinishing) showKeyboard()
-            }, 300L)
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Navigate failed: $e")
-        }
+        Log.d(TAG, "🔄 New intent → $newName")
+        currentUid    = newUid
+        currentName   = newName
+        currentAvatar = intent.getStringExtra(EXTRA_AVATAR)
+        setPending()
+        scheduleNav(0)
     }
 
-    // ========================================
-    // WINDOW SETUP
-    // ========================================
+    override fun onSaveInstanceState(out: Bundle) {
+        super.onSaveInstanceState(out)
+        out.putString("uid",    currentUid)
+        out.putString("name",   currentName)
+        out.putString("avatar", currentAvatar)
+        out.putStringArrayList("navDone", ArrayList(navigatedUsers))
+    }
 
-    private fun setupWindowForInput() {
+    override fun onRestoreInstanceState(saved: Bundle) {
+        super.onRestoreInstanceState(saved)
+        currentUid    = saved.getString("uid")
+        currentName   = saved.getString("name")
+        currentAvatar = saved.getString("avatar")
+        saved.getStringArrayList("navDone")?.let { navigatedUsers.addAll(it) }
+        setPending()
+        if (isFlutterReady) scheduleNav(0)
+    }
+
+    override fun onDestroy() {
+        mainHandler.removeCallbacksAndMessages(null)
+        channel?.setMethodCallHandler(null)
+        channel = null
+        isFlutterReady = false
+        navigatedUsers.clear()
+        super.onDestroy()
+        Log.d(TAG, "✅ onDestroy — shared engine kept in cache")
+    }
+
+    // ─── Engine setup ─────────────────────────────────────────────────────
+
+    private fun configureWindow() {
         try {
             window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
             window.setSoftInputMode(
@@ -268,180 +221,115 @@ class BubbleActivity : FlutterActivity() {
                         WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE
             )
             window.decorView.requestFocus()
-            Log.d(TAG, "✅ Window configured for keyboard")
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Window setup failed: $e")
-        }
+        } catch (e: Exception) { Log.e(TAG, "⚠️ configureWindow: $e") }
     }
 
-    // ========================================
-    // METHOD CHANNEL
-    // ========================================
-
-    private fun setupMethodChannel(flutterEngine: FlutterEngine) {
-        try {
-            methodChannel = MethodChannel(
-                flutterEngine.dartExecutor.binaryMessenger,
-                CHANNEL
-            )
-
-            methodChannel?.setMethodCallHandler { call, result ->
-                Log.d(TAG, "📞 Flutter → Native: ${call.method}")
-                when (call.method) {
-                    "minimize" -> {
-                        moveTaskToBack(true)
-                        result.success(true)
-                    }
-                    "close" -> {
-                        finish()
-                        result.success(true)
-                    }
-                    "getUserInfo" -> {
-                        result.success(mapOf(
-                            "userId"    to currentUserId,
-                            "userName"  to currentUserName,
-                            "avatarUrl" to currentAvatarUrl
-                        ))
-                    }
-                    "getBubbleMode" -> result.success(true)
-                    "flutterReady"  -> {
-                        Log.d(TAG, "🟢 Flutter reported ready")
-                        isFlutterReady = true
-                        scheduleNavigationWithRetry()
-                        result.success(true)
-                    }
-                    else -> result.notImplemented()
-                }
-            }
-
-            mainHandler.postDelayed({
-                if (!isFinishing && !isFlutterReady) {
-                    Log.d(TAG, "⏰ Flutter ready via fallback timeout")
+    private fun setupChannel(engine: FlutterEngine) {
+        channel = MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL)
+        channel!!.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "flutterReady" -> {
+                    Log.d(TAG, "🟢 Flutter ready")
                     isFlutterReady = true
-                    scheduleNavigationWithRetry()
+                    scheduleNav(0)
+                    result.success(true)
                 }
-            }, 500L)
-
-            Log.d(TAG, "✅ MethodChannel setup complete")
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ MethodChannel setup failed: $e")
+                "minimize"     -> { moveTaskToBack(true); result.success(true) }
+                "close"        -> { finish(); result.success(true) }
+                "getUserInfo"  -> result.success(mapOf(
+                    "userId"    to currentUid,
+                    "userName"  to currentName,
+                    "avatarUrl" to currentAvatar,
+                ))
+                "getBubbleMode" -> result.success(true)
+                "showKeyboard"  -> {
+                    mainHandler.postDelayed({ showKeyboard() }, 150L)
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
         }
+
+        // Fallback: assume Flutter ready after short timeout
+        mainHandler.postDelayed({
+            if (!isFlutterReady && !isFinishing) {
+                Log.d(TAG, "⏰ Flutter ready (fallback)")
+                isFlutterReady = true; scheduleNav(0)
+            }
+        }, FALLBACK_READY_MS)
     }
 
-    // ========================================
-    // KEYBOARD
-    // ========================================
+    // ─── Navigation ───────────────────────────────────────────────────────
+
+    private fun setPending() {
+        pendingUid    = currentUid
+        pendingName   = currentName
+        pendingAvatar = currentAvatar
+    }
+
+    private fun scheduleNav(attempt: Int) {
+        if (isFinishing) return
+        val uid   = pendingUid   ?: return
+        val name  = pendingName  ?: return
+        val av    = pendingAvatar ?: ""
+
+        if (navigatedUsers.contains(uid)) return
+
+        if (!isFlutterReady) {
+            if (attempt >= MAX_RETRIES) {
+                Log.e(TAG, "❌ Navigation timeout after $MAX_RETRIES retries"); return
+            }
+            mainHandler.postDelayed({ scheduleNav(attempt + 1) }, RETRY_INTERVAL_MS)
+            return
+        }
+        doNavigate(uid, name, av)
+    }
+
+    private fun doNavigate(uid: String, name: String, av: String) {
+        if (isFinishing) return
+        try {
+            channel?.invokeMethod("navigateToChat", mapOf(
+                "peerId"       to uid,
+                "peerNickname" to name,
+                "peerAvatar"   to av,
+                "isBubbleMode" to true,
+            ))
+
+            if (navigatedUsers.size >= MAX_NAV_CACHE) {
+                navigatedUsers.iterator().next().also { navigatedUsers.remove(it) }
+            }
+            navigatedUsers.add(uid)
+            Log.d(TAG, "✅ Navigated → $name")
+
+            mainHandler.postDelayed({ showKeyboard() }, KEYBOARD_DELAY_MS)
+        } catch (e: Exception) { Log.e(TAG, "❌ doNavigate: $e") }
+    }
+
+    // ─── Keyboard ─────────────────────────────────────────────────────────
 
     private fun showKeyboard() {
         try {
             window.decorView.requestFocus()
-            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-            imm?.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Show keyboard failed: $e")
-        }
+            (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+                ?.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
+        } catch (_: Exception) {}
     }
 
     private fun hideKeyboard() {
         try {
-            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-            imm?.hideSoftInputFromWindow(window.decorView.windowToken, 0)
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Hide keyboard failed: $e")
-        }
+            (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+                ?.hideSoftInputFromWindow(window.decorView.windowToken, 0)
+        } catch (_: Exception) {}
     }
 
-    // ========================================
-    // LIFECYCLE
-    // ========================================
+    // ─── Helpers ─────────────────────────────────────────────────────────
 
-    override fun onResume() {
-        super.onResume()
-        Log.d(TAG, "▶️ onResume")
-        val uid = pendingUserId
-        if (isFlutterReady && uid != null && !navigationCompletedForUser.contains(uid)) {
-            scheduleNavigationWithRetry()
-        }
+    private fun readExtras(i: Intent) {
+        currentUid    = i.getStringExtra(EXTRA_UID)
+        currentName   = i.getStringExtra(EXTRA_NAME)
+        currentAvatar = i.getStringExtra(EXTRA_AVATAR)
     }
 
-    override fun onPause() {
-        super.onPause()
-        Log.d(TAG, "⏸️ onPause")
-        hideKeyboard()
-    }
-
-    override fun onDestroy() {
-        Log.d(TAG, "💥 onDestroy")
-        hideKeyboard()
-        mainHandler.removeCallbacksAndMessages(null)
-        methodChannel?.setMethodCallHandler(null)
-        methodChannel = null
-        isFlutterReady = false
-        navigationCompletedForUser.clear()
-        pendingUserId    = null
-        pendingUserName  = null
-        pendingAvatarUrl = null
-        Log.d(TAG, "ℹ️ Shared engine kept alive in cache")
-        super.onDestroy()
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        Log.d(TAG, "🔄 onNewIntent")
-        val newUserId   = intent.getStringExtra(EXTRA_USER_ID)
-        val newUserName = intent.getStringExtra(EXTRA_USER_NAME)
-        val newAvatar   = intent.getStringExtra(EXTRA_AVATAR_URL)
-
-        if (newUserId != null && newUserId != currentUserId) {
-            Log.d(TAG, "🔄 Switching: $currentUserName → $newUserName")
-            currentUserId   = newUserId
-            currentUserName = newUserName
-            currentAvatarUrl = newAvatar
-            pendingUserId   = newUserId
-            pendingUserName = newUserName
-            pendingAvatarUrl = newAvatar
-            scheduleNavigationWithRetry()
-        }
-    }
-
-    // ========================================
-    // STATE PERSISTENCE
-    // ========================================
-
-    override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
-        outState.putString("userId",    currentUserId)
-        outState.putString("userName",  currentUserName)
-        outState.putString("avatarUrl", currentAvatarUrl)
-        outState.putStringArrayList(
-            "navigationCompleted",
-            ArrayList(navigationCompletedForUser)
-        )
-    }
-
-    override fun onRestoreInstanceState(savedInstanceState: Bundle) {
-        super.onRestoreInstanceState(savedInstanceState)
-        currentUserId   = savedInstanceState.getString("userId")
-        currentUserName = savedInstanceState.getString("userName")
-        currentAvatarUrl = savedInstanceState.getString("avatarUrl")
-        savedInstanceState.getStringArrayList("navigationCompleted")?.let {
-            navigationCompletedForUser.addAll(it)
-        }
-        Log.d(TAG, "📦 State restored: $currentUserName")
-        setPendingFromCurrent()
-        if (isFlutterReady) scheduleNavigationWithRetry()
-    }
-
-    // ========================================
-    // HELPERS
-    // ========================================
-
-    private fun extractUserFromIntent(intent: Intent) {
-        currentUserId   = intent.getStringExtra(EXTRA_USER_ID)
-        currentUserName = intent.getStringExtra(EXTRA_USER_NAME)
-        currentAvatarUrl = intent.getStringExtra(EXTRA_AVATAR_URL)
-    }
-
-    private fun validateCurrentUser(): Boolean =
-        !currentUserId.isNullOrEmpty() && !currentUserName.isNullOrEmpty()
+    private fun validateUser() =
+        !currentUid.isNullOrEmpty() && !currentName.isNullOrEmpty()
 }

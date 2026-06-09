@@ -7,530 +7,422 @@ import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.os.Build
 import android.util.Log
+import android.view.WindowManager
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentChange
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
-import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * BubbleManager — singleton coordinator for all floating chat bubbles.
+ *
+ * Responsibilities
+ * ─────────────────
+ * • Keep an in-memory registry of active bubbles.
+ * • Delegate all visual work to [BubbleOverlayService] via Intents (Android < 11).
+ * • Persist bubble state in SharedPreferences (Gson) across process restarts.
+ * • Set up / tear down Firestore listeners for unread-count live updates.
+ * • Recalculate positions on screen rotation via [onConfigurationChanged].
+ *
+ * Threading
+ * ──────────
+ * All public write methods are annotated @Synchronized so they can be called
+ * from any thread (Firestore callbacks run on background threads).
+ */
 object BubbleManager {
-    private val activeBubbles = mutableMapOf<String, BubbleData>()
-    private var firestore: FirebaseFirestore? = null
-    private var auth: FirebaseAuth? = null
-    private val messageListeners = mutableMapOf<String, ListenerRegistration>()
 
-    private var isServiceRunning = false
+    private const val TAG          = "BubbleManager"
+    private const val PREF_NAME    = "bm_state"
+    private const val PREF_BUBBLES = "bubbles"
+    private const val PREF_SAVED   = "saved_at"
+    private const val EXPIRY_MS    = 24L * 60 * 60 * 1_000   // 24 h
 
-    private val bubblePositions = mutableMapOf<String, BubblePosition>()
+    private const val BUBBLE_DP    = 66
+    private const val SPACING_DP   = 82
+    private const val H_MARGIN_DP  = 14
+    private const val TOP_DP       = 200
 
-    private var lastScreenWidth = 1080
-    private var lastScreenHeight = 2400
-    private var lastOrientation = Configuration.ORIENTATION_UNDEFINED
+    // ─── Registry ─────────────────────────────────────────────────────────
+    private val registry    = ConcurrentHashMap<String, BubbleEntry>()
+    private val positions   = ConcurrentHashMap<String, Pair<Int, Int>>()
+    private val listeners   = mutableMapOf<String, ListenerRegistration>()
 
+    var isServiceRunning = false
+        private set
+
+    // ─── Dependencies ─────────────────────────────────────────────────────
+    private var db   : FirebaseFirestore? = null
+    private var auth : FirebaseAuth?      = null
     private var prefs: SharedPreferences? = null
     private val gson = Gson()
-    private const val PREFS_NAME = "bubble_manager_prefs"
-    private const val KEY_ACTIVE_BUBBLES = "active_bubbles"
-    private const val KEY_LAST_SAVE_TIME = "last_save_time"
-    private const val EXPIRY_HOURS = 24L
 
-    private const val BUBBLE_SIZE = 100
-    private const val STACK_SPACING = 10
-    private const val TOP_MARGIN = 200
+    // ─── Screen ───────────────────────────────────────────────────────────
+    private var screenW     = 0
+    private var screenH     = 0
+    private var orientation = Configuration.ORIENTATION_UNDEFINED
 
-    data class BubbleData(
-        val userId: String,
-        val userName: String,
+    // ─── Data ──────────────────────────────────────────────────────────────
+
+    data class BubbleEntry(
+        val userId   : String,
+        val userName : String,
         val avatarUrl: String,
-        var unreadCount: Int = 0,
-        var lastMessage: String = "",
-        var timestamp: Long = System.currentTimeMillis()
+        var lastMsg  : String = "",
+        var unread   : Int    = 0,
+        var ts       : Long   = System.currentTimeMillis(),
     )
 
-    data class BubblePosition(
-        var x: Int,
-        var y: Int,
-        val userId: String
-    )
-
-    data class BubblePersistData(
-        val userId: String,
-        val userName: String,
+    // Persisted form
+    private data class PersistedEntry(
+        val userId   : String,
+        val userName : String,
         val avatarUrl: String,
-        val unreadCount: Int,
-        val lastMessage: String,
-        val timestamp: Long,
-        val positionX: Int,
-        val positionY: Int
+        val lastMsg  : String,
+        val unread   : Int,
+        val ts       : Long,
+        val posX     : Int,
+        val posY     : Int,
     )
 
-    // ========================================
-    // INITIALIZATION
-    // ========================================
-    fun init(context: Context) {
+    // ═════════════════════════════════════════════════════════════════════
+    // INIT
+    // ═════════════════════════════════════════════════════════════════════
+
+    @Synchronized
+    fun init(ctx: Context) {
+        if (db != null) return          // idempotent
         try {
-            firestore = FirebaseFirestore.getInstance()
-            auth = FirebaseAuth.getInstance()
-            prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-
-            updateScreenDimensions(context)
-            restoreBubbles(context)
-
-            Log.d("BubbleManager", "✅ Initialized. Screen: ${lastScreenWidth}x${lastScreenHeight}")
-        } catch (e: Exception) {
-            Log.e("BubbleManager", "❌ Failed to init: $e")
-        }
+            db    = FirebaseFirestore.getInstance()
+            auth  = FirebaseAuth.getInstance()
+            prefs = ctx.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            refreshScreen(ctx)
+            restoreState(ctx)
+            Log.d(TAG, "✅ BubbleManager init — screen ${screenW}×${screenH}")
+        } catch (e: Exception) { Log.e(TAG, "❌ init: $e") }
     }
 
-    fun onConfigurationChanged(context: Context, newConfig: Configuration) {
-        if (newConfig.orientation != lastOrientation) {
-            Log.d("BubbleManager", "📱 Orientation changed")
+    // ═════════════════════════════════════════════════════════════════════
+    // SHOW / UPDATE BUBBLE
+    // ═════════════════════════════════════════════════════════════════════
 
-            val oldWidth = lastScreenWidth
-            val oldHeight = lastScreenHeight
-
-            updateScreenDimensions(context)
-            repositionBubblesForRotation(context, oldWidth, oldHeight)
-
-            lastOrientation = newConfig.orientation
-            saveBubbles()
-        }
-    }
-
-    fun onAppResumed(context: Context) {
-        Log.d("BubbleManager", "▶️ App resumed. Restoring bubble UIs.")
-
-        activeBubbles.keys.toList().forEach { userId ->
-            val bubble = activeBubbles[userId]
-            if (bubble != null) {
-                showBubble(context, userId, bubble.userName, bubble.avatarUrl)
-            }
-        }
-    }
-
-    fun onAppPaused() {
-        Log.d("BubbleManager", "⏸️ App paused")
-    }
-
-    fun cleanup() {
-        Log.d("BubbleManager", "🧹 Cleanup: Removing listeners and data.")
-        messageListeners.values.forEach {
-            try {
-                it.remove()
-            } catch (e: Exception) {}
-        }
-        messageListeners.clear()
-        activeBubbles.clear()
-        bubblePositions.clear()
-        lastOrientation = Configuration.ORIENTATION_UNDEFINED
-        isServiceRunning = false
-        clearSavedBubbles()
-    }
-
-    // ========================================
-    // SCREEN UTILS
-    // ========================================
-    private fun updateScreenDimensions(context: Context) {
-        try {
-            val displayMetrics = context.resources.displayMetrics
-            val newWidth = displayMetrics.widthPixels
-            val newHeight = displayMetrics.heightPixels
-
-            if (newWidth > 0 && newHeight > 0) {
-                lastScreenWidth = newWidth
-                lastScreenHeight = newHeight
-                Log.d("BubbleManager", "📱 Screen Updated: ${lastScreenWidth}x${lastScreenHeight}")
-            }
-        } catch (e: Exception) {
-            Log.e("BubbleManager", "❌ Error updating screen dimensions: $e")
-        }
-    }
-
-    private fun repositionBubblesForRotation(
-        context: Context,
-        oldWidth: Int,
-        oldHeight: Int
-    ) {
-        if (activeBubbles.isEmpty()) return
-
-        bubblePositions.forEach { (userId, position) ->
-            val xPercent = if (oldWidth > 0) position.x.toFloat() / oldWidth else 0f
-            val yPercent = if (oldHeight > 0) position.y.toFloat() / oldHeight else 0f
-
-            position.x = (xPercent * lastScreenWidth).toInt()
-            position.y = (yPercent * lastScreenHeight).toInt()
-
-            position.x = position.x.coerceIn(0, lastScreenWidth - BUBBLE_SIZE)
-            position.y = position.y.coerceIn(0, lastScreenHeight - BUBBLE_SIZE)
-
-            val intent = Intent(context, BubbleOverlayService::class.java).apply {
-                action = BubbleOverlayService.ACTION_UPDATE_BUBBLE_POSITION
-                putExtra("userId", userId)
-                putExtra("positionX", position.x)
-                putExtra("positionY", position.y)
-            }
-
-            try {
-                context.startService(intent)
-            } catch (e: Exception) {
-                Log.e("BubbleManager", "❌ Failed to reposition bubble $userId on rotation: $e")
-            }
-        }
-    }
-
-    // ========================================
-    // PERSISTENCE
-    // ========================================
-    private fun saveBubbles() {
-        try {
-            val persistDataList = activeBubbles.mapNotNull { (userId, bubble) ->
-                val position = bubblePositions[userId] ?: return@mapNotNull null
-                BubblePersistData(
-                    userId = bubble.userId,
-                    userName = bubble.userName,
-                    avatarUrl = bubble.avatarUrl,
-                    unreadCount = bubble.unreadCount,
-                    lastMessage = bubble.lastMessage,
-                    timestamp = bubble.timestamp,
-                    positionX = position.x,
-                    positionY = position.y
-                )
-            }
-
-            if (persistDataList.isNotEmpty()) {
-                val json = gson.toJson(persistDataList)
-                prefs?.edit()?.apply {
-                    putString(KEY_ACTIVE_BUBBLES, json)
-                    putLong(KEY_LAST_SAVE_TIME, System.currentTimeMillis())
-                    apply()
-                }
-                Log.d("BubbleManager", "💾 Saved ${persistDataList.size} bubbles")
-            } else {
-                clearSavedBubbles()
-            }
-        } catch (e: Exception) {
-            Log.e("BubbleManager", "❌ Failed to save bubbles: $e")
-        }
-    }
-
-    private fun restoreBubbles(context: Context) {
-        try {
-            val json = prefs?.getString(KEY_ACTIVE_BUBBLES, null)
-            if (json.isNullOrEmpty()) {
-                Log.d("BubbleManager", "ℹ️ No saved bubbles")
-                return
-            }
-
-            val lastSaveTime = prefs?.getLong(KEY_LAST_SAVE_TIME, 0) ?: 0
-            val hoursSinceLastSave = (System.currentTimeMillis() - lastSaveTime) / (1000 * 60 * 60)
-
-            if (hoursSinceLastSave > EXPIRY_HOURS) {
-                Log.d("BubbleManager", "⏰ Saved bubbles too old ($hoursSinceLastSave h), clearing")
-                clearSavedBubbles()
-                return
-            }
-
-            val type = object : TypeToken<List<BubblePersistData>>() {}.type
-            val persistDataList: List<BubblePersistData> = gson.fromJson(json, type)
-
-            Log.d("BubbleManager", "📦 Restoring ${persistDataList.size} bubbles")
-
-            persistDataList.forEach { data ->
-                activeBubbles[data.userId] = BubbleData(
-                    userId = data.userId,
-                    userName = data.userName,
-                    avatarUrl = data.avatarUrl,
-                    unreadCount = data.unreadCount,
-                    lastMessage = data.lastMessage,
-                    timestamp = data.timestamp
-                )
-
-                bubblePositions[data.userId] = BubblePosition(
-                    x = data.positionX,
-                    y = data.positionY,
-                    userId = data.userId
-                )
-
-                showBubble(
-                    context = context,
-                    userId = data.userId,
-                    userName = data.userName,
-                    avatarUrl = data.avatarUrl,
-                    message = null
-                )
-            }
-            Log.d("BubbleManager", "✅ Bubbles restored and services triggered")
-        } catch (e: Exception) {
-            Log.e("BubbleManager", "❌ Failed to restore bubbles: $e")
-            clearSavedBubbles()
-        }
-    }
-
-    fun clearSavedBubbles() {
-        prefs?.edit()?.apply {
-            remove(KEY_ACTIVE_BUBBLES)
-            remove(KEY_LAST_SAVE_TIME)
-            apply()
-        }
-        Log.d("BubbleManager", "🗑️ Cleared saved bubbles")
-    }
-
-    // ========================================
-    // BUBBLE OPERATIONS
-    // ========================================
+    @Synchronized
     fun showBubble(
-        context: Context,
-        userId: String,
-        userName: String,
+        ctx      : Context,
+        userId   : String,
+        userName : String,
         avatarUrl: String,
-        message: String? = null
+        message  : String? = null,
     ) {
-        Log.d("BubbleManager", "🎈 showBubble: $userName, Message: ${message != null}")
-
-        val bubbleData = activeBubbles.getOrPut(userId) {
-            listenToMessages(context, userId)
-            BubbleData(userId, userName, avatarUrl)
+        val entry = registry.getOrPut(userId) {
+            BubbleEntry(userId, userName, avatarUrl)
         }
-
         message?.let {
-            bubbleData.lastMessage = it
-            bubbleData.unreadCount++
-            bubbleData.timestamp = System.currentTimeMillis()
+            entry.lastMsg = it
+            entry.unread++
+            entry.ts = System.currentTimeMillis()
         }
 
-        val position = calculateBubblePosition(context, userId)
+        val pos = positionFor(ctx, userId)
+        sendService(ctx, Intent(ctx, BubbleOverlayService::class.java).apply {
+            action = BubbleOverlayService.ACTION_SHOW_BUBBLE
+            putExtra("userId",      userId)
+            putExtra("userName",    userName)
+            putExtra("avatarUrl",   avatarUrl)
+            putExtra("unreadCount", entry.unread)
+            putExtra("lastMessage", entry.lastMsg)
+            putExtra("positionX",   pos.first)
+            putExtra("positionY",   pos.second)
+        })
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // Use Notification Service for Android 11+
-            // This will be handled by BubbleNotificationService
-            // Just track the bubble data here
-        } else {
-            // Fallback to WindowManager for Android < 11
-            val intent = Intent(context, BubbleOverlayService::class.java).apply {
-                action = BubbleOverlayService.ACTION_SHOW_BUBBLE
-                putExtra("userId", userId)
-                putExtra("userName", userName)
-                putExtra("avatarUrl", avatarUrl)
-                putExtra("unreadCount", bubbleData.unreadCount)
-                putExtra("lastMessage", bubbleData.lastMessage)
-                putExtra("positionX", position.x)
-                putExtra("positionY", position.y)
-            }
-
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(intent)
-                } else {
-                    context.startService(intent)
-                }
-                isServiceRunning = true
-            } catch (e: Exception) {
-                Log.e("BubbleManager", "❌ Failed to start service: $e")
-            }
-        }
-
-        saveBubbles()
-        listenToMessages(context, userId)
+        setupListener(ctx, userId)
+        persist()
+        Log.d(TAG, "🎈 showBubble: $userName unread=${entry.unread}")
     }
 
-    private fun calculateBubblePosition(context: Context, userId: String): BubblePosition {
-        bubblePositions[userId]?.let {
-            return it
-        }
+    @Synchronized
+    fun removeBubble(ctx: Context, userId: String) {
+        registry.remove(userId)
+        positions.remove(userId)
+        listeners.remove(userId)?.remove()
 
-        updateScreenDimensions(context)
+        sendService(ctx, Intent(ctx, BubbleOverlayService::class.java).apply {
+            action = BubbleOverlayService.ACTION_HIDE_BUBBLE
+            putExtra("userId", userId)
+        })
 
-        val margin = 20
-        val x = (lastScreenWidth - BUBBLE_SIZE - margin).coerceAtLeast(margin)
+        restack(ctx)
 
-        val orderedActiveUserIds = activeBubbles.keys.toList()
-        val index = orderedActiveUserIds.indexOf(userId)
-
-        val y = (TOP_MARGIN + (index * (BUBBLE_SIZE + STACK_SPACING)))
-            .coerceIn(TOP_MARGIN, lastScreenHeight - BUBBLE_SIZE - margin)
-
-        val position = BubblePosition(x, y, userId)
-        bubblePositions[userId] = position
-
-        Log.d("BubbleManager", "📍 New Position for $userId: x=$x, y=$y")
-
-        return position
-    }
-
-    fun removeBubble(context: Context, userId: String) {
-        Log.d("BubbleManager", "🗑️ Removing bubble: $userId")
-
-        activeBubbles.remove(userId)
-        bubblePositions.remove(userId)
-        messageListeners.remove(userId)?.remove()
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // Will be handled by BubbleNotificationService
-        } else {
-            val intent = Intent(context, BubbleOverlayService::class.java).apply {
-                action = BubbleOverlayService.ACTION_HIDE_BUBBLE
-                putExtra("userId", userId)
-            }
-
-            try {
-                context.startService(intent)
-                Log.d("BubbleManager", "✅ Bubble removed: $userId")
-            } catch (e: Exception) {
-                Log.e("BubbleManager", "❌ Failed to send hide bubble intent: $e")
-            }
-        }
-
-        repositionBubbles(context)
-
-        if (activeBubbles.isEmpty()) {
+        if (registry.isEmpty()) {
             isServiceRunning = false
-            clearSavedBubbles()
+            clearPersisted()
         } else {
-            saveBubbles()
+            persist()
         }
+        Log.d(TAG, "🗑️ removeBubble: $userId")
     }
 
-    private fun repositionBubbles(context: Context) {
-        if (activeBubbles.isEmpty()) return
+    @Synchronized
+    fun updateBubble(ctx: Context, userId: String, message: String, newUnread: Int = -1) {
+        val entry = registry[userId] ?: return
+        entry.lastMsg = message
+        entry.ts      = System.currentTimeMillis()
+        if (newUnread >= 0) entry.unread = newUnread else entry.unread++
 
-        val orderedActiveUserIds = activeBubbles.keys.toList()
+        sendService(ctx, Intent(ctx, BubbleOverlayService::class.java).apply {
+            action = BubbleOverlayService.ACTION_UPDATE_BUBBLE
+            putExtra("userId",      userId)
+            putExtra("unreadCount", entry.unread)
+            putExtra("lastMessage", entry.lastMsg)
+        })
+        persist()
+    }
 
-        orderedActiveUserIds.forEachIndexed { index, userId ->
-            val newY = TOP_MARGIN + (index * (BUBBLE_SIZE + STACK_SPACING))
+    @Synchronized
+    fun markAsRead(ctx: Context, userId: String) {
+        val entry = registry[userId] ?: return
+        entry.unread = 0
 
-            val position = bubblePositions[userId]
-            if (position != null) {
-                position.y = newY.coerceIn(TOP_MARGIN, lastScreenHeight - BUBBLE_SIZE - 20)
+        sendService(ctx, Intent(ctx, BubbleOverlayService::class.java).apply {
+            action = BubbleOverlayService.ACTION_UPDATE_BUBBLE
+            putExtra("userId",      userId)
+            putExtra("unreadCount", 0)
+            putExtra("lastMessage", entry.lastMsg)
+        })
+        persist()
+    }
 
-                val intent = Intent(context, BubbleOverlayService::class.java).apply {
-                    action = BubbleOverlayService.ACTION_UPDATE_BUBBLE_POSITION
-                    putExtra("userId", userId)
-                    putExtra("positionX", position.x)
-                    putExtra("positionY", position.y)
-                }
-                try {
-                    context.startService(intent)
-                } catch (e: Exception) {
-                    Log.e("BubbleManager", "❌ Failed to reposition bubble $userId: $e")
-                }
-            }
+    // ═════════════════════════════════════════════════════════════════════
+    // POSITION MANAGEMENT
+    // ═════════════════════════════════════════════════════════════════════
+
+    private fun positionFor(ctx: Context, userId: String): Pair<Int, Int> {
+        positions[userId]?.let { return it }
+        refreshScreen(ctx)
+
+        val bPx   = dp(ctx, BUBBLE_DP)
+        val hMar  = dp(ctx, H_MARGIN_DP)
+        val index = registry.size - 1
+
+        val x     = (screenW - bPx - hMar).coerceAtLeast(hMar)
+        val y     = (dp(ctx, TOP_DP) + index * dp(ctx, SPACING_DP))
+            .coerceAtMost(screenH - bPx - hMar)
+
+        return (x to y).also { positions[userId] = it }
+    }
+
+    private fun restack(ctx: Context) {
+        if (registry.isEmpty()) return
+
+        val bPx  = dp(ctx, BUBBLE_DP)
+        val hMar = dp(ctx, H_MARGIN_DP)
+
+        registry.keys.toList().forEachIndexed { i, uid ->
+            val newY = (dp(ctx, TOP_DP) + i * dp(ctx, SPACING_DP))
+                .coerceAtMost(screenH - bPx - hMar)
+            positions[uid] = (positions[uid]?.first ?: (screenW - bPx - hMar)) to newY
+
+            sendService(ctx, Intent(ctx, BubbleOverlayService::class.java).apply {
+                action = BubbleOverlayService.ACTION_UPDATE_BUBBLE_POSITION
+                putExtra("userId",    uid)
+                putExtra("positionX", positions[uid]!!.first)
+                putExtra("positionY", positions[uid]!!.second)
+            })
         }
     }
 
     fun updateBubblePosition(userId: String, x: Int, y: Int) {
-        bubblePositions[userId]?.apply {
-            this.x = x
-            this.y = y
-        }
-        saveBubbles()
-        Log.d("BubbleManager", "📍 Updated position for $userId: ($x, $y)")
+        positions[userId] = x to y
+        persist()
+        Log.d(TAG, "📍 Updated position for $userId: ($x, $y)")
     }
 
-    fun markAsRead(context: Context, userId: String) {
-        activeBubbles[userId]?.unreadCount = 0
+    // ═════════════════════════════════════════════════════════════════════
+    // CONFIGURATION CHANGE (rotation)
+    // ═════════════════════════════════════════════════════════════════════
 
-        val intent = Intent(context, BubbleOverlayService::class.java).apply {
-            action = BubbleOverlayService.ACTION_UPDATE_BUBBLE
-            putExtra("userId", userId)
-            putExtra("unreadCount", 0)
-            putExtra("lastMessage", activeBubbles[userId]?.lastMessage ?: "")
+    fun onConfigurationChanged(ctx: Context, cfg: Configuration) {
+        if (cfg.orientation == orientation) return
+
+        val oldW = screenW; val oldH = screenH
+        refreshScreen(ctx)
+        orientation = cfg.orientation
+
+        // Remap positions proportionally
+        positions.replaceAll { _, pos ->
+            val nx = ((pos.first.toFloat() / oldW) * screenW).toInt()
+                .coerceIn(dp(ctx, H_MARGIN_DP), screenW - dp(ctx, BUBBLE_DP + H_MARGIN_DP))
+            val ny = ((pos.second.toFloat() / oldH) * screenH).toInt()
+                .coerceIn(dp(ctx, TOP_DP), screenH - dp(ctx, BUBBLE_DP + H_MARGIN_DP))
+            nx to ny
         }
+
+        restack(ctx)
+        persist()
+        Log.d(TAG, "📱 Rotation → ${screenW}×${screenH}")
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // LIFECYCLE
+    // ═════════════════════════════════════════════════════════════════════
+
+    fun onAppResumed(ctx: Context) {
+        Log.d(TAG, "▶️ onAppResumed — restoring ${registry.size} bubble(s)")
+        registry.values.forEach { e ->
+            val pos = positions[e.userId] ?: positionFor(ctx, e.userId)
+            sendService(ctx, Intent(ctx, BubbleOverlayService::class.java).apply {
+                action = BubbleOverlayService.ACTION_SHOW_BUBBLE
+                putExtra("userId",      e.userId)
+                putExtra("userName",    e.userName)
+                putExtra("avatarUrl",   e.avatarUrl)
+                putExtra("unreadCount", e.unread)
+                putExtra("lastMessage", e.lastMsg)
+                putExtra("positionX",   pos.first)
+                putExtra("positionY",   pos.second)
+            })
+        }
+    }
+
+    fun onAppPaused() { Log.d(TAG, "⏸️ onAppPaused") }
+
+    @Synchronized
+    fun cleanup() {
+        listeners.values.forEach { try { it.remove() } catch (_: Exception) {} }
+        listeners.clear()
+        registry.clear()
+        positions.clear()
+        orientation = Configuration.ORIENTATION_UNDEFINED
+        isServiceRunning = false
+        clearPersisted()
+        Log.d(TAG, "🧹 cleanup")
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // FIREBASE LISTENERS
+    // ═════════════════════════════════════════════════════════════════════
+
+    private fun setupListener(ctx: Context, userId: String) {
+        if (listeners.containsKey(userId)) return
+        val myId = auth?.currentUser?.uid ?: return
+        val conv = if (myId < userId) "$myId-$userId" else "$userId-$myId"
+
+        val reg = db?.collection("messages")
+            ?.document(conv)
+            ?.collection(conv)
+            ?.whereEqualTo("idFrom",  userId)
+            ?.whereEqualTo("isRead", false)
+            ?.addSnapshotListener { snap, err ->
+                if (err != null) { Log.e(TAG, "Listener: $err"); return@addSnapshotListener }
+                snap?.documentChanges?.forEach { ch ->
+                    if (ch.type != DocumentChange.Type.ADDED) return@forEach
+                    val msg  = ch.document.getString("content") ?: return@forEach
+                    val type = ch.document.getLong("type")?.toInt() ?: 0
+                    val text = if (type == 0) msg else "📷 Hình ảnh"
+                    updateBubble(ctx, userId, text)
+                }
+            }
+        reg?.let { listeners[userId] = it }
+        Log.d(TAG, "✅ Listener setup: $userId")
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // PERSISTENCE
+    // ═════════════════════════════════════════════════════════════════════
+
+    private fun persist() {
         try {
-            context.startService(intent)
-            saveBubbles()
-        } catch (e: Exception) {
-            Log.e("BubbleManager", "❌ Failed to send markAsRead intent: $e")
-        }
+            val list = registry.values.mapNotNull { e ->
+                val pos = positions[e.userId] ?: return@mapNotNull null
+                PersistedEntry(e.userId, e.userName, e.avatarUrl,
+                    e.lastMsg, e.unread, e.ts, pos.first, pos.second)
+            }
+            if (list.isNotEmpty()) {
+                prefs?.edit()
+                    ?.putString(PREF_BUBBLES, gson.toJson(list))
+                    ?.putLong(PREF_SAVED, System.currentTimeMillis())
+                    ?.apply()
+                Log.d(TAG, "💾 Saved ${list.size} bubbles")
+            } else {
+                clearPersisted()
+            }
+        } catch (e: Exception) { Log.e(TAG, "❌ persist: $e") }
     }
 
-    // ========================================
-    // FIREBASE LOGIC
-    // ========================================
-    private fun listenToMessages(context: Context, userId: String) {
-        if (messageListeners.containsKey(userId)) {
+    private fun restoreState(ctx: Context) {
+        try {
+            val savedAt = prefs?.getLong(PREF_SAVED, 0) ?: 0
+            if (System.currentTimeMillis() - savedAt > EXPIRY_MS) {
+                Log.d(TAG, "⏰ Persisted data expired"); clearPersisted(); return
+            }
+            val json = prefs?.getString(PREF_BUBBLES, null)
+            if (json.isNullOrEmpty()) {
+                Log.d(TAG, "ℹ️ No saved bubbles")
+                return
+            }
+
+            val type = object : TypeToken<List<PersistedEntry>>() {}.type
+            val list : List<PersistedEntry> = gson.fromJson(json, type)
+
+            var restored = 0
+            list.forEach { p ->
+                if (p.userId.isEmpty() || p.userName.isEmpty()) return@forEach
+                registry[p.userId] = BubbleEntry(p.userId, p.userName, p.avatarUrl,
+                    p.lastMsg, p.unread, p.ts)
+                positions[p.userId] = p.posX to p.posY
+                restored++
+            }
+            Log.d(TAG, "📦 Restored $restored bubble(s)")
+        } catch (e: Exception) { Log.e(TAG, "❌ restoreState: $e"); clearPersisted() }
+    }
+
+    fun clearPersisted() {
+        prefs?.edit()?.remove(PREF_BUBBLES)?.remove(PREF_SAVED)?.apply()
+        Log.d(TAG, "🗑️ Cleared saved bubbles")
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // QUERIES
+    // ═════════════════════════════════════════════════════════════════════
+
+    fun isBubbleActive(userId: String) = registry.containsKey(userId)
+    fun getActiveBubbles()             = registry.toMap()
+    fun getCurrentUserId()             = try { auth?.currentUser?.uid } catch (_: Exception) { null }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // HELPERS
+    // ═════════════════════════════════════════════════════════════════════
+
+    private fun sendService(ctx: Context, i: Intent) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Use Notification Service for Android 11+
+            // Handled by BubbleNotificationService, skip starting Overlay Service
             return
         }
 
-        val currentUserId = getCurrentUserId() ?: return
-        val conversationId = if (currentUserId < userId) {
-            "$currentUserId-$userId"
-        } else {
-            "$userId-$currentUserId"
-        }
-
         try {
-            val listener = firestore
-                ?.collection("messages")
-                ?.document(conversationId)
-                ?.collection(conversationId)
-                ?.whereEqualTo("idFrom", userId)
-                ?.whereEqualTo("isRead", false)
-                ?.addSnapshotListener { snapshot, error ->
-                    if (error != null) {
-                        return@addSnapshotListener
-                    }
-
-                    snapshot?.documentChanges?.forEach { change ->
-                        if (change.type == DocumentChange.Type.ADDED) {
-                            val message = change.document.getString("content") ?: ""
-                            val type = change.document.getLong("type")?.toInt() ?: 0
-
-                            activeBubbles[userId]?.let { bubble ->
-                                bubble.lastMessage = if (type == 0) message else "📷 Image"
-                                bubble.unreadCount++
-                                bubble.timestamp = System.currentTimeMillis()
-
-                                notifyBubbleUpdate(context, userId, bubble)
-                                saveBubbles()
-                            }
-                        }
-                    }
-                }
-
-            listener?.let { messageListeners[userId] = it }
-            Log.d("BubbleManager", "✅ Listener setup: $userId")
-        } catch (e: Exception) {
-            Log.e("BubbleManager", "❌ Failed to setup listener: $e")
-        }
-    }
-
-    private fun notifyBubbleUpdate(context: Context, userId: String, bubble: BubbleData) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // Will be handled by BubbleNotificationService
-        } else {
-            val intent = Intent(context, BubbleOverlayService::class.java).apply {
-                action = BubbleOverlayService.ACTION_UPDATE_BUBBLE
-                putExtra("userId", userId)
-                putExtra("unreadCount", bubble.unreadCount)
-                putExtra("lastMessage", bubble.lastMessage)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ctx.startForegroundService(i)
+            } else {
+                ctx.startService(i)
             }
+            isServiceRunning = true
+        } catch (e: Exception) { Log.e(TAG, "❌ sendService ${i.action}: $e") }
+    }
 
-            try {
-                context.startService(intent)
-            } catch (e: Exception) {
-                Log.e("BubbleManager", "❌ Failed to notify update: $e")
+    private fun refreshScreen(ctx: Context) {
+        try {
+            val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val b = wm.currentWindowMetrics.bounds
+                if (b.width() > 0) { screenW = b.width(); screenH = b.height(); return }
             }
-        }
+            val dm = ctx.resources.displayMetrics
+            screenW = dm.widthPixels; screenH = dm.heightPixels
+        } catch (_: Exception) { screenW = 1080; screenH = 2340 }
     }
 
-    // ========================================
-    // GETTERS
-    // ========================================
-    fun getCurrentUserId(): String? {
-        return try {
-            auth?.currentUser?.uid
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    fun isBubbleActive(userId: String): Boolean {
-        return activeBubbles.containsKey(userId)
-    }
-
-    fun getActiveBubbles(): Map<String, BubbleData> {
-        return activeBubbles.toMap()
-    }
+    private fun dp(ctx: Context, v: Int) =
+        (v * ctx.resources.displayMetrics.density).toInt()
 }
