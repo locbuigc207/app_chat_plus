@@ -1102,9 +1102,26 @@ class ChatPageState extends State<ChatPage>
   void _openWeeklyRecap() {
     HapticFeedback.lightImpact();
     Navigator.push(
-        context,
-        MaterialPageRoute(
-            builder: (_) => WeeklyRecapPage(userId: _currentUserId)));
+      context,
+      PageRouteBuilder(
+        pageBuilder: (_, animation, __) => WeeklyRecapPage(
+          userId: _currentUserId,
+          conversationId: _groupChatId,
+          peerName: widget.arguments.peerNickname,
+          conversationType: RecapConversationType.personal,
+        ),
+        transitionsBuilder: (_, animation, __, child) => SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 1),
+            end: Offset.zero,
+          ).animate(
+              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+          child: child,
+        ),
+        transitionDuration: const Duration(milliseconds: 400),
+        fullscreenDialog: true,
+      ),
+    );
   }
 
   void _showRelationshipMemory() {

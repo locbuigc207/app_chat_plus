@@ -57,6 +57,51 @@ const MAX_HISTORY_MSGS     = 20;
 const AGORA_TOKEN_TTL_SEC  = 3600;
 const CALL_STALE_SEC       = 90;
 
+const RECAP_STYLE_CONFIGS = {
+  "humorous": {
+    systemPrompt:
+      "Bạn là MC vui nhộn, hài hước, am hiểu văn hóa mạng và tiếng lóng Gen Z Việt Nam. Dùng emoji phù hợp.",
+    buildPrompt: (chatHistory, type) =>
+      type === "personal"
+        ? `Đây là cuộc trò chuyện của 2 người bạn trong tuần qua. Viết bản tóm tắt "Bóc Phốt Đôi Bạn" dưới 220 chữ: khoảnh khắc hài hước, câu nói ấn tượng, những khoảnh khắc đặc biệt. Dùng emoji, tiếng lóng vừa phải, vui nhộn.\n\nChat:\n${chatHistory}`
+        : `Đây là lịch sử chat nhóm tuần qua. Đóng vai MC vui nhộn viết bản tin "Bóc Phốt Tuần" dưới 220 chữ: ai nói nhiều nhất, câu nói ấn tượng nhất, trend hài hước nhất, highlight của tuần. Dùng emoji, tiếng lóng Gen Z vừa phải.\n\nChat:\n${chatHistory}`,
+    label: "Bóc Phốt Tuần",
+    emoji: "😂",
+  },
+  "professional": {
+    systemPrompt:
+      "Bạn là trợ lý AI phân tích giao tiếp chuyên sâu. Văn phong chuyên nghiệp, súc tích, khách quan.",
+    buildPrompt: (chatHistory, _type) =>
+      `Phân tích lịch sử chat tuần qua theo góc nhìn chuyên nghiệp. Trình bày dưới 220 chữ: (1) Chủ đề chính thảo luận, (2) Quyết định quan trọng được đưa ra, (3) Action items còn chờ xử lý, (4) Hiệu quả giao tiếp tổng thể. Văn phong lịch sự, không rườm rà.\n\nChat:\n${chatHistory}`,
+    label: "Báo Cáo Tuần",
+    emoji: "📊",
+  },
+  "romantic": {
+    systemPrompt:
+      "Bạn là nhà văn lãng mạn, tinh tế, yêu con người và trân trọng những khoảnh khắc bình dị.",
+    buildPrompt: (chatHistory, _type) =>
+      `Đây là hành trình giao tiếp tuần qua. Viết đoạn tóm tắt 160-180 chữ tôn vinh: những khoảnh khắc ấm lòng, câu nói đáng nhớ, cảm xúc đặc biệt, sự gắn kết. Văn phong nhẹ nhàng, tình cảm, không sến súa.\n\nChat:\n${chatHistory}`,
+    label: "Kỷ Niệm Tuần",
+    emoji: "💕",
+  },
+  "tv_host": {
+    systemPrompt:
+      "Bạn là MC chương trình truyền hình Việt Nam nổi tiếng, giọng năng động, hào hứng, hài hước vừa phải.",
+    buildPrompt: (chatHistory, _type) =>
+      `Chào khán giả yêu quý! Đây là "Bản Tin Chat Tuần"! Viết lại theo phong cách dẫn chương trình truyền hình dưới 220 chữ: điểm tin nóng của tuần, những tình huống đáng chú ý, highlight ấn tượng, câu kết hào hứng. Nhiều emoji, cảm xúc mạnh, cuốn hút.\n\nChat:\n${chatHistory}`,
+    label: "Bản Tin Tuần",
+    emoji: "🎬",
+  },
+  "minimal": {
+    systemPrompt:
+      "Bạn là AI tóm tắt chính xác, ngắn gọn, súc tích. Không rườm rà, không giải thích thừa.",
+    buildPrompt: (chatHistory, _type) =>
+      `Tóm tắt cuộc trò chuyện tuần qua trong 4–6 điểm chính. Mỗi điểm 1–2 câu. Ngắn gọn, đi thẳng vào vấn đề, dùng emoji phù hợp cho mỗi điểm.\n\nChat:\n${chatHistory}`,
+    label: "Tóm Tắt Tuần",
+    emoji: "📝",
+  },
+};
+
 const ACTIVE_CALL_STATUSES = ["calling", "ringing", "dialing", "connected", "accepted"];
 
 // Rate limiting: số lượng yêu cầu tối đa của một user trong 1 phút
@@ -1766,7 +1811,145 @@ exports.weeklyAiRecap = onSchedule(
 );
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 34. dailyConversationDigest
+// 34. generateWeeklyRecap  (on-demand callable — cá nhân & nhóm, nhiều style)
+// ═════════════════════════════════════════════════════════════════════════════
+
+exports.generateWeeklyRecap = onCall(
+  {
+    secrets:        [geminiApiKey],
+    memory:         "512MiB",
+    timeoutSeconds: 120,
+  },
+  async (request) => {
+    requireAuth(request.auth);
+    await checkRateLimit(request.auth.uid, "weekly_recap");
+
+    const {
+      conversationId,
+      recapStyle     = "humorous",
+      conversationType = "group",
+      lookbackDays   = 7,
+    } = request.data;
+
+    if (!conversationId) {
+      throw new HttpsError("invalid-argument", "Thiếu conversationId.");
+    }
+
+    // ── Validate inputs ────────────────────────────────────────────────────
+    const validStyles = ["humorous", "professional", "romantic", "tv_host", "minimal"];
+    const safeStyle = validStyles.includes(recapStyle) ? recapStyle : "humorous";
+    const safeDays  = Math.min(Math.max(parseInt(lookbackDays) || 7, 1), 30);
+    const cutoffTs  = (Date.now() - safeDays * 24 * 60 * 60 * 1000).toString();
+
+    // ── Read ai_content (PII-masked plain text, E2EE safe) ─────────────────
+    let msgsSnap;
+    try {
+      msgsSnap = await db
+        .collection("ai_content")
+        .doc(conversationId)
+        .collection(conversationId)
+        .where("timestamp", ">=", cutoffTs)
+        .orderBy("timestamp", "asc")
+        .limit(200)
+        .get();
+    } catch (fetchErr) {
+      logger.error("[generateWeeklyRecap] Firestore fetch error:", fetchErr);
+      throw new HttpsError("internal", "Lỗi đọc dữ liệu hội thoại.");
+    }
+
+    if (msgsSnap.empty) {
+      return {
+        success:      false,
+        reason:       "no_messages",
+        summary:      "Chưa có tin nhắn trong khoảng thời gian này.",
+        messageCount: 0,
+        lookbackDays: safeDays,
+      };
+    }
+
+    // ── Build chat history (filter encrypted blobs) ────────────────────────
+    const chatHistory = msgsSnap.docs
+      .map((d) => {
+        const data    = d.data();
+        const content = data.content ?? "";
+
+        // Guard: bỏ qua ciphertext lọt vào
+        if (content.startsWith('{"iv":') || content.startsWith("eyJ")) return null;
+        if (/^[A-Za-z0-9+/=]+=*:[A-Za-z0-9+/=]+=*$/.test(content)) return null;
+        if (content.trim().length < 3) return null;
+
+        const sender = data.idFrom ? `[${String(data.idFrom).substring(0, 6)}]` : "[?]";
+        return `${sender}: ${sanitize(content, 250)}`;
+      })
+      .filter(Boolean)
+      .join("\n");
+
+    if (chatHistory.trim().length < 50) {
+      return {
+        success:      false,
+        reason:       "insufficient_content",
+        summary:      "Nội dung chat chưa đủ để tạo tóm tắt (cần ít nhất 50 ký tự).",
+        messageCount: msgsSnap.size,
+        lookbackDays: safeDays,
+      };
+    }
+
+    const styleConfig = RECAP_STYLE_CONFIGS[safeStyle] ?? RECAP_STYLE_CONFIGS["humorous"];
+    const stylePrompt = styleConfig.buildPrompt(chatHistory, conversationType);
+
+    try {
+      // ── Step 1: Generate recap text ──────────────────────────────────────
+      const model = createGeminiModel(
+        geminiApiKey.value(),
+        styleConfig.systemPrompt,
+        {maxOutputTokens: 700, temperature: 0.85},
+      );
+
+      const recapText = await callGeminiWithRetry(model, stylePrompt);
+
+      // ── Step 2: Extract structured JSON ──────────────────────────────────
+      const modelJson = createGeminiModel(
+        geminiApiKey.value(),
+        "Trả về JSON hợp lệ duy nhất, không giải thích thêm.",
+        {maxOutputTokens: 512, temperature: 0.2},
+        true, // lite model — cheaper
+      );
+
+      const rawJson = await callGeminiWithRetry(modelJson,
+        `Từ bản tóm tắt sau, trích xuất JSON với đúng cấu trúc:\n` +
+        `{"summary":"(1 câu ngắn nhất mô tả nội dung)","highlights":["điểm 1","điểm 2","điểm 3"],"sentiment":"positive|neutral|negative","topKeywords":["từ1","từ2","từ3"]}\n\n` +
+        `Bản tóm tắt:\n${recapText.trim()}`,
+      );
+
+      const structured = safeParseJson(rawJson) ?? {};
+
+      logger.info(`[generateWeeklyRecap] ${safeStyle} recap OK for ${conversationId}, ${msgsSnap.size} msgs`);
+
+      return {
+        success:          true,
+        style:            safeStyle,
+        styleLabel:       styleConfig.label,
+        styleEmoji:       styleConfig.emoji,
+        fullText:         recapText.trim(),
+        summary:          structured.summary          ?? "",
+        highlights:       structured.highlights       ?? [],
+        sentiment:        structured.sentiment        ?? "neutral",
+        topKeywords:      structured.topKeywords      ?? [],
+        messageCount:     msgsSnap.size,
+        generatedAt:      Date.now(),
+        conversationType: conversationType,
+        lookbackDays:     safeDays,
+      };
+
+    } catch (geminiErr) {
+      logger.error("[generateWeeklyRecap] Gemini error:", geminiErr);
+      throw new HttpsError("internal", "AI không thể tạo tóm tắt lúc này. Vui lòng thử lại sau ít phút.");
+    }
+  },
+);
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 35. dailyConversationDigest
 // ═════════════════════════════════════════════════════════════════════════════
 
 exports.dailyConversationDigest = onSchedule(

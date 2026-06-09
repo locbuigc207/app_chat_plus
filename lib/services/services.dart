@@ -23,3 +23,4 @@ export 'push_notification_service.dart';
 export 'realtime_ai_service.dart';
 export 'sync_manager.dart';
 export 'unified_bubble_service.dart';
+export 'weekly_recap_service.dart';

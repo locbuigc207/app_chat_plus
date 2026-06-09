@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 class UserInsightsPage extends StatefulWidget {
@@ -282,25 +281,12 @@ class _UserInsightsPageState extends State<UserInsightsPage>
         const SizedBox(height: 14),
         _WeeklyRecapSection(
             userId: widget.conversationId,
+            conversationName: widget.peerName, // Truyền peerName vào đây
             palette: p,
             primary: theme.primaryColor),
         const SizedBox(height: 24),
       ],
     );
-  }
-
-  String _formatTs(dynamic raw) {
-    try {
-      DateTime dt;
-      if (raw != null && raw.runtimeType.toString().contains('Timestamp')) {
-        dt = (raw as dynamic).toDate() as DateTime;
-      } else {
-        dt = DateTime.tryParse(raw.toString()) ?? DateTime.now();
-      }
-      return DateFormat('HH:mm, dd/MM/yyyy').format(dt);
-    } catch (_) {
-      return '';
-    }
   }
 }
 
@@ -494,11 +480,15 @@ class _StatCard extends StatelessWidget {
 
 class _WeeklyRecapSection extends StatelessWidget {
   final String userId;
+  final String conversationName; // Khai báo tham số conversationName
   final ThemePalette palette;
   final Color primary;
 
   const _WeeklyRecapSection(
-      {required this.userId, required this.palette, required this.primary});
+      {required this.userId,
+      required this.conversationName, // Bắt buộc truyền vào
+      required this.palette,
+      required this.primary});
 
   @override
   Widget build(BuildContext context) {
@@ -513,7 +503,8 @@ class _WeeklyRecapSection extends StatelessWidget {
         if (raw == null || raw.isEmpty) return const SizedBox.shrink();
 
         try {
-          final recap = WeeklyRecapResult.fromMap(raw);
+          // Parse bằng WeeklyRecapData thay cho WeeklyRecapResult
+          final recap = WeeklyRecapData.fromMap(raw, RecapStyle.professional);
           return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -527,7 +518,11 @@ class _WeeklyRecapSection extends StatelessWidget {
                           color: palette.textPrimary))
                 ]),
                 const SizedBox(height: 10),
-                WeeklyRecapCard(recap: recap),
+                WeeklyRecapCard(
+                  recap: recap,
+                  conversationName:
+                      conversationName, // Truyền conversationName vào widget
+                ),
               ]);
         } catch (_) {
           return const SizedBox.shrink();
