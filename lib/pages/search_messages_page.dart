@@ -1,28 +1,16 @@
-// ignore_for_file: avoid_print
-
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_chat_demo/constants/constants.dart';
-import 'package:flutter_chat_demo/models/models.dart';
-import 'package:flutter_chat_demo/providers/auth_provider.dart';
-import 'package:flutter_chat_demo/services/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-const _kBg = Color(0xFF0D0D14);
-const _kSurface = Color(0xFF16161F);
-const _kSurface2 = Color(0xFF1E1E2A);
-const _kBorder = Color(0xFF2A2A3A);
-const _kAccent = Color(0xFF7C6EFF);
-const _kAccent2 = Color(0xFFFF6E9C);
-const _kTextPri = Color(0xFFF0F0FF);
-const _kTextSec = Color(0xFF8888AA);
-const _kTextDim = Color(0xFF55556A);
-const _kHighlight = Color(0xFFFFE066);
+import 'package:flutter_chat_demo/constants/constants.dart';
+import 'package:flutter_chat_demo/models/models.dart';
+import 'package:flutter_chat_demo/providers/auth_provider.dart';
+import 'package:flutter_chat_demo/providers/theme_provider.dart';
+import 'package:flutter_chat_demo/services/services.dart';
 
 class SearchResult {
   final String messageId;
@@ -42,9 +30,9 @@ class SearchResult {
   });
 
   factory SearchResult.fromLocalDb(
-    Map<dynamic, dynamic> data,
-    String currentUserId,
-  ) =>
+      Map<dynamic, dynamic> data,
+      String currentUserId,
+      ) =>
       SearchResult(
         messageId: data['messageId']?.toString() ?? '',
         idFrom: data['idFrom']?.toString() ?? '',
@@ -55,11 +43,11 @@ class SearchResult {
       );
 
   factory SearchResult.fromFirestore(
-    DocumentSnapshot doc,
-    MessageChat message,
-    String decryptedContent,
-    String currentUserId,
-  ) =>
+      DocumentSnapshot doc,
+      MessageChat message,
+      String decryptedContent,
+      String currentUserId,
+      ) =>
       SearchResult(
         messageId: doc.id,
         idFrom: message.idFrom,
@@ -94,8 +82,7 @@ class SearchMessagesPage extends StatefulWidget {
   State<SearchMessagesPage> createState() => _SearchMessagesPageState();
 }
 
-class _SearchMessagesPageState extends State<SearchMessagesPage>
-    with SingleTickerProviderStateMixin {
+class _SearchMessagesPageState extends State<SearchMessagesPage> with SingleTickerProviderStateMixin {
   final _searchController = TextEditingController();
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
@@ -107,11 +94,9 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
   String? _errorMsg;
 
   Timer? _debounce;
-
   String? _lastFirestoreQuery;
 
   late final String _currentUserId;
-
   late final AnimationController _listAc;
 
   @override
@@ -119,12 +104,6 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
     super.initState();
     _currentUserId = context.read<AuthProvider>().userFirebaseId ?? '';
     _listAc = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
-    SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-      ),
-    );
     WidgetsBinding.instance.addPostFrameCallback((_) => _focusNode.requestFocus());
   }
 
@@ -141,9 +120,7 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
   void _onQueryChanged(String raw) {
     setState(() {});
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 300), () {
-      _performSearch(raw);
-    });
+    _debounce = Timer(const Duration(milliseconds: 280), () => _performSearch(raw));
   }
 
   Future<void> _performSearch(String raw) async {
@@ -187,13 +164,12 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
       final all = LocalDbService().getMessages(widget.groupChatId);
       return all
           .where((m) =>
-              m['type'] == TypeMessage.text &&
-              m['isDeleted'] != true &&
-              (m['content']?.toString().toLowerCase().contains(query) ?? false))
+      m['type'] == TypeMessage.text &&
+          m['isDeleted'] != true &&
+          (m['content']?.toString().toLowerCase().contains(query) ?? false))
           .map((m) => SearchResult.fromLocalDb(m, _currentUserId))
           .toList();
     } catch (e) {
-      debugPrint('[SearchPage] Local DB error: $e');
       return [];
     }
   }
@@ -241,7 +217,6 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
       });
       _animateList();
     } catch (e) {
-      debugPrint('[SearchPage] Firestore error: $e');
       if (mounted) {
         setState(() {
           _isSearching = false;
@@ -251,84 +226,91 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
     }
   }
 
-  void _animateList() {
-    _listAc.forward(from: 0);
-  }
+  void _animateList() => _listAc.forward(from: 0);
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _kBg,
-      appBar: _buildAppBar(),
-      body: Column(
-        children: [
-          _buildSearchBar(),
-          _buildStatusBar(),
-          Expanded(child: _buildBody()),
-        ],
+    final theme = context.watch<ThemeProvider>();
+    final p = theme.palette;
+
+    return Theme(
+      data: theme.isDark ? theme.darkTheme : theme.lightTheme,
+      child: Scaffold(
+        backgroundColor: p.background,
+        appBar: _buildAppBar(p, theme),
+        body: Column(
+          children: [
+            _buildSearchBar(p, theme),
+            _buildStatusBar(p, theme),
+            Expanded(child: _buildBody(p, theme)),
+          ],
+        ),
       ),
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
+  PreferredSizeWidget _buildAppBar(ThemePalette p, ThemeProvider theme) {
     return AppBar(
-      backgroundColor: _kSurface,
+      backgroundColor: p.appBarBackground,
       elevation: 0,
+      surfaceTintColor: Colors.transparent,
+      systemOverlayStyle: theme.isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new_rounded, color: _kTextPri, size: 20),
+        icon: Icon(Icons.arrow_back_ios_new_rounded, color: theme.primaryColor, size: 20),
         onPressed: () => Navigator.pop(context),
       ),
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Tìm kiếm tin nhắn',
-              style: TextStyle(color: _kTextPri, fontSize: 16, fontWeight: FontWeight.w700)),
           Text(
-            widget.peerName,
-            style: const TextStyle(color: _kTextSec, fontSize: 11),
+              'Tìm kiếm tin nhắn',
+              style: TextStyle(color: p.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)
+          ),
+          Text(
+              widget.peerName,
+              style: TextStyle(color: p.textSecondary, fontSize: 11.5)
           ),
         ],
       ),
-      systemOverlayStyle: SystemUiOverlayStyle.light,
     );
   }
 
-  Widget _buildSearchBar() {
+  Widget _buildSearchBar(ThemePalette p, ThemeProvider theme) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      color: _kSurface,
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      color: p.appBarBackground,
       child: TextField(
         controller: _searchController,
         focusNode: _focusNode,
-        style: const TextStyle(color: _kTextPri, fontSize: 15),
-        cursorColor: _kAccent,
+        style: TextStyle(color: p.textPrimary, fontSize: 15),
+        cursorColor: theme.primaryColor,
         decoration: InputDecoration(
           hintText: 'Nhập ít nhất 2 ký tự…',
-          hintStyle: const TextStyle(color: _kTextDim, fontSize: 14),
-          prefixIcon: const Icon(Icons.search_rounded, color: _kTextSec, size: 20),
+          hintStyle: TextStyle(color: p.textSecondary, fontSize: 14),
+          prefixIcon: Icon(Icons.search_rounded, color: p.textSecondary, size: 20),
           suffixIcon: _searchController.text.isNotEmpty
               ? IconButton(
-                  icon: const Icon(Icons.clear_rounded, color: _kTextSec, size: 18),
-                  onPressed: () {
-                    _searchController.clear();
-                    _performSearch('');
-                  },
-                )
+            icon: Icon(Icons.clear_rounded, color: p.textSecondary, size: 18),
+            onPressed: () {
+              _searchController.clear();
+              _performSearch('');
+            },
+          )
               : null,
           filled: true,
-          fillColor: _kSurface2,
+          fillColor: p.surface,
           contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: _kBorder),
+            borderSide: BorderSide(color: p.divider),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: _kBorder),
+            borderSide: BorderSide(color: p.divider),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: _kAccent, width: 1.5),
+            borderSide: BorderSide(color: theme.primaryColor, width: 1.5),
           ),
         ),
         onChanged: _onQueryChanged,
@@ -337,60 +319,65 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
     );
   }
 
-  Widget _buildStatusBar() {
+  Widget _buildStatusBar(ThemePalette p, ThemeProvider theme) {
     if (_query.isEmpty || _isSearching) return const SizedBox.shrink();
 
     final count = _results.length;
-    final source = _usingLocal ? '· local' : '· cloud';
+    final source = _usingLocal ? '· local cache' : '· cloud';
     final label = count == 0 ? 'Không tìm thấy kết quả' : '$count kết quả $source';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      color: _kBg,
+      decoration: BoxDecoration(
+        color: p.background,
+        border: Border(bottom: BorderSide(color: p.divider, width: 0.5)),
+      ),
       child: Row(
         children: [
           Icon(
-            count > 0 ? Icons.check_circle_rounded : Icons.search_off_rounded,
+            count > 0 ? Icons.check_circle_outline_rounded : Icons.search_off_rounded,
             size: 13,
-            color: count > 0 ? _kAccent : _kTextDim,
+            color: count > 0 ? theme.primaryColor : p.textSecondary,
           ),
           const SizedBox(width: 6),
-          Text(label, style: TextStyle(color: count > 0 ? _kTextSec : _kTextDim, fontSize: 12)),
+          Text(
+              label,
+              style: TextStyle(color: p.textSecondary, fontSize: 12)
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildBody() {
-    if (_isSearching) return _buildLoading();
-    if (_errorMsg != null) return _buildError(_errorMsg!);
-    if (_query.isEmpty) return _buildHint();
-    if (_results.isEmpty) return _buildEmpty();
-    return _buildResultList();
+  Widget _buildBody(ThemePalette p, ThemeProvider theme) {
+    if (_isSearching) return _buildLoading(p, theme);
+    if (_errorMsg != null) return _buildError(p, theme, _errorMsg!);
+    if (_query.isEmpty) return _buildHint(p, theme);
+    if (_results.isEmpty) return _buildEmpty(p);
+    return _buildResultList(p, theme);
   }
 
-  Widget _buildLoading() {
+  Widget _buildLoading(ThemePalette p, ThemeProvider theme) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(
-            width: 36,
-            height: 36,
-            child: CircularProgressIndicator(
-              color: _kAccent,
-              strokeWidth: 2.5,
-              backgroundColor: _kAccent.withValues(alpha: 0.15),
-            ),
+              width: 36,
+              height: 36,
+              child: CircularProgressIndicator(color: theme.primaryColor, strokeWidth: 2.5)
           ),
           const SizedBox(height: 14),
-          const Text('Đang tìm kiếm…', style: TextStyle(color: _kTextSec, fontSize: 13)),
+          Text(
+              'Đang tìm kiếm…',
+              style: TextStyle(color: p.textSecondary, fontSize: 13)
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildHint() {
+  Widget _buildHint(ThemePalette p, ThemeProvider theme) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -400,63 +387,74 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
             height: 80,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: _kAccent.withValues(alpha: 0.08),
+              color: theme.primaryColor.withValues(alpha: 0.08),
             ),
-            child: const Icon(Icons.search_rounded, color: _kAccent, size: 36),
+            child: Icon(Icons.search_rounded, color: theme.primaryColor, size: 36),
           ),
           const SizedBox(height: 18),
-          const Text('Tìm kiếm trong cuộc trò chuyện',
-              style: TextStyle(color: _kTextPri, fontSize: 16, fontWeight: FontWeight.w600)),
+          Text(
+              'Tìm trong cuộc trò chuyện',
+              style: TextStyle(color: p.textPrimary, fontSize: 16, fontWeight: FontWeight.w600)
+          ),
           const SizedBox(height: 8),
-          const Text('Nhập ít nhất 2 ký tự để bắt đầu',
-              style: TextStyle(color: _kTextSec, fontSize: 13)),
+          Text(
+              'Nhập ít nhất 2 ký tự để bắt đầu',
+              style: TextStyle(color: p.textSecondary, fontSize: 13)
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildEmpty() {
+  Widget _buildEmpty(ThemePalette p) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.search_off_rounded, color: _kTextDim, size: 56),
+          Icon(Icons.search_off_rounded, color: p.textSecondary, size: 56),
           const SizedBox(height: 14),
-          Text('Không tìm thấy "$_query"', style: const TextStyle(color: _kTextSec, fontSize: 15)),
+          Text(
+              'Không tìm thấy "$_query"',
+              style: TextStyle(color: p.textSecondary, fontSize: 15)
+          ),
           const SizedBox(height: 6),
-          const Text('Thử từ khóa khác', style: TextStyle(color: _kTextDim, fontSize: 12)),
+          Text(
+              'Thử từ khóa khác',
+              style: TextStyle(color: p.textSecondary, fontSize: 12)
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildError(String msg) {
+  Widget _buildError(ThemePalette p, ThemeProvider theme, String msg) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline_rounded, color: _kAccent2, size: 48),
+            Icon(Icons.error_outline_rounded, color: p.dangerColor, size: 48),
             const SizedBox(height: 12),
-            const Text('Lỗi tìm kiếm',
-                style: TextStyle(color: _kTextPri, fontSize: 16, fontWeight: FontWeight.w600)),
+            Text(
+                'Lỗi tìm kiếm',
+                style: TextStyle(color: p.textPrimary, fontSize: 16, fontWeight: FontWeight.w600)
+            ),
             const SizedBox(height: 8),
-            Text(msg,
+            Text(
+                msg,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: _kTextSec, fontSize: 12)),
+                style: TextStyle(color: p.textSecondary, fontSize: 12)
+            ),
             const SizedBox(height: 20),
-            GestureDetector(
-              onTap: () => _performSearch(_query),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                decoration: BoxDecoration(
-                  color: _kAccent.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _kAccent.withValues(alpha: 0.4)),
-                ),
-                child: const Text('Thử lại',
-                    style: TextStyle(color: _kAccent, fontWeight: FontWeight.w600)),
+            OutlinedButton.icon(
+              onPressed: () => _performSearch(_query),
+              icon: const Icon(Icons.refresh_rounded, size: 16),
+              label: const Text('Thử lại'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: theme.primaryColor,
+                side: BorderSide(color: theme.primaryColor),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
           ],
@@ -465,7 +463,7 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
     );
   }
 
-  Widget _buildResultList() {
+  Widget _buildResultList(ThemePalette p, ThemeProvider theme) {
     return FadeTransition(
       opacity: _listAc,
       child: ListView.separated(
@@ -477,31 +475,35 @@ class _SearchMessagesPageState extends State<SearchMessagesPage>
           result: _results[i],
           query: _query,
           peerName: widget.peerName,
+          palette: p,
+          primary: theme.primaryColor,
           onTap: () => Navigator.pop(context, _results[i].messageId),
-          onLongPress: () => _copyResult(_results[i]),
+          onLongPress: () {
+            Clipboard.setData(ClipboardData(text: _results[i].content));
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Đã sao chép nội dung'),
+                behavior: SnackBarBehavior.floating,
+                backgroundColor: p.surface,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                duration: const Duration(seconds: 1),
+              ),
+            );
+          },
         ),
-      ),
-    );
-  }
-
-  void _copyResult(SearchResult result) {
-    Clipboard.setData(ClipboardData(text: result.content));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Đã sao chép nội dung'),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: _kSurface2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(seconds: 1),
       ),
     );
   }
 }
 
+// ─── Result Card ──────────────────────────────────────────────────────────────
+
 class _SearchResultCard extends StatelessWidget {
   final SearchResult result;
   final String query;
   final String peerName;
+  final ThemePalette palette;
+  final Color primary;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
@@ -509,14 +511,18 @@ class _SearchResultCard extends StatelessWidget {
     required this.result,
     required this.query,
     required this.peerName,
+    required this.palette,
+    required this.primary,
     required this.onTap,
     required this.onLongPress,
   });
 
   @override
   Widget build(BuildContext context) {
-    final dateStr =
-        result.dateTime != null ? DateFormat('dd/MM HH:mm').format(result.dateTime!) : '';
+    final dateStr = result.dateTime != null
+        ? DateFormat('dd/MM HH:mm').format(result.dateTime!)
+        : '';
+    final msgColor = result.isMyMessage ? primary : Colors.purple.shade400;
 
     return GestureDetector(
       onTap: onTap,
@@ -524,9 +530,12 @@ class _SearchResultCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: _kSurface,
+          color: palette.surface,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _kBorder),
+          border: Border.all(color: palette.divider, width: 0.6),
+          boxShadow: [
+            BoxShadow(color: palette.shadow, blurRadius: 6)
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -536,50 +545,52 @@ class _SearchResultCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(5),
                   decoration: BoxDecoration(
-                    color: (result.isMyMessage ? _kAccent : _kAccent2).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
+                      color: msgColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8)
                   ),
                   child: Icon(
-                    result.isMyMessage ? Icons.send_rounded : Icons.reply_rounded,
-                    size: 12,
-                    color: result.isMyMessage ? _kAccent : _kAccent2,
+                      result.isMyMessage ? Icons.send_rounded : Icons.reply_rounded,
+                      size: 12,
+                      color: msgColor
                   ),
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  result.isMyMessage ? 'Bạn' : peerName,
-                  style: TextStyle(
-                    color: result.isMyMessage ? _kAccent : _kAccent2,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
+                    result.isMyMessage ? 'Bạn' : peerName,
+                    style: TextStyle(color: msgColor, fontSize: 12, fontWeight: FontWeight.w700)
                 ),
                 const Spacer(),
                 if (dateStr.isNotEmpty)
-                  Text(dateStr, style: const TextStyle(color: _kTextDim, fontSize: 11)),
+                  Text(
+                      dateStr,
+                      style: TextStyle(color: palette.textSecondary, fontSize: 11)
+                  ),
                 const SizedBox(width: 6),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: _kSurface2,
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: _kBorder),
+                      color: palette.surfaceVariant,
+                      borderRadius: BorderRadius.circular(5),
+                      border: Border.all(color: palette.divider)
                   ),
                   child: Text(
-                    result.source,
-                    style: const TextStyle(
-                        color: _kTextDim,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.4),
+                      result.source,
+                      style: TextStyle(
+                          color: palette.textSecondary,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.3
+                      )
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 10),
             _HighlightedText(
-              text: result.content,
-              query: query,
+                text: result.content,
+                query: query,
+                palette: palette,
+                highlight: Colors.amber.shade300
             ),
           ],
         ),
@@ -591,30 +602,34 @@ class _SearchResultCard extends StatelessWidget {
 class _HighlightedText extends StatelessWidget {
   final String text;
   final String query;
+  final ThemePalette palette;
+  final Color highlight;
 
-  const _HighlightedText({required this.text, required this.query});
+  const _HighlightedText({
+    required this.text,
+    required this.query,
+    required this.palette,
+    required this.highlight
+  });
 
   @override
   Widget build(BuildContext context) {
+    final baseStyle = TextStyle(color: palette.textSecondary, fontSize: 13, height: 1.5);
+
     if (query.isEmpty) {
-      return Text(text,
-          maxLines: 3,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(color: _kTextSec, fontSize: 13, height: 1.5));
+      return Text(text, maxLines: 3, overflow: TextOverflow.ellipsis, style: baseStyle);
     }
 
     final lower = text.toLowerCase();
     final idx = lower.indexOf(query);
 
     if (idx == -1) {
-      return Text(text,
-          maxLines: 3,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(color: _kTextSec, fontSize: 13, height: 1.5));
+      return Text(text, maxLines: 3, overflow: TextOverflow.ellipsis, style: baseStyle);
     }
 
     String display = text;
     int matchIdx = idx;
+
     if (text.length > 120) {
       final start = (idx - 40).clamp(0, text.length);
       final prefix = start > 0 ? '…' : '';
@@ -630,16 +645,16 @@ class _HighlightedText extends StatelessWidget {
       maxLines: 3,
       overflow: TextOverflow.ellipsis,
       text: TextSpan(
-        style: const TextStyle(color: _kTextSec, fontSize: 13, height: 1.5),
+        style: baseStyle,
         children: [
           TextSpan(text: before),
           TextSpan(
-            text: match,
-            style: TextStyle(
-              color: _kBg,
-              backgroundColor: _kHighlight,
-              fontWeight: FontWeight.w700,
-            ),
+              text: match,
+              style: TextStyle(
+                  color: Colors.black87,
+                  backgroundColor: highlight,
+                  fontWeight: FontWeight.w700
+              )
           ),
           TextSpan(text: after),
         ],

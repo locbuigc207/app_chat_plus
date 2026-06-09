@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
+import 'package:flutter_chat_demo/constants/constants.dart';
+import 'package:flutter_chat_demo/models/models.dart'; // Đảm bảo định nghĩa Story, StoryType, UserStories có trong này
 import 'package:flutter_chat_demo/pages/story_creator_page.dart';
 import 'package:flutter_chat_demo/pages/story_viewer_page.dart';
 import 'package:flutter_chat_demo/providers/story_provider.dart';
-import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_chat_demo/providers/theme_provider.dart';
 
 class MyStoriesPage extends StatefulWidget {
   final String userId;
@@ -23,12 +26,10 @@ class MyStoriesPage extends StatefulWidget {
   State<MyStoriesPage> createState() => _MyStoriesPageState();
 }
 
-class _MyStoriesPageState extends State<MyStoriesPage>
-    with SingleTickerProviderStateMixin {
+class _MyStoriesPageState extends State<MyStoriesPage> with SingleTickerProviderStateMixin {
   bool _gridView = false;
   final Set<String> _selected = {};
   bool _selecting = false;
-
   late TabController _tabCtrl;
 
   @override
@@ -44,7 +45,7 @@ class _MyStoriesPageState extends State<MyStoriesPage>
     super.dispose();
   }
 
-  // ── Navigation ──────────────────────────────────────────────────────────────
+  // ─── Điều hướng ─────────────────────────────────────────────────────────────
 
   void _openCreator() {
     Navigator.push(
@@ -83,7 +84,7 @@ class _MyStoriesPageState extends State<MyStoriesPage>
     );
   }
 
-  // ── Selection ───────────────────────────────────────────────────────────────
+  // ─── Quản lý chọn mục (Selection) ───────────────────────────────────────────
 
   void _toggleSelect(String id) {
     setState(() {
@@ -108,10 +109,7 @@ class _MyStoriesPageState extends State<MyStoriesPage>
   Future<void> _deleteSelected() async {
     if (_selected.isEmpty) return;
     final count = _selected.length;
-    final ok = await _confirmDelete(
-      'Delete $count ${count == 1 ? 'story' : 'stories'}?',
-      'They will be permanently removed.',
-    );
+    final ok = await _confirmDelete('Xóa $count story?', 'Hành động này không thể hoàn tác.');
     if (!ok || !mounted) return;
 
     final ids = {..._selected};
@@ -125,7 +123,7 @@ class _MyStoriesPageState extends State<MyStoriesPage>
     }
 
     if (mounted) {
-      _showSnack('🗑️ Deleted $count ${count == 1 ? 'story' : 'stories'}', isError: true);
+      _showSnack('🗑️ Đã xóa $count story', isError: true);
     }
   }
 
@@ -143,34 +141,47 @@ class _MyStoriesPageState extends State<MyStoriesPage>
     }
 
     if (mounted) {
-      _showSnack('📦 Archived $count ${count == 1 ? 'story' : 'stories'}');
+      _showSnack('📦 Đã lưu trữ $count story');
     }
   }
 
   Future<bool> _confirmDelete(String title, String body) async {
+    final theme = context.read<ThemeProvider>();
+    final p = theme.palette;
     final ok = await showDialog<bool>(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.5),
       builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        backgroundColor: const Color(0xFF1C1C1E),
-        title: Text(title,
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 18)),
-        content: Text(body, style: const TextStyle(color: Colors.white54, fontSize: 14)),
+        backgroundColor: p.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(title, style: TextStyle(color: p.textPrimary, fontWeight: FontWeight.w700, fontSize: 18)),
+        content: Text(body, style: TextStyle(color: p.textSecondary, fontSize: 14)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            child: Text('Hủy', style: TextStyle(color: p.textSecondary)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
-            child: const Text('Delete', style: TextStyle(fontWeight: FontWeight.w700)),
+            style: TextButton.styleFrom(foregroundColor: Colors.red.shade400),
+            child: const Text('Xóa', style: TextStyle(fontWeight: FontWeight.w700)),
           ),
         ],
       ),
     );
     return ok == true;
+  }
+
+  Future<void> _singleDelete(String id) async {
+    final ok = await _confirmDelete('Xóa story?', 'Hành động này không thể hoàn tác.');
+    if (ok && mounted) {
+      await context.read<StoryProvider>().deleteStory(id);
+      _showSnack('🗑️ Story đã được xóa', isError: true);
+    }
+  }
+
+  Future<void> _singleArchive(String id) async {
+    await context.read<StoryProvider>().archiveStory(id);
+    if (mounted) _showSnack('📦 Story đã được chuyển vào kho lưu trữ');
   }
 
   void _showSnack(String msg, {bool isError = false}) {
@@ -196,58 +207,71 @@ class _MyStoriesPageState extends State<MyStoriesPage>
     transitionDuration: const Duration(milliseconds: 280),
   );
 
-  // ── Build ───────────────────────────────────────────────────────────────────
+  // ─── Giao diện chính ────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? const Color(0xFF0A0A0A) : const Color(0xFFF5F5F7);
+    final theme = context.watch<ThemeProvider>();
+    final p = theme.palette;
 
-    return Scaffold(
-      backgroundColor: bg,
-      body: NestedScrollView(
-        headerSliverBuilder: (_, __) => [_buildSliverAppBar(isDark)],
-        body: _buildBody(isDark),
+    return Theme(
+      data: theme.isDark ? theme.darkTheme : theme.lightTheme,
+      child: Scaffold(
+        backgroundColor: p.background,
+        body: NestedScrollView(
+          headerSliverBuilder: (_, __) => [_buildSliverAppBar(p, theme)],
+          body: _buildBody(p, theme),
+        ),
+        floatingActionButton: _selecting ? null : FloatingActionButton.extended(
+          onPressed: _openCreator,
+          elevation: 4,
+          extendedPadding: const EdgeInsets.symmetric(horizontal: 22),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+          backgroundColor: theme.primaryColor,
+          icon: const Icon(Icons.add_rounded, color: Colors.white),
+          label: const Text('Story mới', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+        ),
+        bottomNavigationBar: _selecting && _selected.isNotEmpty
+            ? _SelectionBar(
+          count: _selected.length,
+          palette: p,
+          primary: theme.primaryColor,
+          onDelete: _deleteSelected,
+          onArchive: _archiveSelected,
+          onCancel: () => setState(() {
+            _selected.clear();
+            _selecting = false;
+          }),
+        )
+            : null,
       ),
-      floatingActionButton: _selecting ? null : _buildFAB(),
-      bottomNavigationBar: _selecting && _selected.isNotEmpty
-          ? _SelectionBar(
-        count: _selected.length,
-        onDelete: _deleteSelected,
-        onArchive: _archiveSelected,
-        onCancel: () => setState(() {
-          _selected.clear();
-          _selecting = false;
-        }),
-      )
-          : null,
     );
   }
 
-  Widget _buildSliverAppBar(bool isDark) {
+  Widget _buildSliverAppBar(ThemePalette p, ThemeProvider theme) {
     return SliverAppBar(
-      expandedHeight: 200,
+      expandedHeight: 180,
       floating: false,
       pinned: true,
       snap: false,
-      backgroundColor: isDark ? const Color(0xFF0A0A0A) : const Color(0xFFF5F5F7),
+      backgroundColor: p.appBarBackground,
       surfaceTintColor: Colors.transparent,
       leading: _selecting
           ? IconButton(
-        icon: const Icon(Icons.close_rounded),
+        icon: Icon(Icons.close_rounded, color: p.textPrimary),
         onPressed: () => setState(() {
           _selected.clear();
           _selecting = false;
         }),
       )
           : IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new_rounded),
+        icon: Icon(Icons.arrow_back_ios_new_rounded, color: theme.primaryColor, size: 20),
         onPressed: () => Navigator.pop(context),
       ),
       title: _selecting
           ? Text(
-        '${_selected.length} selected',
-        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17),
+        '${_selected.length} đã chọn',
+        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17, color: p.textPrimary),
       )
           : null,
       actions: _selecting
@@ -259,6 +283,7 @@ class _MyStoriesPageState extends State<MyStoriesPage>
             child: Icon(
               _gridView ? Icons.view_list_rounded : Icons.grid_view_rounded,
               key: ValueKey(_gridView),
+              color: theme.primaryColor,
             ),
           ),
           onPressed: () {
@@ -267,31 +292,34 @@ class _MyStoriesPageState extends State<MyStoriesPage>
           },
         ),
         IconButton(
-          icon: const Icon(Icons.add_circle_rounded),
+          icon: Icon(Icons.add_circle_rounded, color: theme.primaryColor),
           onPressed: _openCreator,
         ),
+        const SizedBox(width: 4),
       ],
       flexibleSpace: _selecting
           ? null
           : FlexibleSpaceBar(
-        background: _buildHeroHeader(isDark),
+        background: _buildHeroHeader(p, theme),
       ),
       bottom: TabBar(
         controller: _tabCtrl,
-        labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-        unselectedLabelStyle:
-        const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-        indicatorSize: TabBarIndicatorSize.label,
+        labelColor: theme.primaryColor,
+        unselectedLabelColor: p.textSecondary,
+        indicatorColor: theme.primaryColor,
         indicatorWeight: 3,
+        indicatorSize: TabBarIndicatorSize.label,
+        labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+        unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
         tabs: const [
-          Tab(text: 'Active'),
-          Tab(text: 'Archive'),
+          Tab(text: 'Đang hoạt động'),
+          Tab(text: 'Lưu trữ'),
         ],
       ),
     );
   }
 
-  Widget _buildHeroHeader(bool isDark) {
+  Widget _buildHeroHeader(ThemePalette p, ThemeProvider theme) {
     return StreamBuilder<List<Story>>(
       stream: context.read<StoryProvider>().getMyStoriesStream(widget.userId),
       builder: (_, snap) {
@@ -304,15 +332,16 @@ class _MyStoriesPageState extends State<MyStoriesPage>
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: isDark
-                  ? [const Color(0xFF1A1A2E), const Color(0xFF16213E)]
-                  : [const Color(0xFF6C63FF).withValues(alpha: 0.9), const Color(0xFF2196F3).withValues(alpha: 0.8)],
+              colors: [
+                theme.primaryColor,
+                theme.primaryLightColor.withValues(alpha: 0.7),
+              ],
             ),
           ),
           child: SafeArea(
             bottom: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 54, 20, 12),
+              padding: const EdgeInsets.fromLTRB(20, 50, 20, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -320,33 +349,23 @@ class _MyStoriesPageState extends State<MyStoriesPage>
                     'My Stories',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 28,
+                      fontSize: 26,
                       fontWeight: FontWeight.w900,
                       letterSpacing: -0.8,
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 12),
                   Row(
                     children: [
+                      _HeroStat(icon: Icons.auto_stories_rounded, value: '${stories.length}', label: 'Stories'),
+                      const SizedBox(width: 10),
                       _HeroStat(
-                          icon: Icons.auto_stories_rounded,
-                          value: '${stories.length}',
-                          label: 'Stories',
-                          color: const Color(0xFFB8B8FF)),
-                      const SizedBox(width: 12),
-                      _HeroStat(
-                          icon: Icons.remove_red_eye_rounded,
-                          value: totalViews > 999
-                              ? '${(totalViews / 1000).toStringAsFixed(1)}k'
-                              : '$totalViews',
-                          label: 'Views',
-                          color: const Color(0xFF86EFAC)),
-                      const SizedBox(width: 12),
-                      _HeroStat(
-                          icon: Icons.favorite_rounded,
-                          value: '$totalReactions',
-                          label: 'Reactions',
-                          color: const Color(0xFFFCA5A5)),
+                        icon: Icons.remove_red_eye_rounded,
+                        value: totalViews > 999 ? '${(totalViews / 1000).toStringAsFixed(1)}k' : '$totalViews',
+                        label: 'Lượt xem',
+                      ),
+                      const SizedBox(width: 10),
+                      _HeroStat(icon: Icons.favorite_rounded, value: '$totalReactions', label: 'Reactions'),
                     ],
                   ),
                 ],
@@ -358,33 +377,33 @@ class _MyStoriesPageState extends State<MyStoriesPage>
     );
   }
 
-  Widget _buildBody(bool isDark) {
+  Widget _buildBody(ThemePalette p, ThemeProvider theme) {
     return TabBarView(
       controller: _tabCtrl,
       children: [
-        _buildActiveTab(isDark),
-        _buildArchiveTab(isDark),
+        _buildActiveTab(p, theme),
+        _buildArchiveTab(p, theme),
       ],
     );
   }
 
-  Widget _buildActiveTab(bool isDark) {
+  Widget _buildActiveTab(ThemePalette p, ThemeProvider theme) {
     return StreamBuilder<List<Story>>(
       stream: context.read<StoryProvider>().getMyStoriesStream(widget.userId),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return _buildShimmer(isDark);
+          return _buildShimmer(p);
         }
 
         final stories = snapshot.data ?? [];
 
         if (stories.isEmpty) {
-          return _EmptyState(onAdd: _openCreator);
+          return _EmptyState(onAdd: _openCreator, primary: theme.primaryColor, palette: p);
         }
 
         if (_gridView) {
           return GridView.builder(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 120),
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 100),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
               mainAxisSpacing: 10,
@@ -396,47 +415,41 @@ class _MyStoriesPageState extends State<MyStoriesPage>
               story: stories[i],
               isSelected: _selected.contains(stories[i].id),
               selecting: _selecting,
-              onTap: () => _selecting
-                  ? _toggleSelect(stories[i].id)
-                  : _openViewer(stories, i),
-              onLongPress: () => _selecting
-                  ? _toggleSelect(stories[i].id)
-                  : _startSelecting(stories[i].id),
+              onTap: () => _selecting ? _toggleSelect(stories[i].id) : _openViewer(stories, i),
+              onLongPress: () => _selecting ? _toggleSelect(stories[i].id) : _startSelecting(stories[i].id),
               onDelete: () => _singleDelete(stories[i].id),
               onArchive: () => _singleArchive(stories[i].id),
-              isDark: isDark,
+              palette: p,
+              primary: theme.primaryColor,
             ),
           );
         }
 
         return ListView.builder(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
           itemCount: stories.length,
           itemBuilder: (_, i) => _StoryListCard(
             story: stories[i],
             isSelected: _selected.contains(stories[i].id),
             selecting: _selecting,
-            onTap: () => _selecting
-                ? _toggleSelect(stories[i].id)
-                : _openViewer(stories, i),
-            onLongPress: () => _selecting
-                ? _toggleSelect(stories[i].id)
-                : _startSelecting(stories[i].id),
+            onTap: () => _selecting ? _toggleSelect(stories[i].id) : _openViewer(stories, i),
+            onLongPress: () => _selecting ? _toggleSelect(stories[i].id) : _startSelecting(stories[i].id),
             onDelete: () => _singleDelete(stories[i].id),
             onArchive: () => _singleArchive(stories[i].id),
-            isDark: isDark,
+            palette: p,
+            primary: theme.primaryColor,
           ),
         );
       },
     );
   }
 
-  Widget _buildArchiveTab(bool isDark) {
+  Widget _buildArchiveTab(ThemePalette p, ThemeProvider theme) {
     return StreamBuilder<List<Story>>(
       stream: context.read<StoryProvider>().getArchivedStoriesStream(widget.userId),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return _buildShimmer(isDark);
+          return _buildShimmer(p);
         }
 
         final stories = snapshot.data ?? [];
@@ -446,16 +459,11 @@ class _MyStoriesPageState extends State<MyStoriesPage>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.archive_rounded, size: 64, color: Colors.grey.shade500),
+                Icon(Icons.archive_rounded, size: 64, color: p.textSecondary),
                 const SizedBox(height: 16),
-                const Text(
-                  'No archived stories',
-                  style: TextStyle(color: Colors.grey, fontSize: 16, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Archived stories appear here',
-                  style: TextStyle(color: Colors.grey, fontSize: 13),
+                Text(
+                  'Không có story đã lưu trữ',
+                  style: TextStyle(color: p.textSecondary, fontSize: 15, fontWeight: FontWeight.w500),
                 ),
               ],
             ),
@@ -473,47 +481,18 @@ class _MyStoriesPageState extends State<MyStoriesPage>
           itemCount: stories.length,
           itemBuilder: (_, i) => _ArchiveCard(
             story: stories[i],
-            onTap: () {},
-            isDark: isDark,
+            palette: p,
           ),
         );
       },
     );
   }
 
-  Future<void> _singleDelete(String id) async {
-    final ok = await _confirmDelete('Delete story?', 'This cannot be undone.');
-    if (ok && mounted) {
-      await context.read<StoryProvider>().deleteStory(id);
-      _showSnack('🗑️ Story deleted', isError: true);
-    }
-  }
-
-  Future<void> _singleArchive(String id) async {
-    await context.read<StoryProvider>().archiveStory(id);
-    if (mounted) _showSnack('📦 Story archived');
-  }
-
-  Widget _buildShimmer(bool isDark) {
+  Widget _buildShimmer(ThemePalette p) {
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: 6,
-      itemBuilder: (_, __) => _ShimmerCard(isDark: isDark),
-    );
-  }
-
-  Widget _buildFAB() {
-    return FloatingActionButton.extended(
-      onPressed: _openCreator,
-      elevation: 6,
-      extendedPadding: const EdgeInsets.symmetric(horizontal: 24),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-      backgroundColor: const Color(0xFF6C63FF),
-      icon: const Icon(Icons.add_rounded, color: Colors.white),
-      label: const Text(
-        'Add Story',
-        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15),
-      ),
+      itemCount: 5,
+      itemBuilder: (_, __) => _ShimmerCard(palette: p),
     );
   }
 }
@@ -524,45 +503,43 @@ class _HeroStat extends StatelessWidget {
   final IconData icon;
   final String value;
   final String label;
-  final Color color;
 
   const _HeroStat({
     required this.icon,
     required this.value,
     required this.label,
-    required this.color,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+        color: Colors.white.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: color, size: 18),
-          const SizedBox(width: 7),
+          Icon(icon, color: Colors.white.withValues(alpha: 0.9), size: 16),
+          const SizedBox(width: 6),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 value,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 18,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
                   fontWeight: FontWeight.w900,
                   height: 1,
                 ),
               ),
               Text(
                 label,
-                style: const TextStyle(color: Colors.white60, fontSize: 10),
+                style: const TextStyle(color: Colors.white70, fontSize: 10),
               ),
             ],
           ),
@@ -582,7 +559,8 @@ class _StoryListCard extends StatelessWidget {
   final VoidCallback onLongPress;
   final VoidCallback onDelete;
   final VoidCallback onArchive;
-  final bool isDark;
+  final ThemePalette palette;
+  final Color primary;
 
   const _StoryListCard({
     required this.story,
@@ -592,19 +570,15 @@ class _StoryListCard extends StatelessWidget {
     required this.onLongPress,
     required this.onDelete,
     required this.onArchive,
-    required this.isDark,
+    required this.palette,
+    required this.primary,
   });
 
   @override
   Widget build(BuildContext context) {
     final remaining = story.remainingTime;
     final hours = remaining.inHours;
-    final minutes = remaining.inMinutes % 60;
     final expiringSoon = hours < 3;
-    final surfaceColor = isDark ? const Color(0xFF1C1C1E) : Colors.white;
-    final borderColor = isSelected
-        ? const Color(0xFF6C63FF)
-        : (isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06));
 
     return GestureDetector(
       onTap: onTap,
@@ -613,14 +587,14 @@ class _StoryListCard extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         margin: const EdgeInsets.only(bottom: 10),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF6C63FF).withValues(alpha: 0.08) : surfaceColor,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: borderColor, width: isSelected ? 1.5 : 1),
+          color: isSelected ? primary.withValues(alpha: 0.08) : palette.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: isSelected ? primary : palette.divider, width: isSelected ? 1.5 : 0.6),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
-              blurRadius: 12,
-              offset: const Offset(0, 3),
+              color: palette.shadow,
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
           ],
         ),
@@ -632,7 +606,7 @@ class _StoryListCard extends StatelessWidget {
               Stack(
                 children: [
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(12),
                     child: SizedBox(
                       width: 76,
                       height: 100,
@@ -641,29 +615,26 @@ class _StoryListCard extends StatelessWidget {
                   ),
                   if (selecting)
                     Positioned(
-                      top: 4, right: 4,
+                      top: 4,
+                      right: 4,
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 150),
                         width: 22,
                         height: 22,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: isSelected ? const Color(0xFF6C63FF) : Colors.white.withValues(alpha: 0.7),
+                          color: isSelected ? primary : Colors.white.withValues(alpha: 0.8),
                           border: Border.all(
-                            color: isSelected ? const Color(0xFF6C63FF) : Colors.grey.shade400,
+                            color: isSelected ? primary : Colors.grey.shade400,
                             width: 2,
                           ),
                         ),
-                        child: isSelected
-                            ? const Icon(Icons.check_rounded, color: Colors.white, size: 13)
-                            : null,
+                        child: isSelected ? const Icon(Icons.check_rounded, color: Colors.white, size: 13) : null,
                       ),
                     ),
                 ],
               ),
-
               const SizedBox(width: 14),
-
               // Content
               Expanded(
                 child: Column(
@@ -671,14 +642,14 @@ class _StoryListCard extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        _TypeBadge(type: story.type),
+                        _TypeBadge(type: story.type, primary: primary),
                         const Spacer(),
                         if (expiringSoon)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.orange.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(8),
+                              color: Colors.orange.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(7),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -686,7 +657,7 @@ class _StoryListCard extends StatelessWidget {
                                 const Icon(Icons.schedule_rounded, size: 10, color: Colors.orange),
                                 const SizedBox(width: 3),
                                 Text(
-                                  hours > 0 ? '${hours}h ${minutes}m' : '${minutes}m',
+                                  hours > 0 ? '$hours\h ${remaining.inMinutes % 60}m' : '${remaining.inMinutes}m',
                                   style: const TextStyle(
                                     fontSize: 10,
                                     color: Colors.orange,
@@ -698,17 +669,12 @@ class _StoryListCard extends StatelessWidget {
                           )
                         else
                           Text(
-                            hours > 0 ? '${hours}h ${minutes}m' : '${minutes}m',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: isDark ? Colors.white38 : Colors.grey.shade500,
-                            ),
+                            hours > 0 ? '${hours}h' : '${remaining.inMinutes}m',
+                            style: TextStyle(fontSize: 11, color: palette.textSecondary),
                           ),
                       ],
                     ),
-
                     const SizedBox(height: 8),
-
                     Text(
                       story.type == StoryType.text
                           ? (story.textContent ?? '')
@@ -718,7 +684,7 @@ class _StoryListCard extends StatelessWidget {
                           ? 'Video story'
                           : 'Photo story'),
                       style: TextStyle(
-                        color: isDark ? Colors.white : const Color(0xFF0D1117),
+                        color: palette.textPrimary,
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                         height: 1.4,
@@ -726,9 +692,7 @@ class _StoryListCard extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-
                     const SizedBox(height: 10),
-
                     // Stats row
                     Row(
                       children: [
@@ -736,52 +700,48 @@ class _StoryListCard extends StatelessWidget {
                           icon: Icons.remove_red_eye_rounded,
                           value: story.viewCount,
                           color: Colors.blue,
-                          isDark: isDark,
+                          palette: palette,
                         ),
                         const SizedBox(width: 10),
                         _MiniStat(
                           icon: Icons.favorite_rounded,
                           value: story.reactions.length,
                           color: Colors.pink,
-                          isDark: isDark,
+                          palette: palette,
                         ),
                         const Spacer(),
                         Text(
                           DateFormat('HH:mm').format(story.createdAt),
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: isDark ? Colors.white30 : Colors.grey.shade400,
-                          ),
+                          style: TextStyle(fontSize: 11, color: palette.textSecondary),
                         ),
                       ],
                     ),
-
-                    const SizedBox(height: 10),
-
-                    // Action buttons
-                    if (!selecting)
+                    if (!selecting) ...[
+                      const SizedBox(height: 10),
+                      // Action buttons
                       Row(
                         children: [
                           Expanded(
                             child: _CardBtn(
                               icon: Icons.archive_outlined,
-                              label: 'Archive',
+                              label: 'Lưu trữ',
                               onTap: onArchive,
-                              isDark: isDark,
+                              palette: palette,
                             ),
                           ),
                           const SizedBox(width: 6),
                           Expanded(
                             child: _CardBtn(
                               icon: Icons.delete_outline_rounded,
-                              label: 'Delete',
+                              label: 'Xóa',
                               onTap: onDelete,
-                              isDark: isDark,
+                              palette: palette,
                               isDestructive: true,
                             ),
                           ),
                         ],
                       ),
+                    ],
                   ],
                 ),
               ),
@@ -803,7 +763,8 @@ class _StoryGridCard extends StatelessWidget {
   final VoidCallback onLongPress;
   final VoidCallback onDelete;
   final VoidCallback onArchive;
-  final bool isDark;
+  final ThemePalette palette;
+  final Color primary;
 
   const _StoryGridCard({
     required this.story,
@@ -813,7 +774,8 @@ class _StoryGridCard extends StatelessWidget {
     required this.onLongPress,
     required this.onDelete,
     required this.onArchive,
-    required this.isDark,
+    required this.palette,
+    required this.primary,
   });
 
   @override
@@ -827,9 +789,9 @@ class _StoryGridCard extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected ? const Color(0xFF6C63FF) : Colors.transparent,
+            color: isSelected ? primary : Colors.transparent,
             width: isSelected ? 2.5 : 0,
           ),
         ),
@@ -837,13 +799,12 @@ class _StoryGridCard extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(14),
               child: _Thumbnail(story: story, fillParent: true),
             ),
-
             // Gradient overlay
             ClipRRect(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(14),
               child: Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -855,84 +816,71 @@ class _StoryGridCard extends StatelessWidget {
                 ),
               ),
             ),
-
             // Type badge
             Positioned(
-              top: 8, left: 8,
-              child: _TypeBadge(type: story.type),
+              top: 8,
+              left: 8,
+              child: _TypeBadge(type: story.type, primary: primary),
             ),
-
             // Selection circle
             if (selecting)
               Positioned(
-                top: 8, right: 8,
+                top: 8,
+                right: 8,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
                   width: 26,
                   height: 26,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: isSelected ? const Color(0xFF6C63FF) : Colors.white.withValues(alpha: 0.7),
+                    color: isSelected ? primary : Colors.white.withValues(alpha: 0.7),
                     border: Border.all(
-                      color: isSelected ? const Color(0xFF6C63FF) : Colors.grey,
+                      color: isSelected ? primary : Colors.grey,
                       width: 2,
                     ),
                   ),
-                  child: isSelected
-                      ? const Icon(Icons.check_rounded, color: Colors.white, size: 15)
-                      : null,
+                  child: isSelected ? const Icon(Icons.check_rounded, color: Colors.white, size: 15) : null,
                 ),
               ),
-
-            // Delete / archive quick actions
+            // Quick actions menu
             if (!selecting)
               Positioned(
-                top: 6, right: 6,
+                top: 6,
+                right: 6,
                 child: _QuickActionsMenu(
                   onDelete: onDelete,
                   onArchive: onArchive,
+                  palette: palette,
                 ),
               ),
-
             // Bottom stats
             Positioned(
-              bottom: 8, left: 10, right: 10,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
+              bottom: 8,
+              left: 10,
+              right: 10,
+              child: Row(
                 children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.remove_red_eye_rounded, color: Colors.white70, size: 12),
-                      const SizedBox(width: 3),
-                      Text(
-                        '${story.viewCount}',
-                        style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(width: 8),
-                      if (story.reactions.isNotEmpty) ...[
-                        Text(
-                          story.reactions.take(2).map((r) => r.emoji).join(),
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                        const SizedBox(width: 2),
-                        Text(
-                          '${story.reactions.length}',
-                          style: const TextStyle(color: Colors.white70, fontSize: 11),
-                        ),
-                      ],
-                      const Spacer(),
-                      Text(
-                        expiringSoon
-                            ? '${remaining.inMinutes}m'
-                            : '${remaining.inHours}h',
-                        style: TextStyle(
-                          color: expiringSoon ? Colors.orange : Colors.white54,
-                          fontSize: 10,
-                          fontWeight: expiringSoon ? FontWeight.w800 : FontWeight.normal,
-                        ),
-                      ),
-                    ],
+                  const Icon(Icons.remove_red_eye_rounded, color: Colors.white70, size: 12),
+                  const SizedBox(width: 3),
+                  Text(
+                    '${story.viewCount}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600),
+                  ),
+                  if (story.reactions.isNotEmpty) ...[
+                    const SizedBox(width: 7),
+                    Text(
+                      story.reactions.take(2).map((r) => r.emoji).join(),
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                  ],
+                  const Spacer(),
+                  Text(
+                    expiringSoon ? '${remaining.inMinutes}m' : '${remaining.inHours}h',
+                    style: TextStyle(
+                      color: expiringSoon ? Colors.orange : Colors.white54,
+                      fontSize: 10,
+                      fontWeight: expiringSoon ? FontWeight.w800 : FontWeight.normal,
+                    ),
                   ),
                 ],
               ),
@@ -948,91 +896,37 @@ class _StoryGridCard extends StatelessWidget {
 
 class _ArchiveCard extends StatelessWidget {
   final Story story;
-  final VoidCallback onTap;
-  final bool isDark;
+  final ThemePalette palette;
 
-  const _ArchiveCard({required this.story, required this.onTap, required this.isDark});
+  const _ArchiveCard({required this.story, required this.palette});
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          ClipRRect(
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: _Thumbnail(story: story, fillParent: true),
+        ),
+        Container(
+          decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            child: _Thumbnail(story: story, fillParent: true),
-          ),
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.transparent, Colors.black.withValues(alpha: 0.6)],
-              ),
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Colors.transparent, Colors.black.withValues(alpha: 0.6)],
             ),
           ),
-          Positioned(
-            bottom: 6, left: 6, right: 6,
-            child: Text(
-              DateFormat('MMM d').format(story.createdAt),
-              style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w600),
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Quick Actions Menu ────────────────────────────────────────────────────────
-
-class _QuickActionsMenu extends StatelessWidget {
-  final VoidCallback onDelete;
-  final VoidCallback onArchive;
-
-  const _QuickActionsMenu({required this.onDelete, required this.onArchive});
-
-  @override
-  Widget build(BuildContext context) {
-    return PopupMenuButton<String>(
-      onSelected: (v) {
-        if (v == 'delete') onDelete();
-        if (v == 'archive') onArchive();
-      },
-      color: const Color(0xFF1C1C1E),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: Container(
-        width: 28,
-        height: 28,
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.55),
-          shape: BoxShape.circle,
         ),
-        child: const Icon(Icons.more_vert_rounded, color: Colors.white, size: 16),
-      ),
-      itemBuilder: (_) => [
-        const PopupMenuItem(
-          value: 'archive',
-          child: Row(
-            children: [
-              Icon(Icons.archive_rounded, color: Colors.white70, size: 18),
-              SizedBox(width: 10),
-              Text('Archive', style: TextStyle(color: Colors.white, fontSize: 14)),
-            ],
-          ),
-        ),
-        const PopupMenuItem(
-          value: 'delete',
-          child: Row(
-            children: [
-              Icon(Icons.delete_rounded, color: Colors.redAccent, size: 18),
-              SizedBox(width: 10),
-              Text('Delete', style: TextStyle(color: Colors.redAccent, fontSize: 14)),
-            ],
+        Positioned(
+          bottom: 6,
+          left: 6,
+          right: 6,
+          child: Text(
+            DateFormat('MMM d').format(story.createdAt),
+            style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w600),
+            textAlign: TextAlign.center,
           ),
         ),
       ],
@@ -1040,163 +934,7 @@ class _QuickActionsMenu extends StatelessWidget {
   }
 }
 
-// ─── Selection Bar ─────────────────────────────────────────────────────────────
-
-class _SelectionBar extends StatelessWidget {
-  final int count;
-  final VoidCallback onDelete;
-  final VoidCallback onArchive;
-  final VoidCallback onCancel;
-
-  const _SelectionBar({
-    required this.count,
-    required this.onDelete,
-    required this.onArchive,
-    required this.onCancel,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return SafeArea(
-      top: false,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
-          border: Border(top: BorderSide(color: isDark ? Colors.white10 : Colors.black12)),
-        ),
-        child: Row(
-          children: [
-            TextButton.icon(
-              onPressed: onCancel,
-              icon: const Icon(Icons.close_rounded, size: 18),
-              label: const Text('Cancel'),
-              style: TextButton.styleFrom(foregroundColor: Colors.grey),
-            ),
-            const Spacer(),
-            OutlinedButton.icon(
-              onPressed: onArchive,
-              icon: const Icon(Icons.archive_rounded, size: 16),
-              label: const Text('Archive'),
-              style: OutlinedButton.styleFrom(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                side: BorderSide(color: Colors.grey.shade500),
-              ),
-            ),
-            const SizedBox(width: 8),
-            ElevatedButton.icon(
-              onPressed: onDelete,
-              icon: const Icon(Icons.delete_rounded, size: 16),
-              label: Text('Delete $count'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red.shade700,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                elevation: 0,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Empty State ──────────────────────────────────────────────────────────────
-
-class _EmptyState extends StatelessWidget {
-  final VoidCallback onAdd;
-  const _EmptyState({required this.onAdd});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 110,
-              height: 110,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF6C63FF), Color(0xFF2196F3)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF6C63FF).withValues(alpha: 0.35),
-                    blurRadius: 30,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              child: const Icon(Icons.auto_stories_rounded, size: 52, color: Colors.white),
-            ),
-            const SizedBox(height: 28),
-            const Text(
-              'No Stories Yet',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Share moments that disappear in 24 hours — photos, videos, or text.',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey.shade500,
-                height: 1.6,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 36),
-            GestureDetector(
-              onTap: onAdd,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF6C63FF), Color(0xFF2196F3)],
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                  ),
-                  borderRadius: BorderRadius.circular(30),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF6C63FF).withValues(alpha: 0.4),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.add_rounded, color: Colors.white, size: 20),
-                    SizedBox(width: 8),
-                    Text(
-                      'Create your first story',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Thumbnail ────────────────────────────────────────────────────────────────
+// ─── Trình hiển thị hình thu nhỏ (Thumbnail) ──────────────────────────────────
 
 class _Thumbnail extends StatelessWidget {
   final Story story;
@@ -1226,13 +964,12 @@ class _Thumbnail extends StatelessWidget {
     }
 
     final bg = story.backgroundColor ?? const Color(0xFF1A1A2E);
-    final colors = story.gradientColors;
     final bg2 = Color.lerp(bg, Colors.black, 0.35)!;
 
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: (colors != null && colors.length >= 2) ? colors : [bg, bg2],
+          colors: (story.gradientColors?.length ?? 0) >= 2 ? story.gradientColors! : [bg, bg2],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -1250,7 +987,7 @@ class _Thumbnail extends StatelessWidget {
           shadows: const [Shadow(color: Colors.black38, blurRadius: 6)],
         ),
         textAlign: TextAlign.center,
-        maxLines: fillParent ? 6 : 4,
+        maxLines: 6,
         overflow: TextOverflow.ellipsis,
       ),
     );
@@ -1262,16 +999,18 @@ class _Thumbnail extends StatelessWidget {
   );
 }
 
-// ─── Type Badge ───────────────────────────────────────────────────────────────
+// ─── Badge phân loại Story (TypeBadge) ────────────────────────────────────────
 
 class _TypeBadge extends StatelessWidget {
   final StoryType type;
-  const _TypeBadge({required this.type});
+  final Color primary;
+
+  const _TypeBadge({required this.type, required this.primary});
 
   @override
   Widget build(BuildContext context) {
     final (icon, label, color) = switch (type) {
-      StoryType.image => (Icons.image_rounded, 'Photo', const Color(0xFF2196F3)),
+      StoryType.image => (Icons.image_rounded, 'Ảnh', const Color(0xFF2196F3)),
       StoryType.text => (Icons.text_fields_rounded, 'Text', const Color(0xFF9C27B0)),
       StoryType.video => (Icons.videocam_rounded, 'Video', const Color(0xFFE91E63)),
       StoryType.boomerang => (Icons.loop_rounded, 'Loop', const Color(0xFFFF9800)),
@@ -1280,7 +1019,7 @@ class _TypeBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.18),
+        color: color.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(7),
         border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
@@ -1305,13 +1044,13 @@ class _MiniStat extends StatelessWidget {
   final IconData icon;
   final int value;
   final Color color;
-  final bool isDark;
+  final ThemePalette palette;
 
   const _MiniStat({
     required this.icon,
     required this.value,
     required this.color,
-    required this.isDark,
+    required this.palette,
   });
 
   @override
@@ -1326,7 +1065,7 @@ class _MiniStat extends StatelessWidget {
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: isDark ? Colors.white60 : Colors.grey.shade600,
+            color: palette.textSecondary,
           ),
         ),
       ],
@@ -1340,30 +1079,28 @@ class _CardBtn extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  final bool isDark;
+  final ThemePalette palette;
   final bool isDestructive;
 
   const _CardBtn({
     required this.icon,
     required this.label,
     required this.onTap,
-    required this.isDark,
+    required this.palette,
     this.isDestructive = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final color = isDestructive ? Colors.red.shade400 : (isDark ? Colors.white60 : Colors.grey.shade600);
+    final color = isDestructive ? Colors.red.shade400 : palette.textSecondary;
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 7),
         decoration: BoxDecoration(
-          color: isDestructive
-              ? Colors.red.withValues(alpha: 0.08)
-              : (isDark ? Colors.white.withValues(alpha: 0.06) : Colors.grey.withValues(alpha: 0.08)),
-          borderRadius: BorderRadius.circular(10),
+          color: isDestructive ? Colors.red.withValues(alpha: 0.08) : palette.surfaceVariant,
+          borderRadius: BorderRadius.circular(9),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1381,26 +1118,225 @@ class _CardBtn extends StatelessWidget {
   }
 }
 
-// ─── Shimmer Card ─────────────────────────────────────────────────────────────
+// ─── Menu tác vụ nhanh (Quick Actions) ────────────────────────────────────────
+
+class _QuickActionsMenu extends StatelessWidget {
+  final VoidCallback onDelete;
+  final VoidCallback onArchive;
+  final ThemePalette palette;
+
+  const _QuickActionsMenu({
+    required this.onDelete,
+    required this.onArchive,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      onSelected: (v) {
+        if (v == 'delete') onDelete();
+        if (v == 'archive') onArchive();
+      },
+      color: palette.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Container(
+        width: 28,
+        height: 28,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.5),
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(Icons.more_vert_rounded, color: Colors.white, size: 16),
+      ),
+      itemBuilder: (_) => [
+        PopupMenuItem(
+          value: 'archive',
+          child: Row(
+            children: [
+              Icon(Icons.archive_rounded, color: palette.textSecondary, size: 18),
+              const SizedBox(width: 10),
+              Text('Lưu trữ', style: TextStyle(color: palette.textPrimary, fontSize: 14)),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'delete',
+          child: Row(
+            children: [
+              Icon(Icons.delete_rounded, color: Colors.redAccent, size: 18),
+              const SizedBox(width: 10),
+              Text('Xóa', style: TextStyle(color: Colors.redAccent, fontSize: 14)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Thanh công cụ lựa chọn (Selection Bar) ───────────────────────────────────
+
+class _SelectionBar extends StatelessWidget {
+  final int count;
+  final ThemePalette palette;
+  final Color primary;
+  final VoidCallback onDelete;
+  final VoidCallback onArchive;
+  final VoidCallback onCancel;
+
+  const _SelectionBar({
+    required this.count,
+    required this.palette,
+    required this.primary,
+    required this.onDelete,
+    required this.onArchive,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: palette.surface,
+          border: Border(top: BorderSide(color: palette.divider, width: 0.5)),
+        ),
+        child: Row(
+          children: [
+            TextButton.icon(
+              onPressed: onCancel,
+              icon: const Icon(Icons.close_rounded, size: 18),
+              label: const Text('Hủy'),
+              style: TextButton.styleFrom(foregroundColor: Colors.grey),
+            ),
+            const Spacer(),
+            OutlinedButton.icon(
+              onPressed: onArchive,
+              icon: const Icon(Icons.archive_rounded, size: 16),
+              label: const Text('Lưu trữ'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: palette.textSecondary,
+                side: BorderSide(color: palette.divider),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton.icon(
+              onPressed: onDelete,
+              icon: const Icon(Icons.delete_rounded, size: 16),
+              label: Text('Xóa $count'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                elevation: 0,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Empty State ──────────────────────────────────────────────────────────────
+
+class _EmptyState extends StatelessWidget {
+  final VoidCallback onAdd;
+  final Color primary;
+  final ThemePalette palette;
+
+  const _EmptyState({
+    required this.onAdd,
+    required this.primary,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 40),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 104,
+              height: 104,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [primary, primary.withValues(alpha: 0.6)],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: primary.withValues(alpha: 0.3),
+                    blurRadius: 28,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.auto_stories_rounded, size: 50, color: Colors.white),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Chưa có Story nào',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: palette.textPrimary, letterSpacing: -0.5),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Chia sẻ những khoảnh khắc biến mất sau 24 giờ — ảnh, video hoặc text.',
+              style: TextStyle(
+                fontSize: 14,
+                color: palette.textSecondary,
+                height: 1.6,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton.icon(
+                onPressed: onAdd,
+                icon: const Icon(Icons.add_rounded, size: 20),
+                label: const Text('Tạo story đầu tiên', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primary,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Shimmer Loading Card ─────────────────────────────────────────────────────
 
 class _ShimmerCard extends StatefulWidget {
-  final bool isDark;
-  const _ShimmerCard({required this.isDark});
+  final ThemePalette palette;
+  const _ShimmerCard({required this.palette});
 
   @override
   State<_ShimmerCard> createState() => _ShimmerCardState();
 }
 
-class _ShimmerCardState extends State<_ShimmerCard>
-    with SingleTickerProviderStateMixin {
+class _ShimmerCardState extends State<_ShimmerCard> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _anim;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1100))
-      ..repeat(reverse: true);
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1100))..repeat(reverse: true);
     _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
   }
 
@@ -1415,22 +1351,21 @@ class _ShimmerCardState extends State<_ShimmerCard>
     return AnimatedBuilder(
       animation: _anim,
       builder: (_, __) {
-        final c = widget.isDark
-            ? Color.lerp(const Color(0xFF1C1C1E), const Color(0xFF2A2A2E), _anim.value)!
-            : Color.lerp(const Color(0xFFE8E8E8), const Color(0xFFF5F5F5), _anim.value)!;
+        final c = Color.lerp(widget.palette.surface, widget.palette.surfaceVariant, _anim.value)!;
 
         return Container(
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: widget.isDark ? const Color(0xFF1C1C1E) : Colors.white,
-            borderRadius: BorderRadius.circular(20),
+            color: widget.palette.surface,
+            borderRadius: BorderRadius.circular(18),
           ),
           child: Row(
             children: [
               Container(
-                width: 76, height: 100,
-                decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(14)),
+                width: 76,
+                height: 100,
+                decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(12)),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -1442,8 +1377,6 @@ class _ShimmerCardState extends State<_ShimmerCard>
                     Container(height: 14, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(6))),
                     const SizedBox(height: 6),
                     Container(height: 14, width: 150, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(6))),
-                    const SizedBox(height: 14),
-                    Container(height: 10, width: 100, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(6))),
                   ],
                 ),
               ),

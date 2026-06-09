@@ -1,12 +1,12 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/providers/auth_provider.dart';
 import 'package:flutter_chat_demo/providers/friend_provider.dart';
 import 'package:flutter_chat_demo/providers/home_provider.dart';
+import 'package:flutter_chat_demo/providers/theme_provider.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:provider/provider.dart';
 
@@ -17,7 +17,8 @@ class CreateGroupPage extends StatefulWidget {
   State<CreateGroupPage> createState() => _CreateGroupPageState();
 }
 
-class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderStateMixin {
+class _CreateGroupPageState extends State<CreateGroupPage>
+    with TickerProviderStateMixin {
   final _groupNameController = TextEditingController();
   final _descController = TextEditingController();
   final Set<String> _selectedMembers = {};
@@ -34,15 +35,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
   late final FriendProvider _friendProvider;
   late final FirebaseFirestore _firebaseFirestore;
 
-  static const _bg = Color(0xFF0D0F14);
-  static const _surface = Color(0xFF181B24);
-  static const _surfaceHigh = Color(0xFF1E2233);
-  static const _accent = Color(0xFF4F8EF7);
-  static const _accentGlow = Color(0x334F8EF7);
-  static const _textPrimary = Color(0xFFEEF2FF);
-  static const _textSecondary = Color(0xFF8B93B0);
-  static const _divider = Color(0xFF252A3A);
-
   @override
   void initState() {
     super.initState();
@@ -52,12 +44,15 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
     );
     _firebaseFirestore = context.read<HomeProvider>().firebaseFirestore;
 
-    _fabAnimCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
+    _fabAnimCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 300));
     _fabScale = CurvedAnimation(parent: _fabAnimCtrl, curve: Curves.elasticOut);
 
-    _stepAnimCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
+    _stepAnimCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 400));
     _stepSlide = Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
-        .animate(CurvedAnimation(parent: _stepAnimCtrl, curve: Curves.easeOutCubic));
+        .animate(
+            CurvedAnimation(parent: _stepAnimCtrl, curve: Curves.easeOutCubic));
     _stepAnimCtrl.forward();
 
     _groupNameController.addListener(_onNameChanged);
@@ -85,7 +80,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
 
   void _goToStep(int step) {
     if (step == 1 && _groupNameController.text.trim().isEmpty) {
-      _showToast('❗ Please enter a group name');
+      _showToast('❗ Vui lòng nhập tên nhóm');
       return;
     }
     HapticFeedback.selectionClick();
@@ -96,11 +91,11 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
 
   Future<void> _createGroup() async {
     if (_groupNameController.text.trim().isEmpty) {
-      _showToast('❗ Please enter group name');
+      _showToast('❗ Vui lòng nhập tên nhóm');
       return;
     }
     if (_selectedMembers.isEmpty) {
-      _showToast('❗ Select at least one member');
+      _showToast('❗ Chọn ít nhất một thành viên');
       return;
     }
 
@@ -111,15 +106,16 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
       final memberIds = [_currentUserId, ..._selectedMembers];
       final now = DateTime.now().millisecondsSinceEpoch.toString();
       final groupName = _groupNameController.text.trim();
-      final systemMsg = '$groupName group created';
+      final systemMsg = 'Nhóm $groupName đã được tạo';
 
       final roles = <String, dynamic>{
         _currentUserId: 'owner',
         for (final id in _selectedMembers) id: 'member',
       };
 
-      final groupDoc =
-          await _firebaseFirestore.collection(FirestoreConstants.pathGroupCollection).add({
+      final groupDoc = await _firebaseFirestore
+          .collection(FirestoreConstants.pathGroupCollection)
+          .add({
         FirestoreConstants.groupName: groupName,
         FirestoreConstants.groupPhotoUrl: '',
         FirestoreConstants.adminId: _currentUserId,
@@ -158,10 +154,10 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
         'groupId': groupDoc.id,
       });
 
-      _showToast('🎉 Group created!', isSuccess: true);
+      _showToast('🎉 Tạo nhóm thành công!', isSuccess: true);
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      _showToast('❌ Failed to create group: $e');
+      _showToast('❌ Không thể tạo nhóm: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -170,32 +166,37 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
   void _showToast(String msg, {bool isSuccess = false}) {
     Fluttertoast.showToast(
       msg: msg,
-      backgroundColor: isSuccess ? const Color(0xFF1A3A2A) : const Color(0xFF3A1A1A),
-      textColor: isSuccess ? Colors.greenAccent : Colors.redAccent,
+      backgroundColor: isSuccess ? Colors.green.shade700 : Colors.red.shade700,
+      textColor: Colors.white,
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = context.watch<ThemeProvider>();
+    final p = theme.palette;
+
     return Theme(
-      data: ThemeData.dark(),
+      data: theme.isDark ? theme.darkTheme : theme.lightTheme,
       child: Scaffold(
-        backgroundColor: _bg,
+        backgroundColor: p.background,
         body: Stack(
           children: [
             Column(
               children: [
-                _buildHeader(),
-                _buildStepIndicator(),
+                _buildHeader(p, theme),
+                _buildStepIndicator(p, theme),
                 Expanded(
                   child: SlideTransition(
                     position: _stepSlide,
-                    child: _step == 0 ? _buildDetailsStep() : _buildMembersStep(),
+                    child: _step == 0
+                        ? _buildDetailsStep(p, theme)
+                        : _buildMembersStep(p, theme),
                   ),
                 ),
               ],
             ),
-            if (_isLoading) const _FullScreenLoader(),
+            if (_isLoading) _LoadingOverlay(primary: theme.primaryColor),
           ],
         ),
         floatingActionButton: _step == 0
@@ -204,11 +205,21 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
                 scale: _fabScale,
                 child: FloatingActionButton.extended(
                   onPressed: _selectedMembers.isNotEmpty ? _createGroup : null,
-                  backgroundColor: _selectedMembers.isNotEmpty ? _accent : const Color(0xFF252A3A),
-                  icon: const Icon(Icons.check_rounded),
+                  backgroundColor: _selectedMembers.isNotEmpty
+                      ? theme.primaryColor
+                      : p.surfaceVariant,
+                  icon: Icon(Icons.check_rounded,
+                      color: _selectedMembers.isNotEmpty
+                          ? Colors.white
+                          : p.textSecondary),
                   label: Text(
-                    'Create${_selectedMembers.isNotEmpty ? ' (${_selectedMembers.length})' : ''}',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                    'Tạo nhóm${_selectedMembers.isNotEmpty ? ' (${_selectedMembers.length})' : ''}',
+                    style: TextStyle(
+                      color: _selectedMembers.isNotEmpty
+                          ? Colors.white
+                          : p.textSecondary,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ),
@@ -216,48 +227,76 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(ThemePalette p, ThemeProvider theme) {
     return Container(
-      color: _bg,
+      color: p.appBarBackground,
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           child: Row(
             children: [
               IconButton(
                 icon: Icon(
-                  _step == 0 ? Icons.close_rounded : Icons.arrow_back_ios_new_rounded,
-                  color: _textPrimary,
+                  _step == 0
+                      ? Icons.close_rounded
+                      : Icons.arrow_back_ios_new_rounded,
+                  color: p.textPrimary,
+                  size: 20,
                 ),
-                onPressed: _step == 0 ? () => Navigator.pop(context) : () => _goToStep(0),
+                onPressed: _step == 0
+                    ? () => Navigator.pop(context)
+                    : () => _goToStep(0),
               ),
               const SizedBox(width: 4),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _step == 0 ? 'New Group' : 'Add Members',
-                    style: const TextStyle(
-                        color: _textPrimary,
-                        fontSize: 20,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _step == 0 ? 'Nhóm mới' : 'Thêm thành viên',
+                      style: TextStyle(
+                        color: p.textPrimary,
+                        fontSize: 18,
                         fontWeight: FontWeight.w700,
-                        letterSpacing: -.4),
-                  ),
-                  Text(
-                    _step == 0
-                        ? 'Step 1 of 2 — Group details'
-                        : 'Step 2 of 2 — Select participants',
-                    style: const TextStyle(color: _textSecondary, fontSize: 12.5),
-                  ),
-                ],
+                        letterSpacing: -.4,
+                      ),
+                    ),
+                    Text(
+                      _step == 0
+                          ? 'Bước 1/2 — Thông tin nhóm'
+                          : 'Bước 2/2 — Chọn thành viên',
+                      style: TextStyle(color: p.textSecondary, fontSize: 12),
+                    ),
+                  ],
+                ),
               ),
-              const Spacer(),
               if (_step == 0)
-                _PrimarySmallBtn(
-                  label: 'Next →',
-                  onTap: () => _goToStep(1),
-                  enabled: _groupNameController.text.trim().isNotEmpty,
+                AnimatedOpacity(
+                  opacity:
+                      _groupNameController.text.trim().isNotEmpty ? 1.0 : 0.4,
+                  duration: const Duration(milliseconds: 200),
+                  child: GestureDetector(
+                    onTap: () => _goToStep(1),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: [
+                          theme.primaryColor,
+                          theme.primaryLightColor
+                        ]),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Text(
+                        'Tiếp →',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13.5),
+                      ),
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -266,30 +305,50 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
     );
   }
 
-  Widget _buildStepIndicator() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-      child: Row(
+  Widget _buildStepIndicator(ThemePalette p, ThemeProvider theme) {
+    return Container(
+      color: p.appBarBackground,
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 14),
+      child: Column(
         children: [
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: _step == 0 ? 0.5 : 1.0,
-                backgroundColor: _divider,
-                valueColor: const AlwaysStoppedAnimation<Color>(_accent),
-                minHeight: 3,
-              ),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: _step == 0 ? 0.5 : 1.0,
+              backgroundColor: p.divider,
+              valueColor: AlwaysStoppedAnimation<Color>(theme.primaryColor),
+              minHeight: 3,
             ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _StepDot(
+                  active: true,
+                  done: _step > 0,
+                  label: 'Chi tiết',
+                  primary: theme.primaryColor,
+                  palette: p),
+              Expanded(
+                  child: Divider(
+                      color: _step > 0 ? theme.primaryColor : p.divider,
+                      thickness: 1.5)),
+              _StepDot(
+                  active: _step >= 1,
+                  done: false,
+                  label: 'Thành viên',
+                  primary: theme.primaryColor,
+                  palette: p),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildDetailsStep() {
+  Widget _buildDetailsStep(ThemePalette p, ThemeProvider theme) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 60),
       physics: const BouncingScrollPhysics(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -303,74 +362,87 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
                   height: 90,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF4F8EF7), Color(0xFF6B4AE8)],
+                    gradient: LinearGradient(
+                      colors: [theme.primaryColor, theme.primaryLightColor],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: _accent.withValues(alpha: .35),
-                        blurRadius: 20,
-                        spreadRadius: 2,
-                      )
+                          color: theme.primaryColor.withValues(alpha: .3),
+                          blurRadius: 20,
+                          spreadRadius: 2)
                     ],
                   ),
-                  child: const Icon(Icons.group_rounded, size: 44, color: Colors.white),
+                  child: const Icon(Icons.group_rounded,
+                      size: 44, color: Colors.white),
                 ),
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: _accent,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: _bg, width: 2),
+                GestureDetector(
+                  onTap: () {},
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: theme.primaryColor,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: p.background, width: 2),
+                    ),
+                    child: const Icon(Icons.camera_alt_rounded,
+                        size: 14, color: Colors.white),
                   ),
-                  child: const Icon(Icons.camera_alt_rounded, size: 14, color: Colors.white),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 28),
-          const _FieldLabel(label: 'Group Name', required: true),
+          _FieldLabel(label: 'Tên nhóm *', palette: p),
           const SizedBox(height: 8),
-          _DarkInput(
+          _ThemedInput(
             controller: _groupNameController,
-            hint: 'e.g.  🚀 Project Avengers',
+            hint: 'vd: 🚀 Nhóm dự án Avengers',
             maxLength: 50,
             textCapitalization: TextCapitalization.words,
+            palette: p,
+            primary: theme.primaryColor,
           ),
-          const SizedBox(height: 4),
           Align(
             alignment: Alignment.centerRight,
-            child: Text(
-              '${_groupNameController.text.length}/50',
-              style: const TextStyle(color: _textSecondary, fontSize: 11.5),
+            child: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text('${_groupNameController.text.length}/50',
+                  style: TextStyle(color: p.textSecondary, fontSize: 11.5)),
             ),
           ),
           const SizedBox(height: 20),
-          const _FieldLabel(label: 'Description', required: false),
+          _FieldLabel(label: 'Mô tả (tuỳ chọn)', palette: p),
           const SizedBox(height: 8),
-          _DarkInput(
+          _ThemedInput(
             controller: _descController,
-            hint: 'What is this group about?',
+            hint: 'Nhóm này về chủ đề gì?',
             maxLines: 3,
             maxLength: 150,
+            palette: p,
+            primary: theme.primaryColor,
           ),
           const SizedBox(height: 28),
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: _accentGlow,
+              color: theme.primaryColor.withValues(alpha: 0.07),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: _accent.withValues(alpha: .25), width: .8),
+              border:
+                  Border.all(color: theme.primaryColor.withValues(alpha: .18)),
             ),
-            child: const Row(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.lightbulb_rounded, color: Color(0xFFFFB84D), size: 18),
-                SizedBox(width: 10),
+                Icon(Icons.lightbulb_outline_rounded,
+                    color: Colors.amber.shade600, size: 18),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Give your group a clear name and description so members know what it\'s about.',
-                    style: TextStyle(color: _textSecondary, fontSize: 13, height: 1.5),
+                    'Đặt tên rõ ràng giúp các thành viên hiểu mục đích nhóm hơn.',
+                    style: TextStyle(
+                        color: p.textSecondary, fontSize: 13, height: 1.5),
                   ),
                 ),
               ],
@@ -379,11 +451,22 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
           const SizedBox(height: 28),
           SizedBox(
             width: double.infinity,
-            child: _GradientBtn(
-              label: 'Continue — Select Members',
-              icon: Icons.people_rounded,
-              onTap: () => _goToStep(1),
-              enabled: _groupNameController.text.trim().isNotEmpty,
+            height: 52,
+            child: ElevatedButton.icon(
+              onPressed: _groupNameController.text.trim().isNotEmpty
+                  ? () => _goToStep(1)
+                  : null,
+              icon: const Icon(Icons.people_rounded, size: 20),
+              label: const Text('Tiếp — Chọn thành viên',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.primaryColor,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                disabledBackgroundColor: p.surfaceVariant,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+              ),
             ),
           ),
         ],
@@ -391,39 +474,39 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
     );
   }
 
-  Widget _buildMembersStep() {
+  Widget _buildMembersStep(ThemePalette p, ThemeProvider theme) {
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: Container(
             decoration: BoxDecoration(
-              color: _surface,
+              color: p.surface,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: _divider, width: .8),
+              border: Border.all(color: p.divider),
             ),
             child: TextField(
-              style: const TextStyle(color: _textPrimary, fontSize: 15),
-              decoration: const InputDecoration(
-                hintText: 'Search friends...',
-                hintStyle: TextStyle(color: _textSecondary),
-                prefixIcon: Icon(Icons.search_rounded, color: _textSecondary),
+              style: TextStyle(color: p.textPrimary, fontSize: 15),
+              decoration: InputDecoration(
+                hintText: 'Tìm bạn bè...',
+                hintStyle: TextStyle(color: p.textSecondary),
+                prefixIcon: Icon(Icons.search_rounded, color: p.textSecondary),
                 border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(vertical: 13),
+                contentPadding: const EdgeInsets.symmetric(vertical: 13),
               ),
               onChanged: (v) => setState(() => _searchQuery = v),
             ),
           ),
         ),
-        if (_selectedMembers.isNotEmpty) _buildSelectedChips(),
-        Expanded(child: _buildFriendsList()),
+        if (_selectedMembers.isNotEmpty) _buildSelectedChips(p, theme),
+        Expanded(child: _buildFriendsList(p, theme)),
       ],
     );
   }
 
-  Widget _buildSelectedChips() {
+  Widget _buildSelectedChips(ThemePalette p, ThemeProvider theme) {
     return SizedBox(
-      height: 50,
+      height: 52,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
@@ -431,42 +514,51 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
         itemBuilder: (_, i) {
           final uid = _selectedMembers.elementAt(i);
           return FutureBuilder<DocumentSnapshot>(
-            future:
-                _firebaseFirestore.collection(FirestoreConstants.pathUserCollection).doc(uid).get(),
+            future: _firebaseFirestore
+                .collection(FirestoreConstants.pathUserCollection)
+                .doc(uid)
+                .get(),
             builder: (_, snap) {
               if (!snap.hasData) {
                 return Container(
                   margin: const EdgeInsets.only(right: 8),
                   width: 80,
-                  height: 32,
+                  height: 36,
                   decoration: BoxDecoration(
-                    color: _surface,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
+                      color: p.surface,
+                      borderRadius: BorderRadius.circular(20)),
                 );
               }
               final user = UserChat.fromDocument(snap.data!);
               return Container(
                 margin: const EdgeInsets.only(right: 8),
                 child: Chip(
-                  backgroundColor: _accentGlow,
-                  side: BorderSide(color: _accent.withValues(alpha: .4), width: .8),
-                  labelPadding: const EdgeInsets.symmetric(horizontal: 2),
+                  backgroundColor: theme.primaryColor.withValues(alpha: 0.1),
+                  side: BorderSide(
+                      color: theme.primaryColor.withValues(alpha: .3)),
                   avatar: CircleAvatar(
-                    backgroundImage: user.photoUrl.isNotEmpty ? NetworkImage(user.photoUrl) : null,
-                    backgroundColor: _accent.withValues(alpha: .3),
+                    backgroundImage: user.photoUrl.isNotEmpty
+                        ? NetworkImage(user.photoUrl)
+                        : null,
+                    backgroundColor: theme.primaryColor.withValues(alpha: .25),
                     child: user.photoUrl.isEmpty
                         ? Text(
-                            user.nickname.substring(0, 1).toUpperCase(),
-                            style: const TextStyle(
-                                color: _accent, fontSize: 11, fontWeight: FontWeight.bold),
-                          )
+                            user.nickname.isNotEmpty
+                                ? user.nickname[0].toUpperCase()
+                                : '?',
+                            style: TextStyle(
+                                color: theme.primaryColor,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold))
                         : null,
                   ),
                   label: Text(user.nickname,
-                      style: const TextStyle(
-                          color: _accent, fontSize: 12, fontWeight: FontWeight.w600)),
-                  deleteIcon: const Icon(Icons.close_rounded, size: 14, color: _accent),
+                      style: TextStyle(
+                          color: theme.primaryColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600)),
+                  deleteIcon: Icon(Icons.close_rounded,
+                      size: 14, color: theme.primaryColor),
                   onDeleted: () => setState(() => _selectedMembers.remove(uid)),
                 ),
               );
@@ -477,14 +569,16 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
     );
   }
 
-  Widget _buildFriendsList() {
+  Widget _buildFriendsList(ThemePalette p, ThemeProvider theme) {
     return StreamBuilder<QuerySnapshot>(
       stream: _friendProvider.getFriendsList(_currentUserId),
       builder: (_, snap1) => StreamBuilder<QuerySnapshot>(
         stream: _friendProvider.getFriendsList2(_currentUserId),
         builder: (_, snap2) {
-          final all = [...(snap1.data?.docs ?? []), ...(snap2.data?.docs ?? [])];
-
+          final all = [
+            ...(snap1.data?.docs ?? []),
+            ...(snap2.data?.docs ?? [])
+          ];
           if (all.isEmpty) {
             return Center(
               child: Column(
@@ -493,33 +587,32 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: _surface,
-                      shape: BoxShape.circle,
-                    ),
-                    child:
-                        const Icon(Icons.people_outline_rounded, size: 44, color: _textSecondary),
+                        color: p.surfaceVariant, shape: BoxShape.circle),
+                    child: Icon(Icons.people_outline_rounded,
+                        size: 44, color: p.textSecondary),
                   ),
                   const SizedBox(height: 16),
-                  const Text('No friends yet',
+                  Text('Chưa có bạn bè',
                       style: TextStyle(
-                          color: _textPrimary, fontSize: 17, fontWeight: FontWeight.w600)),
+                          color: p.textPrimary,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600)),
                   const SizedBox(height: 6),
-                  const Text('Add friends to start a group',
-                      style: TextStyle(color: _textSecondary, fontSize: 14)),
+                  Text('Thêm bạn bè để tạo nhóm',
+                      style: TextStyle(color: p.textSecondary, fontSize: 14)),
                 ],
               ),
             );
           }
-
           return ListView.builder(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
             physics: const BouncingScrollPhysics(),
             itemCount: all.length,
             itemBuilder: (_, i) {
               final friendship = Friendship.fromDocument(all[i]);
-              final friendId =
-                  friendship.userId1 == _currentUserId ? friendship.userId2 : friendship.userId1;
-
+              final friendId = friendship.userId1 == _currentUserId
+                  ? friendship.userId2
+                  : friendship.userId1;
               return FutureBuilder<DocumentSnapshot>(
                 future: _firebaseFirestore
                     .collection(FirestoreConstants.pathUserCollection)
@@ -529,32 +622,37 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
                   if (!snap.hasData) return const SizedBox.shrink();
                   final user = UserChat.fromDocument(snap.data!);
                   if (_searchQuery.isNotEmpty &&
-                      !user.nickname.toLowerCase().contains(_searchQuery.toLowerCase())) {
+                      !user.nickname
+                          .toLowerCase()
+                          .contains(_searchQuery.toLowerCase())) {
                     return const SizedBox.shrink();
                   }
                   final isSelected = _selectedMembers.contains(friendId);
-
                   return GestureDetector(
                     onTap: () {
                       HapticFeedback.selectionClick();
                       setState(() {
-                        if (isSelected) {
+                        if (isSelected)
                           _selectedMembers.remove(friendId);
-                        } else {
+                        else
                           _selectedMembers.add(friendId);
-                        }
                       });
                     },
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 180),
-                      margin: const EdgeInsets.only(bottom: 6),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
                       decoration: BoxDecoration(
-                        color: isSelected ? _accentGlow : _surface,
+                        color: isSelected
+                            ? theme.primaryColor.withValues(alpha: 0.08)
+                            : p.surface,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: isSelected ? _accent.withValues(alpha: .5) : _divider,
-                          width: .8,
+                          color: isSelected
+                              ? theme.primaryColor.withValues(alpha: .4)
+                              : p.divider,
+                          width: isSelected ? 1.5 : 0.8,
                         ),
                       ),
                       child: Row(
@@ -564,14 +662,18 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
                             children: [
                               CircleAvatar(
                                 radius: 22,
-                                backgroundImage:
-                                    user.photoUrl.isNotEmpty ? NetworkImage(user.photoUrl) : null,
-                                backgroundColor: _accent.withValues(alpha: .2),
+                                backgroundImage: user.photoUrl.isNotEmpty
+                                    ? NetworkImage(user.photoUrl)
+                                    : null,
+                                backgroundColor:
+                                    theme.primaryColor.withValues(alpha: .15),
                                 child: user.photoUrl.isEmpty
                                     ? Text(
-                                        user.nickname.substring(0, 1).toUpperCase(),
-                                        style: const TextStyle(
-                                            color: _accent,
+                                        user.nickname.isNotEmpty
+                                            ? user.nickname[0].toUpperCase()
+                                            : '?',
+                                        style: TextStyle(
+                                            color: theme.primaryColor,
                                             fontWeight: FontWeight.bold,
                                             fontSize: 15),
                                       )
@@ -584,10 +686,9 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
                                   child: Container(
                                     width: 18,
                                     height: 18,
-                                    decoration: const BoxDecoration(
-                                      color: _accent,
-                                      shape: BoxShape.circle,
-                                    ),
+                                    decoration: BoxDecoration(
+                                        color: theme.primaryColor,
+                                        shape: BoxShape.circle),
                                     child: const Icon(Icons.check_rounded,
                                         color: Colors.white, size: 12),
                                   ),
@@ -599,21 +700,21 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  user.nickname,
-                                  style: TextStyle(
-                                    color: isSelected ? _accent : _textPrimary,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 15,
-                                  ),
-                                ),
+                                Text(user.nickname,
+                                    style: TextStyle(
+                                      color: isSelected
+                                          ? theme.primaryColor
+                                          : p.textPrimary,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 15,
+                                    )),
                                 if (user.aboutMe.isNotEmpty)
-                                  Text(
-                                    user.aboutMe,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(color: _textSecondary, fontSize: 12.5),
-                                  ),
+                                  Text(user.aboutMe,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                          color: p.textSecondary,
+                                          fontSize: 12.5)),
                               ],
                             ),
                           ),
@@ -623,14 +724,19 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
                             height: 24,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: isSelected ? _accent : Colors.transparent,
+                              color: isSelected
+                                  ? theme.primaryColor
+                                  : Colors.transparent,
                               border: Border.all(
-                                color: isSelected ? _accent : _textSecondary,
+                                color: isSelected
+                                    ? theme.primaryColor
+                                    : p.textSecondary,
                                 width: 2,
                               ),
                             ),
                             child: isSelected
-                                ? const Icon(Icons.check_rounded, color: Colors.white, size: 14)
+                                ? const Icon(Icons.check_rounded,
+                                    color: Colors.white, size: 14)
                                 : null,
                           ),
                         ],
@@ -647,178 +753,142 @@ class _CreateGroupPageState extends State<CreateGroupPage> with TickerProviderSt
   }
 }
 
-class _FieldLabel extends StatelessWidget {
-  const _FieldLabel({required this.label, required this.required});
+// ── Supporting widgets ─────────────────────────────────────────────────────
+
+class _StepDot extends StatelessWidget {
+  final bool active;
+  final bool done;
   final String label;
-  final bool required;
+  final Color primary;
+  final ThemePalette palette;
+
+  const _StepDot({
+    required this.active,
+    required this.done,
+    required this.label,
+    required this.primary,
+    required this.palette,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
       children: [
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: active ? primary : palette.surfaceVariant,
+            border: Border.all(
+                color: active ? primary : palette.divider, width: 1.5),
+          ),
+          child: Center(
+            child: done
+                ? const Icon(Icons.check_rounded, color: Colors.white, size: 14)
+                : Text('${active ? '●' : '○'}',
+                    style: TextStyle(
+                      color: active ? Colors.white : palette.textSecondary,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    )),
+          ),
+        ),
+        const SizedBox(height: 2),
         Text(label,
-            style: const TextStyle(
-                color: Color(0xFF8B93B0),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                letterSpacing: .4)),
-        if (required)
-          const Text(' *',
-              style:
-                  TextStyle(color: Color(0xFFFF5A5A), fontSize: 13, fontWeight: FontWeight.bold)),
+            style: TextStyle(
+              fontSize: 10,
+              color: active ? primary : palette.textSecondary,
+              fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+            )),
       ],
     );
   }
 }
 
-class _DarkInput extends StatelessWidget {
-  const _DarkInput({
-    required this.controller,
-    required this.hint,
-    this.maxLines = 1,
-    this.maxLength,
-    this.textCapitalization = TextCapitalization.none,
-  });
+class _FieldLabel extends StatelessWidget {
+  final String label;
+  final ThemePalette palette;
 
+  const _FieldLabel({required this.label, required this.palette});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(label,
+        style: TextStyle(
+            color: palette.textSecondary,
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+            letterSpacing: .3));
+  }
+}
+
+class _ThemedInput extends StatelessWidget {
   final TextEditingController controller;
   final String hint;
   final int maxLines;
   final int? maxLength;
   final TextCapitalization textCapitalization;
+  final ThemePalette palette;
+  final Color primary;
+
+  const _ThemedInput({
+    required this.controller,
+    required this.hint,
+    required this.palette,
+    required this.primary,
+    this.maxLines = 1,
+    this.maxLength,
+    this.textCapitalization = TextCapitalization.none,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF181B24),
+        color: palette.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF252A3A), width: .8),
+        border: Border.all(color: palette.divider),
       ),
       child: TextField(
         controller: controller,
         maxLines: maxLines,
         maxLength: maxLength,
         textCapitalization: textCapitalization,
-        style: const TextStyle(color: Color(0xFFEEF2FF), fontSize: 15),
+        style: TextStyle(color: palette.textPrimary, fontSize: 15),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: const TextStyle(color: Color(0xFF8B93B0)),
+          hintStyle: TextStyle(color: palette.textSecondary),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-          counterStyle: const TextStyle(color: Color(0xFF8B93B0), fontSize: 11),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+          counterStyle: TextStyle(color: palette.textSecondary, fontSize: 11),
         ),
       ),
     );
   }
 }
 
-class _GradientBtn extends StatelessWidget {
-  const _GradientBtn({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-    this.enabled = true,
-  });
-
-  final String label;
-  final IconData icon;
-  final VoidCallback onTap;
-  final bool enabled;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: enabled ? onTap : null,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        height: 52,
-        decoration: BoxDecoration(
-          gradient:
-              enabled ? const LinearGradient(colors: [Color(0xFF4F8EF7), Color(0xFF6B4AE8)]) : null,
-          color: enabled ? null : const Color(0xFF252A3A),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: enabled
-              ? [
-                  BoxShadow(
-                    color: const Color(0xFF4F8EF7).withValues(alpha: .35),
-                    blurRadius: 16,
-                    offset: const Offset(0, 5),
-                  )
-                ]
-              : null,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: enabled ? Colors.white : const Color(0xFF8B93B0), size: 20),
-            const SizedBox(width: 10),
-            Text(
-              label,
-              style: TextStyle(
-                color: enabled ? Colors.white : const Color(0xFF8B93B0),
-                fontWeight: FontWeight.w700,
-                fontSize: 15,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PrimarySmallBtn extends StatelessWidget {
-  const _PrimarySmallBtn({required this.label, required this.onTap, this.enabled = true});
-  final String label;
-  final VoidCallback onTap;
-  final bool enabled;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: enabled ? onTap : null,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          gradient:
-              enabled ? const LinearGradient(colors: [Color(0xFF4F8EF7), Color(0xFF6B4AE8)]) : null,
-          color: enabled ? null : const Color(0xFF252A3A),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: enabled ? Colors.white : const Color(0xFF8B93B0),
-            fontWeight: FontWeight.w700,
-            fontSize: 13.5,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _FullScreenLoader extends StatelessWidget {
-  const _FullScreenLoader();
+class _LoadingOverlay extends StatelessWidget {
+  final Color primary;
+  const _LoadingOverlay({required this.primary});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       color: Colors.black45,
-      child: const Center(
+      child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(
-              color: Color(0xFF4F8EF7),
-              strokeWidth: 2.5,
-            ),
-            SizedBox(height: 16),
-            Text(
-              'Creating group...',
-              style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
-            ),
+            CircularProgressIndicator(color: primary, strokeWidth: 2.5),
+            const SizedBox(height: 14),
+            const Text('Đang tạo nhóm...',
+                style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500)),
           ],
         ),
       ),
