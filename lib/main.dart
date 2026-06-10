@@ -10,13 +10,12 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
 // ── App Constants, Pages, Utils & Widgets ──────────────────────────────────
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/firebase_options.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:flutter_chat_demo/providers/phone_auth_provider.dart'
-as custom_auth;
+    as custom_auth;
 import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_chat_demo/utils/utils.dart';
@@ -29,27 +28,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
-// ── Bubble Services ────────────────────────────────────────────────────────
-import 'services/bubble_fcm_handler.dart';
-import 'services/bubble_lifecycle_observer.dart';
-import 'services/bubble_settings_service.dart';
-import 'services/bubble_sound_service.dart';
-import 'services/contextual_bubble_service.dart';
-import 'services/unified_bubble_service.dart';
-import 'widgets/bubble_manager.dart';
-import 'widgets/bubble_theme.dart';
-import 'widgets/bubble_integration_demo.dart'; // Đã thêm để sửa lỗi BubbleSystemWrapper
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Globals
 // ─────────────────────────────────────────────────────────────────────────────
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-FlutterLocalNotificationsPlugin();
+    FlutterLocalNotificationsPlugin();
 
 // Đã đổi tên để tránh lỗi circular reference trong AppRouter
 final GlobalKey<NavigatorState> globalNavigatorKey =
-GlobalKey<NavigatorState>();
+    GlobalKey<NavigatorState>();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FCM background handler (Must be top-level)
@@ -154,7 +142,7 @@ Future<void> _initializeFirebase() async {
 
     await FirebaseAppCheck.instance.activate(
       androidProvider:
-      kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+          kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
       appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
     );
 
@@ -224,7 +212,7 @@ Future<void> _initializeLocalNotifications(
     FlutterLocalNotificationsPlugin plugin) async {
   try {
     const androidSettings =
-    AndroidInitializationSettings('@mipmap/ic_launcher');
+        AndroidInitializationSettings('@mipmap/ic_launcher');
     final iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -241,20 +229,20 @@ Future<void> _initializeLocalNotifications(
     );
 
     final initSettings =
-    InitializationSettings(android: androidSettings, iOS: iosSettings);
+        InitializationSettings(android: androidSettings, iOS: iosSettings);
 
     await plugin.initialize(
       initSettings,
       onDidReceiveNotificationResponse: _onNotificationTapped,
       onDidReceiveBackgroundNotificationResponse:
-      _onBackgroundNotificationTapped,
+          _onBackgroundNotificationTapped,
     );
 
     if (Platform.isAndroid) await _setupAndroidNotificationChannels(plugin);
     if (Platform.isIOS) {
       await plugin
           .resolvePlatformSpecificImplementation<
-          IOSFlutterLocalNotificationsPlugin>()
+              IOSFlutterLocalNotificationsPlugin>()
           ?.requestPermissions(alert: true, badge: true, sound: true);
     }
     debugPrint('✅ Local Notifications khởi tạo xong');
@@ -667,9 +655,9 @@ class _MiniChatHeader extends StatelessWidget {
 
   const _MiniChatHeader(
       {required this.userName,
-        required this.avatarUrl,
-        required this.onMinimize,
-        required this.onClose});
+      required this.avatarUrl,
+      required this.onMinimize,
+      required this.onClose});
 
   @override
   Widget build(BuildContext context) {
@@ -677,7 +665,7 @@ class _MiniChatHeader extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: const BoxDecoration(
         gradient:
-        LinearGradient(colors: [Color(0xFF1E88E5), Color(0xFF1565C0)]),
+            LinearGradient(colors: [Color(0xFF1E88E5), Color(0xFF1565C0)]),
       ),
       child: Row(
         children: [
@@ -685,11 +673,11 @@ class _MiniChatHeader extends StatelessWidget {
             radius: 17,
             backgroundColor: Colors.white24,
             backgroundImage:
-            avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+                avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
             child: avatarUrl.isEmpty
                 ? Text(userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.bold))
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.bold))
                 : null,
           ),
           const SizedBox(width: 9),
@@ -793,16 +781,16 @@ class _AppInitializerState extends State<AppInitializer>
   void _startNotificationService() {
     _authSub =
         firebase_auth.FirebaseAuth.instance.authStateChanges().listen((user) {
-          if (user != null && !_notificationStarted) {
-            widget.notificationService.listenForNewMessages(user.uid);
-            _notificationStarted = true;
-            ErrorLogger.setUserId(user.uid);
-          } else if (user == null) {
-            widget.notificationService.stopListening();
-            _notificationStarted = false;
-            ErrorLogger.clearUserId();
-          }
-        });
+      if (user != null && !_notificationStarted) {
+        widget.notificationService.listenForNewMessages(user.uid);
+        _notificationStarted = true;
+        ErrorLogger.setUserId(user.uid);
+      } else if (user == null) {
+        widget.notificationService.stopListening();
+        _notificationStarted = false;
+        ErrorLogger.clearUserId();
+      }
+    });
   }
 
   void _handleFcmForegroundMessages() {
@@ -827,7 +815,7 @@ class _AppInitializerState extends State<AppInitializer>
   Future<void> _handleNotificationLaunch() async {
     try {
       final initialMessage =
-      await FirebaseMessaging.instance.getInitialMessage();
+          await FirebaseMessaging.instance.getInitialMessage();
       if (initialMessage != null) {
         final peerId = initialMessage.data['peerId'] as String?;
         final peerNickname = initialMessage.data['peerNickname'] as String?;
@@ -947,7 +935,7 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
               title: AppConstants.appTitle,
               debugShowCheckedModeBanner: false,
               navigatorKey:
-              AppRouter.navigatorKey, // Using unified AppRouter Key
+                  AppRouter.navigatorKey, // Using unified AppRouter Key
               themeMode: themeProvider.flutterThemeMode ?? ThemeMode.system,
               theme: themeProvider.lightTheme ??
                   _buildFallbackTheme(Brightness.light),
@@ -972,10 +960,10 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
           seedColor: const Color(0xFF2979FF), brightness: brightness),
       fontFamily: 'Inter',
       scaffoldBackgroundColor:
-      isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF4F7FF),
+          isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF4F7FF),
       appBarTheme: AppBarTheme(
         backgroundColor:
-        isDark ? const Color(0xFF1A1A2E) : const Color(0xFF2979FF),
+            isDark ? const Color(0xFF1A1A2E) : const Color(0xFF2979FF),
         foregroundColor: Colors.white,
         elevation: 0,
         systemOverlayStyle: SystemUiOverlayStyle.light,
@@ -990,6 +978,13 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
     required firebase_auth.FirebaseAuth firebaseAuth,
   }) {
     return [
+      // Đã đăng ký AutoPilotProvider vào đầu mảng theo yêu cầu
+      ChangeNotifierProvider<AutoPilotProvider>(
+        create: (_) => AutoPilotProvider(
+          firebaseFirestore: firebaseFirestore,
+          prefs: widget.prefs,
+        ),
+      ),
       ChangeNotifierProvider<AppModeProvider>(create: (_) => AppModeProvider()),
       ChangeNotifierProvider<AuthProvider>(
         create: (_) => AuthProvider(
@@ -1129,22 +1124,22 @@ class AppRouter {
   }
 
   static PageRouteBuilder _fade(Widget page) => PageRouteBuilder(
-    pageBuilder: (_, __, ___) => page,
-    transitionDuration: const Duration(milliseconds: 220),
-    transitionsBuilder: (_, anim, __, child) =>
-        FadeTransition(opacity: anim, child: child),
-  );
+        pageBuilder: (_, __, ___) => page,
+        transitionDuration: const Duration(milliseconds: 220),
+        transitionsBuilder: (_, anim, __, child) =>
+            FadeTransition(opacity: anim, child: child),
+      );
 
   static PageRouteBuilder _slide(Widget page) => PageRouteBuilder(
-    pageBuilder: (_, __, ___) => page,
-    transitionDuration: const Duration(milliseconds: 260),
-    transitionsBuilder: (_, anim, sec, child) {
-      final tween =
-      Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
-          .chain(CurveTween(curve: Curves.easeOutCubic));
-      return SlideTransition(position: anim.drive(tween), child: child);
-    },
-  );
+        pageBuilder: (_, __, ___) => page,
+        transitionDuration: const Duration(milliseconds: 260),
+        transitionsBuilder: (_, anim, sec, child) {
+          final tween =
+              Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+                  .chain(CurveTween(curve: Curves.easeOutCubic));
+          return SlideTransition(position: anim.drive(tween), child: child);
+        },
+      );
 
   static void pushChatFromNotification({
     required String peerId,
@@ -1174,25 +1169,26 @@ class AppRouter {
 // ─── 404 Page ─────────────────────────────────────────────────────────────
 class _NotFoundPage extends StatelessWidget {
   const _NotFoundPage();
+
   @override
   Widget build(BuildContext context) => Scaffold(
-    body: Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.error_outline_rounded,
-              size: 64, color: Colors.grey),
-          const SizedBox(height: 16),
-          Text('Trang không tồn tại',
-              style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () => AppRouter.navigatorKey.currentState
-                ?.pushReplacementNamed(AppRouter.home),
-            child: const Text('Về trang chủ'),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline_rounded,
+                  size: 64, color: Colors.grey),
+              const SizedBox(height: 16),
+              Text('Trang không tồn tại',
+                  style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => AppRouter.navigatorKey.currentState
+                    ?.pushReplacementNamed(AppRouter.home),
+                child: const Text('Về trang chủ'),
+              ),
+            ],
           ),
-        ],
-      ),
-    ),
-  );
+        ),
+      );
 }

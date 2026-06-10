@@ -1,17 +1,17 @@
 // ignore_for_file: avoid_print
-// lib/providers/smart_reply_provider.dart
 import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../models/smart_reply_item.dart';
 import '../services/services.dart';
 
 export '../services/ai_backend_service.dart' show AIBackendService;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AI CACHE — tránh gọi AI nhiều lần cho cùng message
+// AI CACHE — Tránh gọi AI nhiều lần cho cùng một ngữ cảnh message
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _AiReplyCache {
@@ -31,7 +31,7 @@ class _AiReplyCache {
 
   void put(String key, List<SmartReply> replies) {
     if (_cache.length >= _maxEntries) {
-      // Evict oldest
+      // Evict oldest entry
       final oldest = _cache.entries.reduce(
           (a, b) => a.value.timestamp.isBefore(b.value.timestamp) ? a : b);
       _cache.remove(oldest.key);
@@ -48,6 +48,41 @@ class _CacheEntry {
   const _CacheEntry(this.replies, this.timestamp);
 }
 
+// ── Enhanced Cache ───────────────────────────────────────────────────────────
+
+class _EnhancedCache {
+  final Map<String, _EnhancedEntry> _cache = {};
+  static const _maxEntries = 50;
+  static const _ttl = Duration(minutes: 5);
+
+  EnhancedSmartReplyResult? get(String key) {
+    final e = _cache[key];
+    if (e == null) return null;
+    if (DateTime.now().difference(e.timestamp) > _ttl) {
+      _cache.remove(key);
+      return null;
+    }
+    return e.result;
+  }
+
+  void put(String key, EnhancedSmartReplyResult result) {
+    if (_cache.length >= _maxEntries) {
+      final oldest = _cache.entries.reduce(
+          (a, b) => a.value.timestamp.isBefore(b.value.timestamp) ? a : b);
+      _cache.remove(oldest.key);
+    }
+    _cache[key] = _EnhancedEntry(result, DateTime.now());
+  }
+
+  void clear() => _cache.clear();
+}
+
+class _EnhancedEntry {
+  final EnhancedSmartReplyResult result;
+  final DateTime timestamp;
+  const _EnhancedEntry(this.result, this.timestamp);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SMART REPLY PROVIDER
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,10 +91,100 @@ class SmartReplyProvider {
   static const int maxReplies = 3;
 
   final _AiReplyCache _cache = _AiReplyCache();
+  final _EnhancedCache _enhancedCache = _EnhancedCache();
 
-  // ── PUBLIC API ─────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ENHANCED API — Multi-media + Tone-aware
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  /// Entry point chính — thử AI trước, fallback về rule-based.
+  /// Entry point chính cho Enhanced Mode — trả về EnhancedSmartReplyResult gồm cả text và stickers.
+  /// Tự động fallback về rule-based nếu AI thất bại hoặc gặp lỗi kết nối.
+  Future<EnhancedSmartReplyResult> getEnhancedSmartReplies({
+    required String lastMessage,
+    required List<String> recentMessages,
+    int closenessLevel = 3,
+    String relationshipType = 'friend',
+    String language = 'vi',
+    int count = 3,
+  }) async {
+    if (lastMessage.trim().isEmpty) return EnhancedSmartReplyResult.empty();
+
+    final cacheKey = _buildEnhancedCacheKey(
+        lastMessage, recentMessages, closenessLevel, relationshipType);
+    final cached = _enhancedCache.get(cacheKey);
+    if (cached != null) {
+      _log('Enhanced cache hit');
+      return cached;
+    }
+
+    // ── Thử AI Backend ────────────────────────────────────────────────────
+    try {
+      final result = await AIBackendService().smartReplyEnhanced(
+        messages: recentMessages.take(6).toList(),
+        closenessLevel: closenessLevel,
+        relationshipType: relationshipType,
+        language: language,
+        count: count,
+      );
+
+      if (result != null && result.isNotEmpty) {
+        _enhancedCache.put(cacheKey, result);
+        _log('Enhanced AI reply: ${result.suggestions.length} texts, '
+            '${result.suggestStickers.length} stickers');
+        return result;
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[SmartReplyProvider] Enhanced AI error: $e');
+    }
+
+    // ── Fallback rule-based ───────────────────────────────────────────────
+    final ruleReplies = getRuleBasedReplies(lastMessage);
+    final fallback = EnhancedSmartReplyResult.fromLegacy(ruleReplies);
+    _log('Enhanced fallback to rule-based (${ruleReplies.length} replies)');
+    return fallback;
+  }
+
+  /// Lấy dữ liệu phân tích nâng cao từ LocalDB conversation (E2EE-safe).
+  Future<EnhancedSmartReplyResult> getEnhancedSmartRepliesFromConversation({
+    required String conversationId,
+    required String currentUserId,
+    int closenessLevel = 3,
+    String relationshipType = 'friend',
+  }) async {
+    final messages = LocalDbService().getMessages(conversationId);
+    if (messages.isEmpty) return EnhancedSmartReplyResult.empty();
+
+    final last = messages.first;
+    if (last['idFrom'] == currentUserId)
+      return EnhancedSmartReplyResult.empty();
+    if (last['type'] != 0) return EnhancedSmartReplyResult.empty();
+
+    final content = last['content'] as String? ?? '';
+    if (content.isEmpty || content.startsWith('{"iv":')) {
+      return EnhancedSmartReplyResult.empty();
+    }
+
+    final history = messages
+        .take(6)
+        .map((m) => m['content']?.toString() ?? '')
+        .where((c) => c.isNotEmpty && !c.startsWith('{"iv":'))
+        .toList()
+        .reversed
+        .toList();
+
+    return getEnhancedSmartReplies(
+      lastMessage: content,
+      recentMessages: history,
+      closenessLevel: closenessLevel,
+      relationshipType: relationshipType,
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LEGACY API — Dùng List<SmartReply> (Giữ tương thích ngược hoàn chỉnh)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Entry point chính cho luồng xử lý Legacy cũ.
   Future<List<SmartReply>> getSmartReplies({
     required String message,
     List<String>? conversationHistory,
@@ -86,14 +211,7 @@ class SmartReplyProvider {
     return _fallbackReplies;
   }
 
-  // ── AI SMART REPLIES ───────────────────────────────────────────────────────
-
-  /// AI-powered smart reply thay thế rule-based.
-  /// Fallback tự động về getRuleBasedReplies() nếu AI thất bại.
-  ///
-  /// - Sử dụng in-memory cache để tránh gọi AI trùng lặp
-  /// - Language detection tự động
-  /// - Graceful degradation sang rule-based
+  /// AI smart reply sử dụng tích hợp Typed endpoint và luồng map chuỗi ký tự.
   Future<List<SmartReply>> getAiSmartReplies({
     required String lastMessage,
     required List<String> recentMessages,
@@ -102,7 +220,6 @@ class SmartReplyProvider {
   }) async {
     if (lastMessage.trim().isEmpty) return [];
 
-    // Kiểm tra cache
     final cacheKey = _buildCacheKey(lastMessage, recentMessages);
     final cached = _cache.get(cacheKey);
     if (cached != null) {
@@ -110,7 +227,26 @@ class SmartReplyProvider {
       return cached;
     }
 
-    // Thử AI trước
+    // ── Thử AI Backend Typed Endpoint ─────────────────────────────────────
+    try {
+      final replies = await AIBackendService().smartReplyWithContextTyped(
+        messages: recentMessages.take(6).toList(),
+        language: language,
+        count: maxReplies,
+        replyIntent: replyIntent,
+      );
+
+      if (replies.isNotEmpty) {
+        _cache.put(cacheKey, replies);
+        _log('AI smart reply: ${replies.length} replies from AI (Typed)');
+        return replies;
+      }
+    } catch (e) {
+      if (kDebugMode)
+        debugPrint('[SmartReplyProvider] AI Typed failure, trying raw: $e');
+    }
+
+    // ── Thử AI Backend Raw Content Endpoint ───────────────────────────────
     try {
       final aiReplies = await AIBackendService().smartReplyWithContext(
         messages: recentMessages.take(6).toList(),
@@ -132,13 +268,14 @@ class SmartReplyProvider {
 
         if (replies.isNotEmpty) {
           _cache.put(cacheKey, replies);
-          _log('AI smart reply: ${replies.length} replies from AI');
+          _log(
+              'AI smart reply: ${replies.length} replies from AI (Raw mapped)');
           return replies;
         }
       }
     } catch (e) {
-      // Silently fallback — không log để tránh spam
-      if (kDebugMode) debugPrint('[SmartReplyProvider] AI fallback: $e');
+      if (kDebugMode)
+        debugPrint('[SmartReplyProvider] AI fallback completely failed: $e');
     }
 
     // Fallback về rule-based
@@ -152,7 +289,7 @@ class SmartReplyProvider {
     return _fallbackReplies;
   }
 
-  /// Lấy smart replies từ LocalDB messages của conversation.
+  /// Lấy danh sách smart replies legacy từ hội thoại trong Local DB.
   Future<List<SmartReply>> getAiSmartRepliesFromConversation({
     required String conversationId,
     required String currentUserId,
@@ -162,14 +299,12 @@ class SmartReplyProvider {
     if (messages.isEmpty) return [];
 
     final last = messages.first;
-    // Chỉ suggest khi tin nhắn cuối là từ đối phương
     if (last['idFrom'] == currentUserId) return [];
-    if (last['type'] != 0) return []; // chỉ text messages
+    if (last['type'] != 0) return [];
 
     final content = last['content'] as String? ?? '';
     if (content.isEmpty || content.startsWith('{"iv":')) return [];
 
-    // Build context từ history
     final history = messages
         .take(6)
         .map((m) => m['content']?.toString() ?? '')
@@ -185,17 +320,22 @@ class SmartReplyProvider {
     );
   }
 
-  /// Invalidate cache để force refresh lần sau.
-  void invalidateCache() => _cache.clear();
+  /// Làm sạch toàn bộ các tầng cache lưu trong Memory.
+  void invalidateCache() {
+    _cache.clear();
+    _enhancedCache.clear();
+  }
 
-  // ── RULE-BASED ─────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  // RULE-BASED REGEX ENGINE
+  // ═══════════════════════════════════════════════════════════════════════════
 
   List<SmartReply> getRuleBasedReplies(String message) {
     if (message.trim().isEmpty) return [];
     final lower = message.toLowerCase().trim();
     final List<SmartReply> replies = [];
 
-    // ── Vietnamese patterns ──
+    // ── Vietnamese & English Greetings ──
     if (_matchesAny(
         lower, ['chào', 'hi', 'hello', 'hey', 'xin chào', 'alo', 'hola'])) {
       replies.addAll([
@@ -206,14 +346,21 @@ class SmartReplyProvider {
             confidence: 0.90,
             category: 'greeting'),
         const SmartReply(
-            text: 'Chào! Có gì mình giúp được không?',
+            text: 'Chào! Có gì mình giúp không?',
             confidence: 0.85,
             category: 'greeting'),
       ]);
     }
 
-    if (_matchesAny(
-        lower, ['bạn có khỏe', 'khỏe không', 'sao rồi', 'dạo này thế nào'])) {
+    if (_matchesAny(lower, [
+      'bạn có khỏe',
+      'khỏe không',
+      'sao rồi',
+      'dạo này thế nào',
+      'how are you',
+      'how r u',
+      "how's it going"
+    ])) {
       replies.addAll([
         const SmartReply(
             text: 'Mình ổn, cảm ơn! Bạn thì sao? 😄',
@@ -224,20 +371,21 @@ class SmartReplyProvider {
             confidence: 0.90,
             category: 'greeting'),
         const SmartReply(
-            text: 'Vẫn ổn, cảm ơn bạn hỏi thăm 🙏',
-            confidence: 0.85,
+            text: "I'm doing great, thanks! You? 😄",
+            confidence: 0.88,
             category: 'greeting'),
       ]);
     }
 
+    // ── Acknowledgements & Thank you ──
     if (_matchesAny(lower, [
       'cảm ơn',
       'thanks',
       'thank you',
-      'cảm ơn bạn',
       'cám ơn',
       'thx',
-      'ty'
+      'ty',
+      'cảm ơn bạn'
     ])) {
       replies.addAll([
         const SmartReply(
@@ -255,8 +403,17 @@ class SmartReplyProvider {
       ]);
     }
 
-    if (_matchesAny(
-        lower, ['xin lỗi', 'lỗi mình', 'mình xin lỗi', 'bỏ qua nhé'])) {
+    // ── Apologies ──
+    if (_matchesAny(lower, [
+      'xin lỗi',
+      'lỗi mình',
+      'mình xin lỗi',
+      'bỏ qua nhé',
+      'sorry',
+      'apologize',
+      'my bad',
+      'oops'
+    ])) {
       replies.addAll([
         const SmartReply(
             text: 'Không sao cả! 😊',
@@ -273,14 +430,15 @@ class SmartReplyProvider {
       ]);
     }
 
+    // ── Farewells ──
     if (_matchesAny(lower, [
       'tạm biệt',
       'bye',
       'goodbye',
       'hẹn gặp lại',
-      'tạm biệt nhé',
       'gặp lại sau',
-      'cya'
+      'cya',
+      'tạm biệt nhé'
     ])) {
       replies.addAll([
         const SmartReply(
@@ -296,13 +454,19 @@ class SmartReplyProvider {
       ]);
     }
 
-    if (_matchesAny(lower, [
-      'bạn có thể',
-      'bạn có biết',
-      'cho mình hỏi',
-      'hỏi chút',
-      'cái này là gì'
-    ])) {
+    // ── General Questions & Information Requests ──
+    if (lower.endsWith('?') ||
+        _matchesAny(lower, [
+          'bạn có thể',
+          'bạn có biết',
+          'cho mình hỏi',
+          'hỏi chút',
+          'cái này là gì',
+          'can you',
+          'could you',
+          'would you',
+          'do you'
+        ])) {
       replies.addAll([
         const SmartReply(
             text: 'Để mình check và trả lời bạn nhé!',
@@ -313,12 +477,13 @@ class SmartReplyProvider {
             confidence: 0.75,
             category: 'question'),
         const SmartReply(
-            text: 'Câu hỏi hay đó! Chờ mình một chút.',
+            text: 'Câu hỏi hay! Chờ mình một chút.',
             confidence: 0.70,
             category: 'question'),
       ]);
     }
 
+    // ── Affirmations ──
     if (_matchesAny(lower, [
       'đồng ý',
       'oke',
@@ -344,6 +509,7 @@ class SmartReplyProvider {
       ]);
     }
 
+    // ── Negations ──
     if (_matchesAny(lower, [
       'không được',
       'không thể',
@@ -367,8 +533,21 @@ class SmartReplyProvider {
       ]);
     }
 
-    if (_matchesAny(
-        lower, ['khi nào', 'mấy giờ', 'lịch', 'hẹn', 'gặp', 'cuộc họp'])) {
+    // ── Scheduling ──
+    if (_matchesAny(lower, [
+      'khi nào',
+      'mấy giờ',
+      'lịch',
+      'hẹn',
+      'gặp',
+      'cuộc họp',
+      'when',
+      'what time',
+      'schedule',
+      'meeting',
+      'calendar',
+      'available'
+    ])) {
       replies.addAll([
         const SmartReply(
             text: 'Để mình check lịch rồi báo bạn 📅',
@@ -379,14 +558,25 @@ class SmartReplyProvider {
             confidence: 0.75,
             category: 'scheduling'),
         const SmartReply(
-            text: 'Được, mình sẽ sắp xếp!',
+            text: 'Let me check my calendar 📅',
             confidence: 0.70,
             category: 'scheduling'),
       ]);
     }
 
-    if (_matchesAny(
-        lower, ['ở đâu', 'địa chỉ', 'chỗ nào', 'đường đi', 'bản đồ'])) {
+    // ── Location ──
+    if (_matchesAny(lower, [
+      'ở đâu',
+      'địa chỉ',
+      'chỗ nào',
+      'đường đi',
+      'bản đồ',
+      'where',
+      'location',
+      'address',
+      'directions',
+      'map'
+    ])) {
       replies.addAll([
         const SmartReply(
             text: 'Mình gửi vị trí cho bạn nhé 📍',
@@ -397,14 +587,24 @@ class SmartReplyProvider {
             confidence: 0.75,
             category: 'location'),
         const SmartReply(
-            text: 'Mình sẽ chỉ đường cho bạn 🗺️',
+            text: "I'll share the location with you 📍",
             confidence: 0.70,
             category: 'location'),
       ]);
     }
 
-    if (_matchesAny(lower,
-        ['khẩn cấp', 'gấp', 'ngay bây giờ', 'quan trọng lắm', 'cần gấp'])) {
+    // ── Urgency ──
+    if (_matchesAny(lower, [
+      'khẩn cấp',
+      'gấp',
+      'ngay bây giờ',
+      'quan trọng lắm',
+      'cần gấp',
+      'urgent',
+      'emergency',
+      'asap',
+      'immediately'
+    ])) {
       replies.addAll([
         const SmartReply(
             text: 'Mình xử lý ngay! 🚀', confidence: 0.95, category: 'urgent'),
@@ -419,7 +619,18 @@ class SmartReplyProvider {
       ]);
     }
 
-    if (_matchesAny(lower, ['công việc', 'dự án', 'báo cáo', 'khách hàng'])) {
+    // ── Work / Projects ──
+    if (_matchesAny(lower, [
+      'công việc',
+      'dự án',
+      'báo cáo',
+      'khách hàng',
+      'work',
+      'project',
+      'deadline',
+      'task',
+      'client'
+    ])) {
       replies.addAll([
         const SmartReply(
             text: 'Mình lo việc này! ✅', confidence: 0.80, category: 'work'),
@@ -428,12 +639,11 @@ class SmartReplyProvider {
             confidence: 0.75,
             category: 'work'),
         const SmartReply(
-            text: 'Oke, mình sẽ cập nhật bạn sớm 📊',
-            confidence: 0.70,
-            category: 'work'),
+            text: 'Working on it now!', confidence: 0.70, category: 'work'),
       ]);
     }
 
+    // ── Emotional state ──
     if (_matchesAny(lower,
         ['vui', 'buồn', 'mệt', 'stress', 'lo lắng', 'tuyệt', 'tệ quá'])) {
       replies.addAll([
@@ -442,7 +652,7 @@ class SmartReplyProvider {
             confidence: 0.80,
             category: 'emotional'),
         const SmartReply(
-            text: 'Chia sẻ thêm cho mình nghe với 😊',
+            text: 'Chia sẻ thêm cho mình nghe 😊',
             confidence: 0.75,
             category: 'emotional'),
         const SmartReply(
@@ -452,195 +662,46 @@ class SmartReplyProvider {
       ]);
     }
 
-    // ── English fallback patterns ──
-    if (_matchesAny(lower, [
-      'how are you',
-      'how r u',
-      "how's it going",
-      'how do you do',
-      'you okay',
-      'u ok'
-    ])) {
-      replies.addAll([
-        const SmartReply(
-            text: "I'm doing great, thanks! You? 😄",
-            confidence: 0.95,
-            category: 'greeting'),
-        const SmartReply(
-            text: 'Pretty good! How about you?',
-            confidence: 0.90,
-            category: 'greeting'),
-      ]);
-    }
-
-    if (_matchesAny(lower, [
-      'sorry',
-      'apologize',
-      'my bad',
-      'excuse me',
-      'forgive',
-      'pardon',
-      'oops'
-    ])) {
-      replies.addAll([
-        const SmartReply(
-            text: 'No worries at all! 😊',
-            confidence: 0.95,
-            category: 'acknowledgement'),
-        const SmartReply(
-            text: "It's totally okay!",
-            confidence: 0.90,
-            category: 'acknowledgement'),
-      ]);
-    }
-
-    if (_matchesAny(lower, [
-      'when',
-      'what time',
-      'schedule',
-      'meeting',
-      'appointment',
-      'calendar',
-      'available',
-      'free'
-    ])) {
-      replies.addAll([
-        const SmartReply(
-            text: 'Let me check my calendar 📅',
-            confidence: 0.80,
-            category: 'scheduling'),
-        const SmartReply(
-            text: "I'll confirm the time shortly",
-            confidence: 0.75,
-            category: 'scheduling'),
-      ]);
-    }
-
-    if (_matchesAny(lower, [
-      'where',
-      'location',
-      'address',
-      'place',
-      'directions',
-      'map',
-      'how to get'
-    ])) {
-      replies.addAll([
-        const SmartReply(
-            text: "I'll share the location with you 📍",
-            confidence: 0.80,
-            category: 'location'),
-        const SmartReply(
-            text: 'Let me send you the address',
-            confidence: 0.75,
-            category: 'location'),
-      ]);
-    }
-
-    if (_matchesAny(lower, [
-      'urgent',
-      'emergency',
-      'asap',
-      'immediately',
-      'critical',
-      'important',
-      'help me',
-      'need help'
-    ])) {
-      replies.addAll([
-        const SmartReply(
-            text: 'On it right away! 🚀', confidence: 0.95, category: 'urgent'),
-        const SmartReply(
-            text: "I'll handle this immediately!",
-            confidence: 0.90,
-            category: 'urgent'),
-      ]);
-    }
-
-    if (_matchesAny(lower, [
-      'work',
-      'project',
-      'deadline',
-      'presentation',
-      'task',
-      'report',
-      'client',
-      'deliverable'
-    ])) {
-      replies.addAll([
-        const SmartReply(
-            text: "I'll take care of it ✅", confidence: 0.80, category: 'work'),
-        const SmartReply(
-            text: 'Working on it now!', confidence: 0.75, category: 'work'),
-      ]);
-    }
-
-    if (lower.endsWith('?') ||
-        _matchesAny(lower, [
-          'can you',
-          'could you',
-          'would you',
-          'is it',
-          'are you',
-          'do you'
-        ])) {
-      replies.addAll([
-        const SmartReply(
-            text: 'Let me check and get back to you!',
-            confidence: 0.80,
-            category: 'question'),
-        const SmartReply(
-            text: "I'll look into it right away 🔍",
-            confidence: 0.75,
-            category: 'question'),
-      ]);
-    }
-
     if (replies.isEmpty) return [];
 
-    // Lọc trùng và sắp xếp
     final uniqueReplies = <String, SmartReply>{};
-    for (var r in replies) {
-      if (!uniqueReplies.containsKey(r.text)) {
-        uniqueReplies[r.text] = r;
-      }
+    for (final r in replies) {
+      if (!uniqueReplies.containsKey(r.text)) uniqueReplies[r.text] = r;
     }
 
-    final sortedReplies = uniqueReplies.values.toList()
-      ..sort((a, b) => (b.confidence ?? 0.0).compareTo(a.confidence ?? 0.0));
-
-    return sortedReplies.take(maxReplies).toList();
+    return uniqueReplies.values.toList()
+      ..sort((a, b) => (b.confidence ?? 0.0).compareTo(a.confidence ?? 0.0))
+      ..take(maxReplies).toList();
   }
 
+  /// Phân tích cục bộ lịch sử tin nhắn để đoán ngữ cảnh hội thoại.
   List<SmartReply> getContextAwareReplies(
-    String currentMessage,
-    List<String> history,
-  ) {
+      String currentMessage, List<String> history) {
     final context = _analyzeContext(history);
     switch (context) {
       case 'question':
         return const [
           SmartReply(
-              text: 'Được, mình có thể giúp! / Yes, I can help!',
+              text: 'Được, mình có thể giúp!',
               confidence: 0.85,
               category: 'question'),
           SmartReply(
-              text: 'Để mình giải thích... / Let me explain...',
+              text: 'Để mình giải thích nhé...',
               confidence: 0.80,
               category: 'question'),
           SmartReply(
-              text: 'Câu hỏi thú vị, đây là điều mình biết:',
+              text: 'Câu hỏi thú vị, để mình nghĩ:',
               confidence: 0.75,
               category: 'question'),
         ];
       case 'plan':
         return const [
           SmartReply(
-              text: 'Kế hoạch hay đó! 🙌 / Sounds like a plan!',
+              text: 'Kế hoạch hay đó! 🙌',
               confidence: 0.85,
               category: 'scheduling'),
           SmartReply(
-              text: 'Mình rảnh, làm được! / I am available!',
+              text: 'Mình rảnh, làm được!',
               confidence: 0.80,
               category: 'scheduling'),
           SmartReply(
@@ -651,11 +712,11 @@ class SmartReplyProvider {
       case 'problem':
         return const [
           SmartReply(
-              text: 'Mình giúp bạn giải quyết nha 💪 / Let\'s fix this',
+              text: 'Mình giúp bạn giải quyết nha 💪',
               confidence: 0.85,
               category: 'urgent'),
           SmartReply(
-              text: 'Mình có thể hỗ trợ gì không? / How can I help?',
+              text: 'Mình có thể hỗ trợ gì không?',
               confidence: 0.80,
               category: 'urgent'),
           SmartReply(
@@ -666,28 +727,31 @@ class SmartReplyProvider {
       case 'celebration':
         return const [
           SmartReply(
-              text: 'Tuyệt vời quá! 🎉 / That is amazing!',
+              text: 'Tuyệt vời quá! 🎉',
               confidence: 0.90,
               category: 'emotional'),
           SmartReply(
-              text: 'Chúc mừng bạn!! Mình vui cho bạn 🥳',
+              text: 'Chúc mừng!! Mình vui cho bạn 🥳',
               confidence: 0.85,
               category: 'emotional'),
           SmartReply(
-              text: 'Đỉnh lắm!! 🚀 / Awesome news!',
-              confidence: 0.80,
-              category: 'emotional'),
+              text: 'Đỉnh lắm!! 🚀', confidence: 0.80, category: 'emotional'),
         ];
       default:
         return [];
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ANTHROPIC CLAUDE API INTEGRATION
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Gọi trực tiếp API của Claude Anthropic để tạo 3 câu gợi ý.
   Future<List<SmartReply>> getAnthropicReplies({
     required String message,
     required String apiKey,
     List<String>? conversationHistory,
-    String model = 'claude-haiku-4-5-20251001',
+    String model = 'claude-haiku-4-5-20260101',
   }) async {
     try {
       const systemPrompt =
@@ -699,7 +763,6 @@ class SmartReplyProvider {
           'No numbers, bullets, or formatting.';
 
       final List<Map<String, String>> messages = [];
-
       if (conversationHistory != null && conversationHistory.isNotEmpty) {
         final historyContext = conversationHistory.take(6).join('\n');
         messages.add({
@@ -749,14 +812,7 @@ class SmartReplyProvider {
                 ))
             .toList();
 
-        if (suggestions.isNotEmpty) {
-          debugPrint('✅ Got ${suggestions.length} AI replies from Claude');
-          return suggestions;
-        }
-      } else {
-        if (kDebugMode)
-          debugPrint(
-              '⚠️ Anthropic API error: ${response.statusCode} ${response.body}');
+        if (suggestions.isNotEmpty) return suggestions;
       }
     } catch (e) {
       if (kDebugMode) debugPrint('⚠️ Anthropic API error: $e');
@@ -765,6 +821,7 @@ class SmartReplyProvider {
     return getRuleBasedReplies(message);
   }
 
+  /// Sinh ra một đoạn nháp phản hồi dài hơn (Draft) theo cấu trúc lịch sử chat.
   Future<String?> generateReplyDraft({
     required String message,
     required String apiKey,
@@ -779,10 +836,8 @@ class SmartReplyProvider {
       final history = conversationHistory?.take(4).toList() ?? [];
       final msgs = <Map<String, String>>[];
       for (int i = 0; i < history.length; i++) {
-        msgs.add({
-          'role': i.isEven ? 'user' : 'assistant',
-          'content': history[i],
-        });
+        msgs.add(
+            {'role': i.isEven ? 'user' : 'assistant', 'content': history[i]});
       }
       msgs.add({'role': 'user', 'content': message});
 
@@ -795,7 +850,7 @@ class SmartReplyProvider {
               'anthropic-version': '2023-06-01',
             },
             body: jsonEncode({
-              'model': 'claude-haiku-4-5-20251001',
+              'model': 'claude-haiku-4-5-20260101',
               'max_tokens': 200,
               'system': system,
               'messages': msgs,
@@ -817,7 +872,7 @@ class SmartReplyProvider {
     return null;
   }
 
-  // ── PRIVATE HELPERS ────────────────────────────────────────────────────────
+  // ── Private Helpers ────────────────────────────────────────────────────────
 
   String _analyzeContext(List<String> messages) {
     final recent = messages.take(5).join(' ').toLowerCase();
@@ -883,6 +938,12 @@ class SmartReplyProvider {
   String _buildCacheKey(String message, List<String> history) {
     final historyKey = history.take(3).join('|');
     return '${message.hashCode}_${historyKey.hashCode}';
+  }
+
+  String _buildEnhancedCacheKey(
+      String message, List<String> history, int closeness, String rel) {
+    final historyKey = history.take(3).join('|');
+    return '${message.hashCode}_${historyKey.hashCode}_${closeness}_$rel';
   }
 
   void _log(String msg) {

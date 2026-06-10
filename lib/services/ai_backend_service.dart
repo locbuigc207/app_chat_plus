@@ -52,6 +52,36 @@ class ScamAnalysisResult {
       'ScamAnalysisResult(level: ${level.name}, confidence: $confidence)';
 }
 
+/// Model kết quả học Persona thay thế cho class trong autopilot_ai_service
+class LearnPersonaResult {
+  final bool success;
+  final String? personaText;
+  final int messageCount;
+  final String? errorMessage;
+
+  const LearnPersonaResult._({
+    required this.success,
+    this.personaText,
+    this.messageCount = 0,
+    this.errorMessage,
+  });
+
+  factory LearnPersonaResult.success({
+    required String personaText,
+    int messageCount = 0,
+  }) =>
+      LearnPersonaResult._(
+        success: true,
+        personaText: personaText,
+        messageCount: messageCount,
+      );
+
+  factory LearnPersonaResult.fail(String reason) => LearnPersonaResult._(
+        success: false,
+        errorMessage: reason,
+      );
+}
+
 enum AIBackendErrorType {
   networkError,
   authError,
@@ -88,8 +118,10 @@ class AIBackendService {
 
   // ── Timeouts & Config ──────────────────────────────────────────────────────
   static const _kDefaultTimeout = Duration(seconds: 15);
+  static const _kPreviewTimeout = Duration(seconds: 10);
   static const _kAnalysisTimeout = Duration(seconds: 30);
   static const _kBatchTimeout = Duration(seconds: 45);
+  static const _kLearnTimeout = Duration(seconds: 60);
   static const _kInsightTimeout = Duration(seconds: 90);
 
   // ── Masking config ────────────────────────────────────────────────────────
@@ -249,35 +281,6 @@ class AIBackendService {
     } catch (e, st) {
       _logError('extractRelationshipMemory', e, st);
       return null;
-    }
-  }
-
-  /// Gợi ý reply dạng chuỗi.
-  Future<List<String>> suggestRepliesString({
-    required List<String> recentMessages,
-    String tone = 'friendly',
-  }) async {
-    if (recentMessages.isEmpty) return [];
-
-    try {
-      final safeMessages = DataMaskingUtils.prepareForAI(recentMessages);
-
-      final result = await _call(
-        functionName: 'suggestReplies',
-        params: {
-          'messages': safeMessages,
-          'tone': tone,
-          'count': 3,
-        },
-        timeout: _kDefaultTimeout,
-      );
-
-      final suggestions = result?['suggestions'];
-      if (suggestions is List) return suggestions.cast<String>();
-      return [];
-    } catch (e, st) {
-      _logError('suggestRepliesString', e, st);
-      return [];
     }
   }
 
@@ -450,12 +453,11 @@ class AIBackendService {
     }
   }
 
-  /// Gợi ý câu trả lời thông minh dựa trên context đoạn chat.
-  Future<List<String>> smartReplyWithContext({
+  /// Phiên bản nâng cao — trả về list SmartReply với metadata.
+  Future<List<SmartReply>> smartReplyWithContextTyped({
     required List<String> messages,
     Map<String, dynamic> userProfile = const {},
     String replyIntent = 'helpful',
-    int maxLength = 150,
     String language = 'vi',
     int count = 3,
   }) async {
@@ -471,71 +473,32 @@ class AIBackendService {
           'messages': safeMessages,
           'userProfile': userProfile,
           'replyIntent': replyIntent,
-          'maxLength': maxLength,
+          'maxLength': 150,
           'language': language,
           'count': count,
         },
         timeout: _kAnalysisTimeout,
       );
       final replies = result?['replies'];
-      if (replies is List) return replies.cast<String>();
-      final single = result?['reply'] as String?;
-      if (single != null && single.isNotEmpty) return [single];
-      return [];
-    } catch (e, st) {
-      _logError('smartReplyWithContext', e, st);
-      return [];
-    }
-  }
+      List<String> texts = [];
+      if (replies is List) {
+        texts = replies.cast<String>();
+      } else {
+        final single = result?['reply'] as String?;
+        if (single != null && single.isNotEmpty) texts = [single];
+      }
 
-  /// Phiên bản nâng cao — trả về list SmartReply với metadata.
-  Future<List<SmartReply>> smartReplyWithContextTyped({
-    required List<String> messages,
-    Map<String, dynamic> userProfile = const {},
-    String replyIntent = 'helpful',
-    String language = 'vi',
-    int count = 3,
-  }) async {
-    final texts = await smartReplyWithContext(
-      messages: messages,
-      userProfile: userProfile,
-      replyIntent: replyIntent,
-      language: language,
-      count: count,
-    );
-    return texts
-        .where((t) => t.trim().isNotEmpty)
-        .map((text) => SmartReply(
-              text: text,
-              confidence: 0.92,
-              isAiGenerated: true,
-              category: replyIntent,
-            ))
-        .toList();
-  }
-
-  Future<List<String>> generateIcebreakers({
-    List<String> sharedInterests = const [],
-    String relationshipType = 'friend',
-    int count = 5,
-    String style = 'casual',
-  }) async {
-    try {
-      final result = await _call(
-        functionName: 'generateIcebreakers',
-        params: {
-          'sharedInterests': sharedInterests.take(5).toList(),
-          'relationshipType': relationshipType,
-          'count': count,
-          'style': style,
-        },
-        timeout: _kDefaultTimeout,
-      );
-      final list = result?['icebreakers'];
-      if (list is List) return list.cast<String>();
-      return [];
+      return texts
+          .where((t) => t.trim().isNotEmpty)
+          .map((text) => SmartReply(
+                text: text,
+                confidence: 0.92,
+                isAiGenerated: true,
+                category: replyIntent,
+              ))
+          .toList();
     } catch (e, st) {
-      _logError('generateIcebreakers', e, st);
+      _logError('smartReplyWithContextTyped', e, st);
       return [];
     }
   }
@@ -675,6 +638,8 @@ class AIBackendService {
     required String conversationId,
     int lookbackDays = 7,
     int messageLimit = 50,
+    String period = 'week7',
+    bool useAI = false,
   }) async {
     try {
       final cutoff = DateTime.now()
@@ -708,6 +673,9 @@ class AIBackendService {
         params: {
           'messages': maskedMessages,
           'lookbackDays': lookbackDays,
+          'conversationId': conversationId,
+          'period': period,
+          'useAI': useAI,
         },
         timeout: _kInsightTimeout,
       );
@@ -715,6 +683,28 @@ class AIBackendService {
       return UserInsightsResult.fromMap(Map<String, dynamic>.from(result));
     } catch (e, st) {
       _logError('getUserInsights', e, st);
+      return null;
+    }
+  }
+
+  /// Feature 2: Trigger CF tính lại insights cache (rate-limit 1h/user)
+  Future<Map<String, dynamic>?> triggerInsightsRefresh({
+    required String conversationId,
+    required String userId,
+  }) async {
+    try {
+      final result = await _call(
+        functionName: 'triggerInsightsRefresh',
+        params: {
+          'conversationId': conversationId,
+          'userId': userId,
+        },
+        timeout: _kAnalysisTimeout,
+      );
+      if (result == null) return null;
+      return Map<String, dynamic>.from(result);
+    } catch (e, st) {
+      _logError('triggerInsightsRefresh', e, st);
       return null;
     }
   }
@@ -751,24 +741,163 @@ class AIBackendService {
     }
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // AUTOPILOT
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Feature 1: Đọc config Autopilot từ Cloud Functions
+  Future<Map<String, dynamic>?> getAutoPilotConfig({
+    required String conversationId,
+    required String userId,
+  }) async {
+    try {
+      final result = await _call(
+        functionName: 'getAutoPilotConfig',
+        params: {
+          'conversationId': conversationId,
+          'userId': userId,
+        },
+        timeout: _kDefaultTimeout,
+      );
+      if (result?['success'] == true && result?['config'] != null) {
+        return Map<String, dynamic>.from(result!['config'] as Map);
+      }
+      return null;
+    } catch (e, st) {
+      _logError('getAutoPilotConfig', e, st);
+      return null;
+    }
+  }
+
+  /// Feature 1: Ghi config Autopilot lên Firestore qua Cloud Functions
+  Future<bool> saveAutoPilotConfig({
+    required String conversationId,
+    required String userId,
+    required Map<String, dynamic> config,
+  }) async {
+    try {
+      final result = await _call(
+        functionName: 'saveAutoPilotConfig',
+        params: {
+          'conversationId': conversationId,
+          'userId': userId,
+          'config': config,
+        },
+        timeout: _kDefaultTimeout,
+      );
+      return result?['success'] == true;
+    } catch (e, st) {
+      _logError('saveAutoPilotConfig', e, st);
+      return false;
+    }
+  }
+
+  /// Feature 1: Server-side persona learning qua Gemini Flash
+  Future<LearnPersonaResult> learnUserPersona({
+    required String conversationId,
+    required String userId,
+    required List<String> messages,
+  }) async {
+    if (messages.length < 10) {
+      return LearnPersonaResult.fail(
+          'Cần ít nhất 10 tin nhắn để AI học phong cách.');
+    }
+
+    // Lọc E2EE, giới hạn 100
+    final cleanMsgs = messages
+        .where((m) =>
+            !m.startsWith('{"iv":') &&
+            !m.startsWith('eyJ') &&
+            m.trim().length > 3)
+        .take(100)
+        .toList();
+
+    if (cleanMsgs.length < 10) {
+      return LearnPersonaResult.fail('Không đủ tin nhắn hợp lệ sau khi lọc.');
+    }
+
+    try {
+      final result = await _call(
+        functionName: 'learnUserPersona',
+        params: {
+          'conversationId': conversationId,
+          'userId': userId,
+          'messages': cleanMsgs, // plain text — không mask để AI học chính xác
+        },
+        timeout: _kLearnTimeout,
+      );
+
+      if (result == null)
+        return LearnPersonaResult.fail('Không nhận được phản hồi từ AI.');
+
+      final success = result['success'] as bool? ?? false;
+      if (!success) {
+        return LearnPersonaResult.fail(
+            result['reason'] as String? ?? 'Lỗi không xác định từ AI.');
+      }
+
+      final persona = result['persona'];
+      String personaStr = '';
+      if (persona is Map) {
+        final summary = persona['summary'] as String? ?? '';
+        final style = persona['tone'] as String? ?? '';
+        final emoji = persona['emojiUsage'] as String? ?? '';
+        final len = persona['sentenceLength'] as String? ?? '';
+        final chars = (persona['characteristicWords'] as List?)
+                ?.cast<String>()
+                .join(', ') ??
+            '';
+        personaStr =
+            'Tông: $style. Emoji: $emoji. Câu: $len. Từ đặc trưng: $chars. $summary';
+      } else if (persona is String) {
+        personaStr = persona;
+      }
+
+      return LearnPersonaResult.success(
+        personaText: personaStr,
+        messageCount: result['messageCount'] as int? ?? cleanMsgs.length,
+      );
+    } catch (e, st) {
+      _logError('learnUserPersona', e, st);
+      return LearnPersonaResult.fail('Lỗi kết nối AI: $e');
+    }
+  }
+
   /// Tạo câu trả lời auto-pilot thay mặt người dùng.
   Future<String?> generateAutoPilotReply({
     required String incomingMessage,
     String myStyleContext = 'thân thiện, ngắn gọn',
     String? awayMessage,
+    String tone = 'friendly',
+    String? learnedPersona,
+    List<String> contextMessages = const [],
+    String? conversationId,
+    bool isPreview = false,
   }) async {
     if (incomingMessage.trim().isEmpty) return awayMessage;
+    // Guard E2EE
+    if (incomingMessage.startsWith('{"iv":') ||
+        incomingMessage.startsWith('eyJ')) return awayMessage;
+
     try {
       final safe =
           DataMaskingUtils.maskText(incomingMessage, config: _kAiMaskingConfig);
+
       final result = await _call(
         functionName: 'generateAutoPilotReply',
         params: {
           'incomingMessage': safe,
           'myStyleContext': myStyleContext,
           if (awayMessage != null) 'awayMessage': awayMessage,
+          'tone': tone,
+          if (learnedPersona != null) 'learnedPersona': learnedPersona,
+          'contextMessages': DataMaskingUtils.maskList(
+              contextMessages.take(6).toList(),
+              config: _kAiMaskingConfig),
+          if (conversationId != null) 'conversationId': conversationId,
+          'isPreview': isPreview,
         },
-        timeout: _kDefaultTimeout,
+        timeout: isPreview ? _kPreviewTimeout : _kDefaultTimeout,
       );
       return result?['reply'] as String?;
     } catch (e, st) {
@@ -776,6 +905,10 @@ class AIBackendService {
       return awayMessage;
     }
   }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // MISC
+  // ══════════════════════════════════════════════════════════════════════════
 
   /// Tạo 4 câu trả lời swipe ngắn cho Zero-Type feature.
   Future<List<String>> generateSwipeReplies({

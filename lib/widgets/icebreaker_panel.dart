@@ -63,17 +63,23 @@ class _IcebreakerPanelState extends State<IcebreakerPanel>
       _icebreakers = [];
     });
     _animCtrl.reset();
+
     try {
-      final results = await AIBackendService().generateIcebreakers(
+      // Gọi hàm trả về IcebreakerResult
+      final resultObj = await AIBackendService().generateIcebreakersTyped(
         count: 5,
         style: _style,
         relationshipType: 'friend',
       );
+
       if (!mounted) return;
+
       setState(() {
-        _icebreakers = results;
+        // Gán danh sách chuỗi từ bên trong object vào biến _icebreakers
+        _icebreakers = resultObj.icebreakers;
         _isLoading = false;
       });
+
       _animCtrl.forward();
     } catch (_) {
       if (!mounted) return;

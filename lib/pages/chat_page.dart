@@ -51,30 +51,97 @@ class ChatPage extends StatefulWidget {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// STATE — includes BubbleChatPageMixin
+// STATE — NO mixin, bubble logic fully inline
 // ════════════════════════════════════════════════════════════════════════════
 
 class ChatPageState extends State<ChatPage>
     with
         WidgetsBindingObserver,
         ResourceManagerMixin,
-        TickerProviderStateMixin,
-        BubbleChatPageMixin {
-  // ← BUBBLE MIXIN
+        TickerProviderStateMixin {
+  // ── BUBBLE INLINE STATE ───────────────────────────────────────────────────
+  BubbleContext _bubbleCtx = const BubbleContext();
+  StreamSubscription<BubbleContext>? _ctxSub;
 
-  // ── BubbleChatPageMixin required overrides ─────────────────────────────
-  @override
-  String get bubblePeerId => widget.arguments.peerId;
-  @override
-  String get bubblePeerName => widget.arguments.peerNickname;
-  @override
-  String get bubblePeerAvatar => widget.arguments.peerAvatar;
-  @override
-  bool get isMiniChatMode => widget.isMiniChat || widget.isBubbleMode;
+  BubbleContext get currentBubbleContext => _bubbleCtx;
+
+  void _startContextListener() {
+    _ctxSub?.cancel();
+    _ctxSub = ContextualBubbleService.instance
+        .contextStream(widget.arguments.peerId)
+        .listen((ctx) {
+      if (mounted && !resourceManager.isDisposed) {
+        setState(() => _bubbleCtx = ctx);
+      }
+    });
+  }
+
+  /// Called right after user sends a message.
+  void _onUserSentMessage(String text, {String type = 'text'}) {
+    BubbleManager.of(context)?.updateMessage(
+        userId: widget.arguments.peerId, message: _bubblePreview(text, type));
+    ContextualBubbleService.instance
+        .updateContext(conversationId: widget.arguments.peerId, message: text);
+  }
+
+  /// Called when an incoming message arrives.
+  void _onIncomingMessage(String text, {String type = 'text'}) {
+    BubbleManager.of(context)?.clearUnread(widget.arguments.peerId);
+    ContextualBubbleService.instance
+        .updateContext(conversationId: widget.arguments.peerId, message: text);
+  }
+
+  /// Prefetch link previews from a list of local message maps.
+  void _prefetchLinkPreviews(List<Map<dynamic, dynamic>> messages) {
+    for (final m in messages.take(10)) {
+      final type = m['type'] as int? ?? 0;
+      final content = m['content'] as String? ?? '';
+      if (type != TypeMessage.text || content.isEmpty) continue;
+      if (content.contains('http') || content.contains('www.')) {
+        try {
+          final url = content.contains('http') ? content : 'https://$content';
+          LinkMetadataService().fetch(url);
+        } catch (_) {}
+      }
+    }
+  }
+
+  String _bubblePreview(String text, String type) {
+    switch (type.toLowerCase()) {
+      case 'image':
+        return '📷 Hình ảnh';
+      case 'video':
+        return '🎬 Video';
+      case 'voice':
+        return '🎤 Tin nhắn thoại';
+      case 'location':
+        return '📍 Vị trí';
+      case 'sticker':
+        return '😊 Sticker';
+      case 'file':
+        return '📎 Tệp đính kèm';
+      default:
+        return text.length > 55 ? '${text.substring(0, 55)}…' : text;
+    }
+  }
+
+  String _typeToString(int type) => switch (type) {
+        TypeMessage.image => 'image',
+        TypeMessage.video => 'video',
+        3 => 'voice',
+        TypeMessage.geoLocked => 'location',
+        TypeMessage.sticker => 'sticker',
+        TypeMessage.document => 'file',
+        _ => 'text',
+      };
 
   // ── State ─────────────────────────────────────────────────────────────────
   late final String _currentUserId;
   String _groupChatId = '';
+
+  AutoPilotProvider? _autoPilotProvider;
+  StreamSubscription? _autoPilotMsgSub;
+  String _lastAutoPilotRepliedMsgId = '';
 
   late final TextEditingController _inputController;
   late final ScrollController _scrollController;
@@ -133,7 +200,6 @@ class ChatPageState extends State<ChatPage>
   final Map<String, Timer> _scheduled = {};
   final Map<String, String> _scheduledContent = {};
   final Map<String, dynamic> _scamResults = {};
-  final Set<String> _expandedPreviews = {};
   final ImagePicker _picker = ImagePicker();
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -192,7 +258,6 @@ class ChatPageState extends State<ChatPage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    // Sync bubble lifecycle observer
     BubbleLifecycleObserver.instance.didChangeAppLifecycleState(state);
 
     if (resourceManager.isDisposed || _currentUserId.isEmpty) return;
@@ -201,13 +266,14 @@ class ChatPageState extends State<ChatPage>
     } else if (state == AppLifecycleState.resumed) {
       _presenceProvider?.setUserOnline(_currentUserId);
       _markRead();
-      // When app resumes with this chat open, clear bubble unread
       BubbleManager.of(context)?.clearUnread(widget.arguments.peerId);
     }
   }
 
   @override
   void dispose() {
+    _autoPilotMsgSub?.cancel();
+    _ctxSub?.cancel();
     _scheduled.forEach((_, t) {
       try {
         t.cancel();
@@ -229,7 +295,6 @@ class ChatPageState extends State<ChatPage>
     try {
       _voiceProvider?.dispose();
     } catch (_) {}
-    // Notify bubble lifecycle that this chat is closed
     BubbleLifecycleObserver.instance.onChatClosed(widget.arguments.peerId);
     super.dispose();
   }
@@ -253,12 +318,15 @@ class ChatPageState extends State<ChatPage>
     _telemetryProvider = ctx.read<TelemetryProvider>();
     _presenceProvider = ctx.read<UserPresenceProvider>();
 
-    // Bubble service
     try {
       _bubbleService = ctx.read<UnifiedBubbleService>();
     } catch (_) {
       _bubbleService = UnifiedBubbleService();
     }
+
+    try {
+      _chatProvider.attachBubbleService(_bubbleService);
+    } catch (_) {}
 
     PushNotificationService.initialize()
         .catchError((e) => debugPrint('⚠️ Push: $e'));
@@ -275,15 +343,22 @@ class ChatPageState extends State<ChatPage>
       _voiceProvider =
           VoiceMessageProvider(firebaseStorage: _chatProvider.firebaseStorage);
     } catch (_) {}
+
     _locationProvider = LocationProvider();
+
+    _startContextListener();
 
     _readLocal();
     _loadPinned();
     _checkLock();
 
+    // --- AUTOPILOT ---
+    _autoPilotProvider = ctx.read<AutoPilotProvider>();
+    unawaited(_autoPilotProvider!.loadConfig(_groupChatId, _currentUserId));
+    _startAutoPilotListener();
+
     if (_presenceProvider != null && _currentUserId.isNotEmpty) {
       _presenceProvider!.setUserOnline(_currentUserId);
-      // Notify bubble system: this chat is open
       BubbleLifecycleObserver.instance.onChatOpened(widget.arguments.peerId);
     }
 
@@ -318,9 +393,82 @@ class ChatPageState extends State<ChatPage>
         _markRead();
         unawaited(_loadSmartReplies());
         final msgs = LocalDbService().getMessages(_groupChatId);
-        prefetchLinkPreviews(msgs.take(30).toList());
+        _prefetchLinkPreviews(msgs.take(30).toList());
       }
     });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // AUTOPILOT
+  // ══════════════════════════════════════════════════════════════════════════
+
+  void _startAutoPilotListener() {
+    if (_autoPilotProvider == null || resourceManager.isDisposed) return;
+
+    final sub = FirebaseFirestore.instance
+        .collection(FirestoreConstants.pathMessageCollection)
+        .doc(_groupChatId)
+        .collection(_groupChatId)
+        .orderBy('timestamp', descending: true)
+        .limit(1)
+        .snapshots()
+        .listen((snap) async {
+      if (snap.docs.isEmpty || resourceManager.isDisposed) return;
+      if (!(_autoPilotProvider?.isActiveForConversation(_groupChatId) ?? false))
+        return;
+
+      final data = snap.docs.first.data();
+      final String idFrom = data['idFrom'] as String? ?? '';
+      final String content = data['content'] as String? ?? '';
+      final String msgTs = data['timestamp'] as String? ?? '';
+
+      // Guards
+      if (idFrom == _currentUserId) return;
+      if (idFrom == 'AI_BOT') return;
+      if (msgTs == _lastAutoPilotRepliedMsgId) return;
+      if (content.startsWith('{"iv":')) return;
+      if (content.trim().length < 2) return;
+
+      _lastAutoPilotRepliedMsgId = msgTs;
+
+      final ctxMsgs = LocalDbService()
+          .getMessages(_groupChatId)
+          .take(4)
+          .map((m) => m['content']?.toString() ?? '')
+          .where((c) => c.isNotEmpty && !c.startsWith('{"iv":'))
+          .toList()
+          .reversed
+          .toList();
+
+      final reply = await _autoPilotProvider!.generateReply(
+        conversationId: _groupChatId,
+        incomingMessage: content,
+        senderId: idFrom,
+        currentUserId: _currentUserId,
+        contextMessages: ctxMsgs,
+      );
+
+      if (reply != null && !resourceManager.isDisposed && mounted) {
+        await Future.delayed(
+          Duration(milliseconds: 500 + (reply.length * 30).clamp(0, 1000)),
+        );
+        if (!resourceManager.isDisposed && mounted) {
+          await _onSend(reply, 0);
+        }
+      }
+    });
+
+    resourceManager.addSubscription(sub);
+    _autoPilotMsgSub = sub;
+  }
+
+  void _showAutoPilotSheet() {
+    AutoPilotConfigSheet.show(
+      context,
+      conversationId: _groupChatId,
+      currentUserId: _currentUserId,
+      isGroup: false,
+    );
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -435,16 +583,6 @@ class ChatPageState extends State<ChatPage>
   // SEND
   // ══════════════════════════════════════════════════════════════════════════
 
-  /// Converts TypeMessage int to bubble-compatible string
-  String _typeToString(int type) => switch (type) {
-        TypeMessage.image => 'image',
-        TypeMessage.video => 'video',
-        3 => 'voice',
-        TypeMessage.geoLocked => 'location',
-        TypeMessage.sticker => 'sticker',
-        _ => 'text',
-      };
-
   Future<void> _onSend(String content, int type) async {
     if (resourceManager.isDisposed) return;
     if (content.trim().isEmpty && type == TypeMessage.text) {
@@ -472,10 +610,7 @@ class ChatPageState extends State<ChatPage>
       ErrorLogger.logMessageSent(
           conversationId: _groupChatId, messageType: type);
 
-      // ── Bubble mixin: auto-update context + bubble message ──────────────
-      onUserSentMessage(finalContent, type: _typeToString(type));
-
-      // ── Native bubble update ────────────────────────────────────────────
+      _onUserSentMessage(finalContent, type: _typeToString(type));
       await _updateBubble(finalContent, type, fromUser: true);
     } catch (e) {
       ErrorLogger.logError(e, null, context: 'SendMessage');
@@ -504,34 +639,18 @@ class ChatPageState extends State<ChatPage>
       {required bool fromUser}) async {
     if (_bubbleService == null || resourceManager.isDisposed) return;
 
-    // Check master setting
     final settings = BubbleSettingsService();
     if (!settings.isEnabled) return;
-
-    // If user is actively viewing the chat, don't show bubble
     if (settings.settings.autoHideWhenChatOpen && !fromUser) return;
-
     if (!_bubbleService!.isBubbleActive(widget.arguments.peerId)) return;
-
-    String msgType = _typeToString(type);
-    String display = switch (type) {
-      TypeMessage.image => '📷 Ảnh',
-      TypeMessage.video => '🎬 Video',
-      3 => '🎤 Thoại',
-      TypeMessage.geoLocked => '🔐 Tin nhắn vị trí',
-      TypeMessage.sticker => '😊 Sticker',
-      _ => content.contains('maps.google.com') || content.contains('Location:')
-          ? '📍 Vị trí'
-          : (content.length > 60 ? '${content.substring(0, 60)}…' : content),
-    };
 
     try {
       await _bubbleService!.sendMessage(
           userId: widget.arguments.peerId,
           userName: widget.arguments.peerNickname,
-          message: display,
+          message: _bubblePreview(content, _typeToString(type)),
           avatarUrl: widget.arguments.peerAvatar,
-          messageType: msgType);
+          messageType: _typeToString(type));
     } catch (e) {
       debugPrint('❌ Bubble update: $e');
     }
@@ -582,21 +701,16 @@ class ChatPageState extends State<ChatPage>
           final content = data?[FirestoreConstants.content] as String? ?? '';
           final type = data?[FirestoreConstants.type] as int? ?? 0;
 
-          // ── Mixin: clear unread + update bubble context ──────────────────
-          onIncomingMessage(content, type: _typeToString(type));
+          _onIncomingMessage(content, type: _typeToString(type));
 
-          // ── Play notification sound based on current mode ────────────────
           final svcSettings = BubbleSettingsService();
           if (svcSettings.settings.soundEnabled) {
             final ctx = ContextualBubbleService.instance
                 .getContext(widget.arguments.peerId);
-            await BubbleSoundService().playReceive(ctx.mode);
+            unawaited(BubbleSoundService().playReceive(ctx.mode));
           }
 
-          // ── Update bubble with real content ──────────────────────────────
           await _updateBubble(content, type, fromUser: false);
-
-          // ── Show bubble if app backgrounded ──────────────────────────────
           _showBubbleIfNeeded();
         }
       } finally {
@@ -625,7 +739,6 @@ class ChatPageState extends State<ChatPage>
       await batch.commit();
       _presenceProvider?.markMessagesAsRead(
           conversationId: _groupChatId, userId: _currentUserId);
-      // Clear bubble badge
       BubbleManager.of(context)?.clearUnread(widget.arguments.peerId);
     } catch (e) {
       ErrorLogger.logError(e, null, context: 'MarkRead');
@@ -643,7 +756,6 @@ class ChatPageState extends State<ChatPage>
       return;
     }
 
-    // Check master toggle
     if (!BubbleSettingsService().isEnabled) {
       final confirm = await _confirm(
         title: 'Bong bóng chat đang tắt',
@@ -670,7 +782,6 @@ class ChatPageState extends State<ChatPage>
     final choice = await _showBubbleChoiceDialog();
     if (choice == null || resourceManager.isDisposed) return;
 
-    // Detect current context mode
     final ctx =
         ContextualBubbleService.instance.getContext(widget.arguments.peerId);
 
@@ -1096,6 +1207,7 @@ class ChatPageState extends State<ChatPage>
         MaterialPageRoute(
             builder: (_) => UserInsightsPage(
                 conversationId: _groupChatId,
+                userId: _currentUserId,
                 peerName: widget.arguments.peerNickname)));
   }
 
@@ -1527,10 +1639,9 @@ class ChatPageState extends State<ChatPage>
   // BUILD — AppBar colour adapts to BubbleMode
   // ══════════════════════════════════════════════════════════════════════════
 
-  /// Returns app bar background colour based on current BubbleMode context
   Color _appBarColorFromMode(ThemePalette p) {
     if (widget.isBubbleMode || widget.isMiniChat) return p.appBarBackground;
-    return switch (currentBubbleContext.mode) {
+    return switch (_bubbleCtx.mode) {
       BubbleMode.work => const Color(0xFF162032),
       BubbleMode.secure => const Color(0xFF0A0E1A),
       BubbleMode.media => const Color(0xFF880E4F),
@@ -1627,7 +1738,6 @@ class ChatPageState extends State<ChatPage>
             duration: const Duration(milliseconds: 400),
             curve: Curves.easeOut,
             decoration: BoxDecoration(
-              // ← Colour adapts to BubbleMode
               color: _appBarColorFromMode(p),
               boxShadow: [
                 BoxShadow(
@@ -1650,7 +1760,7 @@ class ChatPageState extends State<ChatPage>
                   peerAvatar: widget.arguments.peerAvatar,
                   palette: p,
                   theme: theme,
-                  bubbleMode: currentBubbleContext.mode, // ← PASS MODE
+                  bubbleMode: currentBubbleContext.mode,
                   onTap: () async {
                     final doc = await FirebaseFirestore.instance
                         .collection(FirestoreConstants.pathUserCollection)
@@ -1665,6 +1775,13 @@ class ChatPageState extends State<ChatPage>
                     }
                   }),
               actions: [
+                if (_autoPilotProvider != null)
+                  AutoPilotAppBarButton(
+                    conversationId: _groupChatId,
+                    currentUserId: _currentUserId,
+                    isGroup: false,
+                  ),
+                SentimentIndicatorWidget(groupChatId: _groupChatId),
                 VideoCallIconButton(
                     peerId: widget.arguments.peerId,
                     peerName: widget.arguments.peerNickname,
@@ -1673,7 +1790,6 @@ class ChatPageState extends State<ChatPage>
                     peerId: widget.arguments.peerId,
                     peerName: widget.arguments.peerNickname,
                     peerAvatar: widget.arguments.peerAvatar),
-                SentimentIndicatorWidget(groupChatId: _groupChatId),
                 const SizedBox(width: 2),
                 PopupMenuButton<String>(
                   onSelected: (v) => _handleMenuSelect(v, p, theme),
@@ -1693,6 +1809,9 @@ class ChatPageState extends State<ChatPage>
 
   void _handleMenuSelect(String v, ThemePalette p, ThemeProvider theme) {
     switch (v) {
+      case 'autopilot':
+        _showAutoPilotSheet();
+        break;
       case 'ai':
         _showAI();
       case 'summarize':
@@ -1730,6 +1849,9 @@ class ChatPageState extends State<ChatPage>
       ThemePalette p, ThemeProvider theme) {
     final msgCount = LocalDbService().getMessages(_groupChatId).length;
     return [
+      _popItem('autopilot', Icons.smart_toy_rounded, 'AutoPilot',
+          const Color(0xFF8B5CF6), p),
+      const PopupMenuDivider(),
       _popItem('ai', Icons.auto_awesome_rounded, 'AI Assistant',
           const Color(0xFF8B5CF6), p),
       _popItem('game', Icons.sports_esports_rounded, 'Game Center',
@@ -1754,7 +1876,6 @@ class ChatPageState extends State<ChatPage>
       _popItem('reminders', Icons.alarm_rounded, 'Nhắc nhở', p.warningColor, p),
       const PopupMenuDivider(),
       _popItem('lock', Icons.lock_rounded, 'Khoá chat', p.infoColor, p),
-      // ← BUBBLE với context mode indicator
       _popItemWithBadge('bubble', Icons.bubble_chart_rounded, 'Chat Bubble',
           p.successColor, p, currentBubbleContext.mode),
       _popItem('settings_bubble', Icons.settings_rounded, 'Cài đặt Bubble',
@@ -1919,7 +2040,7 @@ class ChatPageState extends State<ChatPage>
                         style: TextStyle(color: p.textHint, fontSize: 13)),
                   ]));
                 }
-                prefetchLinkPreviews(display);
+                _prefetchLinkPreviews(display);
                 return Stack(children: [
                   ListView.builder(
                     controller: _scrollController,
@@ -2439,8 +2560,6 @@ class ChatPageState extends State<ChatPage>
     );
   }
 
-  // ── Typing bar — uses BubbleTypingIndicator ────────────────────────────────
-
   Widget _buildTypingBar(ThemePalette p, ThemeProvider theme) {
     if (_presenceProvider == null) return const SizedBox.shrink();
     return StreamBuilder<Map<String, TypingInfo>>(
@@ -2471,8 +2590,7 @@ class ChatPageState extends State<ChatPage>
                           : null,
                     ),
                     const SizedBox(width: 8),
-                    const BubbleTypingIndicator
-                        .chat(), // ← BUBBLE TYPING INDICATOR
+                    const BubbleTypingIndicator.chat(),
                   ]),
                 )
               : const SizedBox.shrink(key: ValueKey('idle')),
@@ -2639,6 +2757,12 @@ class ChatPageState extends State<ChatPage>
     final full = !widget.isBubbleMode && !widget.isMiniChat;
     final fs = theme.fontSizeMultiplier;
     return Column(mainAxisSize: MainAxisSize.min, children: [
+      if (_autoPilotProvider != null)
+        AutoPilotInputStatusBar(
+          conversationId: _groupChatId,
+          currentUserId: _currentUserId,
+          isGroup: false,
+        ),
       if (full && (_smartReplies.isNotEmpty || _isLoadingSmartReply))
         _buildSmartReplyBar(p, theme),
       _buildRecBar(p, theme),
@@ -2710,8 +2834,9 @@ class ChatPageState extends State<ChatPage>
                     if (_showMenu) {
                       _menuAnim.forward();
                       _focusNode.unfocus();
-                    } else
+                    } else {
                       _menuAnim.reverse();
+                    }
                   },
                   child: Padding(
                       padding: const EdgeInsets.all(10),
@@ -2876,7 +3001,7 @@ class ChatPageState extends State<ChatPage>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PRIVATE SUB-WIDGETS (unchanged from original)
+// PRIVATE SUB-WIDGETS
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _AppBarTitle extends StatelessWidget {
@@ -2919,7 +3044,6 @@ class _AppBarTitle extends StatelessWidget {
                               fontWeight: FontWeight.w700,
                               letterSpacing: -0.3),
                           overflow: TextOverflow.ellipsis)),
-                  // ← Show BubbleMode badge when not normal
                   if (bubbleMode != BubbleMode.normal)
                     Container(
                       margin: const EdgeInsets.only(left: 6),
@@ -3302,8 +3426,9 @@ class _ScamScanWidget extends StatelessWidget {
   final ThemePalette palette;
   @override
   Widget build(BuildContext context) {
-    if (result != null && result != 'SAFE')
+    if (result != null && result != 'SAFE') {
       return ScamWarningWidget(status: result as String);
+    }
     if (result == null) {
       return GestureDetector(
         onTap: () async {
@@ -3356,8 +3481,9 @@ class _ReactionRow extends StatelessWidget {
   Widget build(BuildContext context) => StreamBuilder<QuerySnapshot>(
         stream: provider.getReactions(groupChatId, msgId),
         builder: (_, snap) {
-          if (!snap.hasData || snap.data!.docs.isEmpty)
+          if (!snap.hasData || snap.data!.docs.isEmpty) {
             return const SizedBox.shrink();
+          }
           final reactions = <String, int>{};
           final myReactions = <String, bool>{};
           for (final doc in snap.data!.docs) {
@@ -3447,7 +3573,7 @@ class _ThemedDialogAction extends StatelessWidget {
   final bool isPrimary, isDanger;
   @override
   Widget build(BuildContext context) {
-    if (isPrimary)
+    if (isPrimary) {
       return FilledButton(
           onPressed: onTap,
           style: FilledButton.styleFrom(
@@ -3457,11 +3583,13 @@ class _ThemedDialogAction extends StatelessWidget {
               padding:
                   const EdgeInsets.symmetric(horizontal: 18, vertical: 10)),
           child: Text(label));
-    if (isDanger)
+    }
+    if (isDanger) {
       return TextButton(
           onPressed: onTap,
           style: TextButton.styleFrom(foregroundColor: palette.dangerColor),
           child: Text(label));
+    }
     return TextButton(
         onPressed: onTap,
         style: TextButton.styleFrom(foregroundColor: palette.textSecondary),
@@ -3532,9 +3660,10 @@ class _ReminderPickerDialogState extends State<_ReminderPickerDialog> {
                   initialDate: _selected,
                   firstDate: DateTime.now(),
                   lastDate: DateTime.now().add(const Duration(days: 365)));
-              if (d != null && mounted)
+              if (d != null && mounted) {
                 setState(() => _selected = DateTime(
                     d.year, d.month, d.day, _selected.hour, _selected.minute));
+              }
             }),
         const SizedBox(height: 8),
         _PickerTile(
@@ -3547,9 +3676,10 @@ class _ReminderPickerDialogState extends State<_ReminderPickerDialog> {
               final t = await showTimePicker(
                   context: context,
                   initialTime: TimeOfDay.fromDateTime(_selected));
-              if (t != null && mounted)
+              if (t != null && mounted) {
                 setState(() => _selected = DateTime(_selected.year,
                     _selected.month, _selected.day, t.hour, t.minute));
+              }
             }),
       ]),
       actions: [
@@ -3638,12 +3768,13 @@ class _RemindersPage extends StatelessWidget {
             body: StreamBuilder<List<MessageReminder>>(
               stream: reminderProvider.getUserRemindersStream(currentUserId),
               builder: (_, snap) {
-                if (!snap.hasData)
+                if (!snap.hasData) {
                   return Center(
                       child: CircularProgressIndicator(
                           color: theme.primaryColor, strokeWidth: 2));
+                }
                 final reminders = snap.data!;
-                if (reminders.isEmpty)
+                if (reminders.isEmpty) {
                   return Center(
                       child: Column(mainAxisSize: MainAxisSize.min, children: [
                     Icon(Icons.alarm_off_rounded, size: 60, color: p.textHint),
@@ -3653,6 +3784,7 @@ class _RemindersPage extends StatelessWidget {
                             color: p.textSecondary,
                             fontWeight: FontWeight.w500)),
                   ]));
+                }
                 return ListView.separated(
                   padding: const EdgeInsets.all(16),
                   itemCount: reminders.length,
@@ -3724,9 +3856,10 @@ class _AIDialog extends StatelessWidget {
                       child: CircularProgressIndicator(
                           color: Color(0xFF8B5CF6), strokeWidth: 2)));
             }
-            if (!snap.hasData)
+            if (!snap.hasData) {
               return Text('Không thể kết nối AI lúc này.',
                   style: TextStyle(color: palette.textSecondary));
+            }
             return SizedBox(
                 height: 280,
                 child: SingleChildScrollView(

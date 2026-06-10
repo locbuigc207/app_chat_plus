@@ -1,16 +1,26 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_chat_demo/providers/providers.dart';
-import 'package:flutter_chat_demo/services/services.dart';
-import 'package:flutter_chat_demo/widgets/widgets.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+
+// Đảm bảo import đúng với cấu trúc dự án của bạn.
+// Nếu dùng relative path bị lỗi, hãy thay thế bằng package:flutter_chat_demo/...
+import '../models/insights_models.dart';
+import '../providers/insights_provider.dart';
+import '../providers/theme_provider.dart';
+import '../widgets/insight_chart_widgets.dart';
+import '../widgets/weekly_recap_card.dart';
 
 class UserInsightsPage extends StatefulWidget {
   final String conversationId;
+  final String userId;
   final String peerName;
 
-  const UserInsightsPage(
-      {super.key, required this.conversationId, required this.peerName});
+  const UserInsightsPage({
+    super.key,
+    required this.conversationId,
+    required this.userId,
+    required this.peerName,
+  });
 
   @override
   State<UserInsightsPage> createState() => _UserInsightsPageState();
@@ -18,516 +28,839 @@ class UserInsightsPage extends StatefulWidget {
 
 class _UserInsightsPageState extends State<UserInsightsPage>
     with SingleTickerProviderStateMixin {
-  UserInsightsResult? _result;
-  bool _loading = true;
-  String? _error;
-
-  late final AnimationController _animCtrl;
+  late final AnimationController _fadeCtrl;
   late final Animation<double> _fadeAnim;
 
   @override
   void initState() {
     super.initState();
-    _animCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 500));
-    _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
-    _load();
+    _fadeCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 400));
+    _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<InsightsProvider>().loadDashboard(
+            conversationId: widget.conversationId,
+            userId: widget.userId,
+          );
+      _fadeCtrl.forward();
+    });
   }
 
   @override
   void dispose() {
-    _animCtrl.dispose();
+    _fadeCtrl.dispose();
     super.dispose();
-  }
-
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    _animCtrl.reset();
-
-    try {
-      final result = await AIBackendService()
-          .getUserInsights(conversationId: widget.conversationId);
-      if (!mounted) return;
-
-      setState(() {
-        _result = result;
-        _loading = false;
-      });
-      _animCtrl.forward();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = e.toString();
-      });
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeProvider>();
     final p = theme.palette;
+    final provider = context.watch<InsightsProvider>();
 
     return Theme(
       data: theme.isDark ? theme.darkTheme : theme.lightTheme,
       child: Scaffold(
         backgroundColor: p.background,
-        appBar: AppBar(
-          title: Text('AI Phân Tích Giao Tiếp',
-              style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: p.textPrimary,
-                  fontSize: 16)),
-          backgroundColor: p.appBarBackground,
-          elevation: 0,
-          surfaceTintColor: Colors.transparent,
-          leading: IconButton(
-              icon: Icon(Icons.arrow_back_ios_new_rounded,
-                  color: theme.primaryColor, size: 20),
-              onPressed: () => Navigator.pop(context)),
-          actions: [
-            IconButton(
-                icon: Icon(Icons.refresh_rounded, color: theme.primaryColor),
-                onPressed: _load,
-                tooltip: 'Làm mới')
-          ],
+        body: FadeTransition(
+          opacity: _fadeAnim,
+          child: RefreshIndicator(
+            onRefresh: () => provider.refresh(),
+            color: theme.primaryColor,
+            backgroundColor: p.surface,
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics()),
+              slivers: [
+                // ─── SliverAppBar ───────────────────────────────────────────
+                _buildAppBar(theme, p, provider),
+
+                // ─── Period Selector (pinned) ───────────────────────────────
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _PeriodSelectorDelegate(
+                    selectedPeriod: provider.selectedPeriod,
+                    primaryColor: theme.primaryColor,
+                    palette: p,
+                    onChanged: (period) {
+                      HapticFeedback.selectionClick();
+                      provider.selectPeriod(period);
+                    },
+                  ),
+                ),
+
+                // ─── Body ───────────────────────────────────────────────────
+                if (provider.loadState == InsightsLoadState.error)
+                  SliverFillRemaining(
+                      child: _ErrorView(
+                    message: provider.errorMessage ?? 'Có lỗi xảy ra.',
+                    palette: p,
+                    onRetry: () => provider.loadDashboard(
+                        conversationId: widget.conversationId,
+                        userId: widget.userId),
+                  ))
+                else if (provider.loadState == InsightsLoadState.loading)
+                  SliverPadding(
+                    padding: const EdgeInsets.all(16),
+                    sliver: SliverList(
+                      delegate: SliverChildListDelegate([
+                        _SkeletonLoader(palette: p),
+                      ]),
+                    ),
+                  )
+                else if (!provider.hasData ||
+                    provider.currentSnapshot == null ||
+                    provider.currentSnapshot!.totalMessages == 0)
+                  SliverFillRemaining(
+                      child: _EmptyState(
+                    palette: p,
+                    peerName: widget.peerName,
+                  ))
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                    sliver: SliverList(
+                      delegate: SliverChildListDelegate(
+                        _buildCards(
+                            context, theme, p, provider.currentSnapshot!),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
-        body: _loading
-            ? _buildLoading(p, theme)
-            : _error != null
-                ? _buildError(p, theme)
-                : _result == null
-                    ? _buildNoData(p, theme)
-                    : FadeTransition(
-                        opacity: _fadeAnim,
-                        child: _buildContent(_result!, p, theme)),
       ),
     );
   }
 
-  Widget _buildLoading(ThemePalette p, ThemeProvider theme) {
-    return Center(
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-                color: theme.primaryColor.withValues(alpha: 0.08),
-                shape: BoxShape.circle),
-            child: CircularProgressIndicator(
-                color: theme.primaryColor, strokeWidth: 2.5)),
-        const SizedBox(height: 20),
-        Text('AI đang phân tích...',
-            style: TextStyle(
-                fontSize: 15,
-                color: p.textSecondary,
-                fontWeight: FontWeight.w500)),
-        const SizedBox(height: 6),
-        Text('Đang xử lý lịch sử trò chuyện của bạn',
-            style: TextStyle(fontSize: 13, color: p.textSecondary)),
-      ]),
-    );
-  }
+  // ─── AppBar ───────────────────────────────────────────────────────────────
 
-  Widget _buildError(ThemePalette p, ThemeProvider theme) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                  color: p.dangerColor.withValues(alpha: 0.08),
-                  shape: BoxShape.circle),
-              child: Icon(Icons.error_outline_rounded,
-                  size: 48, color: p.dangerColor)),
-          const SizedBox(height: 18),
-          Text('Không thể tải dữ liệu',
-              style: TextStyle(
-                  fontSize: 17,
-                  color: p.textPrimary,
-                  fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-          Text('Vui lòng kiểm tra kết nối mạng và thử lại',
-              textAlign: TextAlign.center,
-              style:
-                  TextStyle(fontSize: 13, color: p.textSecondary, height: 1.5)),
-          const SizedBox(height: 20),
-          FilledButton.icon(
-              onPressed: _load,
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('Thử lại'),
-              style: FilledButton.styleFrom(
-                  backgroundColor: theme.primaryColor,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)))),
-        ]),
+  Widget _buildAppBar(
+      ThemeProvider theme, ThemePalette p, InsightsProvider provider) {
+    return SliverAppBar(
+      expandedHeight: 140,
+      pinned: true,
+      backgroundColor: p.surface,
+      surfaceTintColor: Colors.transparent,
+      leading: IconButton(
+        icon: Icon(Icons.arrow_back_ios_new_rounded,
+            color: p.textPrimary, size: 20),
+        onPressed: () => Navigator.pop(context),
+      ),
+      actions: [
+        if (provider.loadState == InsightsLoadState.refreshing)
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: theme.primaryColor),
+              ),
+            ),
+          )
+        else
+          IconButton(
+            icon: Icon(Icons.refresh_rounded, color: p.textSecondary, size: 22),
+            onPressed: () => provider.refresh(),
+            tooltip: 'Làm mới dữ liệu',
+          ),
+      ],
+      flexibleSpace: FlexibleSpaceBar(
+        background: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                theme.primaryColor.withValues(alpha: 0.15),
+                theme.primaryColor.withValues(alpha: 0.03),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 80, 20, 16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'User Insights',
+                      style: TextStyle(
+                          color: p.textPrimary,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.5),
+                    ),
+                    Text(
+                      'Phân tích cuộc trò chuyện với ${widget.peerName}',
+                      style: TextStyle(color: p.textSecondary, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      theme.primaryColor,
+                      theme.primaryColor.withValues(alpha: 0.7),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                        color: theme.primaryColor.withValues(alpha: 0.35),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4))
+                  ],
+                ),
+                child: const Icon(Icons.insights_rounded,
+                    color: Colors.white, size: 28),
+              ),
+            ],
+          ),
+        ),
+        titlePadding: EdgeInsets.zero,
       ),
     );
   }
 
-  Widget _buildNoData(ThemePalette p, ThemeProvider theme) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                  color: p.surfaceVariant, shape: BoxShape.circle),
-              child: Icon(Icons.psychology_outlined,
-                  size: 56, color: p.textSecondary.withValues(alpha: 0.5))),
-          const SizedBox(height: 20),
-          Text('Chưa đủ dữ liệu để phân tích',
-              style: TextStyle(
-                  fontSize: 16,
-                  color: p.textPrimary,
-                  fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-          Text(
-              'Cần ít nhất 5 tin nhắn trong 7 ngày gần đây\nđể AI có thể phân tích phong cách của bạn',
-              textAlign: TextAlign.center,
-              style:
-                  TextStyle(fontSize: 13, color: p.textSecondary, height: 1.6)),
-        ]),
-      ),
-    );
-  }
+  // ─── Cards builder ────────────────────────────────────────────────────────
 
-  Widget _buildContent(
-      UserInsightsResult r, ThemePalette p, ThemeProvider theme) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        _HeroCard(
-            insightSummary: r.insightSummary,
-            palette: p,
-            primary: theme.primaryColor),
-        const SizedBox(height: 14),
+  List<Widget> _buildCards(BuildContext ctx, ThemeProvider theme,
+      ThemePalette p, InsightsSnapshot snap) {
+    return [
+      // Stale warning
+      if (snap.isStale) ...[
+        _StaleWarning(palette: p, primaryColor: theme.primaryColor),
+        const SizedBox(height: 12),
+      ],
+
+      // Weekly Recap card
+      InsightsRecapCard(
+        snapshot: snap,
+        palette: p,
+        primaryColor: theme.primaryColor,
+        peerName: widget.peerName,
+      ),
+      const SizedBox(height: 14),
+
+      // Stats Row
+      _StatsRow(snapshot: snap, palette: p, primaryColor: theme.primaryColor),
+      const SizedBox(height: 14),
+
+      // Sentiment breakdown
+      _InsightCard(
+        icon: Icons.sentiment_satisfied_alt_rounded,
+        title: 'Phân tích tâm trạng',
+        primary: theme.primaryColor,
+        palette: p,
+        child: SentimentBar(breakdown: snap.sentimentBreakdown, palette: p),
+      ),
+      const SizedBox(height: 14),
+
+      // Mood Trend
+      if (snap.moodTrend.isNotEmpty) ...[
         _InsightCard(
-            icon: '💬',
-            title: 'Phong cách giao tiếp',
-            content: switch (r.communicationStyle) {
-              'formal' =>
-                'Trang trọng & lịch sự — bạn thường dùng ngôn ngữ chuẩn mực và súc tích',
-              'casual' =>
-                'Thoải mái & thân thiện — bạn nói chuyện tự nhiên, vui vẻ và gần gũi',
-              _ =>
-                'Linh hoạt theo tình huống — bạn dễ thay đổi phong cách phù hợp ngữ cảnh',
-            },
-            color: const Color(0xFF8B5CF6),
-            palette: p),
-        if (r.topTopics.isNotEmpty) ...[
-          const SizedBox(height: 14),
-          _TopicsCard(
-              topics: r.topTopics, palette: p, primary: theme.primaryColor),
-        ],
-        if (r.personalityTraits.isNotEmpty) ...[
-          const SizedBox(height: 14),
-          _InsightCard(
-              icon: '✨',
-              title: 'Đặc điểm nổi bật',
-              content: r.personalityTraits.join(' • '),
-              color: const Color(0xFFF59E0B),
-              palette: p),
-        ],
-        const SizedBox(height: 14),
-        Row(children: [
-          Expanded(
-              child: _StatCard(
-                  emoji: '😊',
-                  label: 'Dùng emoji',
-                  value: switch (r.emojiUsageLevel) {
-                    'high' => '🔥 Nhiều',
-                    'low' => '💤 Ít',
-                    _ => '👍 Vừa'
-                  },
-                  valueColor: switch (r.emojiUsageLevel) {
-                    'high' => const Color(0xFFFF6B6B),
-                    'low' => const Color(0xFF94A3B8),
-                    _ => const Color(0xFF22C55E)
-                  },
-                  palette: p)),
-          const SizedBox(width: 12),
-          Expanded(
-              child: _StatCard(
-                  emoji: '📝',
-                  label: 'Độ dài tin',
-                  value: switch (r.avgMessageLength) {
-                    'short' => '⚡ Ngắn',
-                    'long' => '📖 Dài',
-                    _ => '📋 Vừa'
-                  },
-                  valueColor: switch (r.avgMessageLength) {
-                    'short' => const Color(0xFFF59E0B),
-                    'long' => const Color(0xFF6366F1),
-                    _ => const Color(0xFF22C55E)
-                  },
-                  palette: p)),
-        ]),
-        if (r.activityPattern.isNotEmpty && r.activityPattern != 'unknown') ...[
-          const SizedBox(height: 14),
-          _InsightCard(
-              icon: '⏰',
-              title: 'Thói quen nhắn tin',
-              content: r.activityPattern,
-              color: const Color(0xFF0EA5E9),
-              palette: p),
-        ],
-        const SizedBox(height: 14),
-        _WeeklyRecapSection(
-            userId: widget.conversationId,
-            conversationName: widget.peerName, // Truyền peerName vào đây
+          icon: Icons.show_chart_rounded,
+          title: 'Xu hướng tâm trạng',
+          subtitle: '${snap.moodTrend.length} ngày',
+          primary: theme.primaryColor,
+          palette: p,
+          child: MoodTrendChart(
+            points: snap.moodTrend,
             palette: p,
-            primary: theme.primaryColor),
-        const SizedBox(height: 24),
+            lineColor: theme.primaryColor,
+          ),
+        ),
+        const SizedBox(height: 14),
+      ],
+
+      // Activity Heatmap
+      if (snap.activityHeatmap.isNotEmpty) ...[
+        _InsightCard(
+          icon: Icons.grid_view_rounded,
+          title: 'Giờ nhắn tin',
+          subtitle: 'Heatmap 7 ngày × 24 giờ',
+          primary: theme.primaryColor,
+          palette: p,
+          child: ActivityHeatmapChart(
+            slots: snap.activityHeatmap,
+            palette: p,
+            baseColor: theme.primaryColor,
+          ),
+        ),
+        const SizedBox(height: 14),
+      ],
+
+      // Topics
+      if (snap.topTopics.isNotEmpty) ...[
+        _InsightCard(
+          icon: Icons.topic_outlined,
+          title: 'Chủ đề thường nhắc',
+          subtitle: 'Top ${snap.topTopics.length} từ khoá',
+          primary: theme.primaryColor,
+          palette: p,
+          child: TopicsBarChart(topics: snap.topTopics, palette: p),
+        ),
+        const SizedBox(height: 14),
+      ],
+
+      // Personality card
+      _PersonalityCard(
+        snapshot: snap,
+        palette: p,
+        primaryColor: theme.primaryColor,
+      ),
+      const SizedBox(height: 8),
+    ];
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Period Selector (SliverPersistentHeaderDelegate)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _PeriodSelectorDelegate extends SliverPersistentHeaderDelegate {
+  final InsightsPeriod selectedPeriod;
+  final Color primaryColor;
+  final ThemePalette palette;
+  final ValueChanged<InsightsPeriod> onChanged;
+
+  _PeriodSelectorDelegate({
+    required this.selectedPeriod,
+    required this.primaryColor,
+    required this.palette,
+    required this.onChanged,
+  });
+
+  @override
+  double get minExtent => 52;
+  @override
+  double get maxExtent => 52;
+
+  @override
+  Widget build(BuildContext ctx, double shrinkOffset, bool overlapsContent) {
+    return Container(
+      color: palette.background,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+        child: Row(
+          children: InsightsPeriod.values.map((period) {
+            final isSel = selectedPeriod == period;
+            return GestureDetector(
+              onTap: () => onChanged(period),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                margin: const EdgeInsets.only(right: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 7),
+                decoration: BoxDecoration(
+                  color: isSel ? primaryColor : palette.surfaceVariant,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                      color: isSel ? primaryColor : palette.divider,
+                      width: isSel ? 0 : 0.8),
+                  boxShadow: isSel
+                      ? [
+                          BoxShadow(
+                              color: primaryColor.withValues(alpha: 0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2))
+                        ]
+                      : [],
+                ),
+                child: Text(
+                  period.label,
+                  style: TextStyle(
+                      color: isSel ? Colors.white : palette.textSecondary,
+                      fontWeight: isSel ? FontWeight.w700 : FontWeight.w500,
+                      fontSize: 13.5),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(_PeriodSelectorDelegate old) =>
+      old.selectedPeriod != selectedPeriod;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stats Row — 3 metric chips
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _StatsRow extends StatelessWidget {
+  final InsightsSnapshot snapshot;
+  final ThemePalette palette;
+  final Color primaryColor;
+
+  const _StatsRow(
+      {required this.snapshot,
+      required this.palette,
+      required this.primaryColor});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = snapshot;
+    return Row(
+      children: [
+        _MetricChip(
+          icon: Icons.message_outlined,
+          value: s.totalMessages.toString(),
+          label: 'Tin nhắn',
+          color: primaryColor,
+          palette: palette,
+        ),
+        const SizedBox(width: 10),
+        _MetricChip(
+          icon: Icons.calendar_today_rounded,
+          value: s.activeDays.toString(),
+          label: 'Ngày hoạt động',
+          color: const Color(0xFF22C55E),
+          palette: palette,
+        ),
+        const SizedBox(width: 10),
+        _MetricChip(
+          icon: Icons.bar_chart_rounded,
+          value: s.avgMessagesPerDay.toStringAsFixed(1),
+          label: 'Tin/ngày',
+          color: const Color(0xFFF59E0B),
+          palette: palette,
+        ),
       ],
     );
   }
 }
 
-// ─── Sub-widgets ──────────────────────────────────────────────────────────────
-
-class _HeroCard extends StatelessWidget {
-  final String insightSummary;
-  final ThemePalette palette;
-  final Color primary;
-
-  const _HeroCard(
-      {required this.insightSummary,
-      required this.palette,
-      required this.primary});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-            colors: [primary, primary.withValues(alpha: 0.75)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-              color: primary.withValues(alpha: 0.3),
-              blurRadius: 16,
-              offset: const Offset(0, 6))
-        ],
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Text('🧠', style: TextStyle(fontSize: 20)),
-          const SizedBox(width: 8),
-          const Text('Tổng quan AI',
-              style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white)),
-          const Spacer(),
-          Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(999)),
-              child: const Text('Gemini AI',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w600))),
-        ]),
-        const SizedBox(height: 12),
-        Text(
-            insightSummary.isNotEmpty
-                ? insightSummary
-                : 'Không có đủ dữ liệu để tổng quan.',
-            style: const TextStyle(
-                fontSize: 14, color: Colors.white, height: 1.6)),
-      ]),
-    );
-  }
-}
-
-class _InsightCard extends StatelessWidget {
-  final String icon, title, content;
+class _MetricChip extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final String label;
   final Color color;
   final ThemePalette palette;
 
-  const _InsightCard(
-      {required this.icon,
-      required this.title,
-      required this.content,
-      required this.color,
-      required this.palette});
+  const _MetricChip({
+    required this.icon,
+    required this.value,
+    required this.label,
+    required this.color,
+    required this.palette,
+  });
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-          color: palette.surface,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [BoxShadow(color: palette.shadow, blurRadius: 8)],
-          border: Border(left: BorderSide(color: color, width: 3.5))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Text(icon, style: const TextStyle(fontSize: 17)),
-          const SizedBox(width: 8),
-          Text(title,
-              style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                  color: palette.textPrimary))
-        ]),
-        const SizedBox(height: 8),
-        Text(content,
-            style: TextStyle(
-                fontSize: 13.5, color: palette.textSecondary, height: 1.55)),
-      ]),
-    );
-  }
+  Widget build(BuildContext context) => Expanded(
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: color.withValues(alpha: 0.2), width: 0.8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: color, size: 18),
+              const SizedBox(height: 6),
+              Text(value,
+                  style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 20,
+                      letterSpacing: -0.5)),
+              Text(label,
+                  style: TextStyle(
+                      color: palette.textHint, fontSize: 11, height: 1.2),
+                  maxLines: 2),
+            ],
+          ),
+        ),
+      );
 }
 
-class _TopicsCard extends StatelessWidget {
-  final List<String> topics;
+// ─────────────────────────────────────────────────────────────────────────────
+// Generic InsightCard container
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _InsightCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final Widget child;
   final ThemePalette palette;
   final Color primary;
 
-  const _TopicsCard(
-      {required this.topics, required this.palette, required this.primary});
+  const _InsightCard({
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    required this.child,
+    required this.palette,
+    required this.primary,
+  });
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+  Widget build(BuildContext context) => Container(
+        decoration: BoxDecoration(
           color: palette.surface,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [BoxShadow(color: palette.shadow, blurRadius: 8)]),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Text('📌', style: TextStyle(fontSize: 15)),
-          const SizedBox(width: 8),
-          Text('Chủ đề thường nhắc tới',
-              style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: palette.textPrimary,
-                  fontSize: 14))
-        ]),
-        const SizedBox(height: 12),
-        Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: topics
-                .map((t) => Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                          color: primary.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                              color: primary.withValues(alpha: 0.2))),
-                      child: Text(t,
-                          style: TextStyle(
-                              color: primary,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13)),
-                    ))
-                .toList()),
-      ]),
-    );
-  }
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: palette.divider, width: 0.7),
+          boxShadow: [
+            BoxShadow(
+                color: palette.shadow,
+                blurRadius: 10,
+                offset: const Offset(0, 3))
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(7),
+                    decoration: BoxDecoration(
+                        color: primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(9)),
+                    child: Icon(icon, color: primary, size: 15),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title,
+                            style: TextStyle(
+                                color: palette.textPrimary,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14)),
+                        if (subtitle != null)
+                          Text(subtitle!,
+                              style: TextStyle(
+                                  color: palette.textHint, fontSize: 11.5)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: palette.divider),
+            Padding(padding: const EdgeInsets.all(16), child: child),
+          ],
+        ),
+      );
 }
 
-class _StatCard extends StatelessWidget {
-  final String emoji, label, value;
-  final Color valueColor;
+// ─────────────────────────────────────────────────────────────────────────────
+// PersonalityCard
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _PersonalityCard extends StatelessWidget {
+  final InsightsSnapshot snapshot;
   final ThemePalette palette;
+  final Color primaryColor;
 
-  const _StatCard(
-      {required this.emoji,
-      required this.label,
-      required this.value,
-      required this.valueColor,
-      required this.palette});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-          color: palette.surface,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [BoxShadow(color: palette.shadow, blurRadius: 8)]),
-      child: Column(children: [
-        Text(emoji, style: const TextStyle(fontSize: 26)),
-        const SizedBox(height: 8),
-        Text(value,
-            style: TextStyle(
-                fontWeight: FontWeight.w700, fontSize: 13.5, color: valueColor),
-            textAlign: TextAlign.center),
-        const SizedBox(height: 2),
-        Text(label,
-            style: TextStyle(fontSize: 12, color: palette.textSecondary)),
-      ]),
-    );
-  }
-}
-
-class _WeeklyRecapSection extends StatelessWidget {
-  final String userId;
-  final String conversationName; // Khai báo tham số conversationName
-  final ThemePalette palette;
-  final Color primary;
-
-  const _WeeklyRecapSection(
-      {required this.userId,
-      required this.conversationName, // Bắt buộc truyền vào
+  const _PersonalityCard(
+      {required this.snapshot,
       required this.palette,
-      required this.primary});
+      required this.primaryColor});
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<DocumentSnapshot>(
-      future: FirebaseFirestore.instance.collection('users').doc(userId).get(),
-      builder: (ctx, snap) {
-        if (!snap.hasData || !snap.data!.exists) return const SizedBox.shrink();
+    final s = snapshot;
+    final traitMeta = {
+      'expressive': ('💬', 'Cởi mở', 'Chia sẻ nhiều, diễn đạt rõ ràng'),
+      'communicative': (
+        '🗣️',
+        'Hay trò chuyện',
+        'Thích giao tiếp, nhiều chủ đề'
+      ),
+      'direct': ('⚡', 'Thẳng thắn', 'Ngắn gọn, đi thẳng vào vấn đề'),
+      'optimistic': ('😊', 'Lạc quan', 'Tâm trạng tích cực, vui vẻ'),
+      'reflective': ('🤔', 'Suy tư', 'Hay suy nghĩ, cân nhắc kỹ'),
+      'balanced': ('⚖️', 'Cân bằng', 'Phong cách linh hoạt, dễ thích nghi'),
+    };
 
-        final data = snap.data!.data() as Map<String, dynamic>?;
-        final raw = data?['weeklyRecap'] as Map<String, dynamic>?;
+    return _InsightCard(
+      icon: Icons.person_outline_rounded,
+      title: 'Tính cách giao tiếp',
+      palette: palette,
+      primary: primaryColor,
+      child: s.personalityTraits.isEmpty
+          ? Center(
+              child: Text('Chưa đủ dữ liệu',
+                  style: TextStyle(color: palette.textHint, fontSize: 13)))
+          : Column(
+              children: s.personalityTraits.map((trait) {
+                final meta =
+                    traitMeta[trait] ?? ('✨', trait, 'Phong cách đặc trưng');
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: primaryColor.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Center(
+                            child: Text(meta.$1,
+                                style: const TextStyle(fontSize: 22))),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(meta.$2,
+                                style: TextStyle(
+                                    color: palette.textPrimary,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14)),
+                            Text(meta.$3,
+                                style: TextStyle(
+                                    color: palette.textSecondary,
+                                    fontSize: 12.5)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+    );
+  }
+}
 
-        if (raw == null || raw.isEmpty) return const SizedBox.shrink();
+// ─────────────────────────────────────────────────────────────────────────────
+// Skeleton Loader
+// ─────────────────────────────────────────────────────────────────────────────
 
-        try {
-          // Parse bằng WeeklyRecapData thay cho WeeklyRecapResult
-          final recap = WeeklyRecapData.fromMap(raw, RecapStyle.professional);
-          return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+class _SkeletonLoader extends StatefulWidget {
+  final ThemePalette palette;
+  const _SkeletonLoader({required this.palette});
+
+  @override
+  State<_SkeletonLoader> createState() => _SkeletonLoaderState();
+}
+
+class _SkeletonLoaderState extends State<_SkeletonLoader>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1400))
+      ..repeat(reverse: true);
+    _anim = Tween<double>(begin: 0.35, end: 0.7)
+        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (_, __) {
+        final color = widget.palette.divider.withValues(alpha: _anim.value);
+        return Column(
+          children: [
+            _SkeletonBox(color: color, height: 110, radius: 20),
+            const SizedBox(height: 14),
+            Row(
               children: [
-                Row(children: [
-                  const Text('📊', style: TextStyle(fontSize: 15)),
-                  const SizedBox(width: 8),
-                  Text('Tóm tắt tuần gần nhất',
-                      style: TextStyle(
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w700,
-                          color: palette.textPrimary))
-                ]),
-                const SizedBox(height: 10),
-                WeeklyRecapCard(
-                  recap: recap,
-                  conversationName:
-                      conversationName, // Truyền conversationName vào widget
-                ),
-              ]);
-        } catch (_) {
-          return const SizedBox.shrink();
-        }
+                _SkeletonBox(color: color, height: 80, radius: 16, flex: 1),
+                const SizedBox(width: 10),
+                _SkeletonBox(color: color, height: 80, radius: 16, flex: 1),
+                const SizedBox(width: 10),
+                _SkeletonBox(color: color, height: 80, radius: 16, flex: 1),
+              ],
+            ),
+            const SizedBox(height: 14),
+            _SkeletonBox(color: color, height: 130, radius: 20),
+            const SizedBox(height: 14),
+            _SkeletonBox(color: color, height: 200, radius: 20),
+          ],
+        );
       },
     );
   }
+}
+
+class _SkeletonBox extends StatelessWidget {
+  final Color color;
+  final double height;
+  final double radius;
+  final int flex;
+
+  const _SkeletonBox({
+    required this.color,
+    required this.height,
+    this.radius = 12,
+    this.flex = 0,
+  });
+
+  Widget _box() => Container(
+        height: height,
+        decoration: BoxDecoration(
+            color: color, borderRadius: BorderRadius.circular(radius)),
+      );
+
+  @override
+  Widget build(BuildContext context) =>
+      flex > 0 ? Expanded(flex: flex, child: _box()) : _box();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Empty State
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _EmptyState extends StatelessWidget {
+  final ThemePalette palette;
+  final String peerName;
+
+  const _EmptyState({required this.palette, required this.peerName});
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(40),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.chat_bubble_outline_rounded,
+                  size: 64, color: palette.textHint),
+              const SizedBox(height: 20),
+              Text(
+                'Chưa đủ dữ liệu',
+                style: TextStyle(
+                    color: palette.textPrimary,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Hãy nhắn tin thêm với $peerName để AI phân tích được phong cách giao tiếp của bạn.',
+                style: TextStyle(
+                    color: palette.textSecondary, fontSize: 14, height: 1.5),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Error View
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ErrorView extends StatelessWidget {
+  final String message;
+  final ThemePalette palette;
+  final VoidCallback onRetry;
+
+  const _ErrorView(
+      {required this.message, required this.palette, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(40),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.error_outline_rounded,
+                  size: 56, color: const Color(0xFFEF4444)),
+              const SizedBox(height: 16),
+              Text(
+                'Không thể tải dữ liệu',
+                style: TextStyle(
+                    color: palette.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              Text(message,
+                  style: TextStyle(color: palette.textSecondary, fontSize: 13),
+                  textAlign: TextAlign.center),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Thử lại'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFEF4444),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stale Warning Banner
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _StaleWarning extends StatelessWidget {
+  final ThemePalette palette;
+  final Color primaryColor;
+
+  const _StaleWarning({required this.palette, required this.primaryColor});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+            color: const Color(0xFFF59E0B).withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+                color: const Color(0xFFF59E0B).withValues(alpha: 0.3))),
+        child: Row(
+          children: [
+            const Icon(Icons.info_outline_rounded,
+                size: 16, color: Color(0xFFF59E0B)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Dữ liệu có thể chưa được cập nhật mới nhất. Vuốt xuống để làm mới.',
+                style: TextStyle(
+                    color: palette.textSecondary, fontSize: 12.5, height: 1.4),
+              ),
+            ),
+          ],
+        ),
+      );
 }

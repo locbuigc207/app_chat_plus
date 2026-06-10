@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../models/models.dart';
 import '../providers/providers.dart';
+import '../services/services.dart';
 import 'game_chat_bubbles.dart';
 
 // ─── Message Status ────────────────────────────────────────────────────────
