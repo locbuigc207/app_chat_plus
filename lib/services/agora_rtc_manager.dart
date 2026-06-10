@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data'; // MỚI: Cần cho Int16List
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
+
+import 'realtime_ai_service.dart'; // MỚI: Import service AI của bạn
 
 // ──────────────────────────────────────────────────────────────────────────────
 // MODELS
@@ -317,6 +320,54 @@ class AgoraRtcManager extends ChangeNotifier {
       reportVad: true,
     );
 
+// =========================================================================
+    // 💡 TÍCH HỢP DEEPFAKE DETECTION TẠI ĐÂY
+    // Cấu hình Agora để xuất luồng Raw Audio 16kHz, 1 Channel
+    // =========================================================================
+    try {
+      await _engine!.setRecordingAudioFrameParameters(
+        sampleRate: 16000,
+        channel: 1,
+        mode: RawAudioFrameOpModeType.rawAudioFrameOpModeReadOnly,
+        samplesPerCall: 1024,
+      );
+
+      // SỬA Ở ĐÂY: Thêm .getMediaEngine()
+      _engine!.getMediaEngine().registerAudioFrameObserver(
+            AudioFrameObserver(
+              onRecordAudioFrame: (String channelId, AudioFrame audioFrame) {
+                if (audioFrame.buffer != null) {
+                  try {
+                    // Chuyển đổi mảng Uint8List từ C++ sang Int16List (Zero-copy)
+                    final bytes = audioFrame.buffer!;
+                    final pcm16Data = Int16List.view(
+                      bytes.buffer,
+                      bytes.offsetInBytes,
+                      bytes.lengthInBytes ~/ 2,
+                    );
+
+                    // Gửi dữ liệu âm thanh thô vào Engine AI
+                    RealtimeAIService().feedAudioBuffer(pcm16Data);
+                  } catch (e) {
+                    debugPrint('[Deepfake] Lỗi khi xử lý Audio Frame: $e');
+                  }
+                }
+              },
+              onPlaybackAudioFrame:
+                  (String channelId, AudioFrame audioFrame) {},
+              onMixedAudioFrame: (String channelId, AudioFrame audioFrame) {},
+              onEarMonitoringAudioFrame: (AudioFrame audioFrame) {},
+              onPlaybackAudioFrameBeforeMixing:
+                  (String channelId, int uid, AudioFrame audioFrame) {},
+            ),
+          );
+      debugPrint('✅ [Agora] Đã đăng ký AudioFrameObserver cho Deepfake Engine');
+    } catch (e) {
+      debugPrint('❌ [Agora] Không thể đăng ký AudioFrameObserver: $e');
+    }
+    // =========================================================================
+    // =========================================================================
+
     _engine!.registerEventHandler(RtcEngineEventHandler(
       onJoinChannelSuccess: (conn, elapsed) {
         debugPrint('✅ [Agora] Joined: ${conn.channelId} (${elapsed}ms)');
@@ -518,11 +569,22 @@ class AgoraRtcManager extends ChangeNotifier {
     }
   }
 
-  // ── Dispose ───────────────────────────────────────────────────────────────
+// ── Dispose ───────────────────────────────────────────────────────────────
   @override
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+
+    // SỬA Ở ĐÂY: Thêm .getMediaEngine()
+    try {
+      _engine?.getMediaEngine().registerAudioFrameObserver(AudioFrameObserver(
+            onRecordAudioFrame: (channelId, audioFrame) {},
+            onPlaybackAudioFrame: (channelId, audioFrame) {},
+            onMixedAudioFrame: (channelId, audioFrame) {},
+            onEarMonitoringAudioFrame: (audioFrame) {},
+            onPlaybackAudioFrameBeforeMixing: (channelId, uid, audioFrame) {},
+          ));
+    } catch (_) {}
 
     _engine?.leaveChannel().catchError((_) {});
 

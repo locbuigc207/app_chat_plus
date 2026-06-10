@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:audio_session/audio_session.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+
+import 'deepfake_detector_service.dart';
 
 // ══════════════════════════════════════════════════════
 // ENUMS & MODELS
@@ -79,6 +82,10 @@ class RealtimeAIService {
     region: 'asia-southeast1',
   );
   final stt.SpeechToText _speech = stt.SpeechToText();
+
+  // ── Deepfake Services ──────────────────────────────
+  final _deepfakeDetector = DeepfakeDetectorService();
+  StreamSubscription? _deepfakeSub;
 
   // ── State ──────────────────────────────────────────
   bool _initialized = false;
@@ -171,7 +178,6 @@ class RealtimeAIService {
     try {
       if (!kIsWeb) {
         final session = await AudioSession.instance;
-        // Đã xóa từ khóa 'const' ở đây
         await session.configure(AudioSessionConfiguration(
           avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
           avAudioSessionCategoryOptions:
@@ -219,6 +225,28 @@ class RealtimeAIService {
     _deepfakeTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _checkDeepfakeHints();
     });
+
+    // Khởi động Deepfake Detector
+    _deepfakeDetector
+        .startAnalysis('${peerId}_${DateTime.now().millisecondsSinceEpoch}');
+
+    _deepfakeSub = _deepfakeDetector.resultStream.listen((result) {
+      if (result.isLikelyDeepfake) {
+        final status = result.isHighConfidence
+            ? SecurityStatus.danger
+            : SecurityStatus.warning;
+        _emit(SecurityEvent(
+          status: status,
+          category: ThreatCategory.deepfake,
+          message: result.isHighConfidence
+              ? '⚠️ CẢNH BÁO: Giọng nói giả mạo được phát hiện\n${result.explanation}'
+              : '🔍 Nghi ngờ: Giọng nói có dấu hiệu bất thường\n${result.explanation}',
+          riskScore: result.confidenceScore,
+          timestamp: DateTime.now(),
+          detectedKeywords: result.signals.map((s) => s.name).toList(),
+        ));
+      }
+    });
   }
 
   Future<void> stopProtection() async {
@@ -238,12 +266,21 @@ class RealtimeAIService {
 
     _emit(SecurityEvent.safe());
     if (!_capCtrl.isClosed) _capCtrl.add('');
+
+    _deepfakeSub?.cancel();
+    _deepfakeDetector.stopAnalysis();
   }
 
   void dispose() {
     stopProtection();
     if (!_secCtrl.isClosed) _secCtrl.close();
     if (!_capCtrl.isClosed) _capCtrl.close();
+  }
+
+  // Dùng để hứng Audio từ Agora/WebRTC gửi vào đây
+  Future<void> feedAudioBuffer(Int16List buffer) async {
+    if (!_isListening) return;
+    await _deepfakeDetector.analyzeAudioBuffer(buffer);
   }
 
   // ── Speech callbacks ───────────────────────────────
@@ -401,6 +438,10 @@ class RealtimeAIService {
         'localRiskScore': _riskHistory.isEmpty
             ? 0.0
             : _riskHistory.reduce((a, b) => a + b) / _riskHistory.length,
+        'audioFeatures': _deepfakeDetector.lastFeatures?.toMap(),
+        'localDeepfakeScore':
+            _deepfakeDetector.lastFeatures != null ? 0.6 : 0.0,
+        'enrollmentStatus': _deepfakeDetector.currentEnrollmentStatus.name,
       });
 
       _handleCloudResult(result.data as Map<dynamic, dynamic>);

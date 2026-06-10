@@ -2,6 +2,7 @@ export 'ai_models.dart';
 export 'bubble_models.dart';
 export 'call_model.dart';
 export 'conversation.dart';
+export 'deepfake_models.dart';
 export 'friendship.dart';
 export 'game_match.dart';
 export 'group.dart';

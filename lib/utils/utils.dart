@@ -1,4 +1,5 @@
 export 'app_date_utils.dart';
+export 'audio_feature_extractor.dart';
 export 'bubble_testing_utils.dart';
 export 'data_masking_utils.dart';
 export 'debouncer.dart';

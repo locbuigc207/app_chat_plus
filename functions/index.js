@@ -881,49 +881,87 @@ exports.detectHateSpeech = onCall(
 );
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 13. analyzeCallSecurity
+// 13. analyzeCallSecurity (New)
 // ═════════════════════════════════════════════════════════════════════════════
 
 exports.analyzeCallSecurity = onCall(
-  {secrets: [geminiApiKey]},
+  { secrets: [geminiApiKey] },
   async (request) => {
     requireAuth(request.auth);
-    const {callTranscript, peerId, conversationId} = request.data;
-    if (!callTranscript) {
-      return {isSafe: true, riskLevel: "LOW", warningMessage: "", confidenceScore: 0};
-    }
-    const model = createGeminiModel(
-      geminiApiKey.value(),
-      "Chuyên gia an ninh mạng và phát hiện lừa đảo qua điện thoại tại Việt Nam.",
-      {maxOutputTokens: 512, temperature: 0.1},
-    );
-    try {
-      const raw = await callGeminiWithRetry(model,
-        `Phân tích hội thoại cuộc gọi tìm dấu hiệu lừa đảo, tống tiền, Deepfake AI, social engineering.\n` +
-        `Hội thoại: "${sanitize(callTranscript, 2000)}"\n` +
-        `Trả về JSON: {"isSafe":bool,"riskLevel":"LOW"|"MEDIUM"|"HIGH","warningMessage":"...","confidenceScore":0-100,"redFlags":[]}`,
-      );
-      const analysis = safeParseJson(raw) ??
-        {isSafe: true, riskLevel: "LOW", warningMessage: "", confidenceScore: 0, redFlags: []};
+    const {
+      callTranscript,
+      peerId,
+      conversationId,
+      audioFeatures,
+      localDeepfakeScore,
+      enrollmentStatus,
+    } = request.data;
 
-      if (!analysis.isSafe || analysis.riskLevel === "HIGH") {
-        await db.collection("security_alerts").add({
-          reporterId:        request.auth.uid,
-          suspectId:         peerId         ?? null,
-          conversationId:    conversationId ?? "unknown",
-          transcriptSnippet: sanitize(callTranscript, 300),
-          analysisResult:    analysis,
-          timestamp:         FieldValue.serverTimestamp(),
-          type:              "call_security",
-        });
-        logger.warn(`[analyzeCallSecurity] High-risk call by ${request.auth.uid}`);
-      }
-      return analysis;
-    } catch (err) {
-      logger.error("[analyzeCallSecurity]", err);
-      return {isSafe: true, riskLevel: "LOW", warningMessage: "", confidenceScore: 0};
+    // Tối ưu: Nếu không có Transcript và Local Score quá thấp thì không gọi Gemini đỡ tốn tiền
+    if ((localDeepfakeScore || 0) < 0.4 && (!callTranscript || callTranscript.trim() === "")) {
+      return { isSafe: true, riskLevel: "LOW", warningMessage: "", confidenceScore: 0 };
     }
-  },
+
+    const hasAudioEvidence = audioFeatures && localDeepfakeScore > 0;
+    let audioContext = "";
+
+    if (hasAudioEvidence) {
+      audioContext = `
+Phân tích acoustic từ thiết bị người dùng:
+- Pitch trung bình: ${audioFeatures.pitchMean?.toFixed(1)}Hz
+- Pitch variance: ${audioFeatures.pitchVariance?.toFixed(1)}Hz (người thật: 15-50Hz)
+- Spectral flatness: ${audioFeatures.spectralFlatness?.toFixed(3)} (thực tế <0.5)
+- Điểm đánh giá Deepfake Local: ${(localDeepfakeScore * 100).toFixed(0)}%
+- Trạng thái nhận diện giọng nói: ${enrollmentStatus || "unknown"}
+`;
+    }
+
+    const prompt = `Bạn là hệ thống phân tích an ninh cuộc gọi. Hãy phân tích ngữ cảnh sau để tìm dấu hiệu Lừa Đảo và Deepfake AI:
+
+${audioContext}
+
+Transcript cuộc gọi:
+"${callTranscript ? callTranscript.substring(0, 2000) : "(Không có transcript)"}"
+
+Trả về định dạng JSON nghiêm ngặt:
+{
+  "isSafe": boolean,
+  "riskLevel": "LOW"|"MEDIUM"|"HIGH",
+  "isDeepfakeVoice": boolean,
+  "deepfakeConfidence": 0-100,
+  "isScam": boolean,
+  "warningMessage": "Thông báo ngắn gọn cho user",
+  "confidenceScore": 0-100
+}`;
+
+    try {
+      const model = createGeminiModel(geminiApiKey.value(), "Chuyên gia bảo mật cuộc gọi.", { maxOutputTokens: 512, temperature: 0.1 });
+      const raw = await callGeminiWithRetry(model, prompt);
+      const analysis = safeParseJson(raw) || {};
+
+      const cloudDeepfakeScore = (analysis.deepfakeConfidence || 0) / 100;
+      const localScore = localDeepfakeScore || 0;
+
+      // Kết hợp điểm tin cậy giữa Local (phân tích âm thanh) và Cloud (phân tích Text)
+      const combinedScore = (callTranscript && callTranscript.length > 50)
+        ? (cloudDeepfakeScore * 0.6 + localScore * 0.4)
+        : (localScore * 0.7 + cloudDeepfakeScore * 0.3);
+
+      return {
+        ...analysis,
+        combinedDeepfakeScore: Math.round(combinedScore * 100),
+      };
+    } catch (err) {
+      logger.error("[analyzeCallSecurity] Error", err);
+      // Fallback về điểm local nếu Gemini lỗi
+      return {
+        isSafe: (localDeepfakeScore || 0) < 0.5,
+        riskLevel: localDeepfakeScore > 0.7 ? "HIGH" : "LOW",
+        warningMessage: "Không thể kết nối AI Cloud",
+        confidenceScore: Math.round((localDeepfakeScore || 0) * 100),
+      };
+    }
+  }
 );
 
 // ═════════════════════════════════════════════════════════════════════════════

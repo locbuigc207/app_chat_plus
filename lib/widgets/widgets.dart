@@ -26,6 +26,7 @@ export 'conversation_item.dart';
 export 'conversation_options_dialog.dart';
 export 'conversation_summary_sheet.dart';
 export 'create_poll_dialog.dart';
+export 'deepfake_alert_overlay.dart';
 export 'edit_message_dialog.dart';
 export 'enhanced_conversation_options.dart';
 export 'enhanced_message_options_dialog.dart';

@@ -7,10 +7,10 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LOCAL DB SERVICE  — AES-256 encrypted Hive storage
+// LOCAL DB SERVICE  — Cross-platform Hive storage (Web & Mobile compatible)
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// Boxes (all encrypted):
+// Boxes:
 //   chat_messages_v2   — messages          key: "<convoId>_<msgId>"
 //   sync_queue_v2      — offline job queue key: auto-increment int
 //   conversations_v2   — convo metadata    key: conversationId
@@ -20,9 +20,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 //
 // Design principles:
 //   • One singleton, initialise once before runApp.
-//   • All mutating methods are async (Hive writes are async).
-//   • Read methods are synchronous (Hive keeps a full in-memory copy).
-//   • clearAll() is called on logout and wipes everything.
+//   • Works smoothly on both Mobile (iOS/Android) and Web.
+//   • Robust Keystore error handling included.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class LocalDbService {
@@ -40,11 +39,16 @@ class LocalDbService {
   static const _kReactionsBox = 'reactions_v2';
   static const _kPinnedBox = 'pinned_v2';
 
-  // ── Internal ───────────────────────────────────────────────────────────────
+// ── Internal ───────────────────────────────────────────────────────────────
   final _secureStorage = const FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
     iOptions: IOSOptions(
         accessibility: KeychainAccessibility.first_unlock_this_device),
+    // Sửa wOptions thành webOptions
+    webOptions: WebOptions(
+      dbName: 'app_chat_secure_db',
+      publicKey: 'app_chat_public_key',
+    ),
   );
 
   late Box _messagesBox;
@@ -70,30 +74,80 @@ class LocalDbService {
   Future<void> initialize() async {
     if (_initialized) return;
 
+    // Trên Web, Hive.initFlutter() sẽ tự động sử dụng IndexedDB
     await Hive.initFlutter();
+
+    // Khởi tạo key giải mã (Sẽ trả về null trên Web để tăng hiệu năng hoặc nếu lỗi Keystore)
     final cipher = await _resolveEncryptionCipher();
 
-    _messagesBox = await Hive.openBox(_kMessagesBox, encryptionCipher: cipher);
-    _syncQueueBox = await Hive.openBox(_kSyncBox, encryptionCipher: cipher);
-    _conversationsBox =
-        await Hive.openBox(_kConvoBox, encryptionCipher: cipher);
-    _draftsBox = await Hive.openBox(_kDraftsBox, encryptionCipher: cipher);
-    _reactionsBox =
-        await Hive.openBox(_kReactionsBox, encryptionCipher: cipher);
-    _pinnedBox = await Hive.openBox(_kPinnedBox, encryptionCipher: cipher);
+    try {
+      _messagesBox =
+          await Hive.openBox(_kMessagesBox, encryptionCipher: cipher);
+      _syncQueueBox = await Hive.openBox(_kSyncBox, encryptionCipher: cipher);
+      _conversationsBox =
+          await Hive.openBox(_kConvoBox, encryptionCipher: cipher);
+      _draftsBox = await Hive.openBox(_kDraftsBox, encryptionCipher: cipher);
+      _reactionsBox =
+          await Hive.openBox(_kReactionsBox, encryptionCipher: cipher);
+      _pinnedBox = await Hive.openBox(_kPinnedBox, encryptionCipher: cipher);
+    } catch (e) {
+      debugPrint(
+          '[LocalDbService] ❌ Lỗi mở Box (Có thể do sai Key mã hóa): $e');
+      // Xử lý fallback an toàn nếu Key bị hỏng: Xóa toàn bộ box cũ và tạo lại
+      await _wipeCorruptedBoxes();
+      _messagesBox =
+          await Hive.openBox(_kMessagesBox, encryptionCipher: cipher);
+      _syncQueueBox = await Hive.openBox(_kSyncBox, encryptionCipher: cipher);
+      _conversationsBox =
+          await Hive.openBox(_kConvoBox, encryptionCipher: cipher);
+      _draftsBox = await Hive.openBox(_kDraftsBox, encryptionCipher: cipher);
+      _reactionsBox =
+          await Hive.openBox(_kReactionsBox, encryptionCipher: cipher);
+      _pinnedBox = await Hive.openBox(_kPinnedBox, encryptionCipher: cipher);
+    }
 
     _initialized = true;
-    debugPrint('[LocalDbService] ✅ Initialized — 6 encrypted boxes open');
+    debugPrint(
+        '[LocalDbService] ✅ Initialized — 6 boxes open (Web/Mobile ready)');
   }
 
-  Future<HiveAesCipher> _resolveEncryptionCipher() async {
-    String? keyStr = await _secureStorage.read(key: _kHiveKey);
-    if (keyStr == null) {
-      final newKey = Hive.generateSecureKey();
-      keyStr = base64UrlEncode(newKey);
-      await _secureStorage.write(key: _kHiveKey, value: keyStr);
+  Future<HiveAesCipher?> _resolveEncryptionCipher() async {
+    // 💡 Tối ưu hóa Web: Tắt mã hóa trên Web vì nó làm chậm app đáng kể
+    // và không tăng cường bảo mật (do key cũng lưu trên browser local storage).
+    if (kIsWeb) {
+      debugPrint(
+          '[LocalDbService] 🌐 Chạy trên Web -> Tắt AES Encryption để tối ưu tốc độ.');
+      return null;
     }
-    return HiveAesCipher(base64Url.decode(keyStr));
+
+    try {
+      String? keyStr = await _secureStorage.read(key: _kHiveKey);
+      if (keyStr == null) {
+        final newKey = Hive.generateSecureKey();
+        keyStr = base64UrlEncode(newKey);
+        await _secureStorage.write(key: _kHiveKey, value: keyStr);
+      }
+      return HiveAesCipher(base64Url.decode(keyStr));
+    } catch (e) {
+      // ⚠️ Khắc phục lỗi kinh điển trên Android: Keystore bị hỏng
+      debugPrint(
+          '[LocalDbService] ⚠️ Lỗi đọc Secure Key: $e. Tạo lại Key mới...');
+      await _secureStorage.delete(key: _kHiveKey);
+      final newKey = Hive.generateSecureKey();
+      final keyStr = base64UrlEncode(newKey);
+      await _secureStorage.write(key: _kHiveKey, value: keyStr);
+      return HiveAesCipher(base64Url.decode(keyStr));
+    }
+  }
+
+  Future<void> _wipeCorruptedBoxes() async {
+    debugPrint('[LocalDbService] 🧹 Wiping corrupted boxes...');
+    await Hive.deleteBoxFromDisk(_kMessagesBox);
+    await Hive.deleteBoxFromDisk(_kSyncBox);
+    await Hive.deleteBoxFromDisk(_kConvoBox);
+    await Hive.deleteBoxFromDisk(_kDraftsBox);
+    await Hive.deleteBoxFromDisk(_kReactionsBox);
+    await Hive.deleteBoxFromDisk(_kPinnedBox);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -326,8 +380,6 @@ class LocalDbService {
 
   // ─────────────────────────────────────────────────────────────────────────
   // REACTIONS
-  // Key scheme: "<conversationId>_<messageId>"
-  // Value: Map<String, String>  →  { userId: emoji }
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> saveReaction({
@@ -378,7 +430,6 @@ class LocalDbService {
 
   // ─────────────────────────────────────────────────────────────────────────
   // PINNED MESSAGES
-  // Key: "<conversationId>_<messageId>"   Value: full message Map
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> pinMessage(
@@ -421,8 +472,6 @@ class LocalDbService {
   // LOCAL SEARCH
   // ─────────────────────────────────────────────────────────────────────────
 
-  /// Full-text search within a single conversation (case-insensitive).
-  /// Returns results sorted newest-first.
   List<Map<dynamic, dynamic>> searchMessages(
     String conversationId,
     String query, {
@@ -449,7 +498,6 @@ class LocalDbService {
     return results.take(limit).toList();
   }
 
-  /// Global search across ALL conversations.
   List<MessageSearchHit> searchGlobal(String query, {int limit = 100}) {
     _assertInit();
     if (query.trim().isEmpty) return [];
@@ -477,8 +525,6 @@ class LocalDbService {
     }
 
     hits.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-
-    // Convert to public model
     return hits.take(limit).map((hit) => MessageSearchHit.from(hit)).toList();
   }
 
@@ -486,7 +532,6 @@ class LocalDbService {
   // EXPORT
   // ─────────────────────────────────────────────────────────────────────────
 
-  /// Formats a conversation as a plain-text transcript suitable for sharing.
   String exportConversationText({
     required String conversationId,
     required String currentUserId,
@@ -552,7 +597,6 @@ class LocalDbService {
 
   int get syncQueueLength => _syncQueueBox.length;
 
-  /// Returns all jobs that are ready to process (nextRetryAt <= now).
   List<MapEntry<dynamic, Map<String, dynamic>>> getReadySyncJobs({
     int batchSize = 20,
   }) {
@@ -578,7 +622,6 @@ class LocalDbService {
   // MAINTENANCE
   // ─────────────────────────────────────────────────────────────────────────
 
-  /// Full wipe — call on logout.
   Future<void> clearAll() async {
     _assertInit();
     await Future.wait([
@@ -592,8 +635,6 @@ class LocalDbService {
     debugPrint('[LocalDbService] 🧹 All local data cleared');
   }
 
-  /// Deletes messages older than [days] days.
-  /// Returns the count of pruned messages.
   Future<int> pruneOldMessages({int days = 30}) async {
     _assertInit();
     final cutoff =
@@ -610,13 +651,10 @@ class LocalDbService {
     return toDelete.length;
   }
 
-  /// Keeps only the newest [keepCount] messages per conversation and
-  /// removes everything older.  More aggressive than pruneOldMessages.
   Future<int> pruneByCount({int keepCount = 200}) async {
     _assertInit();
     int totalPruned = 0;
 
-    // Group keys by conversationId
     final grouped = <String, List<String>>{};
     for (final key in _messagesBox.keys) {
       final ks = key.toString();
@@ -630,7 +668,6 @@ class LocalDbService {
       final keys = entry.value;
       if (keys.length <= keepCount) continue;
 
-      // Sort by timestamp ascending so we delete the oldest first
       keys.sort((a, b) {
         final ma = _messagesBox.get(a) as Map?;
         final mb = _messagesBox.get(b) as Map?;
@@ -649,7 +686,6 @@ class LocalDbService {
     return totalPruned;
   }
 
-  /// Compacts all Hive boxes to reclaim deleted-entry space.
   Future<void> vacuum() async {
     _assertInit();
     await Future.wait([
@@ -663,7 +699,6 @@ class LocalDbService {
     debugPrint('[LocalDbService] 🔧 Vacuum complete');
   }
 
-  /// Storage statistics.
   Map<String, int> get stats => {
         'messages': _messagesBox.length,
         'syncQueue': _syncQueueBox.length,
@@ -703,7 +738,6 @@ class _SearchHit {
   });
 }
 
-/// Public-facing search hit — exposed from [LocalDbService.searchGlobal].
 class MessageSearchHit {
   final String conversationId;
   final Map<dynamic, dynamic> message;
