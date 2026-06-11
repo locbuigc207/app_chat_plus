@@ -6,7 +6,7 @@ import 'dart:async';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 
-import '../models/ai_models.dart';
+import '../models/models.dart';
 import '../utils/utils.dart';
 import 'local_db_service.dart';
 
@@ -503,6 +503,37 @@ class AIBackendService {
     }
   }
 
+  /// Smart reply nâng cao: trả về text suggestions + sticker gợi ý,
+  /// cá nhân hóa theo closeness level và relationship type.
+  Future<EnhancedSmartReplyResult?> smartReplyEnhanced({
+    required List<String> messages,
+    int closenessLevel = 3,
+    String relationshipType = 'friend',
+    String language = 'vi',
+    int count = 3,
+  }) async {
+    if (messages.isEmpty) return null;
+    try {
+      final safeMessages = DataMaskingUtils.prepareForAI(messages);
+      final result = await _call(
+        functionName: 'smartReplyEnhanced',
+        params: {
+          'messages': safeMessages,
+          'closenessLevel': closenessLevel.clamp(1, 5),
+          'relationshipType': relationshipType,
+          'language': language,
+          'count': count,
+        },
+        timeout: _kAnalysisTimeout,
+      );
+      if (result == null) return null;
+      return EnhancedSmartReplyResult.fromMap(result);
+    } catch (e, st) {
+      _logError('smartReplyEnhanced', e, st);
+      return null;
+    }
+  }
+
   /// Phiên bản nâng cao — trả về IcebreakerResult đầy đủ.
   Future<IcebreakerResult> generateIcebreakersTyped({
     List<String> sharedInterests = const [],
@@ -937,6 +968,48 @@ class AIBackendService {
       return fallback;
     } catch (e, st) {
       _logError('generateSwipeReplies', e, st);
+      return fallback;
+    }
+  }
+
+  /// Swipe replies nâng cao: text cards + sticker cards.
+  Future<({List<String> replies, List<String> stickerCards})>
+      generateSwipeRepliesEnhanced({
+    required String incomingMessage,
+    String contextMessages = '',
+    String replyStyle = 'genz',
+    bool includeStickerCards = true,
+  }) async {
+    const fallback = (
+      replies: ['Ok nha', 'Thế à?', 'Chịu luôn 😂', 'Đỉnh!'],
+      stickerCards: <String>[]
+    );
+    if (incomingMessage.trim().isEmpty) return fallback;
+    try {
+      final safe =
+          DataMaskingUtils.maskText(incomingMessage, config: _kAiMaskingConfig);
+      final result = await _call(
+        functionName: 'generateSwipeReplies',
+        params: {
+          'incomingMessage': safe,
+          'contextMessages': contextMessages,
+          'replyStyle': replyStyle,
+          'includeStickerCards': includeStickerCards,
+        },
+        timeout: _kDefaultTimeout,
+      );
+      final replies = result?['replies'];
+      final stickers = result?['stickerCards'];
+      return (
+        replies: replies is List
+            ? replies.cast<String>().take(4).toList()
+            : fallback.replies,
+        stickerCards: stickers is List
+            ? stickers.cast<String>().take(2).toList()
+            : <String>[],
+      );
+    } catch (e, st) {
+      _logError('generateSwipeRepliesEnhanced', e, st);
       return fallback;
     }
   }

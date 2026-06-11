@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-import '../models/smart_reply_item.dart';
+import '../models/models.dart';
 import '../services/services.dart';
 
 export '../services/ai_backend_service.dart' show AIBackendService;
@@ -246,36 +246,25 @@ class SmartReplyProvider {
         debugPrint('[SmartReplyProvider] AI Typed failure, trying raw: $e');
     }
 
-    // ── Thử AI Backend Raw Content Endpoint ───────────────────────────────
     try {
-      final aiReplies = await AIBackendService().smartReplyWithContext(
+      // Vì recentMessages đã là List<String>, chỉ cần take(6) rồi toList() luôn
+      final List<SmartReply> aiReplies =
+          await AIBackendService().smartReplyWithContextTyped(
         messages: recentMessages.take(6).toList(),
         language: language,
         count: maxReplies,
         replyIntent: replyIntent,
       );
-      if (aiReplies.isNotEmpty) {
-        final replies = aiReplies
-            .where((t) => t.trim().isNotEmpty)
-            .take(maxReplies)
-            .map((text) => SmartReply(
-                  text: text,
-                  confidence: 0.9,
-                  category: 'general',
-                  isAiGenerated: true,
-                ))
-            .toList();
 
-        if (replies.isNotEmpty) {
-          _cache.put(cacheKey, replies);
-          _log(
-              'AI smart reply: ${replies.length} replies from AI (Raw mapped)');
-          return replies;
-        }
+      if (aiReplies.isNotEmpty) {
+        _cache.put(cacheKey, aiReplies);
+        _log('AI smart reply: ${aiReplies.length} replies from AI');
+        return aiReplies;
       }
     } catch (e) {
-      if (kDebugMode)
+      if (kDebugMode) {
         debugPrint('[SmartReplyProvider] AI fallback completely failed: $e');
+      }
     }
 
     // Fallback về rule-based

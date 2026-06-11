@@ -3,29 +3,63 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-enum ReplyType { text, emoji, quick }
+import '../models/message_chat.dart';
+import '../models/smart_reply_item.dart';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMS & MODELS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum CardType { text, sticker }
 
 class SwipeReply {
   final String text;
-  final ReplyType type;
+  final CardType cardType;
   final List<Color> gradient;
   final String? emoji;
+  final String? stickerId;
 
   const SwipeReply({
     required this.text,
-    this.type = ReplyType.text,
+    this.cardType = CardType.text,
     required this.gradient,
     this.emoji,
+    this.stickerId,
   });
 
-  factory SwipeReply.fromString(String text, int index) {
-    final gradients = _kCardGradients;
+  bool get isSticker => cardType == CardType.sticker;
+
+  factory SwipeReply.fromString(String text, int index) => SwipeReply(
+        text: text,
+        cardType: CardType.text,
+        gradient: _kCardGradients[index % _kCardGradients.length],
+        emoji: _kCardEmojis[index % _kCardEmojis.length],
+      );
+
+  factory SwipeReply.fromSticker(String stickerId) => SwipeReply(
+        text: stickerId,
+        cardType: CardType.sticker,
+        stickerId: stickerId,
+        gradient: [const Color(0xFF1A1A2E), const Color(0xFF16213E)],
+      );
+
+  factory SwipeReply.fromSmartReplyItem(SmartReplyItem item, int index) {
+    if (item.isSticker) {
+      return SwipeReply.fromSticker(item.stickerId ?? item.text);
+    }
     return SwipeReply(
-      text: text,
-      gradient: gradients[index % gradients.length],
+      text: item.text,
+      cardType: CardType.text,
+      gradient: _kCardGradients[index % _kCardGradients.length],
       emoji: _kCardEmojis[index % _kCardEmojis.length],
     );
   }
+
+  /// Payload để gửi
+  String get sendPayload => stickerId ?? text;
+
+  /// Message type: 0=text, 2=sticker
+  int get messageType => isSticker ? TypeMessage.sticker : TypeMessage.text;
 }
 
 const List<List<Color>> _kCardGradients = [
@@ -38,11 +72,22 @@ const List<List<Color>> _kCardGradients = [
 
 const List<String> _kCardEmojis = ['💬', '✨', '🔥', '👍', '😄'];
 
-class SwipeReplyCards extends StatefulWidget {
-  final List<String> replies;
-  final Future<void> Function(String reply) onSend;
-  final VoidCallback onCancel;
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN WIDGET
+// ─────────────────────────────────────────────────────────────────────────────
 
+class SwipeReplyCards extends StatefulWidget {
+  /// List các text replies (legacy interface)
+  final List<String> replies;
+
+  /// List SmartReplyItem đầy đủ (text + sticker) — ưu tiên hơn [replies]
+  final List<SmartReplyItem>? richItems;
+
+  /// Sticker cards từ AI (IDs)
+  final List<String> stickerCards;
+
+  final Future<void> Function(String payload, int messageType) onSend;
+  final VoidCallback onCancel;
   final String? incomingMessage;
 
   const SwipeReplyCards({
@@ -50,6 +95,8 @@ class SwipeReplyCards extends StatefulWidget {
     required this.replies,
     required this.onSend,
     required this.onCancel,
+    this.richItems,
+    this.stickerCards = const [],
     this.incomingMessage,
   });
 
@@ -57,7 +104,8 @@ class SwipeReplyCards extends StatefulWidget {
   State<SwipeReplyCards> createState() => _SwipeReplyCardsState();
 }
 
-class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderStateMixin {
+class _SwipeReplyCardsState extends State<SwipeReplyCards>
+    with TickerProviderStateMixin {
   late List<SwipeReply> _cards;
   int _currentIndex = 0;
   bool _isSending = false;
@@ -68,50 +116,58 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
 
   late AnimationController _overlayController;
   late Animation<double> _overlayAnim;
-
   late AnimationController _entryController;
   late Animation<double> _entryAnim;
 
-  late AnimationController _feedbackController;
-  _SwipeFeedback _feedback = _SwipeFeedback.none;
-
   static const double _swipeThreshold = 100.0;
   static const double _maxAngle = 0.15;
+  _SwipeFeedback _feedback = _SwipeFeedback.none;
 
   @override
   void initState() {
     super.initState();
-
-    _cards =
-        widget.replies.asMap().entries.map((e) => SwipeReply.fromString(e.value, e.key)).toList();
-
-    _overlayController =
-        AnimationController(vsync: this, duration: const Duration(milliseconds: 200));
-    _overlayAnim = CurvedAnimation(parent: _overlayController, curve: Curves.easeOut);
-
-    _entryController =
-        AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
-    _entryAnim = CurvedAnimation(parent: _entryController, curve: Curves.elasticOut);
+    _buildCards();
+    _overlayController = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 200));
+    _overlayAnim =
+        CurvedAnimation(parent: _overlayController, curve: Curves.easeOut);
+    _entryController = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 500));
+    _entryAnim =
+        CurvedAnimation(parent: _entryController, curve: Curves.elasticOut);
     _entryController.forward();
+  }
 
-    _feedbackController =
-        AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
+  void _buildCards() {
+    _cards = [];
+
+    // Rich items từ EnhancedSmartReplyResult
+    if (widget.richItems != null && widget.richItems!.isNotEmpty) {
+      for (int i = 0; i < widget.richItems!.length; i++) {
+        _cards.add(SwipeReply.fromSmartReplyItem(widget.richItems![i], i));
+      }
+    } else {
+      // Legacy text replies
+      for (int i = 0; i < widget.replies.length; i++) {
+        _cards.add(SwipeReply.fromString(widget.replies[i], i));
+      }
+      // Append sticker cards
+      for (final id in widget.stickerCards) {
+        _cards.add(SwipeReply.fromSticker(id));
+      }
+    }
   }
 
   @override
   void dispose() {
     _overlayController.dispose();
     _entryController.dispose();
-    _feedbackController.dispose();
     super.dispose();
-  }
-
-  void _onPanStart(DragStartDetails d) {
-    setState(() => _isDragging = true);
   }
 
   void _onPanUpdate(DragUpdateDetails d) {
     setState(() {
+      _isDragging = true;
       _dragOffset += d.delta;
       _dragAngle = (_dragOffset.dx / 300) * _maxAngle;
     });
@@ -120,11 +176,9 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
 
   void _onPanEnd(DragEndDetails d) {
     final vx = d.velocity.pixelsPerSecond.dx;
-    final dx = _dragOffset.dx;
-
-    if (dx > _swipeThreshold || vx > 600) {
+    if (_dragOffset.dx > _swipeThreshold || vx > 600) {
       _commitSwipe(right: true);
-    } else if (dx < -_swipeThreshold || vx < -600) {
+    } else if (_dragOffset.dx < -_swipeThreshold || vx < -600) {
       _commitSwipe(right: false);
     } else {
       _snapBack();
@@ -134,76 +188,64 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
   void _updateOverlay() {
     final progress = (_dragOffset.dx / _swipeThreshold).clamp(-1.0, 1.0);
     _overlayController.value = progress.abs();
-    if (_dragOffset.dx > 0) {
-      if (_feedback != _SwipeFeedback.send) {
-        setState(() => _feedback = _SwipeFeedback.send);
-      }
-    } else if (_dragOffset.dx < 0) {
-      if (_feedback != _SwipeFeedback.skip) {
-        setState(() => _feedback = _SwipeFeedback.skip);
-      }
-    } else {
-      if (_feedback != _SwipeFeedback.none) {
-        setState(() => _feedback = _SwipeFeedback.none);
-      }
-    }
+    final newFeedback = _dragOffset.dx > 0
+        ? _SwipeFeedback.send
+        : _dragOffset.dx < 0
+            ? _SwipeFeedback.skip
+            : _SwipeFeedback.none;
+    if (newFeedback != _feedback) setState(() => _feedback = newFeedback);
   }
 
   Future<void> _commitSwipe({required bool right}) async {
     HapticFeedback.mediumImpact();
-
     final targetX = right ? 500.0 : -500.0;
-    final targetAngle = right ? _maxAngle * 2 : -_maxAngle * 2;
-
-    await _animateDragTo(Offset(targetX, _dragOffset.dy), targetAngle);
+    await _animateTo(Offset(targetX, _dragOffset.dy),
+        right ? _maxAngle * 2 : -_maxAngle * 2);
 
     if (right && !_isSending) {
       setState(() => _isSending = true);
-      await widget.onSend(_cards[_currentIndex].text);
+      await widget.onSend(
+          _cards[_currentIndex].sendPayload, _cards[_currentIndex].messageType);
+      if (!mounted) return;
       setState(() => _isSending = false);
       widget.onCancel();
       return;
     }
-
     _advance();
   }
 
-  Future<void> _animateDragTo(Offset target, double angle) async {
-    final startOffset = _dragOffset;
-    final startAngle = _dragAngle;
-    final controller =
-        AnimationController(vsync: this, duration: const Duration(milliseconds: 250));
-    final anim = CurvedAnimation(parent: controller, curve: Curves.easeOut);
-
-    controller.addListener(() {
+  Future<void> _animateTo(Offset target, double angle) async {
+    final from = _dragOffset;
+    final fromAngle = _dragAngle;
+    final ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 250));
+    final anim = CurvedAnimation(parent: ctrl, curve: Curves.easeOut);
+    ctrl.addListener(() {
       if (!mounted) return;
       setState(() {
-        _dragOffset = Offset.lerp(startOffset, target, anim.value)!;
-        _dragAngle = lerpDouble(startAngle, angle, anim.value);
+        _dragOffset = Offset.lerp(from, target, anim.value)!;
+        _dragAngle = _lerpDouble(fromAngle, angle, anim.value);
       });
     });
-
-    await controller.forward();
-    controller.dispose();
+    await ctrl.forward();
+    ctrl.dispose();
   }
 
   void _snapBack() {
-    final startOffset = _dragOffset;
-    final startAngle = _dragAngle;
-    final controller =
-        AnimationController(vsync: this, duration: const Duration(milliseconds: 350));
-    final anim = CurvedAnimation(parent: controller, curve: Curves.elasticOut);
-
-    controller.addListener(() {
+    final from = _dragOffset;
+    final fromAngle = _dragAngle;
+    final ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 350));
+    final anim = CurvedAnimation(parent: ctrl, curve: Curves.elasticOut);
+    ctrl.addListener(() {
       if (!mounted) return;
       setState(() {
-        _dragOffset = Offset.lerp(startOffset, Offset.zero, anim.value)!;
-        _dragAngle = lerpDouble(startAngle, 0, anim.value);
+        _dragOffset = Offset.lerp(from, Offset.zero, anim.value)!;
+        _dragAngle = _lerpDouble(fromAngle, 0, anim.value);
       });
     });
-
-    controller.forward().then((_) {
-      controller.dispose();
+    ctrl.forward().then((_) {
+      ctrl.dispose();
       if (mounted) {
         setState(() {
           _isDragging = false;
@@ -222,7 +264,6 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
       _isDragging = false;
       _feedback = _SwipeFeedback.none;
       _overlayController.value = 0;
-
       _currentIndex++;
       if (_currentIndex >= _cards.length) {
         widget.onCancel();
@@ -237,7 +278,8 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
       _dragOffset = const Offset(-10, 0);
       _feedback = _SwipeFeedback.skip;
     });
-    Future.delayed(const Duration(milliseconds: 80), () => _commitSwipe(right: false));
+    Future.delayed(
+        const Duration(milliseconds: 80), () => _commitSwipe(right: false));
   }
 
   void _tapSend() {
@@ -245,7 +287,8 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
       _dragOffset = const Offset(10, 0);
       _feedback = _SwipeFeedback.send;
     });
-    Future.delayed(const Duration(milliseconds: 80), () => _commitSwipe(right: true));
+    Future.delayed(
+        const Duration(milliseconds: 80), () => _commitSwipe(right: true));
   }
 
   @override
@@ -258,7 +301,7 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withValues(alpha: 0.45),
+              color: Colors.black.withOpacity(0.45),
               blurRadius: 40,
               offset: const Offset(0, -8)),
         ],
@@ -280,21 +323,23 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
     );
   }
 
-  Widget _buildHandle() {
-    return Padding(
-      padding: const EdgeInsets.only(top: 12, bottom: 4),
-      child: Container(
-        width: 36,
-        height: 4,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.2),
-          borderRadius: BorderRadius.circular(2),
+  Widget _buildHandle() => Padding(
+        padding: const EdgeInsets.only(top: 12, bottom: 4),
+        child: Container(
+          width: 36,
+          height: 4,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(2),
+          ),
         ),
-      ),
-    );
-  }
+      );
 
   Widget _buildHeader() {
+    final totalCards = _cards.length;
+    final textCount = _cards.where((c) => !c.isSticker).length;
+    final stickerCount = _cards.where((c) => c.isSticker).length;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 12, 4),
       child: Row(
@@ -302,24 +347,33 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
           Container(
             padding: const EdgeInsets.all(7),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)]),
+              gradient: const LinearGradient(
+                  colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)]),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 16),
+            child: const Icon(Icons.auto_awesome_rounded,
+                color: Colors.white, size: 16),
           ),
           const SizedBox(width: 10),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Zero-Type Reply',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.3)),
-                Text('Vuốt PHẢI → Gửi  •  Vuốt TRÁI → Bỏ',
-                    style: TextStyle(color: Color(0xFF6B7280), fontSize: 11)),
+                const Text(
+                  'Zero-Type Reply',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.3),
+                ),
+                Text(
+                  stickerCount > 0
+                      ? '$textCount văn bản · $stickerCount sticker  •  Vuốt PHẢI → Gửi'
+                      : 'Vuốt PHẢI → Gửi  •  Vuốt TRÁI → Bỏ',
+                  style:
+                      const TextStyle(color: Color(0xFF6B7280), fontSize: 10.5),
+                ),
               ],
             ),
           ),
@@ -331,10 +385,11 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.07),
+                color: Colors.white.withOpacity(0.07),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.close_rounded, color: Color(0xFF6B7280), size: 18),
+              child: const Icon(Icons.close_rounded,
+                  color: Color(0xFF6B7280), size: 18),
             ),
           ),
         ],
@@ -346,13 +401,18 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
     return Row(
       children: List.generate(_cards.length, (i) {
         final active = i == _currentIndex;
+        final isSticker = _cards[i].isSticker;
         return AnimatedContainer(
           duration: const Duration(milliseconds: 250),
           margin: const EdgeInsets.symmetric(horizontal: 2),
           width: active ? 18 : 6,
           height: 6,
           decoration: BoxDecoration(
-            color: active ? const Color(0xFF6366F1) : Colors.white.withValues(alpha: 0.2),
+            color: active
+                ? (isSticker
+                    ? const Color(0xFF10B981)
+                    : const Color(0xFF6366F1))
+                : Colors.white.withOpacity(0.2),
             borderRadius: BorderRadius.circular(3),
           ),
         );
@@ -360,38 +420,36 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
     );
   }
 
-  Widget _buildIncomingContext() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.reply_rounded, size: 14, color: Color(0xFF6B7280)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              widget.incomingMessage!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
+  Widget _buildIncomingContext() => Container(
+        margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withOpacity(0.08)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.reply_rounded, size: 14, color: Color(0xFF6B7280)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                widget.incomingMessage!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
+              ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
+          ],
+        ),
+      );
 
   Widget _buildCardStack() {
     final remaining = _cards.length - _currentIndex;
     final stackCount = math.min(remaining, 3);
 
     return SizedBox(
-      height: 190,
+      height: 210,
       child: Stack(
         alignment: Alignment.center,
         clipBehavior: Clip.none,
@@ -416,96 +474,94 @@ class _SwipeReplyCardsState extends State<SwipeReplyCards> with TickerProviderSt
     );
   }
 
-  Widget _buildTopCard(SwipeReply reply) {
-    final progress = (_dragOffset.dx / _swipeThreshold).clamp(-1.0, 1.0);
-
-    return GestureDetector(
-      onPanStart: _onPanStart,
-      onPanUpdate: _onPanUpdate,
-      onPanEnd: _onPanEnd,
-      child: AnimatedBuilder(
-        animation: _entryAnim,
-        builder: (_, child) {
-          return Transform(
+  Widget _buildTopCard(SwipeReply reply) => GestureDetector(
+        onPanUpdate: _onPanUpdate,
+        onPanEnd: _onPanEnd,
+        child: AnimatedBuilder(
+          animation: _entryAnim,
+          builder: (_, child) => Transform(
             alignment: Alignment.center,
             transform: Matrix4.identity()
               ..translate(_dragOffset.dx, _dragOffset.dy)
               ..rotateZ(_dragAngle),
             child: child,
-          );
-        },
-        child: Stack(
-          alignment: Alignment.center,
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              _CardFace(reply: reply, opacity: 1),
+              if (_feedback == _SwipeFeedback.send)
+                AnimatedBuilder(
+                  animation: _overlayAnim,
+                  builder: (_, __) => _CardOverlay(
+                    label: reply.isSticker ? 'SEND 🎉' : 'GỬI',
+                    icon: Icons.send_rounded,
+                    color: const Color(0xFF10B981),
+                    opacity: _overlayAnim.value,
+                  ),
+                ),
+              if (_feedback == _SwipeFeedback.skip)
+                AnimatedBuilder(
+                  animation: _overlayAnim,
+                  builder: (_, __) => _CardOverlay(
+                    label: 'BỎ QUA',
+                    icon: Icons.close_rounded,
+                    color: const Color(0xFFEF4444),
+                    opacity: _overlayAnim.value,
+                    alignRight: false,
+                  ),
+                ),
+              if (_isSending)
+                Container(
+                  width: double.infinity,
+                  height: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: const Center(
+                    child: CircularProgressIndicator(
+                        color: Colors.white, strokeWidth: 2),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+
+  Widget _buildActionRow() => Padding(
+        padding: const EdgeInsets.fromLTRB(32, 12, 32, 0),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            _CardFace(reply: reply, opacity: 1),
-            if (_feedback == _SwipeFeedback.send)
-              AnimatedBuilder(
-                animation: _overlayAnim,
-                builder: (_, __) => _CardOverlay(
-                  label: 'GỬII',
-                  icon: Icons.send_rounded,
-                  color: const Color(0xFF10B981),
-                  opacity: _overlayAnim.value,
-                ),
-              ),
-            if (_feedback == _SwipeFeedback.skip)
-              AnimatedBuilder(
-                animation: _overlayAnim,
-                builder: (_, __) => _CardOverlay(
-                  label: 'BỎ QUA',
-                  icon: Icons.close_rounded,
-                  color: const Color(0xFFEF4444),
-                  opacity: _overlayAnim.value,
-                  alignRight: false,
-                ),
-              ),
-            if (_isSending)
-              Container(
-                width: double.infinity,
-                height: double.infinity,
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: const Center(
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                ),
-              ),
+            _ActionButton(
+              onTap: _tapSkip,
+              icon: Icons.close_rounded,
+              label: 'Bỏ qua',
+              color: const Color(0xFFEF4444),
+              backgroundColor: const Color(0xFFEF4444).withOpacity(0.12),
+            ),
+            Text(
+              '${_currentIndex + 1} / ${_cards.length}',
+              style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13),
+            ),
+            _ActionButton(
+              onTap: _tapSend,
+              icon: _cards[_currentIndex].isSticker
+                  ? Icons.emoji_emotions_rounded
+                  : Icons.send_rounded,
+              label: _cards[_currentIndex].isSticker ? 'Sticker' : 'Gửi',
+              color: const Color(0xFF10B981),
+              backgroundColor: const Color(0xFF10B981).withOpacity(0.12),
+            ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildActionRow() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(32, 12, 32, 0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          _ActionButton(
-            onTap: _tapSkip,
-            icon: Icons.close_rounded,
-            label: 'Bỏ qua',
-            color: const Color(0xFFEF4444),
-            backgroundColor: const Color(0xFFEF4444).withValues(alpha: 0.12),
-          ),
-          Text(
-            '${_currentIndex + 1} / ${_cards.length}',
-            style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13),
-          ),
-          _ActionButton(
-            onTap: _tapSend,
-            icon: Icons.send_rounded,
-            label: 'Gửi',
-            color: const Color(0xFF10B981),
-            backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.12),
-          ),
-        ],
-      ),
-    );
-  }
+      );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CARD FACE — renders text OR sticker differently
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _CardFace extends StatelessWidget {
   final SwipeReply reply;
@@ -517,9 +573,15 @@ class _CardFace extends StatelessWidget {
   Widget build(BuildContext context) {
     return Opacity(
       opacity: opacity.clamp(0.0, 1.0),
-      child: Container(
+      child: reply.isSticker
+          ? _buildStickerCard(context)
+          : _buildTextCard(context),
+    );
+  }
+
+  Widget _buildTextCard(BuildContext context) => Container(
         width: MediaQuery.of(context).size.width - 56,
-        height: 170,
+        height: 185,
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: reply.gradient,
@@ -529,7 +591,7 @@ class _CardFace extends StatelessWidget {
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: reply.gradient.last.withValues(alpha: 0.35),
+              color: reply.gradient.last.withOpacity(0.35),
               blurRadius: 20,
               offset: const Offset(0, 8),
             ),
@@ -537,6 +599,7 @@ class _CardFace extends StatelessWidget {
         ),
         child: Stack(
           children: [
+            // Decorative circles
             Positioned(
               top: -20,
               right: -20,
@@ -545,25 +608,14 @@ class _CardFace extends StatelessWidget {
                 height: 100,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.07),
-                ),
-              ),
-            ),
-            Positioned(
-              bottom: -30,
-              left: -10,
-              child: Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.05),
+                  color: Colors.white.withOpacity(0.07),
                 ),
               ),
             ),
             Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -580,7 +632,10 @@ class _CardFace extends StatelessWidget {
                         height: 1.25,
                         letterSpacing: -0.3,
                         shadows: [
-                          Shadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))
+                          Shadow(
+                              color: Colors.black26,
+                              blurRadius: 8,
+                              offset: Offset(0, 2))
                         ],
                       ),
                     ),
@@ -588,6 +643,7 @@ class _CardFace extends StatelessWidget {
                 ),
               ),
             ),
+            // Swipe hint arrows
             Positioned(
               left: 12,
               top: 0,
@@ -596,7 +652,7 @@ class _CardFace extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.chevron_left_rounded,
-                      color: Colors.white.withValues(alpha: 0.2), size: 20),
+                      color: Colors.white.withOpacity(0.2), size: 20),
                 ],
               ),
             ),
@@ -608,16 +664,121 @@ class _CardFace extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.chevron_right_rounded,
-                      color: Colors.white.withValues(alpha: 0.2), size: 20),
+                      color: Colors.white.withOpacity(0.2), size: 20),
                 ],
               ),
             ),
           ],
         ),
+      );
+
+  Widget _buildStickerCard(BuildContext context) {
+    final stickerId = reply.stickerId ?? reply.text;
+    return Container(
+      width: MediaQuery.of(context).size.width - 56,
+      height: 185,
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A2E),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: const Color(0xFF10B981).withOpacity(0.35),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF10B981).withOpacity(0.2),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          // Subtle glow background
+          Center(
+            child: Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF10B981).withOpacity(0.06),
+              ),
+            ),
+          ),
+          // Sticker GIF
+          Center(
+            child: Image.asset(
+              StickerCatalog.assetPath(stickerId),
+              width: 110,
+              height: 110,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const Icon(
+                Icons.emoji_emotions_outlined,
+                size: 60,
+                color: Color(0xFF10B981),
+              ),
+            ),
+          ),
+          // "Sticker" label top-center
+          Positioned(
+            top: 14,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: const Color(0xFF10B981).withOpacity(0.3),
+                        width: 0.8),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.emoji_emotions_outlined,
+                          size: 12, color: Color(0xFF10B981)),
+                      SizedBox(width: 4),
+                      Text(
+                        'Sticker',
+                        style: TextStyle(
+                          color: Color(0xFF10B981),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Swipe hint
+          Positioned(
+            right: 12,
+            top: 0,
+            bottom: 0,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.chevron_right_rounded,
+                    color: Colors.white.withOpacity(0.15), size: 20),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CARD OVERLAY
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _CardOverlay extends StatelessWidget {
   final String label;
@@ -635,41 +796,45 @@ class _CardOverlay extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      top: 16,
-      left: alignRight ? null : 16,
-      right: alignRight ? 16 : null,
-      child: Opacity(
-        opacity: opacity.clamp(0.0, 1.0),
-        child: Transform.rotate(
-          angle: alignRight ? -0.2 : 0.2,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              border: Border.all(color: color, width: 2.5),
-              borderRadius: BorderRadius.circular(10),
-              color: color.withValues(alpha: 0.12),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, color: color, size: 16),
-                const SizedBox(width: 4),
-                Text(label,
+  Widget build(BuildContext context) => Positioned(
+        top: 16,
+        left: alignRight ? null : 16,
+        right: alignRight ? 16 : null,
+        child: Opacity(
+          opacity: opacity.clamp(0.0, 1.0),
+          child: Transform.rotate(
+            angle: alignRight ? -0.2 : 0.2,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                border: Border.all(color: color, width: 2.5),
+                borderRadius: BorderRadius.circular(10),
+                color: color.withOpacity(0.12),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, color: color, size: 16),
+                  const SizedBox(width: 4),
+                  Text(
+                    label,
                     style: TextStyle(
                         color: color,
                         fontWeight: FontWeight.w800,
-                        fontSize: 14,
-                        letterSpacing: 1.0)),
-              ],
+                        fontSize: 13,
+                        letterSpacing: 1.0),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
-      ),
-    );
-  }
+      );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ACTION BUTTON
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _ActionButton extends StatefulWidget {
   final VoidCallback onTap;
@@ -690,17 +855,15 @@ class _ActionButton extends StatefulWidget {
   State<_ActionButton> createState() => _ActionButtonState();
 }
 
-class _ActionButtonState extends State<_ActionButton> with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
-  late Animation<double> _scale;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 120));
-    _scale =
-        Tween(begin: 1.0, end: 0.88).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
-  }
+class _ActionButtonState extends State<_ActionButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 120),
+    lowerBound: 0.88,
+    upperBound: 1.0,
+    value: 1.0,
+  );
 
   @override
   void dispose() {
@@ -709,38 +872,44 @@ class _ActionButtonState extends State<_ActionButton> with SingleTickerProviderS
   }
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => _ctrl.forward(),
-      onTapUp: (_) {
-        _ctrl.reverse();
-        widget.onTap();
-      },
-      onTapCancel: () => _ctrl.reverse(),
-      child: ScaleTransition(
-        scale: _scale,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          decoration: BoxDecoration(
-            color: widget.backgroundColor,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: widget.color.withValues(alpha: 0.3), width: 1),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(widget.icon, color: widget.color, size: 22),
-              const SizedBox(height: 3),
-              Text(widget.label,
-                  style: TextStyle(color: widget.color, fontSize: 11, fontWeight: FontWeight.w700)),
-            ],
+  Widget build(BuildContext context) => GestureDetector(
+        onTapDown: (_) => _ctrl.animateTo(0.88, curve: Curves.easeOut),
+        onTapUp: (_) {
+          _ctrl.animateTo(1.0, curve: Curves.elasticOut);
+          widget.onTap();
+        },
+        onTapCancel: () => _ctrl.animateTo(1.0, curve: Curves.easeOut),
+        child: AnimatedBuilder(
+          animation: _ctrl,
+          builder: (_, child) =>
+              Transform.scale(scale: _ctrl.value, child: child),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            decoration: BoxDecoration(
+              color: widget.backgroundColor,
+              borderRadius: BorderRadius.circular(16),
+              border:
+                  Border.all(color: widget.color.withOpacity(0.3), width: 1),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(widget.icon, color: widget.color, size: 22),
+                const SizedBox(height: 3),
+                Text(
+                  widget.label,
+                  style: TextStyle(
+                      color: widget.color,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-    );
-  }
+      );
 }
 
 enum _SwipeFeedback { none, send, skip }
 
-double lerpDouble(double a, double b, double t) => a + (b - a) * t;
+double _lerpDouble(double a, double b, double t) => a + (b - a) * t;

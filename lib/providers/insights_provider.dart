@@ -676,6 +676,11 @@ class InsightsProvider extends ChangeNotifier {
     });
   }
 
+  void cancelWatcher() {
+    _watcher?.cancel();
+    _watcher = null;
+  }
+
   // ─── Dispose ──────────────────────────────────────────────────────────────
 
   @override

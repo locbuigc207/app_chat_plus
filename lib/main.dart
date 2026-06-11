@@ -653,11 +653,12 @@ class _MiniChatHeader extends StatelessWidget {
   final String userName, avatarUrl;
   final VoidCallback onMinimize, onClose;
 
-  const _MiniChatHeader(
-      {required this.userName,
-      required this.avatarUrl,
-      required this.onMinimize,
-      required this.onClose});
+  const _MiniChatHeader({
+    required this.userName,
+    required this.avatarUrl,
+    required this.onMinimize,
+    required this.onClose,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -983,6 +984,12 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
         create: (_) => AutoPilotProvider(
           firebaseFirestore: firebaseFirestore,
           prefs: widget.prefs,
+        ),
+      ),
+      // Đăng ký InsightsProvider kế tiếp theo yêu cầu bổ sung
+      ChangeNotifierProvider<InsightsProvider>(
+        create: (_) => InsightsProvider(
+          firebaseFirestore: firebaseFirestore,
         ),
       ),
       ChangeNotifierProvider<AppModeProvider>(create: (_) => AppModeProvider()),

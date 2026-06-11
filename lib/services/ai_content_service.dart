@@ -6,7 +6,7 @@
 //
 // Architecture:
 //  - Fire-and-forget pattern: không block main flow, lỗi chỉ log
-//  - TTL tự động: 9 ngày (đủ qua 1 weeklyAiRecap cycle 7 ngày)
+//  - TTL tự động: 95 ngày (đủ qua 1 cycle 90 ngày cho Cloud Functions)
 //  - Guard: reject ciphertext lọt vào
 //  - Cleanup: hỗ trợ xoá expired docs theo batch
 
@@ -21,8 +21,8 @@ class AiContentService {
 
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  /// TTL đủ qua 1 weeklyAiRecap cycle (7 ngày) với buffer 2 ngày
-  static const int _ttlDays = 9;
+  /// TTL đủ cho 90-day analysis của Cloud Functions + buffer 5 ngày
+  static const int _ttlDays = 95;
 
   /// Batch size cho cleanup
   static const int _cleanupBatchSize = 500;
@@ -69,8 +69,10 @@ class AiContentService {
 
       await _ref(conversationId).doc(messageId).set({
         'idFrom': idFrom,
+        'userId': idFrom,
+        'conversationId': conversationId,
         'content': masked,
-        'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
         if (groupId != null) 'groupId': groupId,
         'expireAt': Timestamp.fromDate(expireAt),
         'pushedAt': FieldValue.serverTimestamp(),
@@ -81,6 +83,48 @@ class AiContentService {
     } catch (e, st) {
       // Non-critical: không throw, chỉ log
       ErrorLogger.logError(e, st, context: 'AiContentService.pushAiContent');
+    }
+  }
+
+  /// Push content trực tiếp (gọi thủ công trước khi gửi tin nhắn từ AI Infrastructure).
+  /// Nhận plain text đã mask PII, tự động tạo ID tài liệu dựa trên timestamp.
+  Future<void> pushContent({
+    required String conversationId,
+    required String content,
+    required String idFrom,
+    required int timestamp,
+    String? groupId,
+  }) async {
+    if (content.trim().isEmpty) return;
+
+    if (_isCiphertext(content)) {
+      debugPrint(
+          '[AiContent] ⚠️ Ciphertext detected in pushContent — skip push');
+      return;
+    }
+
+    if (content.trim().length < 3) return;
+
+    try {
+      final masked = MaskingSession.maskOnly(content);
+      final expireAt = DateTime.now().add(const Duration(days: _ttlDays));
+      final docId = timestamp.toString();
+
+      await _ref(conversationId).doc(docId).set({
+        'idFrom': idFrom,
+        'userId': idFrom,
+        'conversationId': conversationId,
+        'content': masked,
+        'timestamp': timestamp,
+        if (groupId != null) 'groupId': groupId,
+        'expireAt': Timestamp.fromDate(expireAt),
+        'pushedAt': FieldValue.serverTimestamp(),
+      });
+
+      debugPrint(
+          '[AiContent] ✅ Pushed content explicitly via pushContent: $docId');
+    } catch (e, st) {
+      ErrorLogger.logError(e, st, context: 'AiContentService.pushContent');
     }
   }
 
@@ -105,8 +149,9 @@ class AiContentService {
         final messageId = msg['messageId'] as String? ?? '';
         final idFrom = msg['idFrom'] as String? ?? '';
 
-        if (messageType != 0 || plainText.trim().isEmpty || messageId.isEmpty)
+        if (messageType != 0 || plainText.trim().isEmpty || messageId.isEmpty) {
           continue;
+        }
         if (_isCiphertext(plainText)) continue;
 
         final masked = MaskingSession.maskOnly(plainText);
@@ -115,8 +160,10 @@ class AiContentService {
         final docRef = _ref(conversationId).doc(messageId);
         batch.set(docRef, {
           'idFrom': idFrom,
+          'userId': idFrom,
+          'conversationId': conversationId,
           'content': masked,
-          'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
           'expireAt': expireAt,
           'pushedAt': FieldValue.serverTimestamp(),
         });
@@ -189,13 +236,15 @@ class AiContentService {
   static bool _isCiphertext(String text) {
     final trimmed = text.trim();
     // E2EE GCM: {"iv":"...","data":"..."}
-    if (trimmed.startsWith('{"iv":') && trimmed.contains('"data":'))
+    if (trimmed.startsWith('{"iv":') && trimmed.contains('"data":')) {
       return true;
+    }
     // Base64 JWT / legacy CBC
     if (trimmed.startsWith('eyJ')) return true;
     // Legacy CBC: base64:base64
-    if (RegExp(r'^[A-Za-z0-9+/=]+=*:[A-Za-z0-9+/=]+=*$').hasMatch(trimmed))
+    if (RegExp(r'^[A-Za-z0-9+/=]+=*:[A-Za-z0-9+/=]+=*$').hasMatch(trimmed)) {
       return true;
+    }
     return false;
   }
 }

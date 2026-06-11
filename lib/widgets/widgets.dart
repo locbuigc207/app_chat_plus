@@ -60,6 +60,7 @@ export 'secure_view_once_widget.dart';
 export 'sentiment_indicator_widget.dart';
 export 'shake_message_widget.dart';
 export 'shared_space_widget.dart';
+export 'smart_reply_tray.dart';
 export 'spectator_panel.dart';
 export 'story_ring.dart';
 export 'swipe_reply_cards.dart';

@@ -192,7 +192,9 @@ class ChatPageState extends State<ChatPage>
   Timer? _recTimer;
 
   List<DocumentSnapshot> _pinned = [];
-  List<SmartReply> _smartReplies = [];
+  EnhancedSmartReplyResult? _smartReplyResult;
+  bool _showSwipeCards = false;
+  List<SmartReplyItem> _swipeItems = [];
   MessageChat? _replyingTo;
   String? _pendingScrollId;
 
@@ -274,6 +276,9 @@ class ChatPageState extends State<ChatPage>
   void dispose() {
     _autoPilotMsgSub?.cancel();
     _ctxSub?.cancel();
+    try {
+      context.read<InsightsProvider>().cancelWatcher();
+    } catch (_) {}
     _scheduled.forEach((_, t) {
       try {
         t.cancel();
@@ -352,6 +357,8 @@ class ChatPageState extends State<ChatPage>
     _loadPinned();
     _checkLock();
 
+    if (_groupChatId.isEmpty) return;
+
     // --- AUTOPILOT ---
     _autoPilotProvider = ctx.read<AutoPilotProvider>();
     unawaited(_autoPilotProvider!.loadConfig(_groupChatId, _currentUserId));
@@ -420,16 +427,16 @@ class ChatPageState extends State<ChatPage>
       final data = snap.docs.first.data();
       final String idFrom = data['idFrom'] as String? ?? '';
       final String content = data['content'] as String? ?? '';
-      final String msgTs = data['timestamp'] as String? ?? '';
+      final String msgDocId = snap.docs.first.id;
 
       // Guards
       if (idFrom == _currentUserId) return;
       if (idFrom == 'AI_BOT') return;
-      if (msgTs == _lastAutoPilotRepliedMsgId) return;
+      if (msgDocId == _lastAutoPilotRepliedMsgId) return;
       if (content.startsWith('{"iv":')) return;
       if (content.trim().length < 2) return;
 
-      _lastAutoPilotRepliedMsgId = msgTs;
+      _lastAutoPilotRepliedMsgId = msgDocId;
 
       final ctxMsgs = LocalDbService()
           .getMessages(_groupChatId)
@@ -599,7 +606,7 @@ class ChatPageState extends State<ChatPage>
     if (mounted && !resourceManager.isDisposed) {
       setState(() {
         _replyingTo = null;
-        _smartReplies = [];
+        _smartReplyResult = null;
       });
       _replyAnim.reverse();
     }
@@ -828,9 +835,9 @@ class ChatPageState extends State<ChatPage>
               actions: [
                 _ThemedDialogAction(
                     label: 'Bubble',
-                    isPrimary: true,
                     palette: p,
                     primary: primary,
+                    isPrimary: true,
                     onTap: () => Navigator.pop(ctx, 'bubble')),
                 if (_bubbleService!.currentImplementation ==
                     BubbleImplementation.windowManager)
@@ -1103,12 +1110,14 @@ class ChatPageState extends State<ChatPage>
     final msgs = LocalDbService().getMessages(_groupChatId);
     if (msgs.isEmpty) return;
     final last = msgs.first;
-    if (last['idFrom'] == _currentUserId || last['type'] != TypeMessage.text)
-      return;
+    if (last['idFrom'] == _currentUserId ||
+        (last['type'] as int?) != TypeMessage.text) return;
     final content = last['content'] as String? ?? '';
     if (content.isEmpty || content.startsWith('{"iv":')) return;
+
     if (mounted && !resourceManager.isDisposed)
       setState(() => _isLoadingSmartReply = true);
+
     try {
       final history = msgs
           .take(6)
@@ -1117,25 +1126,73 @@ class ChatPageState extends State<ChatPage>
           .toList()
           .reversed
           .toList();
-      final replies = await _smartReplyProvider.getAiSmartReplies(
-          lastMessage: content,
-          recentMessages: history,
-          language: 'vi',
-          replyIntent: 'helpful');
+
+      // Đọc closeness từ RelationshipMemory
+      int closeness = 3;
+      try {
+        if (LocalDbService().isInitialized) {
+          final mem = (LocalDbService()
+              .getConversation(_groupChatId)?['relationshipMemory'] as Map?);
+          closeness = (mem?['closenessLevel'] as int?)?.clamp(1, 5) ?? 3;
+        }
+      } catch (_) {}
+
+      final result = await _smartReplyProvider.getEnhancedSmartReplies(
+        lastMessage: content,
+        recentMessages: history,
+        closenessLevel: closeness,
+        relationshipType: 'friend',
+        language: 'vi',
+      );
       if (mounted && !resourceManager.isDisposed) {
         setState(() {
-          _smartReplies = replies;
+          _smartReplyResult = result;
           _isLoadingSmartReply = false;
         });
       }
     } catch (e) {
       if (mounted && !resourceManager.isDisposed) {
-        final fallback = _smartReplyProvider.getRuleBasedReplies(content);
+        final fb = _smartReplyProvider
+            .getRuleBasedReplies(msgs.first['content']?.toString() ?? '');
         setState(() {
-          _smartReplies = fallback;
+          _smartReplyResult = EnhancedSmartReplyResult.fromLegacy(fb);
           _isLoadingSmartReply = false;
         });
       }
+    }
+  }
+
+  Future<void> _triggerZeroTypeSwipe() async {
+    if (resourceManager.isDisposed) return;
+    if (mounted) setState(() => _isLoading = true);
+    try {
+      final msgs = LocalDbService().getMessages(_groupChatId);
+      final lastMsg = msgs.isNotEmpty
+          ? (msgs.first['content']?.toString() ?? 'Hello')
+          : 'Hello';
+
+      final r = await AIBackendService().generateSwipeRepliesEnhanced(
+        incomingMessage: lastMsg,
+        contextMessages: '',
+        replyStyle: 'genz',
+        includeStickerCards: true,
+      );
+
+      if (mounted && !resourceManager.isDisposed) {
+        final items = <SmartReplyItem>[
+          for (final text in r.replies) SmartReplyItem.text(text: text),
+          for (final id in r.stickerCards) SmartReplyItem.sticker(id),
+        ];
+        setState(() {
+          _swipeItems = items;
+          _showSwipeCards = true;
+        });
+      }
+    } catch (_) {
+      _toast('AI không khả dụng');
+    } finally {
+      if (mounted && !resourceManager.isDisposed)
+        setState(() => _isLoading = false);
     }
   }
 
@@ -1202,6 +1259,10 @@ class ChatPageState extends State<ChatPage>
 
   void _openInsightsPage() {
     HapticFeedback.lightImpact();
+    context.read<InsightsProvider>().loadDashboard(
+          conversationId: _groupChatId,
+          userId: _currentUserId,
+        );
     Navigator.push(
         context,
         MaterialPageRoute(
@@ -1612,10 +1673,10 @@ class ChatPageState extends State<ChatPage>
               actions: [
                 _ThemedDialogAction(
                     label: confirmLabel,
-                    isPrimary: !isDanger,
-                    isDanger: isDanger,
                     palette: p,
                     primary: primary,
+                    isPrimary: !isDanger,
+                    isDanger: isDanger,
                     onTap: () => Navigator.pop(ctx, true)),
                 _ThemedDialogAction(
                     label: 'Huỷ',
@@ -1820,6 +1881,7 @@ class ChatPageState extends State<ChatPage>
         _showToneRewriter();
       case 'insights':
         _openInsightsPage();
+        break;
       case 'weekly':
         _openWeeklyRecap();
       case 'relationship':
@@ -1965,6 +2027,30 @@ class ChatPageState extends State<ChatPage>
           if (_isLoading) const Positioned.fill(child: LoadingView()),
           if (_isLoadingMedia)
             Positioned.fill(child: _buildMediaOverlay(p, theme)),
+          if (_showSwipeCards)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: SwipeReplyCards(
+                replies: const [],
+                richItems: _swipeItems,
+                onSend: (payload, msgType) async {
+                  await _onSend(payload, msgType);
+                  if (mounted) setState(() => _showSwipeCards = false);
+                },
+                onCancel: () {
+                  if (mounted) setState(() => _showSwipeCards = false);
+                },
+                incomingMessage:
+                    LocalDbService().getMessages(_groupChatId).isNotEmpty
+                        ? LocalDbService()
+                            .getMessages(_groupChatId)
+                            .first['content']
+                            ?.toString()
+                        : null,
+              ),
+            ),
         ]),
       ),
     );
@@ -2763,8 +2849,7 @@ class ChatPageState extends State<ChatPage>
           currentUserId: _currentUserId,
           isGroup: false,
         ),
-      if (full && (_smartReplies.isNotEmpty || _isLoadingSmartReply))
-        _buildSmartReplyBar(p, theme),
+      if (full) _buildSmartReplyBar(p, theme),
       _buildRecBar(p, theme),
       Container(
         margin: EdgeInsets.only(
@@ -2880,8 +2965,10 @@ class ChatPageState extends State<ChatPage>
                     autofocus: widget.isMiniChat || widget.isBubbleMode,
                     onChanged: (t) {
                       _handleTyping(t);
-                      if (t.isNotEmpty && _smartReplies.isNotEmpty && mounted) {
-                        setState(() => _smartReplies = []);
+                      if (t.isNotEmpty &&
+                          _smartReplyResult != null &&
+                          mounted) {
+                        setState(() => _smartReplyResult = null);
                       }
                     },
                     onSubmitted: (_) {
@@ -2907,6 +2994,12 @@ class ChatPageState extends State<ChatPage>
                           _onSend(_inputController.text, TypeMessage.text);
                         else if (full) _startRec();
                       },
+                      onLongPress: full && !hasText
+                          ? () {
+                              HapticFeedback.mediumImpact();
+                              _triggerZeroTypeSwipe();
+                            }
+                          : null,
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 180),
                         width: 44,
@@ -2949,34 +3042,28 @@ class ChatPageState extends State<ChatPage>
   }
 
   Widget _buildSmartReplyBar(ThemePalette p, ThemeProvider theme) {
-    return SizedBox(
-      height: 50,
-      child: _isLoadingSmartReply
-          ? Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(children: [
-                SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: theme.primaryColor)),
-                const SizedBox(width: 10),
-                Text('AI đang gợi ý...',
-                    style: TextStyle(fontSize: 12, color: p.textHint)),
-              ]))
-          : SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: SmartReplyWidget(
-                  replies: _smartReplies,
-                  onReplySelected: (r) {
-                    if (!resourceManager.isDisposed) {
-                      _inputController.text = r;
-                      setState(() => _smartReplies = []);
-                      _focusNode.requestFocus();
-                    }
-                  }),
-            ),
+    final result = _smartReplyResult;
+    final show = _isLoadingSmartReply || (result != null && result.isNotEmpty);
+    if (!show) return const SizedBox.shrink();
+
+    return SmartReplyTray(
+      items: result?.merged ?? const [],
+      isLoading: _isLoadingSmartReply,
+      onDismiss: () {
+        if (mounted && !resourceManager.isDisposed)
+          setState(() => _smartReplyResult = null);
+      },
+      onSelect: (payload, msgType) {
+        if (resourceManager.isDisposed) return;
+        if (msgType == TypeMessage.sticker) {
+          _onSend(payload, TypeMessage.sticker);
+          if (mounted) setState(() => _smartReplyResult = null);
+        } else {
+          _inputController.text = payload;
+          _focusNode.requestFocus();
+          if (mounted) setState(() => _smartReplyResult = null);
+        }
+      },
     );
   }
 
@@ -3685,9 +3772,9 @@ class _ReminderPickerDialogState extends State<_ReminderPickerDialog> {
       actions: [
         _ThemedDialogAction(
             label: 'Đặt nhắc',
-            isPrimary: true,
             palette: p,
             primary: primary,
+            isPrimary: true,
             onTap: () => Navigator.pop(context, _selected)),
         _ThemedDialogAction(
             label: 'Huỷ',
