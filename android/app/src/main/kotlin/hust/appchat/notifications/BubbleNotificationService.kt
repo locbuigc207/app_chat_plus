@@ -24,6 +24,7 @@ import kotlinx.coroutines.*
  * doesn't cancel siblings).
  * • activeBubbles tracking is thread-safe using synchronized blocks.
  */
+@android.annotation.SuppressLint("NewApi")
 object BubbleNotificationService {
 
     internal const val TAG = "BubbleNotifService"

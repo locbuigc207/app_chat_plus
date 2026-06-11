@@ -29,6 +29,7 @@ import kotlinx.coroutines.*
  * • Heavy avatar loading via [AvatarLoader] runs on [Dispatchers.IO].
  * • Integrates caching APIs for efficient batch operations.
  */
+@android.annotation.SuppressLint("NewApi")
 object ShortcutHelper {
 
     private const val TAG = "ShortcutHelper"

@@ -12,14 +12,14 @@ const {
   onDocumentCreated,
   onDocumentUpdated,
 } = require("firebase-functions/v2/firestore");
-const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { setGlobalOptions } = require("firebase-functions/v2");
-const { defineSecret } = require("firebase-functions/params");
+const {onSchedule} = require("firebase-functions/v2/scheduler");
+const {setGlobalOptions} = require("firebase-functions/v2");
+const {defineSecret} = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
 
-const { initializeApp, getApps } = require("firebase-admin/app");
-const { getFirestore, FieldValue } = require("firebase-admin/firestore");
-const { getMessaging } = require("firebase-admin/messaging");
+const {initializeApp, getApps} = require("firebase-admin/app");
+const {getFirestore, FieldValue} = require("firebase-admin/firestore");
+const {getMessaging} = require("firebase-admin/messaging");
 
 // ─── THIRD-PARTY MODULES ──────────────────────────────────────────────────────
 const {
@@ -27,8 +27,8 @@ const {
   HarmCategory,
   HarmBlockThreshold,
 } = require("@google/generative-ai");
-const { RtcTokenBuilder, RtcRole } = require("agora-access-token");
-const cors = require("cors")({ origin: true });
+const {RtcTokenBuilder, RtcRole} = require("agora-access-token");
+const cors = require("cors")({origin: true});
 
 // ─── GLOBAL CONFIGURATION ─────────────────────────────────────────────────────
 if (!getApps().length) {
@@ -63,9 +63,9 @@ const RECAP_STYLE_CONFIGS = {
   "humorous": {
     systemPrompt: "Bạn là MC vui nhộn, hài hước, am hiểu văn hóa mạng và tiếng lóng Gen Z Việt Nam. Dùng emoji phù hợp.",
     buildPrompt: (chatHistory, type) =>
-      type === "personal"
-        ? `Đây là cuộc trò chuyện của 2 người bạn trong tuần qua. Viết bản tóm tắt "Bóc Phốt Đôi Bạn" dưới 220 chữ: khoảnh khắc hài tự nhiên, câu nói ấn tượng, những khoảnh khắc đặc biệt. Dùng emoji, tiếng lóng vừa phải, vui nhộn.\n\nChat:\n${chatHistory}`
-        : `Đây là lịch sử chat nhóm tuần qua. Đóng vai MC vui nhộn viết bản tin "Bóc Phốt Tuần" dưới 220 chữ: ai nói nhiều nhất, câu nói ấn tượng nhất, trend hài hước nhất, highlight của tuần. Dùng emoji, tiếng lóng Gen Z vừa phải.\n\nChat:\n${chatHistory}`,
+      type === "personal" ?
+        `Đây là cuộc trò chuyện của 2 người bạn trong tuần qua. Viết bản tóm tắt "Bóc Phốt Đôi Bạn" dưới 220 chữ: khoảnh khắc hài tự nhiên, câu nói ấn tượng, những khoảnh khắc đặc biệt. Dùng emoji, tiếng lóng vừa phải, vui nhộn.\n\nChat:\n${chatHistory}` :
+        `Đây là lịch sử chat nhóm tuần qua. Đóng vai MC vui nhộn viết bản tin "Bóc Phốt Tuần" dưới 220 chữ: ai nói nhiều nhất, câu nói ấn tượng nhất, trend hài hước nhất, highlight của tuần. Dùng emoji, tiếng lóng Gen Z vừa phải.\n\nChat:\n${chatHistory}`,
     label: "Bóc Phốt Tuần",
     emoji: "😂",
   },
@@ -171,7 +171,7 @@ function getCached(key) {
 }
 
 function setCached(key, value) {
-  _analysisCache.set(key, { value, ts: Date.now() });
+  _analysisCache.set(key, {value, ts: Date.now()});
   if (_analysisCache.size > 500) {
     const firstKey = _analysisCache.keys().next().value;
     _analysisCache.delete(firstKey);
@@ -186,7 +186,7 @@ async function checkRateLimit(uid, action) {
     await db.runTransaction(async (tx) => {
       const doc = await tx.get(ref);
       if (!doc.exists) {
-        tx.set(ref, { calls: [{ ts: now }], updatedAt: now });
+        tx.set(ref, {calls: [{ts: now}], updatedAt: now});
         return;
       }
       const data = doc.data();
@@ -197,8 +197,8 @@ async function checkRateLimit(uid, action) {
           `Quá nhiều yêu cầu. Vui lòng chờ 1 phút. (${action})`,
         );
       }
-      recent.push({ ts: now });
-      tx.update(ref, { calls: recent, updatedAt: now });
+      recent.push({ts: now});
+      tx.update(ref, {calls: recent, updatedAt: now});
     });
   } catch (err) {
     if (err instanceof HttpsError) throw err;
@@ -233,7 +233,7 @@ async function callGeminiWithRetry(model, prompt, maxRetries = 2) {
 function quickScamCheck(text) {
   const lower = text.toLowerCase();
   const hits = SCAM_KEYWORDS_VI.filter((kw) => lower.includes(kw));
-  return { hasKeywords: hits.length > 0, keywords: hits };
+  return {hasKeywords: hits.length > 0, keywords: hits};
 }
 
 function quickHateCheck(text) {
@@ -249,7 +249,7 @@ async function saveAnalysisResult(conversationId, messageId, data) {
       .doc(conversationId)
       .collection("ai_analysis")
       .doc(messageId)
-      .set({ ...data, analyzedAt: FieldValue.serverTimestamp() }, { merge: true });
+      .set({...data, analyzedAt: FieldValue.serverTimestamp()}, {merge: true});
   } catch (err) {
     logger.warn("[saveAnalysisResult] Firestore error:", err);
   }
@@ -267,10 +267,10 @@ function createGeminiModel(apiKey, systemPrompt, genConfig = {}, lite = false) {
       ...genConfig,
     },
     safetySettings: [
-      { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-      { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-      { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_HIGH_AND_ABOVE },
-      { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+      {category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE},
+      {category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE},
+      {category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_HIGH_AND_ABOVE},
+      {category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE},
     ],
   });
 }
@@ -288,20 +288,20 @@ function buildAgoraToken(channelName, uid, appId, appCert) {
   const token = RtcTokenBuilder.buildTokenWithUid(
     appId, appCert, channelName, uid, RtcRole.PUBLISHER, expiresAt,
   );
-  return { token, expiresAt };
+  return {token, expiresAt};
 }
 
-async function sendPushNotification({ pushToken, title, body, data = {} }) {
+async function sendPushNotification({pushToken, title, body, data = {}}) {
   if (!pushToken) return;
   try {
     await getMessaging().send({
       token: pushToken,
-      notification: { title, body },
+      notification: {title, body},
       data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
-      android: { priority: "high", notification: { channelId: "chat_messages" } },
+      android: {priority: "high", notification: {channelId: "chat_messages"}},
       apns: {
-        payload: { aps: { contentAvailable: true, sound: "default", badge: 1 } },
-        headers: { "apns-priority": "10" },
+        payload: {aps: {contentAvailable: true, sound: "default", badge: 1}},
+        headers: {"apns-priority": "10"},
       },
     });
   } catch (err) {
@@ -323,25 +323,25 @@ async function getUserPushToken(userId) {
 function isEncrypted(msg) {
   return (
     typeof msg === "string" &&
-    (msg.startsWith('{"iv":') || msg.startsWith("eyJ"))
+    (msg.startsWith("{\"iv\":") || msg.startsWith("eyJ"))
   );
 }
 
 function filterMessages(messages) {
   return (messages || []).filter(
-    (m) => typeof m === "string" && !isEncrypted(m) && m.trim().length > 2
+    (m) => typeof m === "string" && !isEncrypted(m) && m.trim().length > 2,
   );
 }
 
 function periodMs(period) {
-  const map = { week7: 7, days30: 30, days90: 90 };
+  const map = {week7: 7, days30: 30, days90: 90};
   return (map[period] || 7) * 24 * 60 * 60 * 1000;
 }
 
 function computeLocalStats(messages, periodKey, now = Date.now()) {
   const cutoff = now - periodMs(periodKey);
   const msgs = messages.filter(
-    (m) => m.timestamp >= cutoff && !isEncrypted(m.content || "")
+    (m) => m.timestamp >= cutoff && !isEncrypted(m.content || ""),
   );
   if (msgs.length === 0) return null;
   const contents = msgs.map((m) => m.content || "");
@@ -353,7 +353,7 @@ function computeLocalStats(messages, periodKey, now = Date.now()) {
     msgs.map((m) => {
       const d = new Date(m.timestamp);
       return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-    })
+    }),
   );
   const activeDays = days.size;
   const avgMessagesPerDay = Math.round((totalMessages / activeDays) * 10) / 10;
@@ -361,21 +361,21 @@ function computeLocalStats(messages, periodKey, now = Date.now()) {
   const emojiRe = /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}]/gu;
   const emojiCount = contents.reduce(
     (s, c) => s + (c.match(emojiRe) || []).length,
-    0
+    0,
   );
   const emojiLevel =
-    emojiCount > totalMessages * 0.5
-      ? "heavy"
-      : emojiCount > totalMessages * 0.2
-        ? "moderate"
-        : "minimal";
+    emojiCount > totalMessages * 0.5 ?
+      "heavy" :
+      emojiCount > totalMessages * 0.2 ?
+        "moderate" :
+        "minimal";
 
   const commStyle =
-    avgMessageLength < 25
-      ? "concise"
-      : avgMessageLength > 80
-        ? "expressive"
-        : "balanced";
+    avgMessageLength < 25 ?
+      "concise" :
+      avgMessageLength > 80 ?
+        "expressive" :
+        "balanced";
 
   const grid = {};
   let maxCount = 1;
@@ -392,7 +392,7 @@ function computeLocalStats(messages, periodKey, now = Date.now()) {
   for (let d = 0; d < 7; d++) {
     for (let h = 0; h < 24; h++) {
       const count = grid[`${d}_${h}`] || 0;
-      activityHeatmap.push({ dow: d, hour: h, count, intensity: count / maxCount });
+      activityHeatmap.push({dow: d, hour: h, count, intensity: count / maxCount});
     }
   }
 
@@ -464,7 +464,7 @@ function computeLocalStats(messages, periodKey, now = Date.now()) {
   ]);
   const freq = {};
   for (const c of contents) {
-    for (const w of c.toLowerCase().split(/[\s,.\!\?\n]+/)) {
+    for (const w of c.toLowerCase().split(/[\s,.!?\n]+/)) {
       const clean = w.replace(/[^\w]/g, "").trim();
       if (clean.length >= 2 && !stopwords.has(clean)) {
         freq[clean] = (freq[clean] || 0) + 1;
@@ -512,7 +512,7 @@ function computeLocalStats(messages, periodKey, now = Date.now()) {
   if (sentimentBreakdown.negative > 0.4) traits.push("reflective");
   if (traits.length === 0) traits.push("balanced");
 
-  const periodLabel = { week7: "7 ngày", days30: "30 ngày", days90: "90 ngày" }[periodKey] || "7 ngày";
+  const periodLabel = {week7: "7 ngày", days30: "30 ngày", days90: "90 ngày"}[periodKey] || "7 ngày";
   const styleDesc = commStyle === "concise" ? "ngắn gọn, súc tích" : commStyle === "expressive" ? "chi tiết, cởi mở" : "cân bằng, rõ ràng";
   const emojiDesc = emojiLevel === "heavy" ? "thường xuyên dùng emoji" : emojiLevel === "moderate" ? "đôi khi dùng emoji" : "ít dùng emoji";
   const patternDesc = activityPattern === "night_owl" ? "nhắn tin nhiều về đêm" : activityPattern === "morning_person" ? "hay nhắn tin buổi sáng" : "nhắn tin đều trong ngày";
@@ -557,11 +557,11 @@ Dùng ngôn ngữ gần gũi, tích cực. Không lặp lại số liệu đã c
     const genAIInstance = new GoogleGenerativeAI(activeKey);
     const model = genAIInstance.getGenerativeModel({
       model: "gemini-1.5-flash",
-      generationConfig: { maxOutputTokens: 150, temperature: 0.6 },
+      generationConfig: {maxOutputTokens: 150, temperature: 0.6},
     });
     const result = await model.generateContent(prompt);
     const aiSummary = result.response.text().trim();
-    return { ...localStats, aiGeneratedSummary: aiSummary };
+    return {...localStats, aiGeneratedSummary: aiSummary};
   } catch (err) {
     console.error("[enrichWithAI] error:", err.message);
     return localStats;
@@ -574,15 +574,15 @@ Dùng ngôn ngữ gần gũi, tích cực. Không lặp lại số liệu đã c
 
 // ─── 1. analyzeDecryptedMessage ──────────────────────────────────────────────
 exports.analyzeDecryptedMessage = onCall(
-  { secrets: [geminiApiKey], enforceAppCheck: false },
+  {secrets: [geminiApiKey], enforceAppCheck: false},
   async (request) => {
     requireAuth(request.auth);
-    const { plainText, conversationId, messageId, idFrom, idTo } = request.data;
+    const {plainText, conversationId, messageId, idFrom, idTo} = request.data;
     if (!plainText || !conversationId || !messageId) {
       throw new HttpsError("invalid-argument", "Thiếu plainText, conversationId hoặc messageId.");
     }
     const safeText = sanitize(plainText);
-    if (!safeText) return { status: "SAFE", level: "SAFE" };
+    if (!safeText) return {status: "SAFE", level: "SAFE"};
 
     const cacheKey = `scam_${Buffer.from(safeText).toString("base64").substring(0, 32)}`;
     const cached = getCached(cacheKey);
@@ -590,7 +590,7 @@ exports.analyzeDecryptedMessage = onCall(
 
     const quick = quickScamCheck(safeText);
     if (!quick.hasKeywords && safeText.length < 50) {
-      const result = { status: "SAFE", level: "SAFE", method: "fast" };
+      const result = {status: "SAFE", level: "SAFE", method: "fast"};
       await saveAnalysisResult(conversationId, messageId, {
         level: "SAFE", method: "keyword_fast", idFrom, idTo,
       });
@@ -602,7 +602,7 @@ exports.analyzeDecryptedMessage = onCall(
       const model = createGeminiModel(
         geminiApiKey.value(),
         "Bạn là chuyên gia phát hiện lừa đảo trực tuyến tại Việt Nam. Phân tích chính xác, trả về JSON hợp lệ.",
-        { maxOutputTokens: 512, temperature: 0.1 },
+        {maxOutputTokens: 512, temperature: 0.1},
         true,
       );
       const raw = await callGeminiWithRetry(model,
@@ -620,37 +620,37 @@ exports.analyzeDecryptedMessage = onCall(
         idFrom, idTo, scamKeywords: quick.keywords,
       });
 
-      const result = { status: level, level, reason, confidence };
+      const result = {status: level, level, reason, confidence};
       setCached(cacheKey, result);
       return result;
     } catch (err) {
       logger.error("[analyzeDecryptedMessage]", err);
       const fallback = quick.hasKeywords ? "WARNING" : "SAFE";
-      return { status: fallback, level: fallback, method: "fallback" };
+      return {status: fallback, level: fallback, method: "fallback"};
     }
   },
 );
 
 // ─── 2. analyzeScam ──────────────────────────────────────────────────────────
 exports.analyzeScam = onCall(
-  { secrets: [geminiApiKey], enforceAppCheck: false },
+  {secrets: [geminiApiKey], enforceAppCheck: false},
   async (request) => {
     requireAuth(request.auth);
-    const { message } = request.data;
+    const {message} = request.data;
     if (!message) throw new HttpsError("invalid-argument", "Thiếu message.");
     const safeMsg = sanitize(message);
-    if (!safeMsg) return { status: "SAFE", level: "SAFE" };
+    if (!safeMsg) return {status: "SAFE", level: "SAFE"};
 
     const quick = quickScamCheck(safeMsg);
     if (!quick.hasKeywords && safeMsg.length < 30) {
-      return { status: "SAFE", level: "SAFE", warningKeywords: [] };
+      return {status: "SAFE", level: "SAFE", warningKeywords: []};
     }
 
     try {
       const model = createGeminiModel(
         geminiApiKey.value(),
         "Chuyên gia phát hiện lừa đảo. Trả về JSON hợp lệ.",
-        { maxOutputTokens: 256, temperature: 0.1 },
+        {maxOutputTokens: 256, temperature: 0.1},
         true,
       );
       const raw = await callGeminiWithRetry(model,
@@ -678,14 +678,14 @@ exports.analyzeScam = onCall(
 
 // ─── 3. analyzeDecryptedClientMessage ────────────────────────────────────────
 exports.analyzeDecryptedClientMessage = onCall(
-  { secrets: [geminiApiKey], enforceAppCheck: false },
+  {secrets: [geminiApiKey], enforceAppCheck: false},
   async (request) => {
     requireAuth(request.auth);
-    const { plainTextContent, conversationId, messageId, idTo } = request.data;
+    const {plainTextContent, conversationId, messageId, idTo} = request.data;
     if (!plainTextContent) return null;
     const safeText = sanitize(plainTextContent, 500);
 
-    if (safeText.startsWith('{"iv":') || safeText.startsWith("eyJ")) {
+    if (safeText.startsWith("{\"iv\":") || safeText.startsWith("eyJ")) {
       logger.warn("[analyzeDecryptedClientMessage] Ciphertext received — skip");
       return null;
     }
@@ -699,7 +699,7 @@ exports.analyzeDecryptedClientMessage = onCall(
       const model = createGeminiModel(
         geminiApiKey.value(),
         "Bạn là AI phân tích tin nhắn chat. Trả về JSON hợp lệ, không giải thích.",
-        { maxOutputTokens: 512, temperature: 0.2},
+        {maxOutputTokens: 512, temperature: 0.2},
       );
       const raw = await callGeminiWithRetry(model,
         `Phân tích tin nhắn: "${safeText}".\n` +
@@ -747,11 +747,11 @@ exports.analyzeDecryptedClientMessage = onCall(
 
 // ─── 4. translateCommunication ───────────────────────────────────────────────
 exports.translateCommunication = onCall(
-  { secrets: [geminiApiKey] },
+  {secrets: [geminiApiKey]},
   async (request) => {
     requireAuth(request.auth);
     await checkRateLimit(request.auth.uid, "translate");
-    const { message, targetAudience, preserveEmoji = true } = request.data;
+    const {message, targetAudience, preserveEmoji = true} = request.data;
     if (!message || !targetAudience) {
       throw new HttpsError("invalid-argument", "Thiếu message hoặc targetAudience.");
     }
@@ -767,7 +767,7 @@ exports.translateCommunication = onCall(
     const model = createGeminiModel(
       geminiApiKey.value(),
       "Chuyên gia ngôn ngữ và giao tiếp Việt Nam.",
-      { maxOutputTokens: 1024, temperature: 0.5 },
+      {maxOutputTokens: 1024, temperature: 0.5},
     );
 
     try {
@@ -792,22 +792,22 @@ exports.translateCommunication = onCall(
 
 // ─── 5. analyzeChatContext ───────────────────────────────────────────────────
 exports.analyzeChatContext = onCall(
-  { secrets: [geminiApiKey] },
+  {secrets: [geminiApiKey]},
   async (request) => {
     requireAuth(request.auth);
     await checkRateLimit(request.auth.uid, "analyze_context");
-    const { messages, contextType, action } = request.data;
+    const {messages, contextType, action} = request.data;
     if (!messages || !contextType || !action) {
       throw new HttpsError("invalid-argument", "Thiếu messages, contextType hoặc action.");
     }
 
     const clean = sanitizeMessages(messages);
-    if (clean.length === 0) return { analysisResult: "" };
+    if (clean.length === 0) return {analysisResult: ""};
 
     const actionPrompts = {
       summarize: "Tóm tắt cuộc trò chuyện trong 3 câu ngắn gọn bằng tiếng Việt:",
       suggest: "Gợi ý 3 hành động tiếp theo phù hợp dựa trên nội dung trò chuyện:",
-      extract_tasks: 'Liệt kê công việc (tasks) và deadline ngắn gọn từ cuộc trò chuyện theo định dạng JSON: [{"task":"...","deadline":"...","priority":"high|medium|low"}]',
+      extract_tasks: "Liệt kê công việc (tasks) và deadline ngắn gọn từ cuộc trò chuyện theo định dạng JSON: [{\"task\":\"...\",\"deadline\":\"...\",\"priority\":\"high|medium|low\"}]",
       analyze_mood: "Phân tích tâm trạng/cảm xúc tổng thể và xu hướng của cuộc trò chuyện:",
       key_decisions: "Liệt kê các quyết định quan trọng được đưa ra trong cuộc trò chuyện:",
       action_items: "Liệt kê các việc cần làm sau cuộc trò chuyện này:",
@@ -827,12 +827,12 @@ exports.analyzeChatContext = onCall(
     const model = createGeminiModel(
       geminiApiKey.value(),
       `Bạn là AI phân tích cuộc trò chuyện tiếng Việt. ${contextHint}`,
-      { maxOutputTokens: 1024, temperature: 0.4 },
+      {maxOutputTokens: 1024, temperature: 0.4},
     );
 
     try {
       const result = await callGeminiWithRetry(model, `${actionPrompt}\n\n${clean.join("\n")}`);
-      return { analysisResult: result.trim(), action, contextType };
+      return {analysisResult: result.trim(), action, contextType};
     } catch (err) {
       logger.error("[analyzeChatContext]", err);
       throw new HttpsError("internal", "Không thể phân tích ngữ cảnh.");
@@ -842,19 +842,19 @@ exports.analyzeChatContext = onCall(
 
 // ─── 6. extractRelationshipMemory ────────────────────────────────────────────
 exports.extractRelationshipMemory = onCall(
-  { secrets: [geminiApiKey] },
+  {secrets: [geminiApiKey]},
   async (request) => {
     requireAuth(request.auth);
-    const { messages, conversationId } = request.data;
+    const {messages, conversationId} = request.data;
     const clean = sanitizeMessages(messages);
     if (clean.length < 3) {
-      return { relationshipType: "unknown", sharedTopics: [], importantDates: [] };
+      return {relationshipType: "unknown", sharedTopics: [], importantDates: []};
     }
 
     const model = createGeminiModel(
       geminiApiKey.value(),
       "Chuyên gia phân tích mối quan hệ và ngữ cảnh xã hội Việt Nam.",
-      { maxOutputTokens: 768, temperature: 0.3 },
+      {maxOutputTokens: 768, temperature: 0.3},
     );
 
     const prompt =
@@ -870,26 +870,26 @@ exports.extractRelationshipMemory = onCall(
       const parsed = safeParseJson(raw);
       if (conversationId && parsed) {
         await db.collection("conversations").doc(conversationId).set(
-          { relationshipMemory: { ...parsed, updatedAt: FieldValue.serverTimestamp() } },
-          { merge: true },
+          {relationshipMemory: {...parsed, updatedAt: FieldValue.serverTimestamp()}},
+          {merge: true},
         );
       }
-      return parsed ?? { relationshipType: "unknown", sharedTopics: [], importantDates: [] };
+      return parsed ?? {relationshipType: "unknown", sharedTopics: [], importantDates: []};
     } catch (err) {
       logger.error("[extractRelationshipMemory]", err);
-      return { relationshipType: "unknown", sharedTopics: [], importantDates: [] };
+      return {relationshipType: "unknown", sharedTopics: [], importantDates: []};
     }
   },
 );
 
 // ─── 7. suggestReplies ───────────────────────────────────────────────────────
 exports.suggestReplies = onCall(
-  { secrets: [geminiApiKey] },
+  {secrets: [geminiApiKey]},
   async (request) => {
     requireAuth(request.auth);
-    const { messages, tone = "friendly", count = 3, userContext = "" } = request.data;
+    const {messages, tone = "friendly", count = 3, userContext = ""} = request.data;
     const clean = sanitizeMessages(messages);
-    if (clean.length === 0) return { suggestions: [] };
+    if (clean.length === 0) return {suggestions: []};
 
     const toneDesc = {
       friendly: "thân thiện, tự nhiên, ấm áp",
@@ -902,7 +902,7 @@ exports.suggestReplies = onCall(
     const model = createGeminiModel(
       geminiApiKey.value(),
       "Chuyên gia giao tiếp và viết tin nhắn tiếng Việt.",
-      { maxOutputTokens: 512, temperature: 0.8 },
+      {maxOutputTokens: 512, temperature: 0.8},
     );
 
     try {
@@ -917,24 +917,24 @@ exports.suggestReplies = onCall(
         .map((s) => s.replace(/^[-•*\d.]+\s*/, "").trim())
         .filter((s) => s.length > 0)
         .slice(0, count);
-      return { suggestions, tone, count };
+      return {suggestions, tone, count};
     } catch (err) {
       logger.error("[suggestReplies]", err);
-      return { suggestions: [] };
+      return {suggestions: []};
     }
   },
 );
 
 // ─── 8. generateSwipeReplies (Cập nhật phiên bản mới) ────────────────────────
 exports.generateSwipeReplies = onCall(
-  { secrets: [geminiApiKey] },
+  {secrets: [geminiApiKey]},
   async (request) => {
     requireAuth(request.auth);
-    const { incomingMessage, contextMessages, replyStyle = "genz", includeStickerCards = false } = request.data;
+    const {incomingMessage, contextMessages, replyStyle = "genz", includeStickerCards = false} = request.data;
 
     const FALLBACK_TEXT = ["Ok nha", "Thế à?", "Chịu luôn 😂", "Đỉnh!"];
     if (!incomingMessage) {
-      return { replies: FALLBACK_TEXT, stickerCards: [] };
+      return {replies: FALLBACK_TEXT, stickerCards: []};
     }
 
     const styleDesc = {
@@ -947,39 +947,39 @@ exports.generateSwipeReplies = onCall(
     const model = createGeminiModel(
       geminiApiKey.value(),
       `Chuyên gia viết tin nhắn ngắn phong cách ${styleDesc}.`,
-      { maxOutputTokens: 256, temperature: 0.9 },
+      {maxOutputTokens: 256, temperature: 0.9},
       true,
     );
 
     try {
-      const stickerHint = includeStickerCards
-        ? '\nNgoài ra thêm "stickers": mảng 0-2 sticker ID phù hợp từ: ["mimi1","mimi2","mimi3","mimi4","mimi5","mimi6","mimi7","mimi8","mimi9"]'
-        : "";
+      const stickerHint = includeStickerCards ?
+        "\nNgoài ra thêm \"stickers\": mảng 0-2 sticker ID phù hợp từ: [\"mimi1\",\"mimi2\",\"mimi3\",\"mimi4\",\"mimi5\",\"mimi6\",\"mimi7\",\"mimi8\",\"mimi9\"]" :
+        "";
 
       const raw = await callGeminiWithRetry(model,
         `Ngữ cảnh: "${sanitize(contextMessages ?? "", 400)}".\n` +
         `Tin nhắn mới: "${sanitize(incomingMessage, 400)}".\n` +
         `Tạo 4 câu trả lời cực ngắn (dưới 12 chữ), ${styleDesc}, tự nhiên.\n` +
-        `Trả về JSON: {"replies":["câu 1","câu 2","câu 3","câu 4"]${stickerHint ? ',"stickers":[]' : ""}}${stickerHint}`,
+        `Trả về JSON: {"replies":["câu 1","câu 2","câu 3","câu 4"]${stickerHint ? ",\"stickers\":[]" : ""}}${stickerHint}`,
       );
 
       const parsed    = safeParseJson(raw);
       const replies   = Array.isArray(parsed?.replies) ? parsed.replies.slice(0, 4) : FALLBACK_TEXT;
-      const stickerCards = includeStickerCards && Array.isArray(parsed?.stickers)
-        ? parsed.stickers.filter((id) => typeof id === "string" && id.startsWith("mimi")).slice(0, 2)
-        : [];
+      const stickerCards = includeStickerCards && Array.isArray(parsed?.stickers) ?
+        parsed.stickers.filter((id) => typeof id === "string" && id.startsWith("mimi")).slice(0, 2) :
+        [];
 
-      return { replies, stickerCards };
+      return {replies, stickerCards};
     } catch (err) {
       logger.error("[generateSwipeReplies]", err);
-      return { replies: FALLBACK_TEXT, stickerCards: [] };
+      return {replies: FALLBACK_TEXT, stickerCards: []};
     }
   },
 );
 
 // ─── 9. generateAutoPilotReply ───────────────────────────────────────────────
 exports.generateAutoPilotReply = onCall(
-  { secrets: [geminiApiKey], enforceAppCheck: false },
+  {secrets: [geminiApiKey], enforceAppCheck: false},
   async (request) => {
     requireAuth(request.auth);
     const {
@@ -992,7 +992,7 @@ exports.generateAutoPilotReply = onCall(
     } = request.data;
 
     if (!incomingMessage) {
-      return { reply: awayMessage ?? "Mình đang bận, sẽ nhắn lại sau nha! 😊" };
+      return {reply: awayMessage ?? "Mình đang bận, sẽ nhắn lại sau nha! 😊"};
     }
     const safeMsg = sanitize(incomingMessage, 500);
     const safeCtx = sanitize(myStyleContext ?? "thân thiện, ngắn gọn", 600);
@@ -1018,7 +1018,7 @@ exports.generateAutoPilotReply = onCall(
     const model = createGeminiModel(
       geminiApiKey.value(),
       systemPrompt,
-      { maxOutputTokens: 150, temperature: 0.8 },
+      {maxOutputTokens: 150, temperature: 0.8},
       true,
     );
 
@@ -1026,31 +1026,31 @@ exports.generateAutoPilotReply = onCall(
       const raw = await callGeminiWithRetry(model, userPrompt);
       const reply = raw.trim().replace(/^["']|["']$/g, "");
       if (!reply || reply.length < 2) {
-        return { reply: awayMessage ?? "Mình đang bận, sẽ nhắn lại sau nha! 😊" };
+        return {reply: awayMessage ?? "Mình đang bận, sẽ nhắn lại sau nha! 😊"};
       }
       logger.info(`[AutoPilot] tone=${tone} → reply="${reply.substring(0, 40)}..."`);
-      return { reply, tone, generated: true };
+      return {reply, tone, generated: true};
     } catch (err) {
       logger.error("[generateAutoPilotReply]", err);
-      return { reply: awayMessage ?? "Mình đang bận, sẽ nhắn lại sau nha! 😊" };
+      return {reply: awayMessage ?? "Mình đang bận, sẽ nhắn lại sau nha! 😊"};
     }
   },
 );
 
 // ─── 10. summarizeConversation ───────────────────────────────────────────────
 exports.summarizeConversation = onCall(
-  { secrets: [geminiApiKey] },
+  {secrets: [geminiApiKey]},
   async (request) => {
     requireAuth(request.auth);
-    const { messages, maxSentences = 3, language = "vi", includeKeyPoints = false } = request.data;
+    const {messages, maxSentences = 3, language = "vi", includeKeyPoints = false} = request.data;
     const clean = sanitizeMessages(messages);
-    if (clean.length === 0) return { summary: "", keyPoints: [] };
+    if (clean.length === 0) return {summary: "", keyPoints: []};
 
     const lang = language === "vi" ? "Trả lời bằng tiếng Việt." : "Respond in English.";
     const model = createGeminiModel(
       geminiApiKey.value(),
       `Chuyên gia tóm tắt nội dung. ${lang}`,
-      { maxOutputTokens: 512, temperature: 0.3 },
+      {maxOutputTokens: 512, temperature: 0.3},
     );
 
     try {
@@ -1061,9 +1061,9 @@ exports.summarizeConversation = onCall(
       const raw = await callGeminiWithRetry(model, prompt);
       if (includeKeyPoints) {
         const parsed = safeParseJson(raw);
-        if (parsed) return { summary: parsed.summary ?? raw.trim(), keyPoints: parsed.keyPoints ?? [] };
+        if (parsed) return {summary: parsed.summary ?? raw.trim(), keyPoints: parsed.keyPoints ?? []};
       }
-      return { summary: raw.trim(), keyPoints: [] };
+      return {summary: raw.trim(), keyPoints: []};
     } catch (err) {
       logger.error("[summarizeConversation]", err);
       throw new HttpsError("internal", "Không thể tóm tắt.");
@@ -1073,17 +1073,17 @@ exports.summarizeConversation = onCall(
 
 // ─── 11. analyzeSentiment ────────────────────────────────────────────────────
 exports.analyzeSentiment = onCall(
-  { secrets: [geminiApiKey] },
+  {secrets: [geminiApiKey]},
   async (request) => {
     requireAuth(request.auth);
-    const { messages } = request.data;
+    const {messages} = request.data;
     const clean = sanitizeMessages(messages);
-    if (clean.length === 0) return { sentiment: "neutral", score: 0.5, emoji: "😐", mood: "bình thường" };
+    if (clean.length === 0) return {sentiment: "neutral", score: 0.5, emoji: "😐", mood: "bình thường"};
 
     const model = createGeminiModel(
       geminiApiKey.value(),
       "Chuyên gia tâm lý và phân tích cảm xúc. Trả về JSON hợp lệ.",
-      { maxOutputTokens: 256, temperature: 0.1 },
+      {maxOutputTokens: 256, temperature: 0.1},
       true,
     );
 
@@ -1093,31 +1093,31 @@ exports.analyzeSentiment = onCall(
         `Trả về JSON: {"sentiment":"positive"|"neutral"|"negative","score":0.0-1.0,"emoji":"...","mood":"...","trend":"improving"|"stable"|"declining"}\n\n` +
         `${clean.slice(-10).join("\n")}`,
       );
-      return safeParseJson(raw) ?? { sentiment: "neutral", score: 0.5, emoji: "😐", mood: "bình thường" };
+      return safeParseJson(raw) ?? {sentiment: "neutral", score: 0.5, emoji: "😐", mood: "bình thường"};
     } catch (err) {
       logger.error("[analyzeSentiment]", err);
-      return { sentiment: "neutral", score: 0.5, emoji: "😐", mood: "bình thường" };
+      return {sentiment: "neutral", score: 0.5, emoji: "😐", mood: "bình thường"};
     }
   },
 );
 
 // ─── 12. detectHateSpeech ────────────────────────────────────────────────────
 exports.detectHateSpeech = onCall(
-  { secrets: [geminiApiKey] },
+  {secrets: [geminiApiKey]},
   async (request) => {
     requireAuth(request.auth);
-    const { message } = request.data;
-    if (!message) return { isHateful: false, category: "none", confidence: 0 };
+    const {message} = request.data;
+    if (!message) return {isHateful: false, category: "none", confidence: 0};
     const safeMsg = sanitize(message, 1000);
 
     if (!quickHateCheck(safeMsg) && safeMsg.length < 20) {
-      return { isHateful: false, category: "none", confidence: 0 };
+      return {isHateful: false, category: "none", confidence: 0};
     }
 
     const model = createGeminiModel(
       geminiApiKey.value(),
       "Chuyên gia kiểm duyệt nội dung số tại Việt Nam. Trả về JSON hợp lệ.",
-      { maxOutputTokens: 128, temperature: 0.1 },
+      {maxOutputTokens: 128, temperature: 0.1},
       true,
     );
 
@@ -1136,27 +1136,25 @@ exports.detectHateSpeech = onCall(
       };
     } catch (err) {
       logger.error("[detectHateSpeech]", err);
-      return { isHateful: false, category: "none", confidence: 0 };
+      return {isHateful: false, category: "none", confidence: 0};
     }
   },
 );
 
 // ─── 13. analyzeCallSecurity ─────────────────────────────────────────────────
 exports.analyzeCallSecurity = onCall(
-  { secrets: [geminiApiKey] },
+  {secrets: [geminiApiKey]},
   async (request) => {
     requireAuth(request.auth);
     const {
       callTranscript,
-      peerId,
-      conversationId,
       audioFeatures,
       localDeepfakeScore,
       enrollmentStatus,
     } = request.data;
 
     if ((localDeepfakeScore || 0) < 0.4 && (!callTranscript || callTranscript.trim() === "")) {
-      return { isSafe: true, riskLevel: "LOW", warningMessage: "", confidenceScore: 0 };
+      return {isSafe: true, riskLevel: "LOW", warningMessage: "", confidenceScore: 0};
     }
 
     const hasAudioEvidence = audioFeatures && localDeepfakeScore > 0;
@@ -1181,15 +1179,15 @@ Trả về định dạng JSON nghiêm ngặt:
 }`;
 
     try {
-      const model = createGeminiModel(geminiApiKey.value(), "Chuyên gia bảo mật cuộc gọi.", { maxOutputTokens: 512, temperature: 0.1 });
+      const model = createGeminiModel(geminiApiKey.value(), "Chuyên gia bảo mật cuộc gọi.", {maxOutputTokens: 512, temperature: 0.1});
       const raw = await callGeminiWithRetry(model, prompt);
       const analysis = safeParseJson(raw) || {};
       const cloudDeepfakeScore = (analysis.deepfakeConfidence || 0) / 100;
       const localScore = localDeepfakeScore || 0;
 
-      const combinedScore = (callTranscript && callTranscript.length > 50)
-        ? (cloudDeepfakeScore * 0.6 + localScore * 0.4)
-        : (localScore * 0.7 + cloudDeepfakeScore * 0.3);
+      const combinedScore = (callTranscript && callTranscript.length > 50) ?
+        (cloudDeepfakeScore * 0.6 + localScore * 0.4) :
+        (localScore * 0.7 + cloudDeepfakeScore * 0.3);
 
       return {
         ...analysis,
@@ -1209,10 +1207,10 @@ Trả về định dạng JSON nghiêm ngặt:
 
 // ─── 14. requestCallToken ────────────────────────────────────────────────────
 exports.requestCallToken = onCall(
-  { secrets: [agoraAppId, agoraCertificate], enforceAppCheck: false },
+  {secrets: [agoraAppId, agoraCertificate], enforceAppCheck: false},
   async (request) => {
     requireAuth(request.auth);
-    const { channelName, uid = 0 } = request.data;
+    const {channelName, uid = 0} = request.data;
     if (!channelName) {
       throw new HttpsError("invalid-argument", "channelName là bắt buộc.");
     }
@@ -1223,9 +1221,9 @@ exports.requestCallToken = onCall(
       throw new HttpsError("internal", "Agora credentials chưa cấu hình.");
     }
     try {
-      const { token, expiresAt } = buildAgoraToken(channelName, uid, appId, appCert);
+      const {token, expiresAt} = buildAgoraToken(channelName, uid, appId, appCert);
       logger.info(`[requestCallToken] Token issued for channel: ${channelName}`);
-      return { token, expiresAt, channelName };
+      return {token, expiresAt, channelName};
     } catch (err) {
       logger.error("[requestCallToken]", err);
       throw new HttpsError("internal", "Không thể tạo token.");
@@ -1235,7 +1233,7 @@ exports.requestCallToken = onCall(
 
 // ─── 15. smartReplyWithContext ───────────────────────────────────────────────
 exports.smartReplyWithContext = onCall(
-  { secrets: [geminiApiKey] },
+  {secrets: [geminiApiKey]},
   async (request) => {
     requireAuth(request.auth);
     await checkRateLimit(request.auth.uid, "smart_reply");
@@ -1263,7 +1261,7 @@ exports.smartReplyWithContext = onCall(
     const model = createGeminiModel(
       geminiApiKey.value(),
       `Bạn là AI trợ lý chat thông minh, ${intentDesc}. ${langNote}`,
-      { maxOutputTokens: 512, temperature: 0.7 },
+      {maxOutputTokens: 512, temperature: 0.7},
     );
 
     try {
@@ -1287,7 +1285,7 @@ exports.smartReplyWithContext = onCall(
 
 // ─── 16. generateIcebreakers ─────────────────────────────────────────────────
 exports.generateIcebreakers = onCall(
-  { secrets: [geminiApiKey] },
+  {secrets: [geminiApiKey]},
   async (request) => {
     requireAuth(request.auth);
     const {
@@ -1307,7 +1305,7 @@ exports.generateIcebreakers = onCall(
     const model = createGeminiModel(
       geminiApiKey.value(),
       "Chuyên gia giao tiếp xã hội Việt Nam.",
-      { maxOutputTokens: 512, temperature: 0.9 },
+      {maxOutputTokens: 512, temperature: 0.9},
       true,
     );
 
@@ -1325,7 +1323,7 @@ exports.generateIcebreakers = onCall(
       };
     } catch (err) {
       logger.error("[generateIcebreakers]", err);
-      return { icebreakers: [], style, count };
+      return {icebreakers: [], style, count};
     }
   },
 );
@@ -1339,7 +1337,7 @@ exports.analyzeToxicityBatch = onCall(
   },
   async (request) => {
     requireAuth(request.auth);
-    const { messages } = request.data;
+    const {messages} = request.data;
     if (!Array.isArray(messages) || messages.length === 0) {
       throw new HttpsError("invalid-argument", "Thiếu messages array.");
     }
@@ -1351,7 +1349,7 @@ exports.analyzeToxicityBatch = onCall(
     const model = createGeminiModel(
       geminiApiKey.value(),
       "Chuyên gia kiểm duyệt nội dung. Trả về JSON hợp lệ.",
-      { maxOutputTokens: 2048, temperature: 0.1 },
+      {maxOutputTokens: 2048, temperature: 0.1},
     );
 
     try {
@@ -1363,7 +1361,7 @@ exports.analyzeToxicityBatch = onCall(
       );
       const results = safeParseJson(raw);
       if (!Array.isArray(results)) {
-        return { results: batch.map((_, i) => ({ index: i, isToxic: false, category: "safe", confidence: 0 })) };
+        return {results: batch.map((_, i) => ({index: i, isToxic: false, category: "safe", confidence: 0}))};
       }
       return {
         results: results.map((r) => ({
@@ -1374,17 +1372,17 @@ exports.analyzeToxicityBatch = onCall(
       };
     } catch (err) {
       logger.error("[analyzeToxicityBatch]", err);
-      return { results: [], analyzedCount: 0 };
+      return {results: [], analyzedCount: 0};
     }
   },
 );
 
 // ─── 18. generateMessageTone ─────────────────────────────────────────────────
 exports.generateMessageTone = onCall(
-  { secrets: [geminiApiKey] },
+  {secrets: [geminiApiKey]},
   async (request) => {
     requireAuth(request.auth);
-    const { message, fromTone = "auto", toTone, keepEmoji = true } = request.data;
+    const {message, fromTone = "auto", toTone, keepEmoji = true} = request.data;
     if (!message || !toTone) {
       throw new HttpsError("invalid-argument", "Thiếu message hoặc toTone.");
     }
@@ -1405,7 +1403,7 @@ exports.generateMessageTone = onCall(
     const model = createGeminiModel(
       geminiApiKey.value(),
       "Chuyên gia viết lại nội dung với giọng điệu phù hợp.",
-      { maxOutputTokens: 512, temperature: 0.6 },
+      {maxOutputTokens: 512, temperature: 0.6},
     );
 
     try {
@@ -1430,17 +1428,17 @@ exports.generateMessageTone = onCall(
 
 // ─── 19. extractKeyMoments ───────────────────────────────────────────────────
 exports.extractKeyMoments = onCall(
-  { secrets: [geminiApiKey] },
+  {secrets: [geminiApiKey]},
   async (request) => {
     requireAuth(request.auth);
-    const { messages, conversationId } = request.data;
+    const {messages, conversationId} = request.data;
     const clean = sanitizeMessages(messages);
-    if (clean.length < 5) return { moments: [], highlights: [] };
+    if (clean.length < 5) return {moments: [], highlights: []};
 
     const model = createGeminiModel(
       geminiApiKey.value(),
       "Chuyên gia phân tích và tổng hợp nội dung hội thoại.",
-      { maxOutputTokens: 1024, temperature: 0.4 },
+      {maxOutputTokens: 1024, temperature: 0.4},
     );
 
     try {
@@ -1451,28 +1449,28 @@ exports.extractKeyMoments = onCall(
         `"highlights":["highlight1","highlight2"],"overallVibes":"..."}\n\n` +
         `${clean.join("\n")}`,
       );
-      const parsed = safeParseJson(raw) ?? { moments: [], highlights: [] };
+      const parsed = safeParseJson(raw) ?? {moments: [], highlights: []};
       if (conversationId && parsed.moments?.length > 0) {
         await db.collection("conversations").doc(conversationId).set(
-          { keyMoments: { ...parsed, extractedAt: FieldValue.serverTimestamp() } },
-          { merge: true },
+          {keyMoments: {...parsed, extractedAt: FieldValue.serverTimestamp()}},
+          {merge: true},
         );
       }
       return parsed;
     } catch (err) {
       logger.error("[extractKeyMoments]", err);
-      return { moments: [], highlights: [] };
+      return {moments: [], highlights: []};
     }
   },
 );
 
 // ─── 20. getUserInsights (Phân Tích Bản Thô - File 1) ────────────────────────
 exports.getUserInsights = onCall(
-  { secrets: [geminiApiKey], memory: "256MiB", timeoutSeconds: 60 },
+  {secrets: [geminiApiKey], memory: "256MiB", timeoutSeconds: 60},
   async (request) => {
     requireAuth(request.auth);
     const uid = request.auth.uid;
-    const { messages } = request.data;
+    const {messages} = request.data;
     if (!Array.isArray(messages) || messages.length < 5) {
       return {
         communicationStyle: "unknown",
@@ -1488,19 +1486,19 @@ exports.getUserInsights = onCall(
       .map((m) => sanitize(String(m ?? ""), 200))
       .filter((m) =>
         m.length > 5 &&
-        !m.startsWith('{"iv":') &&
+        !m.startsWith("{\"iv\":") &&
         !m.startsWith("eyJ") &&
         !/^[A-Za-z0-9+/=]+=*:[A-Za-z0-9+/=]+=*$/.test(m),
       );
 
     if (validMessages.length < 5) {
-      return { insightSummary: "Không thể phân tích — dữ liệu không hợp lệ." };
+      return {insightSummary: "Không thể phân tích — dữ liệu không hợp lệ."};
     }
 
     const model = createGeminiModel(
       geminiApiKey.value(),
       "Chuyên gia tâm lý hành vi và phân tích giao tiếp.",
-      { maxOutputTokens: 768, temperature: 0.4 },
+      {maxOutputTokens: 768, temperature: 0.4},
     );
 
     try {
@@ -1515,28 +1513,28 @@ exports.getUserInsights = onCall(
       const insights = safeParseJson(raw);
       if (insights) {
         await db.collection("users").doc(uid).set(
-          { aiInsights: { ...insights, updatedAt: FieldValue.serverTimestamp() } },
-          { merge: true },
+          {aiInsights: {...insights, updatedAt: FieldValue.serverTimestamp()}},
+          {merge: true},
         );
       }
-      return insights ?? { insightSummary: "Không thể phân tích lúc này." };
+      return insights ?? {insightSummary: "Không thể phân tích lúc này."};
     } catch (err) {
       logger.error("[getUserInsights]", err);
-      return { insightSummary: "Đã xảy ra lỗi." };
+      return {insightSummary: "Đã xảy ra lỗi."};
     }
   },
 );
 
 // ─── 20b. getUserInsightsV2 (Phân Tích Có Cache/AI Nâng Cao - File 2) ────────
 exports.getUserInsightsV2 = onCall(
-  { secrets: [geminiApiKey], timeoutSeconds: 30, memory: "512MiB" },
+  {secrets: [geminiApiKey], timeoutSeconds: 30, memory: "512MiB"},
   async (request) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Phải đăng nhập.");
-    const { conversationId, messages = [], period = "week7", useAI = false } = request.data;
+    const {conversationId, messages = [], period = "week7", useAI = false} = request.data;
     const cleanMsgs = filterMessages(messages);
     if (cleanMsgs.length === 0) {
-      return { success: false, error: "Không có tin nhắn hợp lệ." };
+      return {success: false, error: "Không có tin nhắn hợp lệ."};
     }
     const msgObjects = cleanMsgs.map((c) => ({
       content: c,
@@ -1544,7 +1542,7 @@ exports.getUserInsightsV2 = onCall(
       idFrom: uid,
     }));
     let stats = computeLocalStats(msgObjects, period);
-    if (!stats) return { success: false, error: "Không đủ dữ liệu." };
+    if (!stats) return {success: false, error: "Không đủ dữ liệu."};
     if (useAI) {
       stats = await enrichWithAI(stats, cleanMsgs, period, geminiApiKey.value());
     }
@@ -1552,38 +1550,38 @@ exports.getUserInsightsV2 = onCall(
       const docRef = db
         .collection("users").doc(uid)
         .collection("insights_cache").doc(`dashboard_${conversationId}`);
-      await docRef.set({ [period]: stats, lastUpdated: Date.now() }, { merge: true });
+      await docRef.set({[period]: stats, lastUpdated: Date.now()}, {merge: true});
     }
-    return { success: true, insights: stats };
-  }
+    return {success: true, insights: stats};
+  },
 );
 
 // ─── 21. generateAgoraToken — REST endpoint ──────────────────────────────────
 exports.generateAgoraToken = onRequest(
-  { secrets: [agoraAppId, agoraCertificate] },
+  {secrets: [agoraAppId, agoraCertificate]},
   (req, res) => {
     cors(req, res, () => {
       if (req.method !== "GET") {
-        return res.status(405).json({ error: "Method Not Allowed" });
+        return res.status(405).json({error: "Method Not Allowed"});
       }
       const channelName = req.query.channelName;
       if (!channelName) {
-        return res.status(400).json({ error: "channelName is required" });
+        return res.status(400).json({error: "channelName is required"});
       }
       const appId = agoraAppId.value();
       const appCert = agoraCertificate.value();
       if (!appId || !appCert) {
         logger.error("[generateAgoraToken] Agora credentials not configured.");
-        return res.status(500).json({ error: "Agora credentials not configured" });
+        return res.status(500).json({error: "Agora credentials not configured"});
       }
       const uid = req.query.uid ? parseInt(req.query.uid, 10) : 0;
       try {
-        const { token, expiresAt } = buildAgoraToken(channelName, uid, appId, appCert);
+        const {token, expiresAt} = buildAgoraToken(channelName, uid, appId, appCert);
         res.set("Cache-Control", "no-store");
-        return res.status(200).json({ token, expiresAt, channelName });
+        return res.status(200).json({token, expiresAt, channelName});
       } catch (err) {
         logger.error("[generateAgoraToken]", err);
-        return res.status(500).json({ error: "Token generation failed" });
+        return res.status(500).json({error: "Token generation failed"});
       }
     });
   },
@@ -1591,7 +1589,7 @@ exports.generateAgoraToken = onRequest(
 
 // ─── 22. healthCheck ──────────────────────────────────────────────────────────
 exports.healthCheck = onRequest(
-  { timeoutSeconds: 10 },
+  {timeoutSeconds: 10},
   (req, res) => {
     cors(req, res, () => {
       return res.status(200).json({
@@ -1608,7 +1606,7 @@ exports.healthCheck = onRequest(
 exports.scheduleMessageDeletion = onDocumentCreated(
   "messages/{conversationId}/{messageId}",
   async (event) => {
-    const { conversationId, messageId } = event.params;
+    const {conversationId, messageId} = event.params;
     const messageData = event.data?.data();
     if (!messageData) return;
     try {
@@ -1618,7 +1616,7 @@ exports.scheduleMessageDeletion = onDocumentCreated(
       if (!convData?.autoDeleteEnabled || !convData?.autoDeleteDuration) return;
       const timestamp = parseInt(messageData.timestamp ?? Date.now().toString());
       const deleteAt = (timestamp + convData.autoDeleteDuration).toString();
-      await event.data.ref.update({ autoDeleteAt: deleteAt });
+      await event.data.ref.update({autoDeleteAt: deleteAt});
       logger.info(`[scheduleMessageDeletion] Scheduled ${messageId} deleteAt=${deleteAt}`);
     } catch (err) {
       logger.error("[scheduleMessageDeletion]", err);
@@ -1630,7 +1628,7 @@ exports.scheduleMessageDeletion = onDocumentCreated(
 exports.sendMessageNotification = onDocumentCreated(
   "messages/{conversationId}/{messageId}",
   async (event) => {
-    const { conversationId } = event.params;
+    const {conversationId} = event.params;
     const msgData = event.data?.data();
     if (!msgData || msgData.idFrom === "AI_BOT") return;
     try {
@@ -1648,7 +1646,7 @@ exports.sendMessageNotification = onDocumentCreated(
       const senderName = senderData?.nickname ?? "Ai đó";
       const senderAvatar = senderData?.photoUrl ?? "";
 
-      const typeLabels = { 1: "[Hình ảnh]", 2: "[Video]", 3: "[Tệp đính kèm]", 4: "[Âm thanh]" };
+      const typeLabels = {1: "[Hình ảnh]", 2: "[Video]", 3: "[Tệp đính kèm]", 4: "[Âm thanh]"};
       const messagePreview = msgData.type === 0 ? "Bạn có tin nhắn mới" : (typeLabels[msgData.type] ?? "[Tệp đính kèm]");
       const encryptedContent = msgData.type === 0 ? (msgData.content ?? "") : (typeLabels[msgData.type] ?? "");
 
@@ -1682,7 +1680,7 @@ exports.updateUserPresence = onDocumentUpdated(
     if (!before || !after) return;
     if (before.isOnline && !after.isOnline) {
       try {
-        await event.data.after.ref.update({ lastSeen: FieldValue.serverTimestamp() });
+        await event.data.after.ref.update({lastSeen: FieldValue.serverTimestamp()});
       } catch (err) {
         logger.error("[updateUserPresence]", err);
       }
@@ -1731,7 +1729,7 @@ exports.onCallUpdated = onDocumentUpdated(
     if (!before || !after) return;
     if (before.status === after.status) return;
 
-    const { callId } = event.params;
+    const {callId} = event.params;
     const notifyUserId = after.status === "connected" ? after.callerId : null;
     if (!notifyUserId) return;
 
@@ -1751,7 +1749,7 @@ exports.onCallUpdated = onDocumentUpdated(
         pushToken,
         title: "Cuộc gọi",
         body,
-        data: { type: "call_status_update", callId, status: after.status },
+        data: {type: "call_status_update", callId, status: after.status},
       });
     } catch (err) {
       logger.error("[onCallUpdated]", err);
@@ -1761,7 +1759,7 @@ exports.onCallUpdated = onDocumentUpdated(
 
 // ─── 28. cleanupExpiredMessages ──────────────────────────────────────────────
 exports.cleanupExpiredMessages = onSchedule(
-  { schedule: "every 5 minutes", timeZone: "Asia/Ho_Chi_Minh" },
+  {schedule: "every 5 minutes", timeZone: "Asia/Ho_Chi_Minh"},
   async () => {
     const now = Date.now().toString();
     try {
@@ -1798,7 +1796,7 @@ exports.cleanupExpiredMessages = onSchedule(
 
 // ─── 29. cleanupTypingStatus ─────────────────────────────────────────────────
 exports.cleanupTypingStatus = onSchedule(
-  { schedule: "every 1 minutes", timeZone: "Asia/Ho_Chi_Minh" },
+  {schedule: "every 1 minutes", timeZone: "Asia/Ho_Chi_Minh"},
   async () => {
     const staleThreshold = Date.now() - 5000;
     try {
@@ -1825,7 +1823,7 @@ exports.cleanupTypingStatus = onSchedule(
 
 // ─── 30. cleanupExpiredStories ───────────────────────────────────────────────
 exports.cleanupExpiredStories = onSchedule(
-  { schedule: "every 1 hours", timeZone: "Asia/Ho_Chi_Minh" },
+  {schedule: "every 1 hours", timeZone: "Asia/Ho_Chi_Minh"},
   async () => {
     const now = Date.now().toString();
     try {
@@ -1850,7 +1848,7 @@ exports.cleanupExpiredStories = onSchedule(
 
 // ─── 31. cleanupStaleCalls ───────────────────────────────────────────────────
 exports.cleanupStaleCalls = onSchedule(
-  { schedule: "every 5 minutes", timeZone: "Asia/Ho_Chi_Minh" },
+  {schedule: "every 5 minutes", timeZone: "Asia/Ho_Chi_Minh"},
   async () => {
     const cutoff = (Date.now() - CALL_STALE_SEC * 1000).toString();
     try {
@@ -1875,7 +1873,7 @@ exports.cleanupStaleCalls = onSchedule(
 
 // ─── 32. cleanupExpiredAiContent ─────────────────────────────────────────────
 exports.cleanupExpiredAiContent = onSchedule(
-  { schedule: "every 24 hours", timeZone: "Asia/Ho_Chi_Minh" },
+  {schedule: "every 24 hours", timeZone: "Asia/Ho_Chi_Minh"},
   async () => {
     logger.info("[cleanupExpiredAiContent] Starting cleanup...");
     const now = new Date();
@@ -1941,7 +1939,7 @@ exports.weeklyAiRecap = onSchedule(
         const chatHistory = msgsSnap.docs
           .map((d) => {
             const content = d.data().content ?? "";
-            if (content.startsWith('{"iv":') || content.startsWith("eyJ")) return null;
+            if (content.startsWith("{\"iv\":") || content.startsWith("eyJ")) return null;
             if (content.trim().length < 5) return null;
             return `${d.data().idFrom}: ${sanitize(content, 200)}`;
           })
@@ -1954,7 +1952,7 @@ exports.weeklyAiRecap = onSchedule(
           const model = createGeminiModel(
             geminiApiKey.value(),
             "Bạn là MC vui nhộn, hài hước, am hiểu văn hóa mạng Việt Nam.",
-            { maxOutputTokens: 512, temperature: 0.85 },
+            {maxOutputTokens: 512, temperature: 0.85},
           );
           const recap = await callGeminiWithRetry(model,
             `Đây là lịch sử chat nhóm tuần qua. Đóng vai MC vui nhộn, viết bản tin "Bóc Phốt Tuần" ` +
@@ -1967,7 +1965,7 @@ exports.weeklyAiRecap = onSchedule(
               const modelJson = createGeminiModel(
                 geminiApiKey.value(),
                 "Phân tích và trả về JSON hợp lệ.",
-                { maxOutputTokens: 256, temperature: 0.2 },
+                {maxOutputTokens: 256, temperature: 0.2},
               );
               const rawJson = await callGeminiWithRetry(modelJson,
                 `Từ bản tin sau, trích xuất JSON:\n` +
@@ -2013,7 +2011,7 @@ exports.weeklyAiRecap = onSchedule(
                 messageCount: msgsSnap.size,
               },
             },
-            { merge: true },
+            {merge: true},
           );
           recapped++;
         } catch (err) {
@@ -2081,7 +2079,7 @@ exports.generateWeeklyRecap = onCall(
       .map((d) => {
         const data = d.data();
         const content = data.content ?? "";
-        if (content.startsWith('{"iv":') || content.startsWith("eyJ")) return null;
+        if (content.startsWith("{\"iv\":") || content.startsWith("eyJ")) return null;
         if (/^[A-Za-z0-9+/=]+=*:[A-Za-z0-9+/=]+=*$/.test(content)) return null;
         if (content.trim().length < 3) return null;
         const sender = data.idFrom ? `[${String(data.idFrom).substring(0, 6)}]` : "[?]";
@@ -2107,14 +2105,14 @@ exports.generateWeeklyRecap = onCall(
       const model = createGeminiModel(
         geminiApiKey.value(),
         styleConfig.systemPrompt,
-        { maxOutputTokens: 700, temperature: 0.85 },
+        {maxOutputTokens: 700, temperature: 0.85},
       );
       const recapText = await callGeminiWithRetry(model, stylePrompt);
 
       const modelJson = createGeminiModel(
         geminiApiKey.value(),
         "Trả về JSON hợp lệ duy nhất, không giải thích thêm.",
-        { maxOutputTokens: 512, temperature: 0.2 },
+        {maxOutputTokens: 512, temperature: 0.2},
         true,
       );
       const rawJson = await callGeminiWithRetry(modelJson,
@@ -2149,7 +2147,7 @@ exports.generateWeeklyRecap = onCall(
 
 // ─── 35. smartReplyEnhanced — Multi-media smart reply với sticker + tone-aware
 exports.smartReplyEnhanced = onCall(
-  { secrets: [geminiApiKey], enforceAppCheck: false },
+  {secrets: [geminiApiKey], enforceAppCheck: false},
   async (request) => {
     requireAuth(request.auth);
     await checkRateLimit(request.auth.uid, "smart_reply_enhanced");
@@ -2164,7 +2162,7 @@ exports.smartReplyEnhanced = onCall(
 
     const clean = sanitizeMessages(messages);
     if (clean.length === 0) {
-      return { suggestions: [], suggestStickers: [], detectedEmotion: "neutral" };
+      return {suggestions: [], suggestStickers: [], detectedEmotion: "neutral"};
     }
 
     // ── Tone map theo closeness 1-5 ──────────────────────────────────────
@@ -2187,26 +2185,26 @@ exports.smartReplyEnhanced = onCall(
 
     // ── Sticker catalog ───────────────────────────────────────────────────
     const STICKER_CATALOG = [
-      { id: "mimi1", emotions: ["greeting", "happy", "hello", "chào", "hì"] },
-      { id: "mimi2", emotions: ["laugh", "funny", "haha", "vui", "cười"] },
-      { id: "mimi3", emotions: ["love", "heart", "cute", "yêu", "thích"] },
-      { id: "mimi4", emotions: ["sad", "cry", "sorry", "buồn", "tiếc"] },
-      { id: "mimi5", emotions: ["angry", "frustrated", "dislike", "tức", "bực"] },
-      { id: "mimi6", emotions: ["surprised", "shocked", "wow", "ngạc nhiên", "ôi"] },
-      { id: "mimi7", emotions: ["agree", "thumbsup", "great", "ok", "tốt", "đồng ý"] },
-      { id: "mimi8", emotions: ["bye", "wave", "farewell", "tạm biệt", "bye bye"] },
-      { id: "mimi9", emotions: ["thinking", "confused", "hmm", "nhỉ", "nhớ"] },
+      {id: "mimi1", emotions: ["greeting", "happy", "hello", "chào", "hì"]},
+      {id: "mimi2", emotions: ["laugh", "funny", "haha", "vui", "cười"]},
+      {id: "mimi3", emotions: ["love", "heart", "cute", "yêu", "thích"]},
+      {id: "mimi4", emotions: ["sad", "cry", "sorry", "buồn", "tiếc"]},
+      {id: "mimi5", emotions: ["angry", "frustrated", "dislike", "tức", "bực"]},
+      {id: "mimi6", emotions: ["surprised", "shocked", "wow", "ngạc nhiên", "ôi"]},
+      {id: "mimi7", emotions: ["agree", "thumbsup", "great", "ok", "tốt", "đồng ý"]},
+      {id: "mimi8", emotions: ["bye", "wave", "farewell", "tạm biệt", "bye bye"]},
+      {id: "mimi9", emotions: ["thinking", "confused", "hmm", "nhỉ", "nhớ"]},
     ];
 
     const model = createGeminiModel(
       geminiApiKey.value(),
       `Bạn là AI gợi ý trả lời chat cho ứng dụng nhắn tin Việt Nam.\nTông giọng: ${toneDesc}.\nMối quan hệ: ${relDesc}.\nNgôn ngữ chính: ${language === "vi" ? "Tiếng Việt" : "English"}.\nLuôn trả về JSON hợp lệ, không markdown, không giải thích thêm.`,
-      { maxOutputTokens: 512, temperature: 0.88 },
+      {maxOutputTokens: 512, temperature: 0.88},
     );
 
     try {
       const lastFive = clean.slice(-5).join("\n");
-      const catalogJson = JSON.stringify(STICKER_CATALOG.map((s) => ({ id: s.id, emotions: s.emotions.slice(0, 3) })));
+      const catalogJson = JSON.stringify(STICKER_CATALOG.map((s) => ({id: s.id, emotions: s.emotions.slice(0, 3)})));
 
       const prompt =
         `Phân tích đoạn chat sau rồi tạo gợi ý trả lời phong phú.\n\n` +
@@ -2233,7 +2231,7 @@ exports.smartReplyEnhanced = onCall(
       const parsed = safeParseJson(raw);
 
       if (!parsed) {
-        return { suggestions: [], suggestStickers: [], detectedEmotion: "neutral" };
+        return {suggestions: [], suggestStickers: [], detectedEmotion: "neutral"};
       }
 
       const suggestions = (Array.isArray(parsed.suggestions) ? parsed.suggestions : [])
@@ -2257,7 +2255,7 @@ exports.smartReplyEnhanced = onCall(
       };
     } catch (err) {
       logger.error("[smartReplyEnhanced]", err);
-      return { suggestions: [], suggestStickers: [], detectedEmotion: "neutral" };
+      return {suggestions: [], suggestStickers: [], detectedEmotion: "neutral"};
     }
   },
 );
@@ -2306,7 +2304,7 @@ exports.dailyConversationDigest = onSchedule(
           pushToken,
           title: "☀️ Tin nhắn chưa đọc",
           body: `Bạn có ${unreadCount} tin nhắn chưa đọc trong ${pendingConvs} cuộc trò chuyện`,
-          data: { type: "daily_digest", unreadCount: String(unreadCount) },
+          data: {type: "daily_digest", unreadCount: String(unreadCount)},
         });
         sent++;
       }
@@ -2327,19 +2325,19 @@ exports.learnUserPersona = onCall(
   async (request) => {
     requireAuth(request.auth);
     const uid = request.auth.uid;
-    const { messages, conversationId } = request.data;
+    const {messages, conversationId} = request.data;
     const cleanMessages = sanitizeMessages(messages ?? [], 100).filter(
-      (m) => !m.startsWith('{"iv":') && !m.startsWith("eyJ") && m.length > 5,
+      (m) => !m.startsWith("{\"iv\":") && !m.startsWith("eyJ") && m.length > 5,
     );
 
     if (cleanMessages.length < 10) {
-      return { success: false, reason: "Cần ít nhất 10 tin nhắn để học phong cách." };
+      return {success: false, reason: "Cần ít nhất 10 tin nhắn để học phong cách."};
     }
 
     const model = createGeminiModel(
       geminiApiKey.value(),
       "Bạn là chuyên gia phân tích ngôn ngữ và phong cách giao tiếp. Trả về JSON hợp lệ.",
-      { maxOutputTokens: 512, temperature: 0.2 },
+      {maxOutputTokens: 512, temperature: 0.2},
     );
 
     try {
@@ -2363,7 +2361,7 @@ exports.learnUserPersona = onCall(
         const clean = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
         persona = JSON.parse(clean);
       } catch {
-        persona = { summary: raw.substring(0, 300) };
+        persona = {summary: raw.substring(0, 300)};
       }
 
       if (conversationId) {
@@ -2377,23 +2375,23 @@ exports.learnUserPersona = onCall(
             personaLearnedAt: Date.now(),
             personaMessageCount: cleanMessages.length,
             updatedAt: FieldValue.serverTimestamp(),
-          }, { merge: true });
+          }, {merge: true});
       }
-      return { success: true, persona, messageCount: cleanMessages.length };
+      return {success: true, persona, messageCount: cleanMessages.length};
     } catch (err) {
       logger.error("[learnUserPersona]", err);
-      return { success: false, reason: "Lỗi AI khi phân tích." };
+      return {success: false, reason: "Lỗi AI khi phân tích."};
     }
   },
 );
 
 // ─── 38. getAutoPilotConfig ──────────────────────────────────────────────────
 exports.getAutoPilotConfig = onCall(
-  { enforceAppCheck: false },
+  {enforceAppCheck: false},
   async (request) => {
     requireAuth(request.auth);
     const uid = request.auth.uid;
-    const { conversationId } = request.data;
+    const {conversationId} = request.data;
     if (!conversationId) {
       throw new HttpsError("invalid-argument", "Thiếu conversationId.");
     }
@@ -2405,9 +2403,9 @@ exports.getAutoPilotConfig = onCall(
         .doc(conversationId)
         .get();
       if (!doc.exists) {
-        return { exists: false, config: null };
+        return {exists: false, config: null};
       }
-      return { exists: true, config: doc.data() };
+      return {exists: true, config: doc.data()};
     } catch (err) {
       logger.error("[getAutoPilotConfig]", err);
       throw new HttpsError("internal", "Không thể đọc cấu hình.");
@@ -2417,11 +2415,11 @@ exports.getAutoPilotConfig = onCall(
 
 // ─── 39. saveAutoPilotConfig ──────────────────────────────────────────────────
 exports.saveAutoPilotConfig = onCall(
-  { enforceAppCheck: false },
+  {enforceAppCheck: false},
   async (request) => {
     requireAuth(request.auth);
     const uid = request.auth.uid;
-    const { conversationId, config } = request.data;
+    const {conversationId, config} = request.data;
     if (!conversationId || !config) {
       throw new HttpsError("invalid-argument", "Thiếu conversationId hoặc config.");
     }
@@ -2444,8 +2442,8 @@ exports.saveAutoPilotConfig = onCall(
         .doc(uid)
         .collection("autopilot_config")
         .doc(conversationId)
-        .set(safeConfig, { merge: true });
-      return { success: true };
+        .set(safeConfig, {merge: true});
+      return {success: true};
     } catch (err) {
       logger.error("[saveAutoPilotConfig]", err);
       throw new HttpsError("internal", "Không thể lưu cấu hình.");
@@ -2481,11 +2479,11 @@ exports.computeUserInsightsCache = onSchedule(
           } catch (e) {
             console.error(`[computeUserInsightsCache] uid=${uid} error:`, e.message);
           }
-        })
+        }),
       );
     }
     console.log(`[computeUserInsightsCache] Done. Processed: ${processed} users.`);
-  }
+  },
 );
 
 async function processUserInsights(uid, cutoff90) {
@@ -2504,7 +2502,7 @@ async function processUserInsights(uid, cutoff90) {
     const convId = d.conversationId || "default";
     if (!convMap[convId]) convMap[convId] = [];
     convMap[convId].push({
-      content: d.content || '',
+      content: d.content || "",
       timestamp: d.timestamp || Date.now(),
       idFrom: d.idFrom || uid,
     });
@@ -2524,7 +2522,7 @@ async function processUserInsights(uid, cutoff90) {
             stats,
             myMsgs.map((m) => m.content),
             period,
-            geminiApiKey.value()
+            geminiApiKey.value(),
           );
         } else {
           snapshots[period] = stats;
@@ -2536,40 +2534,40 @@ async function processUserInsights(uid, cutoff90) {
       await db
         .collection("users").doc(uid)
         .collection("insights_cache").doc(`dashboard_${convId}`)
-        .set({ ...snapshots, lastUpdated: Date.now() }, { merge: true });
+        .set({...snapshots, lastUpdated: Date.now()}, {merge: true});
     }
   }
 }
 
 // ─── getInsightsDashboard ────────────────────────────────────────────────────
 exports.getInsightsDashboard = onCall(
-  { region: "asia-southeast1", timeoutSeconds: 10, memory: "128MiB" },
+  {region: "asia-southeast1", timeoutSeconds: 10, memory: "128MiB"},
   async (request) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Phải đăng nhập.");
-    const { conversationId, userId } = request.data;
+    const {conversationId, userId} = request.data;
     const targetUid = userId || uid;
     try {
       const doc = await db
         .collection("users").doc(targetUid)
         .collection("insights_cache").doc(`dashboard_${conversationId}`)
         .get();
-      if (!doc.exists) return { success: true, dashboard: null };
-      return { success: true, dashboard: doc.data() };
+      if (!doc.exists) return {success: true, dashboard: null};
+      return {success: true, dashboard: doc.data()};
     } catch (err) {
       console.error("[getInsightsDashboard] error:", err.message);
       throw new HttpsError("internal", err.message);
     }
-  }
+  },
 );
 
 // ─── triggerInsightsRefresh ──────────────────────────────────────────────────
 exports.triggerInsightsRefresh = onCall(
-  { region: "asia-southeast1", timeoutSeconds: 60, memory: "512MiB", secrets: [geminiApiKey] },
+  {region: "asia-southeast1", timeoutSeconds: 60, memory: "512MiB", secrets: [geminiApiKey]},
   async (request) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Phải đăng nhập.");
-    const { conversationId, userId } = request.data;
+    const {conversationId, userId} = request.data;
     const targetUid = userId || uid;
     const convId = conversationId;
 
@@ -2610,7 +2608,7 @@ exports.triggerInsightsRefresh = onCall(
       }));
 
     if (myMsgs.length < 5) {
-      return { success: false, message: "Chưa đủ dữ liệu để phân tích." };
+      return {success: false, message: "Chưa đủ dữ liệu để phân tích."};
     }
 
     const periods = ["week7", "days30", "days90"];
@@ -2618,18 +2616,18 @@ exports.triggerInsightsRefresh = onCall(
     for (const period of periods) {
       const stats = computeLocalStats(myMsgs, period);
       if (stats) {
-        snapshots[period] = (period === "week7" && myMsgs.length >= 10)
-          ? await enrichWithAI(stats, myMsgs.map((m) => m.content), period, geminiApiKey.value())
-          : stats;
+        snapshots[period] = (period === "week7" && myMsgs.length >= 10) ?
+          await enrichWithAI(stats, myMsgs.map((m) => m.content), period, geminiApiKey.value()) :
+          stats;
       }
     }
 
     await db
       .collection("users").doc(targetUid)
       .collection("insights_cache").doc(`dashboard_${convId}`)
-      .set({ ...snapshots, lastUpdated: Date.now() }, { merge: true });
+      .set({...snapshots, lastUpdated: Date.now()}, {merge: true});
 
-    await rateLimitDoc.set({ lastRefresh: Date.now() });
-    return { success: true, periodsUpdated: Object.keys(snapshots) };
-  }
+    await rateLimitDoc.set({lastRefresh: Date.now()});
+    return {success: true, periodsUpdated: Object.keys(snapshots)};
+  },
 );

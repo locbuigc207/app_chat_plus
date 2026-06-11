@@ -162,15 +162,23 @@ class BubbleView(
                         .error(R.drawable.bubble_background)
                 )
                 .listener(object : com.bumptech.glide.request.RequestListener<android.graphics.drawable.Drawable> {
-                    override fun onLoadFailed(e: com.bumptech.glide.load.engine.GlideException?,
-                                              model: Any?, target: com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable>?,
-                                              isFirstResource: Boolean): Boolean {
+                    override fun onLoadFailed(
+                        e: com.bumptech.glide.load.engine.GlideException?,
+                        model: Any?,
+                        target: com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable>, // Bỏ '?' ở đây
+                        isFirstResource: Boolean
+                    ): Boolean {
                         if (!_isDetached) showInitials()
                         return false
                     }
-                    override fun onResourceReady(resource: android.graphics.drawable.Drawable?,
-                                                 model: Any?, target: com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable>?,
-                                                 dataSource: com.bumptech.glide.load.DataSource?, isFirstResource: Boolean): Boolean {
+
+                    override fun onResourceReady(
+                        resource: android.graphics.drawable.Drawable, // Bỏ '?' ở đây
+                        model: Any,                                   // Bỏ '?' ở đây
+                        target: com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable>?,
+                        dataSource: com.bumptech.glide.load.DataSource, // Bỏ '?' ở đây
+                        isFirstResource: Boolean
+                    ): Boolean {
                         if (!_isDetached) {
                             avatar.visibility = View.VISIBLE
                             initials.visibility = View.GONE

@@ -7,11 +7,8 @@ version: 1.0.0+1
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
-  flutter: ">=3.19.0"
+  flutter: ">=3.19.0 <4.0.0"
 
-# ════════════════════════════════════════════════════════════════════════════
-# DEPENDENCIES
-# ════════════════════════════════════════════════════════════════════════════
 dependencies:
   flutter:
     sdk: flutter
@@ -32,7 +29,7 @@ dependencies:
 
   # ── Authentication ────────────────────────────────────────────────────────
   google_sign_in: ^6.2.1
-  google_sign_in_web: ^0.12.4+2
+  # google_sign_in_web: ^0.12.4+2  # XÓA — chỉ cần cho web
   local_auth: ^3.0.0
 
   # ── State management ──────────────────────────────────────────────────────
@@ -59,12 +56,12 @@ dependencies:
   image: ^4.2.0
 
   # ── Audio & Voice ─────────────────────────────────────────────────────────
-  flutter_sound: ^9.16.0
+  flutter_sound: ^9.16.0   # XÓA — conflict audio session với just_audio
+  audioplayers: ^6.0.0     # XÓA — redundant với just_audio
   audio_session: ^0.1.21
   just_audio: ^0.10.5
   audio_waveforms: ^2.0.2
-  audioplayers: ^6.0.0
-  record: ^5.0.4
+  record: ^6.2.1             # NÂNG LÊN từ ^5.0.4 — fix lỗi build
   noise_meter: ^5.1.0
   speech_to_text: ^7.3.0
 
@@ -132,9 +129,6 @@ dependencies:
   package_info_plus: ^9.0.1
   emoji_regex: ^0.0.5
 
-# ════════════════════════════════════════════════════════════════════════════
-# DEV DEPENDENCIES
-# ════════════════════════════════════════════════════════════════════════════
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -144,30 +138,20 @@ dev_dependencies:
   flutter_gen_runner: ^5.4.0
   mockito: ^5.4.4
 
-# ════════════════════════════════════════════════════════════════════════════
-# DEPENDENCY OVERRIDES
-# ════════════════════════════════════════════════════════════════════════════
 dependency_overrides:
   permission_handler: ^12.0.0
   firebase_core: ^4.1.0
   firebase_auth: ^6.0.0
+  record_linux: ^1.1.0   # FIX lỗi build — record_linux 0.7.2 incompatible
 
-# ════════════════════════════════════════════════════════════════════════════
-# FLUTTER CONFIG
-# ════════════════════════════════════════════════════════════════════════════
 flutter:
   uses-material-design: true
 
-  # ── Assets ────────────────────────────────────────────────────────────────
   assets:
     - images/
     - .env
-    - assets/effects/     # Khai báo thư mục chứa filter AR
-    - assets/sounds/      # Notification & media sounds
-    - assets/animations/  # Lottie animations
-    - assets/images/      # App images & illustrations
+    - assets/effects/
 
-  # ── Fonts ─────────────────────────────────────────────────────────────────
   fonts:
     - family: Inter
       fonts:

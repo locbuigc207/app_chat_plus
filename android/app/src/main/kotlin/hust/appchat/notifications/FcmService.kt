@@ -132,7 +132,7 @@ class FcmService : FirebaseMessagingService() {
 
                 // 3. Show bubble notification
                 BubbleNotificationService.showBubbleNotification(
-                    ctx       = applicationContext,
+                    context       = applicationContext,
                     userId    = senderId,
                     userName  = senderName,
                     message   = preview,
@@ -211,7 +211,7 @@ class FcmService : FirebaseMessagingService() {
                 .setAutoCancel(true)
                 .build()
 
-            nm.notify(NotificationHelper.notifId(userId), notif)
+            nm.notify(userId.hashCode(), notif)
             Log.d(TAG, "✅ Fallback notification shown for $userName")
         } catch (e: Exception) {
             Log.e(TAG, "❌ showFallbackNotification: $e")
@@ -222,6 +222,7 @@ class FcmService : FirebaseMessagingService() {
     // HELPERS
     // ═════════════════════════════════════════════════════════════════════
 
+    @android.annotation.SuppressLint("NewApi") // Thêm dòng này để fix lỗi API 30
     private fun resolveType(typeStr: String): BubbleNotificationManager.MessageType =
         when (typeStr.lowercase()) {
             TYPE_IMAGE    -> BubbleNotificationManager.MessageType.IMAGE
