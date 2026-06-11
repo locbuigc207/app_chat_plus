@@ -1,10 +1,19 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-enum GroupCallStatus { calling, ongoing, ended, missed }
+enum GroupCallStatus { waiting, calling, ongoing, ended, missed }
 
 enum GroupCallType { video, voice }
 
-enum CallReactionType { thumbsUp, heart, clap, laugh, surprised, fire }
+enum CallReactionType {
+  thumbsUp,
+  heart,
+  clap,
+  laugh,
+  surprised,
+  fire,
+  cool,
+  party
+}
 
 extension CallReactionEmoji on CallReactionType {
   String get emoji {
@@ -21,6 +30,10 @@ extension CallReactionEmoji on CallReactionType {
         return '😮';
       case CallReactionType.fire:
         return '🔥';
+      case CallReactionType.cool:
+        return '😎';
+      case CallReactionType.party:
+        return '🎉';
     }
   }
 
@@ -30,6 +43,31 @@ extension CallReactionEmoji on CallReactionType {
       (e) => e.name == name,
       orElse: () => CallReactionType.thumbsUp,
     );
+  }
+}
+
+// ─── Layout modes for video grid ────────────────────────────────────────────
+enum VideoLayoutMode { grid, spotlight, sidebar, pip }
+
+// ─── Background blur/effect options ─────────────────────────────────────────
+enum VirtualBackground { none, blur, blurStrong, office, nature, space }
+
+extension VirtualBackgroundLabel on VirtualBackground {
+  String get label {
+    switch (this) {
+      case VirtualBackground.none:
+        return 'Không';
+      case VirtualBackground.blur:
+        return 'Mờ nhẹ';
+      case VirtualBackground.blurStrong:
+        return 'Mờ mạnh';
+      case VirtualBackground.office:
+        return 'Văn phòng';
+      case VirtualBackground.nature:
+        return 'Thiên nhiên';
+      case VirtualBackground.space:
+        return 'Vũ trụ';
+    }
   }
 }
 
@@ -56,9 +94,10 @@ class CallReaction {
   factory CallReaction.fromJson(Map<String, dynamic> j) => CallReaction(
         userId: j['userId'] ?? '',
         userName: j['userName'] ?? '',
-        type: CallReactionEmoji.fromName(j['type']) ?? CallReactionType.thumbsUp,
-        sentAt:
-            DateTime.fromMillisecondsSinceEpoch(int.tryParse(j['sentAt']?.toString() ?? '0') ?? 0),
+        type:
+            CallReactionEmoji.fromName(j['type']) ?? CallReactionType.thumbsUp,
+        sentAt: DateTime.fromMillisecondsSinceEpoch(
+            int.tryParse(j['sentAt']?.toString() ?? '0') ?? 0),
       );
 }
 
@@ -72,8 +111,11 @@ class GroupCallParticipant {
   final bool hasRaisedHand;
   final bool isAdmin;
   final bool isSpeaking;
+  final bool isCoHost;
   final DateTime joinedAt;
-  final int networkQuality;
+  final int networkQuality; // 0-4
+  final int audioLevel; // 0-100
+  final String? pinnedBy; // userId who pinned this participant
 
   const GroupCallParticipant({
     required this.userId,
@@ -85,8 +127,11 @@ class GroupCallParticipant {
     this.hasRaisedHand = false,
     required this.isAdmin,
     this.isSpeaking = false,
+    this.isCoHost = false,
     required this.joinedAt,
     this.networkQuality = 0,
+    this.audioLevel = 0,
+    this.pinnedBy,
   });
 
   Map<String, dynamic> toJson() => {
@@ -98,11 +143,15 @@ class GroupCallParticipant {
         'isScreenSharing': isScreenSharing,
         'hasRaisedHand': hasRaisedHand,
         'isAdmin': isAdmin,
+        'isCoHost': isCoHost,
         'joinedAt': joinedAt.millisecondsSinceEpoch.toString(),
         'networkQuality': networkQuality,
+        'audioLevel': audioLevel,
+        if (pinnedBy != null) 'pinnedBy': pinnedBy,
       };
 
-  factory GroupCallParticipant.fromJson(Map<String, dynamic> j) => GroupCallParticipant(
+  factory GroupCallParticipant.fromJson(Map<String, dynamic> j) =>
+      GroupCallParticipant(
         userId: j['userId'] ?? '',
         userName: j['userName'] ?? '',
         userAvatar: j['userAvatar'] ?? '',
@@ -111,9 +160,12 @@ class GroupCallParticipant {
         isScreenSharing: j['isScreenSharing'] ?? false,
         hasRaisedHand: j['hasRaisedHand'] ?? false,
         isAdmin: j['isAdmin'] ?? false,
+        isCoHost: j['isCoHost'] ?? false,
         joinedAt: DateTime.fromMillisecondsSinceEpoch(
             int.tryParse(j['joinedAt']?.toString() ?? '0') ?? 0),
         networkQuality: (j['networkQuality'] as int?) ?? 0,
+        audioLevel: (j['audioLevel'] as int?) ?? 0,
+        pinnedBy: j['pinnedBy'] as String?,
       );
 
   GroupCallParticipant copyWith({
@@ -123,7 +175,11 @@ class GroupCallParticipant {
     bool? hasRaisedHand,
     bool? isAdmin,
     bool? isSpeaking,
+    bool? isCoHost,
     int? networkQuality,
+    int? audioLevel,
+    String? pinnedBy,
+    bool clearPin = false,
   }) =>
       GroupCallParticipant(
         userId: userId,
@@ -135,14 +191,19 @@ class GroupCallParticipant {
         hasRaisedHand: hasRaisedHand ?? this.hasRaisedHand,
         isAdmin: isAdmin ?? this.isAdmin,
         isSpeaking: isSpeaking ?? this.isSpeaking,
+        isCoHost: isCoHost ?? this.isCoHost,
         joinedAt: joinedAt,
         networkQuality: networkQuality ?? this.networkQuality,
+        audioLevel: audioLevel ?? this.audioLevel,
+        pinnedBy: clearPin ? null : (pinnedBy ?? this.pinnedBy),
       );
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is GroupCallParticipant && runtimeType == other.runtimeType && userId == other.userId;
+      other is GroupCallParticipant &&
+          runtimeType == other.runtimeType &&
+          userId == other.userId;
 
   @override
   int get hashCode => userId.hashCode;
@@ -161,12 +222,21 @@ class GroupCallModel {
   final List<GroupCallParticipant> participants;
   final List<String> invitedUserIds;
   final List<String> declinedUserIds;
+  final List<String> kickedUserIds;
   final DateTime createdAt;
   final DateTime? endedAt;
   final int? durationSeconds;
   final String? screenShareUserId;
   final List<CallReaction> recentReactions;
   final List<String> raisedHandUserIds;
+  final VideoLayoutMode layoutMode;
+  final String? pinnedUserId;
+  final String? recordingUrl;
+  final bool isRecording;
+  final int maxParticipants;
+  final String? meetingPassword;
+  final bool waitingRoomEnabled;
+  final List<String> waitingRoomUserIds;
 
   const GroupCallModel({
     required this.callId,
@@ -181,12 +251,21 @@ class GroupCallModel {
     required this.participants,
     required this.invitedUserIds,
     this.declinedUserIds = const [],
+    this.kickedUserIds = const [],
     required this.createdAt,
     this.endedAt,
     this.durationSeconds,
     this.screenShareUserId,
     this.recentReactions = const [],
     this.raisedHandUserIds = const [],
+    this.layoutMode = VideoLayoutMode.grid,
+    this.pinnedUserId,
+    this.recordingUrl,
+    this.isRecording = false,
+    this.maxParticipants = 16,
+    this.meetingPassword,
+    this.waitingRoomEnabled = false,
+    this.waitingRoomUserIds = const [],
   });
 
   bool get isVideo => callType == GroupCallType.video;
@@ -195,6 +274,7 @@ class GroupCallModel {
   bool get isCalling => status == GroupCallStatus.calling;
   bool get isEnded => status == GroupCallStatus.ended;
   bool get hasScreenShare => screenShareUserId != null;
+  bool get hasPinnedUser => pinnedUserId != null;
   int get participantCount => participants.length;
 
   GroupCallParticipant? getParticipant(String userId) {
@@ -205,9 +285,12 @@ class GroupCallModel {
     }
   }
 
-  bool isParticipant(String userId) => participants.any((p) => p.userId == userId);
+  bool isParticipant(String userId) =>
+      participants.any((p) => p.userId == userId);
 
   bool hasRaisedHand(String userId) => raisedHandUserIds.contains(userId);
+
+  bool isKicked(String userId) => kickedUserIds.contains(userId);
 
   String get formattedDuration {
     if (durationSeconds == null) return '';
@@ -231,12 +314,21 @@ class GroupCallModel {
         'participants': participants.map((p) => p.toJson()).toList(),
         'invitedUserIds': invitedUserIds,
         'declinedUserIds': declinedUserIds,
+        'kickedUserIds': kickedUserIds,
         'createdAt': createdAt.millisecondsSinceEpoch.toString(),
         'endedAt': endedAt?.millisecondsSinceEpoch.toString(),
         'durationSeconds': durationSeconds,
         'screenShareUserId': screenShareUserId,
         'recentReactions': recentReactions.map((r) => r.toJson()).toList(),
         'raisedHandUserIds': raisedHandUserIds,
+        'layoutMode': layoutMode.name,
+        'pinnedUserId': pinnedUserId,
+        'recordingUrl': recordingUrl,
+        'isRecording': isRecording,
+        'maxParticipants': maxParticipants,
+        'meetingPassword': meetingPassword,
+        'waitingRoomEnabled': waitingRoomEnabled,
+        'waitingRoomUserIds': waitingRoomUserIds,
       };
 
   factory GroupCallModel.fromDocument(DocumentSnapshot doc) {
@@ -255,7 +347,9 @@ class GroupCallModel {
       groupAvatarUrl: data['groupAvatarUrl'] ?? '',
       initiatorId: data['initiatorId'] ?? '',
       initiatorName: data['initiatorName'] ?? '',
-      callType: data['callType'] == 'voice' ? GroupCallType.voice : GroupCallType.video,
+      callType: data['callType'] == 'voice'
+          ? GroupCallType.voice
+          : GroupCallType.video,
       status: _parseStatus(data['status']),
       channelName: data['channelName'] ?? '',
       participants: participantsRaw
@@ -263,21 +357,34 @@ class GroupCallModel {
           .toList(),
       invitedUserIds: List<String>.from(data['invitedUserIds'] ?? []),
       declinedUserIds: List<String>.from(data['declinedUserIds'] ?? []),
+      kickedUserIds: List<String>.from(data['kickedUserIds'] ?? []),
       createdAt: DateTime.fromMillisecondsSinceEpoch(
           int.tryParse(data['createdAt']?.toString() ?? '0') ?? 0),
       endedAt: data['endedAt'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(int.tryParse(data['endedAt'].toString()) ?? 0)
+          ? DateTime.fromMillisecondsSinceEpoch(
+              int.tryParse(data['endedAt'].toString()) ?? 0)
           : null,
       durationSeconds: data['durationSeconds'] as int?,
       screenShareUserId: data['screenShareUserId'] as String?,
-      recentReactions:
-          reactionsRaw.map((r) => CallReaction.fromJson(r as Map<String, dynamic>)).toList(),
+      recentReactions: reactionsRaw
+          .map((r) => CallReaction.fromJson(r as Map<String, dynamic>))
+          .toList(),
       raisedHandUserIds: List<String>.from(data['raisedHandUserIds'] ?? []),
+      layoutMode: _parseLayout(data['layoutMode']),
+      pinnedUserId: data['pinnedUserId'] as String?,
+      recordingUrl: data['recordingUrl'] as String?,
+      isRecording: data['isRecording'] as bool? ?? false,
+      maxParticipants: (data['maxParticipants'] as int?) ?? 16,
+      meetingPassword: data['meetingPassword'] as String?,
+      waitingRoomEnabled: data['waitingRoomEnabled'] as bool? ?? false,
+      waitingRoomUserIds: List<String>.from(data['waitingRoomUserIds'] ?? []),
     );
   }
 
   static GroupCallStatus _parseStatus(String? s) {
     switch (s) {
+      case 'waiting':
+        return GroupCallStatus.waiting;
       case 'ongoing':
         return GroupCallStatus.ongoing;
       case 'ended':
@@ -286,6 +393,19 @@ class GroupCallModel {
         return GroupCallStatus.missed;
       default:
         return GroupCallStatus.calling;
+    }
+  }
+
+  static VideoLayoutMode _parseLayout(String? s) {
+    switch (s) {
+      case 'spotlight':
+        return VideoLayoutMode.spotlight;
+      case 'sidebar':
+        return VideoLayoutMode.sidebar;
+      case 'pip':
+        return VideoLayoutMode.pip;
+      default:
+        return VideoLayoutMode.grid;
     }
   }
 
@@ -299,6 +419,16 @@ class GroupCallModel {
     List<CallReaction>? recentReactions,
     List<String>? raisedHandUserIds,
     List<String>? declinedUserIds,
+    List<String>? kickedUserIds,
+    VideoLayoutMode? layoutMode,
+    String? pinnedUserId,
+    bool clearPin = false,
+    String? recordingUrl,
+    bool? isRecording,
+    int? maxParticipants,
+    String? meetingPassword,
+    bool? waitingRoomEnabled,
+    List<String>? waitingRoomUserIds,
   }) =>
       GroupCallModel(
         callId: callId,
@@ -313,11 +443,22 @@ class GroupCallModel {
         participants: participants ?? this.participants,
         invitedUserIds: invitedUserIds,
         declinedUserIds: declinedUserIds ?? this.declinedUserIds,
+        kickedUserIds: kickedUserIds ?? this.kickedUserIds,
         createdAt: createdAt,
         endedAt: endedAt ?? this.endedAt,
         durationSeconds: durationSeconds ?? this.durationSeconds,
-        screenShareUserId: clearScreenShare ? null : (screenShareUserId ?? this.screenShareUserId),
+        screenShareUserId: clearScreenShare
+            ? null
+            : (screenShareUserId ?? this.screenShareUserId),
         recentReactions: recentReactions ?? this.recentReactions,
         raisedHandUserIds: raisedHandUserIds ?? this.raisedHandUserIds,
+        layoutMode: layoutMode ?? this.layoutMode,
+        pinnedUserId: clearPin ? null : (pinnedUserId ?? this.pinnedUserId),
+        recordingUrl: recordingUrl ?? this.recordingUrl,
+        isRecording: isRecording ?? this.isRecording,
+        maxParticipants: maxParticipants ?? this.maxParticipants,
+        meetingPassword: meetingPassword ?? this.meetingPassword,
+        waitingRoomEnabled: waitingRoomEnabled ?? this.waitingRoomEnabled,
+        waitingRoomUserIds: waitingRoomUserIds ?? this.waitingRoomUserIds,
       );
 }

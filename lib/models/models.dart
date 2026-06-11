@@ -6,6 +6,7 @@ export 'deepfake_models.dart';
 export 'friendship.dart';
 export 'game_match.dart';
 export 'group.dart';
+export 'group_call_message_model.dart';
 export 'group_call_model.dart';
 export 'insights_models.dart';
 export 'menu_setting.dart';

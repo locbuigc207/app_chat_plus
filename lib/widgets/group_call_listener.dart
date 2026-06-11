@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,10 +8,16 @@ import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:provider/provider.dart';
 
 import '../models/group_call_model.dart';
+import '../pages/group_call_page.dart';
 import '../pages/incoming_group_call_page.dart';
 import '../providers/providers.dart';
 import '../services/group_call_service.dart';
 
+// ══════════════════════════════════════════════════════════════════════════════
+// GroupCallListener
+// Sits at the root widget tree. Watches Firestore for incoming group calls
+// and presents the IncomingGroupCallPage as a full-screen overlay.
+// ══════════════════════════════════════════════════════════════════════════════
 class GroupCallListener extends StatefulWidget {
   final Widget child;
 
@@ -20,7 +27,8 @@ class GroupCallListener extends StatefulWidget {
   State<GroupCallListener> createState() => _GroupCallListenerState();
 }
 
-class _GroupCallListenerState extends State<GroupCallListener> with WidgetsBindingObserver {
+class _GroupCallListenerState extends State<GroupCallListener>
+    with WidgetsBindingObserver {
   final _service = GroupCallService.instance;
 
   StreamSubscription<User?>? _authSub;
@@ -29,7 +37,9 @@ class _GroupCallListenerState extends State<GroupCallListener> with WidgetsBindi
   String? _displayedCallId;
   bool _isShowingIncoming = false;
 
+  // Deduplicate rapid Firestore updates
   final Map<String, DateTime> _seenCallIds = {};
+  static const _dedupeSeconds = 5;
 
   @override
   void initState() {
@@ -46,6 +56,7 @@ class _GroupCallListenerState extends State<GroupCallListener> with WidgetsBindi
     super.dispose();
   }
 
+  // ── Auth listener ──────────────────────────────────────────────────────────
   void _startAuthListener() {
     _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
       _callSub?.cancel();
@@ -53,56 +64,64 @@ class _GroupCallListenerState extends State<GroupCallListener> with WidgetsBindi
       _displayedCallId = null;
       _isShowingIncoming = false;
 
-      if (user != null) {
-        _subscribeToIncomingCalls(user.uid);
-      }
+      if (user != null) _subscribeToIncomingCalls(user.uid);
     });
   }
 
   void _subscribeToIncomingCalls(String uid) {
-    _callSub = _service.incomingGroupCallStream(uid).listen((call) {
-      if (call == null) return;
-      _handleIncomingCall(call, uid);
-    }, onError: (e) {
-      debugPrint('⚠️ GroupCallListener stream error: $e');
-    });
+    _callSub = _service.incomingGroupCallStream(uid).listen(
+          (call) {
+        if (call == null) return;
+        _handleIncomingCall(call, uid);
+      },
+      onError: (e) => debugPrint('⚠️ GroupCallListener stream error: $e'),
+    );
   }
 
+  // ── Incoming call handler ──────────────────────────────────────────────────
   void _handleIncomingCall(GroupCallModel call, String uid) {
     if (!mounted) return;
 
+    // Already displaying this call
     if (_displayedCallId == call.callId) return;
 
+    // Dedup rapid updates
     final lastSeen = _seenCallIds[call.callId];
-    if (lastSeen != null && DateTime.now().difference(lastSeen).inSeconds < 5) {
-      return;
-    }
+    if (lastSeen != null &&
+        DateTime.now().difference(lastSeen).inSeconds < _dedupeSeconds) return;
     _seenCallIds[call.callId] = DateTime.now();
 
-    if (call.status == GroupCallStatus.ended) return;
+    // Skip ended calls
+    if (call.isEnded || call.status == GroupCallStatus.missed) return;
+
+    // Skip if already participant
     if (call.participants.any((p) => p.userId == uid)) return;
 
-    if (_isShowingIncoming) {
-      _dismissCurrentIncoming();
-    }
+    // Skip if kicked
+    if (call.isKicked(uid)) return;
+
+    // Dismiss current if any
+    if (_isShowingIncoming) _dismissCurrentIncoming();
 
     _displayedCallId = call.callId;
     _isShowingIncoming = true;
-
     _triggerHapticAlert();
     _showIncomingScreen(call, uid);
   }
 
   void _triggerHapticAlert() {
-    HapticFeedback.vibrate();
-    Future.delayed(const Duration(milliseconds: 350), () => HapticFeedback.vibrate());
-    Future.delayed(const Duration(milliseconds: 700), () => HapticFeedback.vibrate());
+    HapticFeedback.heavyImpact();
+    Future.delayed(const Duration(milliseconds: 400), () {
+      if (mounted) HapticFeedback.mediumImpact();
+    });
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (mounted) HapticFeedback.lightImpact();
+    });
   }
 
   void _dismissCurrentIncoming() {
-    final nav = Navigator.of(context, rootNavigator: true);
     try {
-      nav.pop();
+      Navigator.of(context, rootNavigator: true).pop();
     } catch (_) {}
     _isShowingIncoming = false;
     _displayedCallId = null;
@@ -113,25 +132,19 @@ class _GroupCallListenerState extends State<GroupCallListener> with WidgetsBindi
     final userName = auth.currentUserName ?? '';
     final userAvatar = auth.currentUserAvatar ?? '';
 
-    final nav = Navigator.of(context, rootNavigator: true);
-
-    nav
-        .push<void>(
-      _IncomingCallRoute(
-        builder: (_) => IncomingGroupCallPage(
-          call: call,
-          currentUserId: uid,
-          currentUserName: userName,
-          currentUserAvatar: userAvatar,
-        ),
+    Navigator.of(context, rootNavigator: true)
+        .push<void>(_IncomingCallRoute(
+      builder: (_) => IncomingGroupCallPage(
+        call: call,
+        currentUserId: uid,
+        currentUserName: userName,
+        currentUserAvatar: userAvatar,
       ),
-    )
+    ))
         .then((_) {
       if (mounted) {
         _isShowingIncoming = false;
-        if (_displayedCallId == call.callId) {
-          _displayedCallId = null;
-        }
+        if (_displayedCallId == call.callId) _displayedCallId = null;
       }
     });
   }
@@ -140,37 +153,41 @@ class _GroupCallListenerState extends State<GroupCallListener> with WidgetsBindi
   Widget build(BuildContext context) => widget.child;
 }
 
+// ── Custom page route for incoming call ───────────────────────────────────────
 class _IncomingCallRoute<T> extends PageRouteBuilder<T> {
   final WidgetBuilder builder;
 
   _IncomingCallRoute({required this.builder})
       : super(
-          opaque: false,
-          barrierDismissible: false,
-          barrierColor: Colors.black54,
-          transitionDuration: const Duration(milliseconds: 500),
-          reverseTransitionDuration: const Duration(milliseconds: 300),
-          pageBuilder: (ctx, anim, secondaryAnim) => builder(ctx),
-          transitionsBuilder: (ctx, anim, secondaryAnim, child) {
-            final slide = Tween<Offset>(
-              begin: const Offset(0, 1),
-              end: Offset.zero,
-            ).animate(
-              CurvedAnimation(parent: anim, curve: Curves.easeOutCubic),
-            );
-            final fade = CurvedAnimation(parent: anim, curve: const Interval(0, 0.4));
-            return SlideTransition(
-              position: slide,
-              child: FadeTransition(opacity: fade, child: child),
-            );
-          },
-        );
+    opaque: true,
+    barrierDismissible: false,
+    transitionDuration: const Duration(milliseconds: 550),
+    reverseTransitionDuration: const Duration(milliseconds: 320),
+    pageBuilder: (ctx, anim, secondaryAnim) => builder(ctx),
+    transitionsBuilder: (ctx, anim, secondaryAnim, child) {
+      final slide = Tween<Offset>(
+        begin: const Offset(0, 1),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic));
+      final fade =
+      CurvedAnimation(parent: anim, curve: const Interval(0, 0.35));
+      return SlideTransition(
+        position: slide,
+        child: FadeTransition(opacity: fade, child: child),
+      );
+    },
+  );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// CallNotificationOverlay
+// Compact heads-up banner (shown when user is in another screen).
+// ══════════════════════════════════════════════════════════════════════════════
 class CallNotificationOverlay extends StatefulWidget {
   final GroupCallModel call;
   final String currentUserId;
   final String currentUserName;
+  final String currentUserAvatar;
   final VoidCallback onAccept;
   final VoidCallback onDecline;
 
@@ -179,12 +196,14 @@ class CallNotificationOverlay extends StatefulWidget {
     required this.call,
     required this.currentUserId,
     required this.currentUserName,
+    required this.currentUserAvatar,
     required this.onAccept,
     required this.onDecline,
   });
 
   @override
-  State<CallNotificationOverlay> createState() => _CallNotificationOverlayState();
+  State<CallNotificationOverlay> createState() =>
+      _CallNotificationOverlayState();
 }
 
 class _CallNotificationOverlayState extends State<CallNotificationOverlay>
@@ -192,19 +211,20 @@ class _CallNotificationOverlayState extends State<CallNotificationOverlay>
   late AnimationController _ctrl;
   late Animation<Offset> _slide;
   late Animation<double> _fade;
+  late Animation<double> _blur;
 
   @override
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    )..forward();
-    _slide = Tween<Offset>(
-      begin: const Offset(0, -1.2),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
-    _fade = CurvedAnimation(parent: _ctrl, curve: const Interval(0, 0.5));
+        vsync: this, duration: const Duration(milliseconds: 500))
+      ..forward();
+    _slide = Tween<Offset>(begin: const Offset(0, -1.3), end: Offset.zero)
+        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
+    _fade =
+        CurvedAnimation(parent: _ctrl, curve: const Interval(0, 0.4));
+    _blur = Tween<double>(begin: 0, end: 20)
+        .animate(CurvedAnimation(parent: _ctrl, curve: const Interval(0, 0.5)));
   }
 
   @override
@@ -216,6 +236,8 @@ class _CallNotificationOverlayState extends State<CallNotificationOverlay>
   @override
   Widget build(BuildContext context) {
     final isVideo = widget.call.isVideo;
+    final accentColor =
+    isVideo ? const Color(0xFF3B82F6) : const Color(0xFF22C55E);
 
     return SlideTransition(
       position: _slide,
@@ -223,79 +245,107 @@ class _CallNotificationOverlayState extends State<CallNotificationOverlay>
         opacity: _fade,
         child: Material(
           color: Colors.transparent,
-          child: Container(
-            margin: EdgeInsets.only(
-              top: MediaQuery.of(context).padding.top + 8,
+          child: Padding(
+            padding: EdgeInsets.only(
+              top: MediaQuery.of(context).padding.top + 10,
               left: 12,
               right: 12,
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0f172a),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.5),
-                  blurRadius: 24,
-                  offset: const Offset(0, 8),
+            child: AnimatedBuilder(
+              animation: _blur,
+              builder: (_, child) => ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(
+                      sigmaX: _blur.value, sigmaY: _blur.value),
+                  child: child!,
                 ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                        color: isVideo ? const Color(0xFF3B82F6) : const Color(0xFF22C55E),
-                        width: 2),
-                  ),
-                  child: ClipOval(
-                    child: widget.call.groupAvatarUrl.isNotEmpty
-                        ? Image.network(widget.call.groupAvatarUrl, fit: BoxFit.cover)
-                        : Container(
-                            color: const Color(0xFF334155),
-                            child: const Icon(Icons.group, color: Colors.white, size: 20),
+              ),
+              child: Container(
+                padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                decoration: BoxDecoration(
+                  color: const Color(0xF0111827),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(
+                      color: accentColor.withValues(alpha: 0.25), width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      blurRadius: 28,
+                      offset: const Offset(0, 6),
+                    ),
+                    BoxShadow(
+                      color: accentColor.withValues(alpha: 0.12),
+                      blurRadius: 20,
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    // Avatar
+                    _buildAvatar(accentColor),
+                    const SizedBox(width: 12),
+
+                    // Info
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            widget.call.groupName,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        widget.call.groupName,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                        overflow: TextOverflow.ellipsis,
+                          const SizedBox(height: 2),
+                          Row(children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: accentColor,
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              isVideo
+                                  ? 'Cuộc gọi video nhóm'
+                                  : 'Cuộc gọi thoại nhóm',
+                              style:
+                              TextStyle(color: accentColor, fontSize: 11),
+                            ),
+                          ]),
+                        ],
                       ),
-                      Text(
-                        isVideo ? 'Cuộc gọi video nhóm' : 'Cuộc gọi thoại nhóm',
-                        style: const TextStyle(color: Colors.white54, fontSize: 12),
-                      ),
-                    ],
-                  ),
+                    ),
+
+                    const SizedBox(width: 8),
+
+                    // Decline
+                    _actionBtn(
+                      icon: Icons.call_end_rounded,
+                      color: const Color(0xFFEF4444),
+                      onTap: widget.onDecline,
+                    ),
+                    const SizedBox(width: 8),
+
+                    // Accept
+                    _actionBtn(
+                      icon: isVideo
+                          ? Icons.videocam_rounded
+                          : Icons.phone_rounded,
+                      color: accentColor,
+                      onTap: widget.onAccept,
+                    ),
+                  ],
                 ),
-                _circleBtn(
-                  icon: Icons.call_end_rounded,
-                  color: const Color(0xFFEF4444),
-                  onTap: widget.onDecline,
-                ),
-                const SizedBox(width: 8),
-                _circleBtn(
-                  icon: isVideo ? Icons.videocam_rounded : Icons.call_rounded,
-                  color: const Color(0xFF22C55E),
-                  onTap: widget.onAccept,
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -303,28 +353,196 @@ class _CallNotificationOverlayState extends State<CallNotificationOverlay>
     );
   }
 
-  Widget _circleBtn({
+  Widget _buildAvatar(Color accentColor) {
+    return Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: accentColor.withValues(alpha: 0.5), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+              color: accentColor.withValues(alpha: 0.3), blurRadius: 10),
+        ],
+      ),
+      child: CircleAvatar(
+        radius: 22,
+        backgroundImage: widget.call.groupAvatarUrl.isNotEmpty
+            ? NetworkImage(widget.call.groupAvatarUrl)
+            : null,
+        backgroundColor: const Color(0xFF1E2D40),
+        child: widget.call.groupAvatarUrl.isEmpty
+            ? const Icon(Icons.group_rounded,
+            color: Colors.white54, size: 22)
+            : null,
+      ),
+    );
+  }
+
+  Widget _actionBtn({
     required IconData icon,
     required Color color,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedback.mediumImpact();
+        onTap();
+      },
       child: Container(
-        width: 40,
-        height: 40,
+        width: 44,
+        height: 44,
         decoration: BoxDecoration(
           color: color,
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: color.withValues(alpha: 0.4),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
+                color: color.withValues(alpha: 0.4),
+                blurRadius: 12,
+                offset: const Offset(0, 4)),
           ],
         ),
-        child: Icon(icon, color: Colors.white, size: 18),
+        child: Icon(icon, color: Colors.white, size: 20),
+      ),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// GroupCallHistoryTile — for displaying call records in chat
+// ══════════════════════════════════════════════════════════════════════════════
+class GroupCallHistoryTile extends StatelessWidget {
+  final GroupCallModel call;
+  final String currentUserId;
+  final VoidCallback? onRejoin;
+
+  const GroupCallHistoryTile({
+    super.key,
+    required this.call,
+    required this.currentUserId,
+    this.onRejoin,
+  });
+
+  bool get _wasParticipant =>
+      call.participants.any((p) => p.userId == currentUserId) ||
+          call.initiatorId == currentUserId;
+
+  String get _statusLabel {
+    switch (call.status) {
+      case GroupCallStatus.ended:
+        return call.durationSeconds != null && call.durationSeconds! > 0
+            ? call.formattedDuration
+            : 'Đã kết thúc';
+      case GroupCallStatus.missed:
+        return 'Nhỡ';
+      case GroupCallStatus.calling:
+      case GroupCallStatus.ongoing:
+      case GroupCallStatus.waiting:
+        return 'Đang diễn ra';
+    }
+  }
+
+  Color _statusColor(BuildContext context) {
+    switch (call.status) {
+      case GroupCallStatus.missed:
+        return const Color(0xFFEF4444);
+      case GroupCallStatus.ongoing:
+      case GroupCallStatus.calling:
+        return const Color(0xFF22C55E);
+      default:
+        return Colors.white38;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isVideo = call.callType == GroupCallType.video;
+    final iconColor =
+    isVideo ? const Color(0xFF3B82F6) : const Color(0xFF22C55E);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      ),
+      child: Row(
+        children: [
+          // Icon
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              isVideo ? Icons.videocam_rounded : Icons.phone_rounded,
+              color: iconColor,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+
+          // Info
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isVideo ? 'Cuộc gọi video nhóm' : 'Cuộc gọi thoại nhóm',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Row(children: [
+                  Icon(Icons.access_time_rounded,
+                      size: 10, color: _statusColor(context)),
+                  const SizedBox(width: 4),
+                  Text(
+                    _statusLabel,
+                    style: TextStyle(
+                        color: _statusColor(context), fontSize: 11),
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.people_rounded,
+                      size: 10, color: Colors.white30),
+                  const SizedBox(width: 3),
+                  Text(
+                    '${call.participantCount} người',
+                    style: const TextStyle(
+                        color: Colors.white30, fontSize: 10),
+                  ),
+                ]),
+              ],
+            ),
+          ),
+
+          // Rejoin if ongoing
+          if (call.isOngoing && onRejoin != null)
+            GestureDetector(
+              onTap: onRejoin,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF22C55E),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  'Vào lại',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

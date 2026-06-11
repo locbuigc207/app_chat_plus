@@ -16,6 +16,8 @@ export 'e2ee_service.dart';
 export 'encryption_service.dart';
 export 'game_firebase_service.dart';
 export 'gemini_service.dart';
+export 'group_call_notification_service.dart';
+export 'group_call_recording_service.dart';
 export 'group_call_service.dart';
 export 'local_db_service.dart';
 export 'media_compression_service.dart';

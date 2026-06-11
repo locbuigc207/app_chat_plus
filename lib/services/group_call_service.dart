@@ -1,9 +1,8 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/group_call_model.dart';
 
@@ -15,21 +14,18 @@ class GroupCallService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   static const String _col = 'group_calls';
-  static const int _timeoutSeconds = 45;
+  static const int _timeoutSeconds = 60;
   static const int _historyLimit = 30;
   static const int _maxParticipants = 16;
 
-  static const List<String> _activeStatuses = [
-    'calling',
-    'ongoing',
-  ];
+  static const List<String> _activeStatuses = ['calling', 'ongoing', 'waiting'];
 
   final Map<String, Timer> _timeoutTimers = {};
+  final Map<String, int> _lastReactionTimes = {};
+  static const int _reactionCooldownMs = 400;
 
   String? get _uid => _auth.currentUser?.uid;
-
   CollectionReference<Map<String, dynamic>> get _calls => _db.collection(_col);
-
   String _tsNow() => DateTime.now().millisecondsSinceEpoch.toString();
 
   GroupCallModel? _parse(DocumentSnapshot<Object?> doc) {
@@ -41,18 +37,17 @@ class GroupCallService {
     }
   }
 
+  // ── Initiate call ──────────────────────────────────────────────────────────
   Future<GroupCallModel?> initiateCall({
     required String groupId,
     required String groupName,
     required List<String> memberIds,
     required GroupCallType callType,
     String groupAvatarUrl = '',
+    bool waitingRoomEnabled = false,
   }) async {
     final uid = _uid;
-    if (uid == null) {
-      debugPrint('❌ [GroupCallService] initiateCall: not signed in');
-      return null;
-    }
+    if (uid == null) return null;
 
     try {
       final initiatorSnap = await _db.collection('users').doc(uid).get();
@@ -66,8 +61,10 @@ class GroupCallService {
         return null;
       }
 
-      final otherIds = memberIds.where((id) => id != uid).take(_maxParticipants - 1).toList();
-
+      final otherIds = memberIds
+          .where((id) => id != uid)
+          .take(_maxParticipants - 1)
+          .toList();
       final callId = '${groupId}_${DateTime.now().millisecondsSinceEpoch}';
       final channel = 'grp_${callId.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_')}';
       final now = DateTime.now();
@@ -78,14 +75,13 @@ class GroupCallService {
         userAvatar: initiatorAvatar,
         joinedAt: now,
         isAdmin: true,
-        isMuted: false,
-        isCameraOff: false,
       );
 
       final model = GroupCallModel(
         callId: callId,
         groupId: groupId,
         groupName: groupName,
+        groupAvatarUrl: groupAvatarUrl,
         initiatorId: uid,
         initiatorName: initiatorName,
         callType: callType,
@@ -94,12 +90,12 @@ class GroupCallService {
         participants: [initiatorParticipant],
         invitedUserIds: otherIds,
         createdAt: now,
+        waitingRoomEnabled: waitingRoomEnabled,
       );
 
       await _calls.doc(callId).set(model.toJson());
-      debugPrint('✅ [GroupCallService] Call initiated: $callId');
-
       _scheduleTimeout(callId);
+      debugPrint('✅ [GroupCallService] Call initiated: $callId');
       return model;
     } catch (e, st) {
       debugPrint('❌ [GroupCallService] initiateCall: $e\n$st');
@@ -107,37 +103,36 @@ class GroupCallService {
     }
   }
 
+  // ── Join call ──────────────────────────────────────────────────────────────
   Future<bool> joinCall(String callId) async {
     final uid = _uid;
     if (uid == null) return false;
 
     try {
       final doc = await _calls.doc(callId).get();
-      if (!doc.exists) {
-        debugPrint('⚠️ [GroupCallService] joinCall: call not found');
-        return false;
-      }
-
+      if (!doc.exists) return false;
       final call = _parse(doc);
       if (call == null) return false;
 
-      if (call.status == GroupCallStatus.ended || call.status == GroupCallStatus.missed) {
-        debugPrint('⚠️ [GroupCallService] joinCall: call already ended');
+      if (call.isEnded || call.status == GroupCallStatus.missed) return false;
+      if (call.isKicked(uid)) {
+        debugPrint('⚠️ [GroupCallService] User was kicked');
         return false;
       }
-
-      if (call.participants.length >= _maxParticipants) {
-        debugPrint('⚠️ [GroupCallService] joinCall: call is full');
-        return false;
-      }
-
-      if (call.participants.any((p) => p.userId == uid)) {
-        debugPrint('ℹ️ [GroupCallService] joinCall: already a participant');
-        return true;
-      }
+      if (call.participants.length >= _maxParticipants) return false;
+      if (call.participants.any((p) => p.userId == uid)) return true;
 
       final userSnap = await _db.collection('users').doc(uid).get();
       final userData = userSnap.data() ?? {};
+
+      // Waiting room check
+      if (call.waitingRoomEnabled && !call.isParticipant(uid)) {
+        await _calls.doc(callId).update({
+          'waitingRoomUserIds': FieldValue.arrayUnion([uid]),
+        });
+        debugPrint('⚠️ [GroupCallService] User added to waiting room: $uid');
+        return false;
+      }
 
       final participant = GroupCallParticipant(
         userId: uid,
@@ -145,8 +140,6 @@ class GroupCallService {
         userAvatar: userData['photoUrl'] as String? ?? '',
         joinedAt: DateTime.now(),
         isAdmin: false,
-        isMuted: false,
-        isCameraOff: false,
       );
 
       await _db.runTransaction((tx) async {
@@ -164,11 +157,11 @@ class GroupCallService {
           'participants': updated.map((p) => p.toJson()).toList(),
           'status': GroupCallStatus.ongoing.name,
           'invitedUserIds': FieldValue.arrayRemove([uid]),
+          'waitingRoomUserIds': FieldValue.arrayRemove([uid]),
         });
       });
 
       _cancelTimeout(callId);
-
       debugPrint('✅ [GroupCallService] Joined call: $callId');
       return true;
     } catch (e, st) {
@@ -177,6 +170,52 @@ class GroupCallService {
     }
   }
 
+  // ── Admit from waiting room ────────────────────────────────────────────────
+  Future<bool> admitFromWaitingRoom({
+    required String callId,
+    required String targetUserId,
+  }) async {
+    final uid = _uid;
+    if (uid == null) return false;
+    try {
+      final doc = await _calls.doc(callId).get();
+      final call = _parse(doc);
+      if (call == null) return false;
+
+      final self = call.getParticipant(uid);
+      if (self == null || (!self.isAdmin && !self.isCoHost)) return false;
+
+      final userSnap = await _db.collection('users').doc(targetUserId).get();
+      final userData = userSnap.data() ?? {};
+      final participant = GroupCallParticipant(
+        userId: targetUserId,
+        userName: userData['nickname'] as String? ?? 'User',
+        userAvatar: userData['photoUrl'] as String? ?? '',
+        joinedAt: DateTime.now(),
+        isAdmin: false,
+      );
+
+      await _db.runTransaction((tx) async {
+        final fresh = await tx.get(_calls.doc(callId));
+        if (!fresh.exists) return;
+        final freshCall = _parse(fresh);
+        if (freshCall == null) return;
+
+        final updated = List<GroupCallParticipant>.from(freshCall.participants)
+          ..add(participant);
+        tx.update(_calls.doc(callId), {
+          'participants': updated.map((p) => p.toJson()).toList(),
+          'waitingRoomUserIds': FieldValue.arrayRemove([targetUserId]),
+        });
+      });
+      return true;
+    } catch (e) {
+      debugPrint('❌ [GroupCallService] admitFromWaitingRoom: $e');
+      return false;
+    }
+  }
+
+  // ── Leave call ─────────────────────────────────────────────────────────────
   Future<void> leaveCall(String callId) async {
     final uid = _uid;
     if (uid == null) return;
@@ -188,7 +227,8 @@ class GroupCallService {
         final call = _parse(doc);
         if (call == null) return;
 
-        final remaining = call.participants.where((p) => p.userId != uid).toList();
+        final remaining =
+            call.participants.where((p) => p.userId != uid).toList();
 
         if (remaining.isEmpty) {
           final duration = DateTime.now().difference(call.createdAt).inSeconds;
@@ -199,6 +239,7 @@ class GroupCallService {
             'participants': <Map<String, dynamic>>[],
           });
         } else {
+          // Transfer admin if needed
           final updatedList = remaining.map((p) {
             if (call.initiatorId == uid && p.userId == remaining.first.userId) {
               return p.copyWith(isAdmin: true);
@@ -208,6 +249,9 @@ class GroupCallService {
 
           tx.update(_calls.doc(callId), {
             'participants': updatedList.map((p) => p.toJson()).toList(),
+            if (call.screenShareUserId == uid)
+              'screenShareUserId': FieldValue.delete(),
+            if (call.pinnedUserId == uid) 'pinnedUserId': FieldValue.delete(),
           });
         }
       });
@@ -219,6 +263,7 @@ class GroupCallService {
     }
   }
 
+  // ── End call for all ───────────────────────────────────────────────────────
   Future<bool> endCallForAll(String callId, {DateTime? startTime}) async {
     try {
       final doc = await _calls.doc(callId).get();
@@ -245,23 +290,26 @@ class GroupCallService {
     }
   }
 
+  // ── Decline ────────────────────────────────────────────────────────────────
   Future<void> declineCall(String callId) async {
     final uid = _uid;
     if (uid == null) return;
     try {
       await _calls.doc(callId).update({
         'invitedUserIds': FieldValue.arrayRemove([uid]),
+        'declinedUserIds': FieldValue.arrayUnion([uid]),
       });
-      debugPrint('✅ [GroupCallService] Declined call: $callId');
     } catch (e) {
       debugPrint('❌ [GroupCallService] declineCall: $e');
     }
   }
 
+  // ── Update participant state ───────────────────────────────────────────────
   Future<void> updateParticipantState({
     required String callId,
     required bool isMuted,
     required bool isCameraOff,
+    int? audioLevel,
   }) async {
     final uid = _uid;
     if (uid == null) return;
@@ -275,7 +323,11 @@ class GroupCallService {
 
         final updated = call.participants.map((p) {
           if (p.userId == uid) {
-            return p.copyWith(isMuted: isMuted, isCameraOff: isCameraOff);
+            return p.copyWith(
+              isMuted: isMuted,
+              isCameraOff: isCameraOff,
+              audioLevel: audioLevel ?? p.audioLevel,
+            );
           }
           return p;
         }).toList();
@@ -289,6 +341,7 @@ class GroupCallService {
     }
   }
 
+  // ── Mute participant (admin only) ──────────────────────────────────────────
   Future<void> muteParticipant({
     required String callId,
     required String targetUserId,
@@ -296,7 +349,6 @@ class GroupCallService {
   }) async {
     final uid = _uid;
     if (uid == null) return;
-
     try {
       await _db.runTransaction((tx) async {
         final doc = await tx.get(_calls.doc(callId));
@@ -304,13 +356,13 @@ class GroupCallService {
         final call = _parse(doc);
         if (call == null) return;
 
-        final self = call.participants.where((p) => p.userId == uid).firstOrNull;
-        if (self == null || !self.isAdmin) return;
+        final self = call.getParticipant(uid);
+        if (self == null || (!self.isAdmin && !self.isCoHost)) return;
 
-        final updated = call.participants.map((p) {
-          if (p.userId == targetUserId) return p.copyWith(isMuted: mute);
-          return p;
-        }).toList();
+        final updated = call.participants
+            .map(
+                (p) => p.userId == targetUserId ? p.copyWith(isMuted: mute) : p)
+            .toList();
 
         tx.update(_calls.doc(callId), {
           'participants': updated.map((p) => p.toJson()).toList(),
@@ -321,13 +373,13 @@ class GroupCallService {
     }
   }
 
+  // ── Kick participant ───────────────────────────────────────────────────────
   Future<void> kickParticipant({
     required String callId,
     required String targetUserId,
   }) async {
     final uid = _uid;
     if (uid == null) return;
-
     try {
       await _db.runTransaction((tx) async {
         final doc = await tx.get(_calls.doc(callId));
@@ -335,10 +387,11 @@ class GroupCallService {
         final call = _parse(doc);
         if (call == null) return;
 
-        final self = call.participants.where((p) => p.userId == uid).firstOrNull;
+        final self = call.getParticipant(uid);
         if (self == null || !self.isAdmin) return;
 
-        final updated = call.participants.where((p) => p.userId != targetUserId).toList();
+        final updated =
+            call.participants.where((p) => p.userId != targetUserId).toList();
 
         tx.update(_calls.doc(callId), {
           'participants': updated.map((p) => p.toJson()).toList(),
@@ -351,35 +404,31 @@ class GroupCallService {
     }
   }
 
-  final Map<String, int> _lastReactionTimes = {};
-  static const int _reactionCooldownMs = 500;
+  // ── Pin participant ────────────────────────────────────────────────────────
+  Future<void> pinParticipant(String callId, String? userId) async {
+    try {
+      await _calls.doc(callId).update({
+        'pinnedUserId': userId,
+      });
+    } catch (e) {
+      debugPrint('❌ [GroupCallService] pinParticipant: $e');
+    }
+  }
 
+  // ── Raise/lower hand ──────────────────────────────────────────────────────
   Future<void> toggleRaiseHand({
     required String callId,
     required String userId,
     required bool raised,
   }) async {
     try {
-      final docRef = _calls.doc(callId);
-
       if (raised) {
-        final handData = {
-          'userId': userId,
-          'raisedAt': FieldValue.serverTimestamp(),
-        };
-        await docRef.update({
-          'raisedHandsQueue': FieldValue.arrayUnion([handData]),
+        await _calls.doc(callId).update({
+          'raisedHandUserIds': FieldValue.arrayUnion([userId]),
         });
       } else {
-        await _db.runTransaction((tx) async {
-          final snap = await tx.get(docRef);
-          if (!snap.exists) return;
-
-          final data = snap.data()!;
-          final queue = List<Map<String, dynamic>>.from(data['raisedHandsQueue'] ?? []);
-
-          queue.removeWhere((item) => item['userId'] == userId);
-          tx.update(docRef, {'raisedHandsQueue': queue});
+        await _calls.doc(callId).update({
+          'raisedHandUserIds': FieldValue.arrayRemove([userId]),
         });
       }
     } catch (e) {
@@ -387,42 +436,31 @@ class GroupCallService {
     }
   }
 
+  // ── Screen share ───────────────────────────────────────────────────────────
   Future<void> updateScreenShare({
     required String callId,
     required String userId,
     required bool isSharing,
-    bool requiresApproval = false,
   }) async {
     try {
-      final docRef = _calls.doc(callId);
-
-      await _db.runTransaction((tx) async {
-        final snap = await tx.get(docRef);
-        if (!snap.exists) return;
-
-        final data = snap.data()!;
-        final activeShares = List<Map<String, dynamic>>.from(data['activeScreenShares'] ?? []);
-
-        if (isSharing) {
-          final shareData = {
-            'userId': userId,
-            'status': requiresApproval ? 'pending' : 'active',
-            'startedAt': FieldValue.serverTimestamp(),
-          };
-
-          activeShares.removeWhere((s) => s['userId'] == userId);
-          activeShares.add(shareData);
-        } else {
-          activeShares.removeWhere((s) => s['userId'] == userId);
-        }
-
-        tx.update(docRef, {'activeScreenShares': activeShares});
+      await _calls.doc(callId).update({
+        'screenShareUserId': isSharing ? userId : FieldValue.delete(),
       });
     } catch (e) {
       debugPrint('❌ [GroupCallService] updateScreenShare: $e');
     }
   }
 
+  // ── Update layout ──────────────────────────────────────────────────────────
+  Future<void> updateLayout(String callId, VideoLayoutMode mode) async {
+    try {
+      await _calls.doc(callId).update({'layoutMode': mode.name});
+    } catch (e) {
+      debugPrint('❌ [GroupCallService] updateLayout: $e');
+    }
+  }
+
+  // ── Send reaction ──────────────────────────────────────────────────────────
   Future<void> sendReaction({
     required String callId,
     required String userId,
@@ -430,12 +468,8 @@ class GroupCallService {
     required CallReactionType reaction,
   }) async {
     final now = DateTime.now().millisecondsSinceEpoch;
-
     final lastTime = _lastReactionTimes[userId] ?? 0;
-    if (now - lastTime < _reactionCooldownMs) {
-      debugPrint('⚠️ [GroupCallService] Reaction throttled (Anti-spam)');
-      return;
-    }
+    if (now - lastTime < _reactionCooldownMs) return;
     _lastReactionTimes[userId] = now;
 
     try {
@@ -446,38 +480,81 @@ class GroupCallService {
         sentAt: DateTime.now(),
       );
 
-      final docRef = _calls.doc(callId);
-
       await _db.runTransaction((tx) async {
-        final snap = await tx.get(docRef);
+        final snap = await tx.get(_calls.doc(callId));
         if (!snap.exists) return;
-
         final data = snap.data()!;
         var recentReactions = List<dynamic>.from(data['recentReactions'] ?? []);
-
         recentReactions.add(r.toJson());
-
         if (recentReactions.length > 30) {
-          recentReactions = recentReactions.sublist(recentReactions.length - 30);
+          recentReactions =
+              recentReactions.sublist(recentReactions.length - 30);
         }
-
-        tx.update(docRef, {
-          'recentReactions': recentReactions,
-          'totalReactionsCount': FieldValue.increment(1),
-        });
+        tx.update(_calls.doc(callId), {'recentReactions': recentReactions});
       });
     } catch (e) {
       debugPrint('❌ [GroupCallService] sendReaction: $e');
     }
   }
 
-  Stream<GroupCallModel?> watchCall(String callId) => _calls.doc(callId).snapshots().map(
-        (doc) => doc.exists ? _parse(doc) : null,
-      );
+  // ── Mute all (admin) ───────────────────────────────────────────────────────
+  Future<void> muteAll(String callId) async {
+    final uid = _uid;
+    if (uid == null) return;
+    try {
+      await _db.runTransaction((tx) async {
+        final doc = await tx.get(_calls.doc(callId));
+        if (!doc.exists) return;
+        final call = _parse(doc);
+        if (call == null) return;
+        final self = call.getParticipant(uid);
+        if (self == null || !self.isAdmin) return;
+
+        final updated = call.participants
+            .map((p) => p.userId == uid ? p : p.copyWith(isMuted: true))
+            .toList();
+        tx.update(_calls.doc(callId),
+            {'participants': updated.map((p) => p.toJson()).toList()});
+      });
+    } catch (e) {
+      debugPrint('❌ [GroupCallService] muteAll: $e');
+    }
+  }
+
+  // ── Promote to co-host ─────────────────────────────────────────────────────
+  Future<void> promoteToCoHost(String callId, String targetUserId) async {
+    final uid = _uid;
+    if (uid == null) return;
+    try {
+      await _db.runTransaction((tx) async {
+        final doc = await tx.get(_calls.doc(callId));
+        if (!doc.exists) return;
+        final call = _parse(doc);
+        if (call == null) return;
+        final self = call.getParticipant(uid);
+        if (self == null || !self.isAdmin) return;
+
+        final updated = call.participants
+            .map((p) =>
+                p.userId == targetUserId ? p.copyWith(isCoHost: true) : p)
+            .toList();
+        tx.update(_calls.doc(callId),
+            {'participants': updated.map((p) => p.toJson()).toList()});
+      });
+    } catch (e) {
+      debugPrint('❌ [GroupCallService] promoteToCoHost: $e');
+    }
+  }
+
+  // ── Streams ────────────────────────────────────────────────────────────────
+  Stream<GroupCallModel?> watchCall(String callId) => _calls
+      .doc(callId)
+      .snapshots()
+      .map((doc) => doc.exists ? _parse(doc) : null);
 
   Stream<GroupCallModel?> incomingGroupCallStream(String userId) => _calls
       .where('invitedUserIds', arrayContains: userId)
-      .where('status', isEqualTo: GroupCallStatus.calling.name)
+      .where('status', whereIn: ['calling', 'waiting'])
       .orderBy('createdAt', descending: true)
       .limit(1)
       .snapshots()
@@ -513,10 +590,18 @@ class GroupCallService {
     });
   }
 
-  Future<List<GroupCallModel>> getGroupCallHistory(
-    String groupId, {
-    int limit = 20,
-  }) async {
+  // ── Fetch ──────────────────────────────────────────────────────────────────
+  Future<GroupCallModel?> getCall(String callId) async {
+    try {
+      final doc = await _calls.doc(callId).get();
+      return doc.exists ? _parse(doc) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<List<GroupCallModel>> getGroupCallHistory(String groupId,
+      {int limit = 20}) async {
     try {
       final snap = await _calls
           .where('groupId', isEqualTo: groupId)
@@ -531,15 +616,7 @@ class GroupCallService {
     }
   }
 
-  Future<GroupCallModel?> getCall(String callId) async {
-    try {
-      final doc = await _calls.doc(callId).get();
-      return doc.exists ? _parse(doc) : null;
-    } catch (_) {
-      return null;
-    }
-  }
-
+  // ── Private helpers ────────────────────────────────────────────────────────
   Future<GroupCallModel?> _findActiveCallForGroup(String groupId) async {
     try {
       final snap = await _calls
@@ -550,7 +627,6 @@ class GroupCallService {
       if (snap.docs.isEmpty) return null;
       return _parse(snap.docs.first);
     } catch (e) {
-      debugPrint('❌ [GroupCallService] _findActiveCallForGroup: $e');
       return null;
     }
   }
@@ -558,7 +634,7 @@ class GroupCallService {
   void _scheduleTimeout(String callId) {
     _cancelTimeout(callId);
     _timeoutTimers[callId] = Timer(
-      Duration(seconds: _timeoutSeconds),
+      const Duration(seconds: _timeoutSeconds),
       () => _onTimeout(callId),
     );
   }
@@ -575,14 +651,13 @@ class GroupCallService {
       final call = _parse(doc);
       if (call == null) return;
 
-      if (call.status == GroupCallStatus.calling && call.participants.length <= 1) {
+      if (call.isCalling && call.participants.length <= 1) {
         await _calls.doc(callId).update({
           'status': GroupCallStatus.missed.name,
           'endedAt': _tsNow(),
           'durationSeconds': 0,
           'participants': <Map<String, dynamic>>[],
         });
-        debugPrint('✅ [GroupCallService] Call timed out (missed): $callId');
       }
     } catch (e) {
       debugPrint('❌ [GroupCallService] _onTimeout: $e');
