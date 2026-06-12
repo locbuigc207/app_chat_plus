@@ -28,6 +28,7 @@ export 'notifications_page.dart';
 export 'outgoing_call_page.dart';
 export 'phone_login_page.dart';
 export 'qr_scanner_page.dart';
+export 'reminders_list_page.dart';
 export 'search_messages_page.dart';
 export 'settings_page.dart';
 export 'splash_page.dart';

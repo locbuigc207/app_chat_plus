@@ -1078,6 +1078,125 @@ class AIBackendService {
     return results;
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // REMINDER – extractReminderWithPriority
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /// Phân tích một tin nhắn, bóc tách TẤT CẢ tác vụ/lịch hẹn cùng với
+  /// mức ưu tiên (high/medium/low) và deadline cụ thể.
+  Future<ReminderExtractionResult> extractReminderWithPriority({
+    required String message,
+    String conversationContext = '',
+  }) async {
+    if (message.trim().isEmpty) return ReminderExtractionResult.empty();
+    try {
+      final safeMsg =
+          DataMaskingUtils.maskText(message, config: _kAiMaskingConfig);
+      final safeCtx = DataMaskingUtils.maskText(conversationContext,
+          config: _kAiMaskingConfig);
+
+      final result = await _call(
+        functionName: 'extractReminderWithPriority',
+        params: {
+          'message': safeMsg,
+          'conversationContext': safeCtx,
+        },
+        timeout: _kAnalysisTimeout,
+      );
+
+      if (result == null) return ReminderExtractionResult.empty();
+      return ReminderExtractionResult.fromMap(
+          Map<String, dynamic>.from(result));
+    } catch (e, st) {
+      _logError('extractReminderWithPriority', e, st);
+      return ReminderExtractionResult.empty();
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // REMINDER – batchExtractReminders
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /// Bóc tách nhắc nhở từ nhiều tin nhắn cùng lúc (batch, hiệu quả hơn).
+  Future<List<ExtractedReminder>> batchExtractReminders({
+    required List<Map<String, dynamic>> messages,
+    int lookbackHours = 24,
+  }) async {
+    if (messages.isEmpty) return [];
+    try {
+      final safeMsgs = messages
+          .map((m) => {
+                ...m,
+                'content': DataMaskingUtils.maskText(
+                  m['content']?.toString() ?? '',
+                  config: _kAiMaskingConfig,
+                ),
+              })
+          .toList();
+
+      final result = await _call(
+        functionName: 'batchExtractReminders',
+        params: {
+          'messages': safeMsgs,
+          'lookbackHours': lookbackHours,
+        },
+        timeout: _kBatchTimeout,
+      );
+
+      if (result == null) return [];
+      final list = result['reminders'] as List? ?? [];
+      return list
+          .map((r) =>
+              ExtractedReminder.fromMap(Map<String, dynamic>.from(r as Map)))
+          .where((r) => r.task.isNotEmpty)
+          .toList();
+    } catch (e, st) {
+      _logError('batchExtractReminders', e, st);
+      return [];
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // REMINDER – generateReminderSuggestions
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /// Gợi ý các nhắc nhở thông minh dựa trên lịch sử tin nhắn và
+  /// các nhắc nhở đã có để tránh trùng lặp.
+  Future<List<ReminderSuggestion>> generateReminderSuggestions({
+    required List<String> recentMessages,
+    List<String> existingReminders = const [],
+    String userContext = '',
+  }) async {
+    if (recentMessages.isEmpty) return [];
+    try {
+      final safeMessages = DataMaskingUtils.prepareForAI(recentMessages);
+
+      final result = await _call(
+        functionName: 'generateReminderSuggestions',
+        params: {
+          'recentMessages': safeMessages,
+          'existingReminders': existingReminders,
+          'userContext': DataMaskingUtils.maskText(
+            userContext,
+            config: _kAiMaskingConfig,
+          ),
+        },
+        timeout: _kDefaultTimeout,
+      );
+
+      if (result == null) return [];
+      final list = result['suggestions'] as List? ?? [];
+      return list
+          .map((s) =>
+              ReminderSuggestion.fromMap(Map<String, dynamic>.from(s as Map)))
+          .where((s) => s.task.isNotEmpty)
+          .toList();
+    } catch (e, st) {
+      _logError('generateReminderSuggestions', e, st);
+      return [];
+    }
+  }
+
   // ══════════════════════════════════════════════════════════════════════════
   // CORE PRIVATE HELPER METHODS
   // ══════════════════════════════════════════════════════════════════════════

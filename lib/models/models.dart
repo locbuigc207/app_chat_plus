@@ -12,6 +12,7 @@ export 'insights_models.dart';
 export 'menu_setting.dart';
 export 'message_chat.dart';
 export 'message_reaction.dart';
+export 'reminder_models.dart';
 export 'smart_reply_item.dart';
 export 'story_model.dart';
 export 'user_chat.dart';

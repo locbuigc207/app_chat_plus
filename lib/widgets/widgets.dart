@@ -66,6 +66,8 @@ export 'pin_input_dialog.dart';
 export 'poll_message_widget.dart';
 export 'recap_bubble_widget.dart';
 export 'relationship_memory_widget.dart';
+export 'reminder_item_widget.dart';
+export 'reminder_set_sheet.dart';
 export 'responsive_layout.dart';
 export 'safe_send_dialog.dart';
 export 'scam_warning_widget.dart';
