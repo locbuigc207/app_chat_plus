@@ -34,10 +34,10 @@ class EncryptedPayload {
       );
 
   Map<String, dynamic> toJson() => {
-    'iv': iv,
-    'data': data,
-    if (hmac != null) 'hmac': hmac,
-  };
+        'iv': iv,
+        'data': data,
+        if (hmac != null) 'hmac': hmac,
+      };
 
   String toJsonString() => jsonEncode(toJson());
 }
@@ -89,9 +89,10 @@ Map<String, String> _generateRSAKeyPairInIsolate(int keySize) {
   final publicKey = pair.publicKey as pc.RSAPublicKey;
   final privateKey = pair.privateKey as pc.RSAPrivateKey;
 
+  // B3: Đổi sang encodeRSAPublicKeyToPem (SPKI/PKCS#8) cho đồng bộ với hàm decode
   return {
-    'publicKey': CryptoUtils.encodeRSAPublicKeyToPemPkcs1(publicKey),
-    'privateKey': CryptoUtils.encodeRSAPrivateKeyToPemPkcs1(privateKey),
+    'publicKey': CryptoUtils.encodeRSAPublicKeyToPem(publicKey),
+    'privateKey': CryptoUtils.encodeRSAPrivateKeyToPem(privateKey),
   };
 }
 
@@ -117,6 +118,10 @@ class E2EEService {
 
   final Map<String, _CachedKey> _sessionKeyCache = {};
   final Map<String, Completer<String>> _pendingKeys = {};
+
+  // B2: Cooldown chống vòng lặp vô hạn
+  final Map<String, int> _resolveFailCount = {};
+  final Map<String, DateTime> _resolveCooldownUntil = {};
 
   static const _kPrivateKey = 'e2ee_private_key_v2';
   static const _kPublicKey = 'e2ee_public_key_v2';
@@ -144,9 +149,9 @@ class E2EEService {
   }
 
   Future<void> generateAndStoreUserKeys(
-      String userId, {
-        bool forceRegenerate = false,
-      }) async {
+    String userId, {
+    bool forceRegenerate = false,
+  }) async {
     if (!forceRegenerate) {
       await loadLocalKeys();
       if (isInitialized) return;
@@ -249,6 +254,15 @@ class E2EEService {
     required List<String> participantIds,
     required String currentUserId,
   }) async {
+    // B2: Check cooldown
+    final cooldown = _resolveCooldownUntil[conversationId];
+    if (cooldown != null && DateTime.now().isBefore(cooldown)) {
+      throw const E2EEException(
+        E2EEErrorType.decryptionFailed,
+        'Session key đang trong cooldown sau nhiều lần thất bại',
+      );
+    }
+
     final myKeyRef = _firestore
         .collection('conversations')
         .doc(conversationId)
@@ -270,8 +284,22 @@ class E2EEService {
         final sessionKey = decryptSessionKeyWithMyPrivateKey(encryptedKey);
         _validateSessionKeyBytes(sessionKey);
         _cacheSessionKey(conversationId, sessionKey);
+        _resolveFailCount.remove(conversationId); // reset đếm lỗi
         return sessionKey;
       } on E2EEException catch (e) {
+        // B2: Tính toán và áp dụng cooldown
+        final fails = (_resolveFailCount[conversationId] ?? 0) + 1;
+        _resolveFailCount[conversationId] = fails;
+        if (fails >= 3) {
+          _resolveCooldownUntil[conversationId] =
+              DateTime.now().add(const Duration(seconds: 30));
+          _resolveFailCount[conversationId] = 0;
+          debugPrint(
+              '[E2EE] 🛑 Cooldown 30s cho $conversationId sau $fails lần lỗi');
+          throw const E2EEException(E2EEErrorType.decryptionFailed,
+              'Cooldown sau nhiều lần thất bại');
+        }
+
         debugPrint(
             '[E2EE] ⚠️ Decrypt session key thất bại ($e), tạo lại key...');
         evictSessionKey(conversationId);
@@ -298,23 +326,64 @@ class E2EEService {
     final newSessionKey = generateRandomSessionKey();
     _validateSessionKeyBytes(newSessionKey);
 
+    // B1: Lọc và trích xuất danh sách thành viên thực sự của Group
+    List<String> actualParticipants = List.from(participantIds);
+    if (actualParticipants.contains(conversationId)) {
+      try {
+        final convDoc = await _firestore
+            .collection('conversations')
+            .doc(conversationId)
+            .get();
+        if (convDoc.exists && convDoc.data() != null) {
+          final data = convDoc.data()!;
+          if (data.containsKey('participants')) {
+            actualParticipants =
+                List<String>.from(data['participants'] as List);
+          } else if (data.containsKey('members')) {
+            actualParticipants = List<String>.from(data['members'] as List);
+          } else if (data.containsKey('users')) {
+            actualParticipants = List<String>.from(data['users'] as List);
+          }
+        }
+      } catch (e) {
+        debugPrint('[E2EE] ⚠️ Không thể lấy danh sách thành viên nhóm: $e');
+      }
+
+      // Xóa Group ID bị nhầm lẫn khỏi mảng
+      actualParticipants.remove(conversationId);
+      // Đảm bảo luôn có mặt người gửi
+      if (!actualParticipants.contains(currentUserId)) {
+        actualParticipants.add(currentUserId);
+      }
+    }
+
+    if (actualParticipants.length < 2) {
+      debugPrint(
+        '[E2EE] ⚠️ actualParticipants chỉ có ${actualParticipants.length} '
+        '(conversationId=$conversationId, original=$participantIds)',
+      );
+    }
+    // --------------------------------------------------------------------
+
     final batch = _firestore.batch();
     int distributed = 0;
 
-    final userDocFutures = participantIds
+    final userDocFutures = actualParticipants
         .map((uid) => _firestore.collection('users').doc(uid).get());
     final userDocs = await Future.wait(userDocFutures);
 
-    for (int i = 0; i < participantIds.length; i++) {
-      final uid = participantIds[i];
+    for (int i = 0; i < actualParticipants.length; i++) {
+      final uid = actualParticipants[i];
       final publicKey = userDocs[i].data()?['publicKey'] as String?;
+
       if (publicKey == null || publicKey.trim().isEmpty) {
         debugPrint('[E2EE] ⚠️ Bỏ qua user $uid — publicKey rỗng');
         continue;
       }
+
       try {
         final encryptedKey =
-        encryptSessionKeyWithPublicKey(newSessionKey, publicKey);
+            encryptSessionKeyWithPublicKey(newSessionKey, publicKey);
         if (encryptedKey.isEmpty) {
           debugPrint('[E2EE] ⚠️ encryptedKey rỗng cho user $uid, bỏ qua');
           continue;
@@ -356,7 +425,7 @@ class E2EEService {
 
     _cacheSessionKey(conversationId, newSessionKey);
     debugPrint(
-        '[E2EE] ✅ Phân phối khóa cho $distributed/${participantIds.length} thành viên');
+        '[E2EE] ✅ Phân phối khóa cho $distributed/${actualParticipants.length} thành viên');
     return newSessionKey;
   }
 
@@ -406,7 +475,7 @@ class E2EEService {
       final rsaPrivateKey = CryptoUtils.rsaPrivateKeyFromPem(_localPrivateKey!);
       final encrypter = enc.Encrypter(enc.RSA(privateKey: rsaPrivateKey));
       final decrypted =
-      encrypter.decrypt(enc.Encrypted.fromBase64(encryptedBase64));
+          encrypter.decrypt(enc.Encrypted.fromBase64(encryptedBase64));
       if (decrypted.isEmpty) {
         throw const E2EEException(
             E2EEErrorType.decryptionFailed, 'RSA decrypt trả về chuỗi rỗng');
@@ -486,11 +555,11 @@ class E2EEService {
   // ── High-level payload API ────────────────────────────────────────────────
 
   Future<String> encryptPayload(
-      String plainText,
-      String conversationId,
-      List<String> participantIds,
-      String currentUserId,
-      ) async {
+    String plainText,
+    String conversationId,
+    List<String> participantIds,
+    String currentUserId,
+  ) async {
     final sessionKey = await getOrCreateSessionKey(
       conversationId: conversationId,
       participantIds: participantIds,
@@ -500,11 +569,11 @@ class E2EEService {
   }
 
   Future<String> decryptPayload(
-      String encryptedPayload,
-      String conversationId,
-      List<String> participantIds,
-      String currentUserId,
-      ) async {
+    String encryptedPayload,
+    String conversationId,
+    List<String> participantIds,
+    String currentUserId,
+  ) async {
     try {
       final sessionKey = await getOrCreateSessionKey(
         conversationId: conversationId,
@@ -565,7 +634,7 @@ class E2EEService {
     );
 
     final userDoc =
-    await _firestore.collection('users').doc(newParticipantId).get();
+        await _firestore.collection('users').doc(newParticipantId).get();
     final publicKey = userDoc.data()?['publicKey'] as String?;
 
     if (publicKey == null || publicKey.trim().isEmpty) {
@@ -592,7 +661,8 @@ class E2EEService {
   // ── Cache control ─────────────────────────────────────────────────────────
 
   void clearSessionCache() => _sessionKeyCache.clear();
-  void evictSessionKey(String conversationId) => _sessionKeyCache.remove(conversationId);
+  void evictSessionKey(String conversationId) =>
+      _sessionKeyCache.remove(conversationId);
 
   Future<void> clearLocalKeys() async {
     try {

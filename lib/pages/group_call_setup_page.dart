@@ -6,8 +6,11 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 import '../models/group_call_model.dart';
+import '../pages/group_call_waiting_room.dart';
 import '../providers/providers.dart';
 import '../services/group_call_service.dart';
+import '../widgets/group_call_audio_visualizer.dart';
+import '../widgets/group_call_permission_gate.dart';
 import 'group_call_page.dart';
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -40,6 +43,10 @@ class _GroupCallSetupPageState extends State<GroupCallSetupPage>
   bool _cameraEnabled = true;
   bool _speakerEnabled = true;
   bool _isStarting = false;
+
+  double _micLevel = 0.0; // 0.0–1.0 mic test level
+  bool _waitingRoom = false; // đang vào waiting room
+  bool _hasPermissions = false; // permissions granted
 
   late AnimationController _enterCtrl;
   late AnimationController _pulseCtrl;
@@ -89,6 +96,7 @@ class _GroupCallSetupPageState extends State<GroupCallSetupPage>
     setState(() {
       _micEnabled = mic.isGranted;
       _cameraEnabled = cam.isGranted && widget.callType == GroupCallType.video;
+      _hasPermissions = mic.isGranted;
     });
   }
 
@@ -123,14 +131,27 @@ class _GroupCallSetupPageState extends State<GroupCallSetupPage>
           .timeout(const Duration(seconds: 3));
     } catch (_) {}
 
+    final provider = context.read<GroupCallProvider>();
+
+    // Cập nhật userId nếu chưa có
+    provider.updateUserId(uid);
+
     if (existing != null && mounted) {
       final join = await _showJoinExistingDialog(existing);
       if (join != true) {
         setState(() => _isStarting = false);
         return;
       }
-      final ok = await service.joinCall(existing.callId);
+
+      final ok = await provider.joinCall(existing.callId);
+
       if (!ok || !mounted) {
+        // Kiểm tra waiting room
+        if (provider.isWaitingRoom && mounted) {
+          setState(() => _isStarting = false);
+          _navigateToWaitingRoom(existing, uid, name);
+          return;
+        }
         setState(() => _isStarting = false);
         return;
       }
@@ -138,19 +159,22 @@ class _GroupCallSetupPageState extends State<GroupCallSetupPage>
       return;
     }
 
-    final call = await service.initiateCall(
+    final call = await provider.startCall(
       groupId: widget.groupId,
       groupName: widget.groupName,
       groupAvatarUrl: widget.groupAvatarUrl,
       memberIds: widget.memberIds,
       callType: widget.callType,
+      waitingRoomEnabled: _waitingRoom,
     );
 
     if (call == null || !mounted) {
       setState(() => _isStarting = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Không thể bắt đầu cuộc gọi. Vui lòng thử lại.'),
-        backgroundColor: Color(0xFFEF4444),
+      // Hiển thị error từ provider
+      final err = provider.error ?? 'Không thể bắt đầu cuộc gọi.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(err),
+        backgroundColor: const Color(0xFFEF4444),
       ));
       return;
     }
@@ -167,6 +191,10 @@ class _GroupCallSetupPageState extends State<GroupCallSetupPage>
 
   void _navigateTo(GroupCallModel call, String uid, String name,
       {required bool isInitiator}) {
+    final auth = context.read<AuthProvider>();
+
+    final avatar = auth.currentUserAvatar ?? '';
+
     Navigator.of(context).pushReplacement(PageRouteBuilder(
       transitionDuration: const Duration(milliseconds: 400),
       pageBuilder: (_, __, ___) => GroupCallPage(
@@ -174,12 +202,29 @@ class _GroupCallSetupPageState extends State<GroupCallSetupPage>
         isInitiator: isInitiator,
         currentUserId: uid,
         currentUserName: name,
+        currentUserAvatar: avatar,
       ),
       transitionsBuilder: (_, anim, __, child) => FadeTransition(
         opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
         child: child,
       ),
     ));
+  }
+
+  void _navigateToWaitingRoom(GroupCallModel call, String uid, String name) {
+    final auth = context.read<AuthProvider>();
+
+    final avatar = auth.currentUserAvatar ?? '';
+
+    Navigator.of(context).pushReplacement(MaterialPageRoute(
+      builder: (_) => WaitingRoomPage(
+        call: call,
+        currentUserId: uid,
+        currentUserName: name,
+        currentUserAvatar: avatar,
+      ),
+    ));
+    // WaitingRoomPage tự navigate vào GroupCallPage khi được admit
   }
 
   @override
@@ -235,67 +280,71 @@ class _GroupCallSetupPageState extends State<GroupCallSetupPage>
 
   // ── Body ───────────────────────────────────────────────────────────────────
   Widget _buildBody() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      child: Column(
-        children: [
-          const SizedBox(height: 16),
+    // SỬA LẠI WIDGET NÀY:
+    return GroupCallPermissionGate(
+      callType: widget.callType,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        child: Column(
+          children: [
+            const SizedBox(height: 16),
 
-          // Call type label
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: _primaryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: _primaryColor.withOpacity(0.25)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  widget.callType == GroupCallType.video
-                      ? Icons.videocam_rounded
-                      : Icons.phone_rounded,
-                  color: _primaryColor,
-                  size: 16,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  widget.callType == GroupCallType.video
-                      ? 'Gọi video nhóm'
-                      : 'Gọi thoại nhóm',
-                  style: TextStyle(
+            // Call type label
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: _primaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _primaryColor.withOpacity(0.25)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    widget.callType == GroupCallType.video
+                        ? Icons.videocam_rounded
+                        : Icons.phone_rounded,
                     color: _primaryColor,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
+                    size: 16,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  Text(
+                    widget.callType == GroupCallType.video
+                        ? 'Gọi video nhóm'
+                        : 'Gọi thoại nhóm',
+                    style: TextStyle(
+                      color: _primaryColor,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
 
-          const SizedBox(height: 32),
+            const SizedBox(height: 32),
 
-          // Avatar preview
-          AnimatedBuilder(
-            animation: _pulseAnim,
-            builder: (_, child) =>
-                Transform.scale(scale: _pulseAnim.value, child: child),
-            child: _buildAvatarPreview(),
-          ),
+            // Avatar preview
+            AnimatedBuilder(
+              animation: _pulseAnim,
+              builder: (_, child) =>
+                  Transform.scale(scale: _pulseAnim.value, child: child),
+              child: _buildAvatarPreview(),
+            ),
 
-          const SizedBox(height: 32),
+            const SizedBox(height: 32),
 
-          // Members count
-          _buildMembersChip(),
+            // Members count
+            _buildMembersChip(),
 
-          const SizedBox(height: 28),
+            const SizedBox(height: 28),
 
-          // Settings card
-          _buildSettingsCard(),
+            // Settings card
+            _buildSettingsCard(),
 
-          const SizedBox(height: 24),
-        ],
+            const SizedBox(height: 24),
+          ],
+        ),
       ),
     );
   }
@@ -407,6 +456,26 @@ class _GroupCallSetupPageState extends State<GroupCallSetupPage>
             iconColor: _speakerEnabled ? _accent : Colors.white38,
             onChanged: (v) => setState(() => _speakerEnabled = v),
           ),
+          Divider(color: Colors.white.withOpacity(0.05), height: 1),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Kiểm tra micro',
+                    style: TextStyle(
+                        color: Colors.white54,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                MicTestWidget(
+                  micLevel: _micLevel,
+                  isMuted: !_micEnabled,
+                  onToggle: () => setState(() => _micEnabled = !_micEnabled),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -467,6 +536,24 @@ class _GroupCallSetupPageState extends State<GroupCallSetupPage>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (widget.memberIds.length > 2) ...[
+            Row(children: [
+              Checkbox(
+                value: _waitingRoom,
+                onChanged: (v) => setState(() => _waitingRoom = v ?? false),
+                activeColor: _primaryColor,
+                side: BorderSide(color: Colors.white.withOpacity(0.2)),
+              ),
+              Expanded(
+                child: Text(
+                  'Bật phòng chờ (admin phê duyệt từng người)',
+                  style: TextStyle(
+                      color: Colors.white.withOpacity(0.55), fontSize: 12),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 8),
+          ],
           // Info text
           Text(
             'Mọi thành viên trong nhóm sẽ nhận thông báo',

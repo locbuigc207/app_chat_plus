@@ -232,7 +232,8 @@ class EncryptionService {
   _PayloadInfo _detectPayloadType(String text) {
     final trimmed = text.trim();
 
-    // Always skip — these are never encrypted
+    // Đồng bộ (A2): Bất kỳ nội dung nào bị skip (URL, Poll, Game, GeoLocked)
+    // đều sẽ được trả về trực tiếp ở đây dưới dạng plain.
     if (_isSkippable(trimmed)) {
       return _PayloadInfo(PayloadType.plain, trimmed);
     }
@@ -242,8 +243,6 @@ class EncryptionService {
       try {
         final decoded = jsonDecode(trimmed);
         if (decoded is Map) {
-          // GeoLocked, poll, game payloads also start with '{' — distinguish
-          // them by checking for the canonical E2EE keys
           final hasIv = decoded.containsKey('iv');
           final hasData = decoded.containsKey('data');
           if (hasIv && hasData) {
@@ -255,7 +254,7 @@ class EncryptionService {
           }
         }
       } catch (_) {}
-      // Any other JSON (geoLocked, poll…) → plain pass-through
+      // Any other fallback JSON
       return _PayloadInfo(PayloadType.plain, trimmed);
     }
 
@@ -269,7 +268,35 @@ class EncryptionService {
 
   /// Returns true for content that must never be encrypted:
   ///  * HTTP/HTTPS URLs (media, voice, file storage)
-  ///  * JSON objects (geoLocked, polls, game states) — handled above
-  bool _isSkippable(String text) =>
-      text.startsWith('http://') || text.startsWith('https://');
+  ///  * JSON objects (geoLocked, polls, game states)
+  bool _isSkippable(String text) {
+    final t = text.trim();
+    if (t.startsWith('http://') || t.startsWith('https://')) return true;
+
+    // Bỏ qua mã hóa đối với các JSON payload của hệ thống (Poll, Game, Location)
+    if (t.startsWith('{') && t.endsWith('}')) {
+      try {
+        final decoded = jsonDecode(t);
+        if (decoded is Map) {
+          // KHÔNG skip nếu đây là gói tin mã hóa E2EE thực sự (chứa 'iv' và 'data')
+          if (decoded.containsKey('iv') && decoded.containsKey('data')) {
+            return false;
+          }
+
+          // Siết điều kiện match (A3): Yêu cầu có đủ cả cụm 2 key đặc thù
+          // để tránh false-positive với các đoạn text thông thường có chứa chuỗi JSON.
+          if ((decoded.containsKey('question') &&
+                  decoded.containsKey('options')) || // Dấu hiệu của Poll
+              (decoded.containsKey('matchId') &&
+                  decoded
+                      .containsKey('gameType')) || // Dấu hiệu của Game Center
+              (decoded.containsKey('lat') && decoded.containsKey('lng'))) {
+            // Dấu hiệu của GeoLocked
+            return true;
+          }
+        }
+      } catch (_) {}
+    }
+    return false;
+  }
 }

@@ -53,6 +53,13 @@ Future<void> _onBackgroundMessage(RemoteMessage message) async {
   } catch (e) {
     debugPrint('⚠️ BubbleFcmHandler process error in background: $e');
   }
+
+  // ── THÊM: xử lý group call invite từ background ──────────────────────
+  final type = message.data['type'] as String?;
+  if (type == 'group_call_invite') {
+    debugPrint('📞 Background group call invite: ${message.data['callId']}');
+    // GroupCallNotificationService xử lý khi app resume
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -140,17 +147,36 @@ Future<void> _initializeFirebase() async {
       debugPrint('⚠️ Offline Persistence (Web không hỗ trợ): $e');
     }
 
-    await FirebaseAppCheck.instance.activate(
-      androidProvider:
-          kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
-      appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
-    );
+    // ── App Check ──────────────────────────────────────────────────────
+    // Trong lúc test, nếu Console đã đặt App Check = Unenforced cho
+    // Firestore/Functions, có thể bỏ qua activate() để loại trừ hoàn toàn
+    // lỗi "Too many attempts" do debug token dùng chung.
+    const disableAppCheckForTesting = true; // đổi thành false khi xong test
+
+    if (kDebugMode && disableAppCheckForTesting) {
+      debugPrint('⚠️ App Check ĐÃ TẮT cho mục đích test (debug mode)');
+    } else {
+      await FirebaseAppCheck.instance.activate(
+        androidProvider:
+            kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+        appleProvider:
+            kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
+      );
+    }
 
     try {
       await LocalDbService().initialize();
       debugPrint('✅ LocalDbService khởi tạo xong');
       SyncManager().startListening();
       debugPrint('✅ SyncManager đang lắng nghe');
+
+      try {
+        await GroupCallNotificationService.instance
+            .initialize(flutterLocalNotificationsPlugin);
+        debugPrint('✅ GroupCallNotificationService ready');
+      } catch (e) {
+        debugPrint('⚠️ GroupCallNotificationService init: $e');
+      }
     } catch (_) {}
   } catch (e, stack) {
     debugPrint('❌ Firebase init lỗi: $e');
@@ -297,12 +323,47 @@ Future<void> _setupAndroidNotificationChannels(
       playSound: true,
     ),
   );
+
+  // THÊM: Group call notification channel
+  await androidPlugin.createNotificationChannel(
+    const AndroidNotificationChannel(
+      'call_channel', // GroupCallConstants.callChannelId
+      'Cuộc gọi nhóm đến',
+      description: 'Thông báo cuộc gọi nhóm video/thoại',
+      importance: Importance.max,
+      playSound: true,
+      enableVibration: true,
+      enableLights: true,
+      ledColor: Color(0xFF3B82F6),
+    ),
+  );
+
+  await androidPlugin.createNotificationChannel(
+    const AndroidNotificationChannel(
+      'ongoing_call_channel', // GroupCallConstants.ongoingChannelId
+      'Cuộc gọi nhóm đang diễn ra',
+      description: 'Hiển thị trong khi đang trong cuộc gọi nhóm',
+      importance: Importance.low,
+      playSound: false,
+      enableVibration: false,
+    ),
+  );
 }
 
 void _onNotificationTapped(NotificationResponse response) {
   final payload = response.payload;
   if (payload == null) return;
   debugPrint('🔔 Notification tapped: $payload');
+
+  // ── THÊM: group call invite tap ──────────────────────────────────────
+  if (payload.startsWith('group_call:')) {
+    final callId = payload.replaceFirst('group_call:', '');
+    debugPrint('📞 Group call tapped: $callId');
+    // GroupCallListener sẽ tự detect và navigate
+    // Không cần navigate thủ công ở đây
+    return;
+  }
+
   try {
     final parts = payload.split('|');
     if (parts.length >= 2) {
@@ -786,6 +847,11 @@ class _AppInitializerState extends State<AppInitializer>
         widget.notificationService.listenForNewMessages(user.uid);
         _notificationStarted = true;
         ErrorLogger.setUserId(user.uid);
+
+        try {
+          final callProvider = context.read<GroupCallProvider>();
+          callProvider.updateUserId(user.uid);
+        } catch (_) {}
       } else if (user == null) {
         widget.notificationService.stopListening();
         _notificationStarted = false;
@@ -797,6 +863,13 @@ class _AppInitializerState extends State<AppInitializer>
   void _handleFcmForegroundMessages() {
     FirebaseMessaging.onMessage.listen((message) {
       debugPrint('📩 Foreground FCM: ${message.notification?.title}');
+
+      // ── THÊM: group call invite foreground ──────────────────────────────
+      final type = message.data['type'] as String?;
+      if (type == 'group_call_invite') {
+        GroupCallNotificationService.instance.handleForegroundMessage(message);
+        return;
+      }
     });
 
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
@@ -910,12 +983,16 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
     );
 
     if (!kIsWeb) {
-      appTree = BubbleChatChannelManager(
-        child: GroupCallListener(
-          child: CallListener(
-            child: BubbleManager(
-              child: MiniChatOverlayManager(
-                child: appTree,
+      appTree = GroupCallMiniManager(
+        // ← THÊM bọc ngoài cùng
+        child: BubbleChatChannelManager(
+          child: GroupCallListener(
+            // ← đã có sẵn, giữ nguyên
+            child: CallListener(
+              child: BubbleManager(
+                child: MiniChatOverlayManager(
+                  child: appTree,
+                ),
               ),
             ),
           ),
@@ -1070,6 +1147,13 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
       Provider<BubbleSoundService>(create: (_) => BubbleSoundService()),
       Provider<ContextualBubbleService>(
           create: (_) => ContextualBubbleService.instance),
+
+      // ── Group Call ──────────────────────────────────────────────────────────
+      ChangeNotifierProvider<GroupCallProvider>(
+        create: (_) => GroupCallProvider(
+          currentUserId: widget.prefs.getString('currentUserId') ?? '',
+        ),
+      ),
     ];
   }
 }
@@ -1125,6 +1209,17 @@ class AppRouter {
         return _slide(ChatPage(arguments: args));
       case bubbleSettings:
         return _slide(const BubbleSettingsPage());
+      case '/group-call':
+        // Navigate handled by GroupCallListener
+        return null;
+      case '/group-call-history':
+        final args = settings.arguments as Map<String, dynamic>?;
+        if (args == null) return _errorRoute('Missing group call history args');
+        return _slide(GroupCallHistoryPage(
+          groupId: args['groupId'] as String,
+          groupName: args['groupName'] as String,
+          currentUserId: args['currentUserId'] as String,
+        ));
       default:
         return _fade(const _NotFoundPage());
     }

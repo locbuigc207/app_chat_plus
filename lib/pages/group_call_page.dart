@@ -1,5 +1,7 @@
 // ignore_for_file: deprecated_member_use
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
@@ -8,15 +10,17 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide AspectRatio;
 import 'package:flutter/services.dart';
+import 'package:flutter_chat_demo/models/models.dart';
+import 'package:flutter_chat_demo/pages/pages.dart';
+import 'package:flutter_chat_demo/providers/providers.dart';
+import 'package:flutter_chat_demo/services/services.dart';
+import 'package:flutter_chat_demo/widgets/widgets.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
 import 'package:simple_pip_mode/pip_widget.dart';
 import 'package:simple_pip_mode/simple_pip.dart';
-
-import '../models/models.dart';
-import '../services/services.dart';
-import '../widgets/widgets.dart';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 class _K {
@@ -116,12 +120,19 @@ class _GroupCallPageState extends State<GroupCallPage>
   bool _showChat = false;
   bool _showStatsPanel = false;
   bool _showCaptions = false;
+  bool _showEndSummary = false;
 
   // ── Model / timing ────────────────────────────────────────────────────────
   late GroupCallModel _model;
   DateTime? _joinedAt;
   int? _spotUid; // local pinned uid (overrides server)
   bool _aiProtectionStarted = false;
+
+  // ── States bổ sung ────────────────────────────────────────────────────────
+  String? _recordingUrl;
+  Map<CallReactionType, int> _reactionCounts = {};
+  String? _recordingResourceId;
+  String? _recordingSid;
 
   // ── Subscriptions ─────────────────────────────────────────────────────────
   StreamSubscription? _callSub;
@@ -358,8 +369,25 @@ class _GroupCallPageState extends State<GroupCallPage>
   }
 
   Future<void> _joinChannel() async {
+    // Lấy token từ server thay vì để trống
+    String token = '';
+    try {
+      final tokenServer = dotenv.env['AGORA_TOKEN_SERVER'] ?? '';
+      if (tokenServer.isNotEmpty) {
+        final uri = Uri.parse(
+            '$tokenServer/rtc/${widget.call.channelName}/publisher/uid/0/');
+        final resp = await HttpClient().getUrl(uri);
+        final response = await resp.close();
+        final body = await response.transform(utf8.decoder).join();
+        final data = jsonDecode(body) as Map<String, dynamic>;
+        token = data['rtcToken'] as String? ?? '';
+      }
+    } catch (e) {
+      debugPrint('⚠️ Token fetch: $e — dùng token rỗng');
+    }
+
     await _engine.joinChannel(
-      token: '',
+      token: token,
       channelId: widget.call.channelName,
       uid: 0,
       options: ChannelMediaOptions(
@@ -387,7 +415,14 @@ class _GroupCallPageState extends State<GroupCallPage>
       if (mounted) setState(() => _model = call);
       if (call.isEnded) _handleRemoteEnd();
 
-      // Reactions
+      // Aggregate reaction counts
+      final counts = <CallReactionType, int>{};
+      for (final r in call.recentReactions) {
+        counts[r.type] = (counts[r.type] ?? 0) + 1;
+      }
+      if (mounted) setState(() => _reactionCounts = counts);
+
+      // Reactions animation
       for (final r in call.recentReactions) {
         final key = '${r.userId}_${r.sentAt.millisecondsSinceEpoch}';
         if (!_seenRxKeys.contains(key) &&
@@ -404,26 +439,21 @@ class _GroupCallPageState extends State<GroupCallPage>
     if (_callEnded) return;
     _callEnded = true;
     _cleanup();
-    if (mounted) _showEndSheet();
-  }
-
-  void _showEndSheet() {
-    showModalBottomSheet(
-      context: context,
-      isDismissible: false,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _EndSheet(
-        duration: _model.durationSeconds ?? 0,
-        count: _model.participantCount,
-        groupName: _model.groupName,
-        callType: _model.callType,
+    if (mounted) {
+      GroupCallEndSummary.show(
+        context,
+        call: _model,
+        startTime: _joinedAt ?? DateTime.now(),
+        wasHost: widget.isInitiator,
+        recordingUrl: _recordingUrl,
+        reactionCounts: _reactionCounts,
         onClose: () {
           Navigator.of(context)
             ..pop()
             ..pop();
         },
-      ),
-    );
+      );
+    }
   }
 
   // ── Controls hide timer ───────────────────────────────────────────────────
@@ -460,7 +490,11 @@ class _GroupCallPageState extends State<GroupCallPage>
     await _engine.muteLocalAudioStream(next);
     setState(() => _micMuted = next);
     await _svc.updateParticipantState(
-        callId: widget.call.callId, isMuted: next, isCameraOff: _camOff);
+      callId: widget.call.callId,
+      userId: widget.currentUserId,
+      isMuted: next,
+      isCameraOff: _camOff,
+    );
     HapticFeedback.lightImpact();
   }
 
@@ -470,7 +504,11 @@ class _GroupCallPageState extends State<GroupCallPage>
     await _engine.muteLocalVideoStream(next);
     setState(() => _camOff = next);
     await _svc.updateParticipantState(
-        callId: widget.call.callId, isMuted: _micMuted, isCameraOff: next);
+      callId: widget.call.callId,
+      userId: widget.currentUserId,
+      isMuted: _micMuted,
+      isCameraOff: next,
+    );
     HapticFeedback.lightImpact();
   }
 
@@ -512,6 +550,22 @@ class _GroupCallPageState extends State<GroupCallPage>
     _toast(next ? '📺 Đang chia sẻ màn hình' : 'Đã dừng chia sẻ');
   }
 
+  Future<void> _toggleRecording() async {
+    if (!_canModerate) return;
+    HapticFeedback.mediumImpact();
+
+    try {
+      final provider = context.read<GroupCallProvider>();
+      await provider.toggleRecording(
+        channelName: widget.call.channelName,
+        agoraUid: '0',
+      );
+      _toast(_model.isRecording ? '⏹ Đã dừng ghi âm' : '🔴 Bắt đầu ghi âm');
+    } catch (e) {
+      _toast('Lỗi recording: $e');
+    }
+  }
+
   void _sendReaction(CallReactionType type) {
     setState(() {
       _showReactions = false;
@@ -528,15 +582,62 @@ class _GroupCallPageState extends State<GroupCallPage>
 
   Future<void> _hangUp() async {
     if (_callEnded) return;
+
+    // Hiện dialog xác nhận nếu là host và có participants
+    if (widget.isInitiator && _model.participantCount > 1 && mounted) {
+      await CallEndConfirmDialog.show(
+        context,
+        isHost: true,
+        participantCount: _model.participantCount,
+        onLeaveOnly: () {
+          Navigator.pop(context);
+          _doHangUp(endForAll: false);
+        },
+        onEndForAll: () {
+          Navigator.pop(context);
+          _doHangUp(endForAll: true);
+        },
+        onCancel: () => Navigator.pop(context),
+      );
+      return;
+    }
+    _doHangUp(endForAll: widget.isInitiator);
+  }
+
+  Future<void> _doHangUp({required bool endForAll}) async {
+    if (_callEnded) return;
     _callEnded = true;
     HapticFeedback.mediumImpact();
-    if (widget.isInitiator) {
+
+    if (endForAll) {
       await _svc.endCallForAll(widget.call.callId, startTime: _joinedAt);
     } else {
       await _svc.leaveCall(widget.call.callId);
     }
+
+    // Dismiss mini widget nếu đang hiển thị
+    try {
+      GroupCallMiniManager.of(context)?.dismiss();
+    } catch (_) {}
+
     _cleanup();
-    if (mounted) Navigator.of(context).pop();
+
+    // Hiện post-call summary thay vì pop ngay
+    if (mounted) {
+      GroupCallEndSummary.show(
+        context,
+        call: _model,
+        startTime: _joinedAt ?? DateTime.now(),
+        wasHost: widget.isInitiator,
+        recordingUrl: _recordingUrl,
+        reactionCounts: _reactionCounts,
+        onClose: () {
+          Navigator.of(context)
+            ..pop() // close summary sheet
+            ..pop(); // exit call page
+        },
+      );
+    }
   }
 
   void _cleanup() {
@@ -655,9 +756,12 @@ class _GroupCallPageState extends State<GroupCallPage>
 
   Future<void> _enterPip() async {
     final ok = await SimplePip.isPipAvailable;
-    if (ok)
+    if (ok) {
+      // Replaced [3, 4] with (3, 4)
       await _pip.enterPipMode(aspectRatio: (3, 4));
-    else if (mounted) Navigator.pop(context);
+    } else if (mounted) {
+      Navigator.pop(context);
+    }
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -729,6 +833,45 @@ class _GroupCallPageState extends State<GroupCallPage>
 
         // Gradients
         _buildGrads(),
+
+        // Screen share toolbar (khi đang share)
+        if (_screenSharing)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 60,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: ScreenShareToolbar(
+                viewerCount: _remoteUids.length,
+                onStop: _toggleScreen,
+              ),
+            ),
+          ),
+
+        // Screen share viewer banner (khi người khác đang share)
+        if (!_screenSharing &&
+            _model.screenShareUserId != null &&
+            _model.screenShareUserId != widget.currentUserId)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 60,
+            left: 12,
+            child: () {
+              final sharer = _model.getParticipant(_model.screenShareUserId!);
+              return ScreenShareViewerBanner(
+                sharerName: sharer?.userName ?? 'Ai đó',
+                sharerAvatar: sharer?.userAvatar,
+                onPinTap: () {
+                  // Pin the sharer's uid
+                  final uid = _remoteUids.firstWhere(
+                      (u) => u
+                          .toString()
+                          .contains(_model.screenShareUserId!.substring(0, 4)),
+                      orElse: () => -1);
+                  if (uid > 0) setState(() => _spotUid = uid);
+                },
+              );
+            }(),
+          ),
 
         // Floating reactions
         ..._floatReactions.map(_buildFloatRx),
@@ -1637,50 +1780,15 @@ class _GroupCallPageState extends State<GroupCallPage>
                 style: TextStyle(color: color ?? _K.text, fontSize: 13)),
           ]));
 
-  Widget _waitingSection() => Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-          color: _K.amber.withOpacity(0.07),
-          border: Border(top: BorderSide(color: _K.amber.withOpacity(0.15)))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(Icons.hourglass_top_rounded, color: _K.amber, size: 13),
-          const SizedBox(width: 5),
-          Text('Phòng chờ (${_model.waitingRoomUserIds.length})',
-              style: const TextStyle(
-                  color: _K.amber, fontSize: 11, fontWeight: FontWeight.w700)),
-        ]),
-        const SizedBox(height: 8),
-        ..._model.waitingRoomUserIds.map((uid) => Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Row(children: [
-              CircleAvatar(
-                  radius: 13,
-                  backgroundColor: _K.surface2,
-                  child: Text(uid.substring(0, 1).toUpperCase(),
-                      style:
-                          const TextStyle(color: Colors.white, fontSize: 9))),
-              const SizedBox(width: 8),
-              Expanded(
-                  child: Text(uid,
-                      style: const TextStyle(color: _K.sub, fontSize: 11),
-                      overflow: TextOverflow.ellipsis)),
-              GestureDetector(
-                  onTap: () => _svc.admitFromWaitingRoom(
-                      callId: widget.call.callId, targetUserId: uid),
-                  child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                          color: _K.green,
-                          borderRadius: BorderRadius.circular(8)),
-                      child: const Text('Cho vào',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700)))),
-            ]))),
-      ]));
+  Widget _waitingSection() => WaitingRoomAdminPanel(
+        callId: _model.callId,
+        onAdmitAll: () async {
+          for (final uid in _model.waitingRoomUserIds) {
+            await _svc.admitFromWaitingRoom(
+                callId: widget.call.callId, targetUserId: uid);
+          }
+        },
+      );
 
   // ── Reaction picker ───────────────────────────────────────────────────────
   Widget _buildRxPicker() => Positioned(
@@ -1769,6 +1877,22 @@ class _GroupCallPageState extends State<GroupCallPage>
                       setState(() {
                         _showMoreMenu = false;
                         _showCaptions = !_showCaptions;
+                      });
+                    }),
+                    _menuItem(
+                        Icons.wallpaper_rounded, 'Nền ảo', false, _K.purple,
+                        () async {
+                      setState(() => _showMoreMenu = false);
+                      await VirtualBackgroundPicker.show(
+                        context,
+                        current: VirtualBackground.none,
+                      );
+                    }),
+                    _menuItem(Icons.bar_chart_rounded, 'Xem thống kê',
+                        _statsExpanded, _K.accent, () {
+                      setState(() {
+                        _showMoreMenu = false;
+                        _statsExpanded = !_statsExpanded;
                       });
                     }),
                     if (_canModerate)
@@ -1884,6 +2008,15 @@ class _GroupCallPageState extends State<GroupCallPage>
                               activeColor: _K.accent,
                               onTap: _toggleSpeaker),
                           _endBtn(),
+                          if (_canModerate)
+                            _primBtn(
+                                icon: _model.isRecording
+                                    ? Icons.fiber_manual_record_rounded
+                                    : Icons.radio_button_unchecked_rounded,
+                                label: _model.isRecording ? 'Dừng REC' : 'REC',
+                                active: _model.isRecording,
+                                activeColor: _K.red,
+                                onTap: _toggleRecording),
                           if (widget.call.isVideo)
                             _primBtn(
                                 icon: Icons.flip_camera_android_rounded,
@@ -2437,101 +2570,4 @@ class _ParticipantToastState extends State<_ParticipantToast>
                           fontWeight: FontWeight.w600)),
                 ]))));
   }
-}
-
-// ─── End sheet ────────────────────────────────────────────────────────────────
-class _EndSheet extends StatelessWidget {
-  final int duration, count;
-  final String groupName;
-  final GroupCallType callType;
-  final VoidCallback onClose;
-  const _EndSheet(
-      {required this.duration,
-      required this.count,
-      required this.groupName,
-      required this.callType,
-      required this.onClose});
-
-  String get _fmt {
-    final d = Duration(seconds: duration);
-    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return d.inHours > 0 ? '${d.inHours}:$m:$s' : '$m:$s';
-  }
-
-  @override
-  Widget build(BuildContext context) => Container(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 38),
-      decoration: const BoxDecoration(
-          color: Color(0xFF0C1422),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.14),
-                borderRadius: BorderRadius.circular(2))),
-        const SizedBox(height: 22),
-        Container(
-            width: 68,
-            height: 68,
-            decoration: BoxDecoration(
-                color: _K.red.withOpacity(0.11),
-                shape: BoxShape.circle,
-                border: Border.all(color: _K.red.withOpacity(0.25))),
-            child: const Icon(Icons.call_end_rounded, color: _K.red, size: 30)),
-        const SizedBox(height: 14),
-        const Text('Cuộc gọi đã kết thúc',
-            style: TextStyle(
-                color: _K.text, fontSize: 20, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 4),
-        Text(groupName, style: const TextStyle(color: _K.sub, fontSize: 14)),
-        const SizedBox(height: 22),
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          _stat(Icons.access_time_rounded, 'Thời gian',
-              duration > 0 ? _fmt : '--', _K.accent),
-          const SizedBox(width: 14),
-          _stat(Icons.people_rounded, 'Thành viên', '$count', _K.green),
-          const SizedBox(width: 14),
-          _stat(
-              callType == GroupCallType.video
-                  ? Icons.videocam_rounded
-                  : Icons.phone_rounded,
-              'Loại',
-              callType == GroupCallType.video ? 'Video' : 'Thoại',
-              _K.purple),
-        ]),
-        const SizedBox(height: 26),
-        SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-                onPressed: onClose,
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: _K.accent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16))),
-                child: const Text('Đóng',
-                    style:
-                        TextStyle(fontSize: 16, fontWeight: FontWeight.w700)))),
-      ]));
-
-  Widget _stat(IconData icon, String label, String value, Color color) =>
-      Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-          decoration: BoxDecoration(
-              color: color.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: color.withOpacity(0.18))),
-          child: Column(children: [
-            Icon(icon, color: color, size: 18),
-            const SizedBox(height: 5),
-            Text(value,
-                style: TextStyle(
-                    color: color, fontSize: 16, fontWeight: FontWeight.w800)),
-            Text(label, style: const TextStyle(color: _K.muted, fontSize: 10)),
-          ]));
 }

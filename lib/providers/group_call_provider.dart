@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import '../models/group_call_model.dart';
 import '../services/group_call_recording_service.dart';
@@ -12,9 +13,17 @@ import '../services/group_call_service.dart';
 // call session. Use with Provider/Consumer for reactive UI updates.
 // ══════════════════════════════════════════════════════════════════════════════
 class GroupCallProvider extends ChangeNotifier {
-  GroupCallProvider({required this.currentUserId});
+  GroupCallProvider({required String currentUserId})
+      : _currentUserId = currentUserId;
 
-  final String currentUserId;
+  String _currentUserId;
+  String get currentUserId => _currentUserId;
+
+  void updateUserId(String userId) {
+    if (_currentUserId == userId) return;
+    _currentUserId = userId;
+    notifyListeners();
+  }
 
   // ── Active call state ──────────────────────────────────────────────────────
   GroupCallModel? _activeCall;
@@ -28,6 +37,11 @@ class GroupCallProvider extends ChangeNotifier {
   bool _chatOpen = false;
   bool _participantsOpen = false;
   int _unreadChatCount = 0;
+  bool _isWaitingRoom = false;
+
+  String? _recordingResourceId;
+  String? _recordingSid;
+  String? _recordingUrl;
 
   // ── Pending state ──────────────────────────────────────────────────────────
   bool _loading = false;
@@ -49,8 +63,12 @@ class GroupCallProvider extends ChangeNotifier {
   bool get chatOpen => _chatOpen;
   bool get participantsOpen => _participantsOpen;
   int get unreadChatCount => _unreadChatCount;
+  bool get isWaitingRoom => _isWaitingRoom;
   bool get loading => _loading;
   String? get error => _error;
+
+  String? get recordingUrl => _recordingUrl;
+  String? get recordingResourceId => _recordingResourceId;
 
   bool get isAdmin =>
       _activeCall?.getParticipant(currentUserId)?.isAdmin ?? false;
@@ -67,6 +85,11 @@ class GroupCallProvider extends ChangeNotifier {
     required GroupCallType callType,
     bool waitingRoomEnabled = false,
   }) async {
+    if (currentUserId.isEmpty) {
+      _setError('Chưa đăng nhập.');
+      return null;
+    }
+
     _setLoading(true);
     _clearError();
 
@@ -103,7 +126,19 @@ class GroupCallProvider extends ChangeNotifier {
 
     try {
       final ok = await GroupCallService.instance.joinCall(callId);
+
       if (!ok) {
+        // Fetch call để kiểm tra trạng thái
+        final call = await GroupCallService.instance.getCall(callId);
+        if (call != null) {
+          // Nếu user trong waitingRoomUserIds → đang chờ
+          if (call.waitingRoomUserIds.contains(currentUserId)) {
+            _activeCall = call; // set để UI biết
+            _isWaitingRoom = true;
+            notifyListeners();
+            return false; // false = vào waiting room, không phải lỗi
+          }
+        }
         _setError('Không thể tham gia cuộc gọi.');
         return false;
       }
@@ -111,6 +146,7 @@ class GroupCallProvider extends ChangeNotifier {
       final call = await GroupCallService.instance.getCall(callId);
       if (call != null) {
         _isInitiator = false;
+        _isWaitingRoom = false;
         _setActiveCall(call);
       }
       return true;
@@ -126,6 +162,16 @@ class GroupCallProvider extends ChangeNotifier {
   Future<void> leaveCall() async {
     final call = _activeCall;
     if (call == null) return;
+
+    HapticFeedback.mediumImpact();
+
+    if (_isRecording && _recordingResourceId != null && _recordingSid != null) {
+      await GroupCallService.instance.stopRecording(
+        callId: call.callId,
+        resourceId: _recordingResourceId!,
+        sid: _recordingSid!,
+      );
+    }
 
     if (_isInitiator) {
       await GroupCallService.instance.endCallForAll(call.callId);
@@ -152,6 +198,18 @@ class GroupCallProvider extends ChangeNotifier {
         _clearCall();
         return;
       }
+
+      final wasKicked = updated.isKicked(currentUserId);
+      if (wasKicked) {
+        _clearCall();
+        _setError('Bạn đã bị xoá khỏi cuộc gọi.');
+        return;
+      }
+
+      if (_isWaitingRoom && updated.isParticipant(currentUserId)) {
+        _isWaitingRoom = false;
+      }
+
       _activeCall = updated;
       if (updated.isEnded) _clearCall();
       notifyListeners();
@@ -166,6 +224,7 @@ class GroupCallProvider extends ChangeNotifier {
     _isMuted = !_isMuted;
     await GroupCallService.instance.updateParticipantState(
       callId: call.callId,
+      userId: currentUserId,
       isMuted: _isMuted,
       isCameraOff: _isCamOff,
     );
@@ -178,6 +237,7 @@ class GroupCallProvider extends ChangeNotifier {
     _isCamOff = !_isCamOff;
     await GroupCallService.instance.updateParticipantState(
       callId: call.callId,
+      userId: currentUserId,
       isMuted: _isMuted,
       isCameraOff: _isCamOff,
     );
@@ -241,17 +301,40 @@ class GroupCallProvider extends ChangeNotifier {
     final call = _activeCall;
     if (call == null || !isAdmin) return;
 
+    HapticFeedback.mediumImpact();
+
     if (_isRecording) {
-      await GroupCallRecordingService.instance
-          .stopRecording(callId: call.callId);
+      if (_recordingResourceId != null && _recordingSid != null) {
+        final url = await GroupCallService.instance.stopRecording(
+          callId: call.callId,
+          resourceId: _recordingResourceId!,
+          sid: _recordingSid!,
+        );
+        _recordingUrl = url;
+      } else {
+        await GroupCallRecordingService.instance
+            .stopRecording(callId: call.callId);
+      }
       _isRecording = false;
+      _recordingResourceId = null;
+      _recordingSid = null;
     } else {
-      final ok = await GroupCallRecordingService.instance.startRecording(
+      final result = await GroupCallService.instance.startRecording(
         callId: call.callId,
         channelName: channelName,
-        uid: agoraUid,
       );
-      _isRecording = ok;
+      if (result != null) {
+        _isRecording = true;
+        _recordingResourceId = result['resourceId'];
+        _recordingSid = result['sid'];
+      } else {
+        final ok = await GroupCallRecordingService.instance.startRecording(
+          callId: call.callId,
+          channelName: channelName,
+          uid: agoraUid,
+        );
+        _isRecording = ok;
+      }
     }
     notifyListeners();
   }
@@ -322,6 +405,9 @@ class GroupCallProvider extends ChangeNotifier {
     _chatOpen = false;
     _participantsOpen = false;
     _unreadChatCount = 0;
+    _isWaitingRoom = false;
+    _recordingResourceId = null;
+    _recordingSid = null;
     notifyListeners();
   }
 

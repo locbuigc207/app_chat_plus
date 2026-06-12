@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import '../models/group_call_message_model.dart';
 import '../models/group_call_model.dart';
 
 class GroupCallService {
@@ -12,6 +15,8 @@ class GroupCallService {
 
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFunctions _functions =
+      FirebaseFunctions.instanceFor(region: 'asia-southeast1');
 
   static const String _col = 'group_calls';
   static const int _timeoutSeconds = 60;
@@ -23,6 +28,9 @@ class GroupCallService {
   final Map<String, Timer> _timeoutTimers = {};
   final Map<String, int> _lastReactionTimes = {};
   static const int _reactionCooldownMs = 400;
+
+  // Cache cho cancelListeners (dùng từ main.dart)
+  final List<StreamSubscription> _activeSubscriptions = [];
 
   String? get _uid => _auth.currentUser?.uid;
   CollectionReference<Map<String, dynamic>> get _calls => _db.collection(_col);
@@ -94,6 +102,37 @@ class GroupCallService {
       );
 
       await _calls.doc(callId).set(model.toJson());
+
+      // Ghi system message vào group chat
+      try {
+        await _db.collection('messages').doc(groupId).collection(groupId).add({
+          'idFrom': uid,
+          'idTo': groupId,
+          'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
+          'content': jsonEncode(
+            GroupCallMessageHelper.buildCallStartContent(
+              callId: callId,
+              callType: callType,
+              initiatorName: initiatorName,
+              groupName: groupName,
+              groupAvatarUrl: groupAvatarUrl,
+            ),
+          ),
+          'type': GroupCallMessageTypes.groupCallInvite,
+          'isRead': false,
+        });
+      } catch (e) {
+        debugPrint('⚠️ [GroupCallService] system message: $e');
+      }
+
+      unawaited(sendCallInviteNotification(
+        callId: callId,
+        groupName: groupName,
+        initiatorName: initiatorName,
+        callType: callType,
+        memberIds: otherIds,
+      ));
+
       _scheduleTimeout(callId);
       debugPrint('✅ [GroupCallService] Call initiated: $callId');
       return model;
@@ -281,6 +320,33 @@ class GroupCallService {
         'participants': <Map<String, dynamic>>[],
       });
 
+      // Ghi system message kết thúc
+      try {
+        final recordingUrl = call.recordingUrl;
+        await _db
+            .collection('messages')
+            .doc(call.groupId)
+            .collection(call.groupId)
+            .add({
+          'idFrom': _uid ?? '',
+          'idTo': call.groupId,
+          'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
+          'content': jsonEncode(
+            GroupCallMessageHelper.buildCallEndContent(
+              callId: callId,
+              callType: call.callType,
+              durationSeconds: duration,
+              participantCount: call.participantCount,
+              recordingUrl: recordingUrl,
+            ),
+          ),
+          'type': GroupCallMessageTypes.groupCallEnded,
+          'isRead': false,
+        });
+      } catch (e) {
+        debugPrint('⚠️ [GroupCallService] ended system message: $e');
+      }
+
       _cancelTimeout(callId);
       debugPrint('✅ [GroupCallService] Ended call for all: $callId');
       return true;
@@ -307,12 +373,12 @@ class GroupCallService {
   // ── Update participant state ───────────────────────────────────────────────
   Future<void> updateParticipantState({
     required String callId,
+    required String userId,
     required bool isMuted,
     required bool isCameraOff,
     int? audioLevel,
   }) async {
-    final uid = _uid;
-    if (uid == null) return;
+    if (userId.isEmpty) return;
 
     try {
       await _db.runTransaction((tx) async {
@@ -322,7 +388,7 @@ class GroupCallService {
         if (call == null) return;
 
         final updated = call.participants.map((p) {
-          if (p.userId == uid) {
+          if (p.userId == userId) {
             return p.copyWith(
               isMuted: isMuted,
               isCameraOff: isCameraOff,
@@ -546,6 +612,99 @@ class GroupCallService {
     }
   }
 
+  // ── Recording State ────────────────────────────────────────────────────────
+  Future<void> updateRecordingUrl(String callId, String url) async {
+    try {
+      await _calls.doc(callId).update({
+        'recordingUrl': url,
+        'isRecording': false,
+      });
+    } catch (e) {
+      debugPrint('❌ [GroupCallService] updateRecordingUrl: $e');
+    }
+  }
+
+  Future<void> setRecordingState(String callId, bool isRecording) async {
+    try {
+      await _calls.doc(callId).update({
+        'isRecording': isRecording,
+      });
+    } catch (e) {
+      debugPrint('❌ [GroupCallService] setRecordingState: $e');
+    }
+  }
+
+  Future<Map<String, String>?> startRecording({
+    required String callId,
+    required String channelName,
+  }) async {
+    try {
+      final result =
+          await _functions.httpsCallable('startGroupCallRecording').call({
+        'callId': callId,
+        'channelName': channelName,
+        'uid': '0',
+      });
+      final data = result.data as Map<String, dynamic>;
+      final resourceId = data['resourceId'] as String?;
+      final sid = data['sid'] as String?;
+      if (resourceId != null && sid != null) {
+        await setRecordingState(callId, true);
+        return {'resourceId': resourceId, 'sid': sid};
+      }
+      return null;
+    } catch (e) {
+      debugPrint('❌ [GroupCallService] startRecording: $e');
+      return null;
+    }
+  }
+
+  Future<String?> stopRecording({
+    required String callId,
+    required String resourceId,
+    required String sid,
+  }) async {
+    try {
+      final result =
+          await _functions.httpsCallable('stopGroupCallRecording').call({
+        'callId': callId,
+        'resourceId': resourceId,
+        'sid': sid,
+      });
+      final data = result.data as Map<String, dynamic>;
+      final url = data['recordingUrl'] as String? ?? '';
+      await updateRecordingUrl(callId, url);
+      return url;
+    } catch (e) {
+      debugPrint('❌ [GroupCallService] stopRecording: $e');
+      return null;
+    }
+  }
+
+  // ── FCM Notifications ──────────────────────────────────────────────────────
+  /// Ghi FCM trigger document để Cloud Function gửi notification.
+  Future<void> sendCallInviteNotification({
+    required String callId,
+    required String groupName,
+    required String initiatorName,
+    required GroupCallType callType,
+    required List<String> memberIds,
+  }) async {
+    try {
+      await _db.collection('_fcm_triggers').add({
+        'type': 'group_call_invite',
+        'callId': callId,
+        'groupName': groupName,
+        'initiatorName': initiatorName,
+        'callType': callType.name,
+        'memberIds': memberIds,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('❌ [GroupCallService] sendCallInviteNotification: $e');
+    }
+  }
+
   // ── Streams ────────────────────────────────────────────────────────────────
   Stream<GroupCallModel?> watchCall(String callId) => _calls
       .doc(callId)
@@ -658,10 +817,40 @@ class GroupCallService {
           'durationSeconds': 0,
           'participants': <Map<String, dynamic>>[],
         });
+
+        try {
+          await _db
+              .collection('messages')
+              .doc(call.groupId)
+              .collection(call.groupId)
+              .add({
+            'idFrom': call.initiatorId,
+            'idTo': call.groupId,
+            'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
+            'content': jsonEncode(
+              GroupCallMessageHelper.buildCallMissedContent(
+                callId: callId,
+                callType: call.callType,
+                initiatorName: call.initiatorName,
+              ),
+            ),
+            'type': GroupCallMessageTypes.groupCallMissed,
+            'isRead': false,
+          });
+        } catch (e) {
+          debugPrint('⚠️ [GroupCallService] missed system message: $e');
+        }
       }
     } catch (e) {
       debugPrint('❌ [GroupCallService] _onTimeout: $e');
     }
+  }
+
+  void cancelListeners() {
+    for (final sub in _activeSubscriptions) {
+      sub.cancel();
+    }
+    _activeSubscriptions.clear();
   }
 
   void dispose() {
@@ -669,5 +858,11 @@ class GroupCallService {
       t.cancel();
     }
     _timeoutTimers.clear();
+
+    for (final sub in _activeSubscriptions) {
+      sub.cancel();
+    }
+    _activeSubscriptions.clear();
+    _lastReactionTimes.clear();
   }
 }

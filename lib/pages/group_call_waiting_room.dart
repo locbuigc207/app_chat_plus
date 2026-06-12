@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -57,6 +58,8 @@ class _WaitingRoomPageState extends State<WaitingRoomPage>
   late Animation<double> _dotAnim;
   late Animation<double> _fadeAnim;
 
+  bool _leaving = false;
+
   @override
   void initState() {
     super.initState();
@@ -88,9 +91,26 @@ class _WaitingRoomPageState extends State<WaitingRoomPage>
       if (call == null || !mounted) return;
       setState(() => _model = call);
 
-      // Admitted → participant list now includes us
+      // Admitted → vào được call
       if (call.isParticipant(widget.currentUserId)) {
-        Navigator.of(context).pop(true); // pop with admitted=true
+        Navigator.of(context).pop(true);
+        return;
+      }
+
+      // THÊM: bị deny/kick khỏi waiting room
+      if (call.isKicked(widget.currentUserId)) {
+        Navigator.of(context).pop(false);
+        return;
+      }
+
+      // THÊM: không còn trong waitingRoomUserIds nữa và không phải participant
+      // → có thể đã bị từ chối
+      final stillWaiting =
+          call.waitingRoomUserIds.contains(widget.currentUserId);
+      final isParticipant = call.isParticipant(widget.currentUserId);
+      if (!stillWaiting && !isParticipant && !call.isEnded) {
+        Navigator.of(context).pop(false);
+        return;
       }
 
       // Call ended
@@ -99,6 +119,8 @@ class _WaitingRoomPageState extends State<WaitingRoomPage>
   }
 
   Future<void> _leaveWaitingRoom() async {
+    if (_leaving) return;
+    setState(() => _leaving = true);
     HapticFeedback.lightImpact();
     await GroupCallService.instance.declineCall(widget.call.callId);
     if (mounted) Navigator.of(context).pop(false);
@@ -136,6 +158,7 @@ class _WaitingRoomPageState extends State<WaitingRoomPage>
                     _buildAvatar(),
                     const SizedBox(height: 24),
                     _buildStatus(),
+                    _buildEndedWarning(),
                     const SizedBox(height: 16),
                     _buildWaitingDots(),
                     const SizedBox(height: 28),
@@ -157,7 +180,7 @@ class _WaitingRoomPageState extends State<WaitingRoomPage>
 
   Widget _buildTopBar() => Row(children: [
         GestureDetector(
-          onTap: _leaveWaitingRoom,
+          onTap: _leaving ? null : _leaveWaitingRoom,
           child: Container(
             width: 38,
             height: 38,
@@ -268,6 +291,26 @@ class _WaitingRoomPageState extends State<WaitingRoomPage>
           textAlign: TextAlign.center,
         ),
       ]);
+
+  Widget _buildEndedWarning() {
+    if (!_model.isEnded) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: _K.red.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _K.red.withValues(alpha: 0.25)),
+      ),
+      child: const Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.info_outline_rounded, color: _K.red, size: 14),
+        SizedBox(width: 6),
+        Text('Cuộc gọi đã kết thúc',
+            style: TextStyle(
+                color: _K.red, fontSize: 12, fontWeight: FontWeight.w600)),
+      ]),
+    );
+  }
 
   Widget _buildWaitingDots() => AnimatedBuilder(
         animation: _dotAnim,
@@ -399,23 +442,33 @@ class _WaitingRoomPageState extends State<WaitingRoomPage>
   }
 
   Widget _buildLeaveButton() => GestureDetector(
-        onTap: _leaveWaitingRoom,
+        onTap: _leaving ? null : _leaveWaitingRoom,
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 13),
           decoration: BoxDecoration(
-            color: _K.red.withValues(alpha: 0.1),
+            color: _K.red.withValues(alpha: _leaving ? 0.05 : 0.1),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: _K.red.withValues(alpha: 0.3)),
           ),
-          child:
-              const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(Icons.exit_to_app_rounded, color: _K.red, size: 17),
-            SizedBox(width: 8),
-            Text('Rời phòng chờ',
-                style: TextStyle(
-                    color: _K.red, fontSize: 14, fontWeight: FontWeight.w700)),
-          ]),
+          child: _leaving
+              ? const SizedBox(
+                  height: 17,
+                  width: 17,
+                  child:
+                      CircularProgressIndicator(color: _K.red, strokeWidth: 2),
+                )
+              : const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                      Icon(Icons.exit_to_app_rounded, color: _K.red, size: 17),
+                      SizedBox(width: 8),
+                      Text('Rời phòng chờ',
+                          style: TextStyle(
+                              color: _K.red,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700)),
+                    ]),
         ),
       );
 }
@@ -483,82 +536,90 @@ class _OrbsPainter extends CustomPainter {
 // Shown inside the participants panel for admins to manage waiting users.
 // ══════════════════════════════════════════════════════════════════════════════
 class WaitingRoomAdminPanel extends StatelessWidget {
-  final GroupCallModel call;
+  final String callId;
   final VoidCallback? onAdmitAll;
 
   const WaitingRoomAdminPanel({
     super.key,
-    required this.call,
+    required this.callId,
     this.onAdmitAll,
   });
 
   @override
   Widget build(BuildContext context) {
-    final waiting = call.waitingRoomUserIds;
-    if (waiting.isEmpty) return const SizedBox.shrink();
+    return StreamBuilder<GroupCallModel?>(
+      stream: GroupCallService.instance.watchCall(callId),
+      builder: (context, snap) {
+        final call = snap.data;
+        if (call == null) return const SizedBox.shrink();
+        final waiting = call.waitingRoomUserIds;
+        if (waiting.isEmpty) return const SizedBox.shrink();
 
-    return Container(
-      margin: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: _K.amber.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _K.amber.withValues(alpha: 0.2)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Header
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-          child: Row(children: [
-            Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: _K.amber.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.hourglass_top_rounded,
-                    color: _K.amber, size: 14)),
-            const SizedBox(width: 8),
-            Expanded(
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                  Text('Phòng chờ (${waiting.length})',
-                      style: const TextStyle(
-                          color: _K.amber,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700)),
-                  const Text('Đang chờ được cho vào',
-                      style: TextStyle(color: _K.muted, fontSize: 10)),
-                ])),
-            if (waiting.length > 1)
-              GestureDetector(
-                onTap: onAdmitAll,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: _K.green,
-                    borderRadius: BorderRadius.circular(8),
+        return Container(
+          margin: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: _K.amber.withValues(alpha: 0.07),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _K.amber.withValues(alpha: 0.2)),
+          ),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+              child: Row(children: [
+                Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: _K.amber.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.hourglass_top_rounded,
+                        color: _K.amber, size: 14)),
+                const SizedBox(width: 8),
+                Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      Text('Phòng chờ (${waiting.length})',
+                          style: const TextStyle(
+                              color: _K.amber,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700)),
+                      const Text('Đang chờ được cho vào',
+                          style: TextStyle(color: _K.muted, fontSize: 10)),
+                    ])),
+                if (waiting.length > 1)
+                  GestureDetector(
+                    onTap: onAdmitAll,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: _K.green,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text('Cho vào tất',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800)),
+                    ),
                   ),
-                  child: const Text('Cho vào tất',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800)),
-                ),
-              ),
+              ]),
+            ),
+
+            Divider(color: _K.amber.withValues(alpha: 0.12), height: 1),
+
+            // Users list
+            ...waiting.map(
+                (uid) => _WaitingUserRow(userId: uid, callId: call.callId)),
+
+            const SizedBox(height: 6),
           ]),
-        ),
-
-        Divider(color: _K.amber.withValues(alpha: 0.12), height: 1),
-
-        // Users list
-        ...waiting
-            .map((uid) => _WaitingUserRow(userId: uid, callId: call.callId)),
-
-        const SizedBox(height: 6),
-      ]),
+        );
+      },
     );
   }
 }
@@ -571,64 +632,82 @@ class _WaitingUserRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
-      child: Row(children: [
-        CircleAvatar(
-            radius: 16,
-            backgroundColor: _K.s2,
-            child: Text(userId.isNotEmpty ? userId[0].toUpperCase() : '?',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700))),
-        const SizedBox(width: 10),
-        Expanded(
-            child: Text(userId,
-                style: const TextStyle(color: _K.sub, fontSize: 12),
-                overflow: TextOverflow.ellipsis)),
+    return FutureBuilder<DocumentSnapshot>(
+      future: FirebaseFirestore.instance.collection('users').doc(userId).get(),
+      builder: (context, snap) {
+        String name = userId;
+        String avatar = '';
+        if (snap.hasData && snap.data!.exists) {
+          final data = snap.data!.data() as Map<String, dynamic>;
+          name = data['nickname'] as String? ?? userId;
+          avatar = data['photoUrl'] as String? ?? '';
+        }
 
-        // Admit
-        GestureDetector(
-          onTap: () {
-            HapticFeedback.lightImpact();
-            GroupCallService.instance
-                .admitFromWaitingRoom(callId: callId, targetUserId: userId);
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: _K.green,
-              borderRadius: BorderRadius.circular(8),
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
+          child: Row(children: [
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: _K.s2,
+              backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
+              child: avatar.isEmpty
+                  ? Text(name.isNotEmpty ? name[0].toUpperCase() : '?',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700))
+                  : null,
             ),
-            child: const Text('Cho vào',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700)),
-          ),
-        ),
-        const SizedBox(width: 6),
+            const SizedBox(width: 10),
+            Expanded(
+                child: Text(name,
+                    style: const TextStyle(color: _K.sub, fontSize: 12),
+                    overflow: TextOverflow.ellipsis)),
 
-        // Deny
-        GestureDetector(
-          onTap: () {
-            HapticFeedback.lightImpact();
-            GroupCallService.instance
-                .kickParticipant(callId: callId, targetUserId: userId);
-          },
-          child: Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(
-              color: _K.red.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: _K.red.withValues(alpha: 0.25)),
+            // Admit
+            GestureDetector(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                GroupCallService.instance
+                    .admitFromWaitingRoom(callId: callId, targetUserId: userId);
+              },
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: _K.green,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text('Cho vào',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700)),
+              ),
             ),
-            child: const Icon(Icons.close_rounded, color: _K.red, size: 14),
-          ),
-        ),
-      ]),
+            const SizedBox(width: 6),
+
+            // Deny
+            GestureDetector(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                GroupCallService.instance
+                    .kickParticipant(callId: callId, targetUserId: userId);
+              },
+              child: Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: _K.red.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: _K.red.withValues(alpha: 0.25)),
+                ),
+                child: const Icon(Icons.close_rounded, color: _K.red, size: 14),
+              ),
+            ),
+          ]),
+        );
+      },
     );
   }
 }
