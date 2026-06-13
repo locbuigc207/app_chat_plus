@@ -515,6 +515,42 @@ class ChatProvider {
           'lastVotedAt': FieldValue.serverTimestamp(),
         });
       });
+
+      // ── Optimistic Update (Cập nhật Local DB ngay lập tức) ─────────────────
+      try {
+        final updatedSnap = await messageRef.get();
+        if (updatedSnap.exists) {
+          final updatedData = _toStringMap(updatedSnap.data());
+          final key = '${groupChatId}_$messageId';
+          final existingRaw = _localDb.messagesBox.get(key);
+          final existing = _toStringMap(existingRaw);
+
+          if (existing.isNotEmpty) {
+            final newOptions = _toOptionList(
+                updatedData['options'] ?? existing['options'] ?? []);
+
+            // Rebuild content JSON từ options mới để PollMessageWidget parse đúng
+            String updatedContent = existing['content'] as String? ?? '{}';
+            try {
+              final pollMap =
+                  jsonDecode(updatedContent) as Map<String, dynamic>;
+              pollMap['options'] = newOptions;
+              updatedContent = jsonEncode(pollMap);
+            } catch (_) {}
+
+            await _localDb.saveMessage(groupChatId, messageId, {
+              ...existing,
+              'options': newOptions,
+              'content': updatedContent,
+              'lastVotedAt': DateTime.now().millisecondsSinceEpoch.toString(),
+            });
+          }
+        }
+      } catch (e) {
+        _log('⚠️ votePoll local DB update: $e');
+        // Non-fatal: listener sẽ bắt và sync sau
+      }
+      _log('✅ votePoll completed successfully.');
     } on FirebaseException catch (e) {
       _log('❌ votePoll FirebaseException [${e.code}]: ${e.message}');
       rethrow;
@@ -575,17 +611,33 @@ class ChatProvider {
     final isFromMe = data['idFrom'] == currentUserId;
     final type = data['type'] as int? ?? TypeMessage.text;
 
-    // ── Own message: mark as sent ────────────────────────────────────────────
+    // ── Own message: mark as sent & sync poll options ────────────────────────
     if (isFromMe) {
       final key = '${groupChatId}_$messageId';
-      if (_localDb.messagesBox.containsKey(key)) {
-        final existingRaw = _localDb.messagesBox.get(key);
-        final existing = _toStringMap(existingRaw);
-        if (existing.isNotEmpty &&
-            existing['status'] == MessageStatus.pending) {
-          await _localDb.saveMessage(groupChatId, messageId,
-              {...existing, 'status': MessageStatus.sent});
-        }
+      final existingRaw = _localDb.messagesBox.get(key);
+      final existing = _toStringMap(existingRaw);
+
+      if (existing.isNotEmpty) {
+        // Chỉ update status nếu đang pending
+        final currentStatus = existing['status'] as String? ?? '';
+        final newStatus = currentStatus == MessageStatus.pending
+            ? MessageStatus.sent
+            : currentStatus;
+
+        // Merge lại toàn bộ các field có thể thay đổi sau vote
+        final merged = <String, dynamic>{
+          ...existing,
+          'status': newStatus,
+          if (data.containsKey('options'))
+            'options': _toOptionList(data['options']),
+          if (data.containsKey('content') &&
+              (data['type'] as int? ?? 0) == TypeMessage.poll)
+            'content': data[FirestoreConstants.content],
+          if (data.containsKey('lastVotedAt'))
+            'lastVotedAt': data['lastVotedAt']?.toString(),
+        };
+
+        await _localDb.saveMessage(groupChatId, messageId, merged);
       }
       return;
     }

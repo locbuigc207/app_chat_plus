@@ -2916,8 +2916,21 @@ class GroupChatPageState extends State<GroupChatPage>
       return wrapRow(ShakeMessageWidget(secretText: msg.content));
     }
     if (msg.type == TypeMessage.poll) {
+      // Ưu tiên đọc content từ localData['content'] (đã được merge đúng)
+      // Nếu options riêng tồn tại, rebuild content từ đó để đảm bảo nhất quán
+      String pollContent = localData['content'] as String? ?? msg.content;
+
+      final rawOptions = localData['options'];
+      if (rawOptions != null) {
+        try {
+          final pollMap = jsonDecode(pollContent) as Map<String, dynamic>;
+          pollMap['options'] = rawOptions;
+          pollContent = jsonEncode(pollMap);
+        } catch (_) {}
+      }
+
       return wrapRow(PollMessageWidget(
-          content: msg.content,
+          content: pollContent, // Thay vì msg.content
           messageId: messageId,
           currentUserId: _currentUserId,
           onVote: (mId, optionId) => _chatProvider.votePoll(

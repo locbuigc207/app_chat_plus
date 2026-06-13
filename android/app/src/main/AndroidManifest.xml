@@ -28,6 +28,7 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
+
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="32"
@@ -65,10 +66,10 @@
         tools:replace="android:label">
 
         <meta-data android:name="flutterEmbedding" android:value="2" />
-        <meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="false" />
-        <meta-data android:name="io.flutter.embedding.android.RenderingBackend" android:value="software" />
 
-        <meta-data android:name="com.google.android.geo.API_KEY" android:value="AIzaSyDtYaEwZPCe7b3wPjCchwwLb4H4p8VDAKk" />
+        <meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="false" />
+
+        <meta-data android:name="com.google.android.geo.API_KEY" android:value="@string/google_map_api_key" />
 
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"

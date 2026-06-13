@@ -160,3 +160,7 @@
 -dontwarn org.openjsse.**
 -dontwarn javax.annotation.**
 -dontwarn com.squareup.okhttp.**
+
+# ── 13. FLUTTER LOCAL NOTIFICATIONS ──────────────────────────────────────────
+-keep class com.dexterous.flutterlocalnotifications.** { *; }
+-dontwarn com.dexterous.flutterlocalnotifications.**
