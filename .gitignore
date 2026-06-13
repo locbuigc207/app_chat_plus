@@ -1,93 +1,126 @@
-# Miscellaneous
+# ==========================================
+# 1. ENVIRONMENT / SECRETS (BẢO MẬT CỐT LÕI)
+# ==========================================
+.env
+.env.*
+*.env
+**/.env
+**/*.env.*
+
+# ==========================================
+# 2. FIREBASE / GOOGLE CLOUD
+# ==========================================
+**/android/app/google-services.json
+**/ios/Runner/GoogleService-Info.plist
+**/macos/Runner/GoogleService-Info.plist
+# Lưu ý: lib/firebase_options.dart thường CÓ THỂ được commit lên git vì nó chỉ chứa ID public.
+# Tuy nhiên, nếu bạn muốn giấu hoàn toàn, hãy bỏ comment dòng dưới:
+# lib/firebase_options.dart
+
+# ==========================================
+# 3. KHOÁ KÝ (SIGNING KEYS) & CHỨNG CHỈ
+# ==========================================
+# Android
+*.jks
+*.keystore
+**/android/key.properties
+**/android/local.properties
+
+# iOS / macOS
+*.p12
+*.cer
+*.certSigningRequest
+*.mobileprovision
+*.ipa
+
+# ==========================================
+# 4. FLUTTER / DART / PUB
+# ==========================================
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+.flutter-plugins
+.flutter-plugins-dependencies
+**/doc/api/
+coverage/
+
+# ==========================================
+# 5. BUILD OUTPUTS (THƯ MỤC BIÊN DỊCH)
+# ==========================================
+build/
+/build/
+**/build/
+**/*.apk
+**/*.aab
+**/*.ap_
+**/*.jar
+app.*.symbols
+app.*.map.json
+
+# ==========================================
+# 6. ANDROID
+# ==========================================
+android/.gradle/
+android/gradle/
+android/app/.cxx/
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# ==========================================
+# 7. IOS / MACOS
+# ==========================================
+**/ios/Flutter/App.framework
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/app.flx
+**/ios/Flutter/app.zip
+**/ios/Flutter/flutter_assets/
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/Flutter/.last_build_id
+**/ios/ServiceDefinitions.json
+**/ios/Runner/GeneratedPluginRegistrant.*
+**/ios/Pods/
+**/ios/.symlinks/
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+!*.xcodeproj/project.xcworkspace/
+**/*.xcworkspace/xcuserdata/
+**/*.xcodeproj/xcuserdata/
+
+# ==========================================
+# 8. IDEs & EDITORS (CẤU HÌNH CÁ NHÂN)
+# ==========================================
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.atom/
+.history
+.swiftpm/
+
+# ==========================================
+# 9. HỆ ĐIỀU HÀNH & MISC
+# ==========================================
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
 *.class
 *.log
 *.pyc
 *.swp
 *.hprof
-.DS_Store
-.atom/
 .build/
 .buildlog/
-.history
 .svn/
-.swiftpm/
 migrate_working_dir/
-
-# IntelliJ related
-*.iml
-*.ipr
-*.iws
-.idea/
-
-# VS Code
-#.vscode/
-
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-.packages
-.pub-cache/
-.pub/
-
-# Build outputs (root and nested)
-/build/
-**/build/
-
-# Android
-android/app/.cxx/
-android/.gradle/
-android/gradle/
-android/local.properties
-android/key.properties
-/android/app/debug
-/android/app/profile
-/android/app/release
-
-# APK / AAB / binary outputs
-**/*.apk
-**/*.aab
-**/*.ap_
-**/*.jar
-
-# Symbolication & Obfuscation
-app.*.symbols
-app.*.map.json
-
-# iOS
-ios/Flutter/App.framework
-ios/Flutter/Flutter.framework
-ios/Flutter/Flutter.podspec
-ios/Flutter/Generated.xcconfig
-ios/Flutter/app.flx
-ios/Flutter/app.zip
-ios/Flutter/flutter_assets/
-ios/Flutter/flutter_export_environment.sh
-ios/ServiceDefinitions.json
-ios/Runner/GeneratedPluginRegistrant.*
-*.ipa
-
-# Firebase
-google-services.json
-GoogleService-Info.plist
-lib/firebase_options.dart
-
-# Environment / secrets
-.env
-**/.env
-*.env.*
-
-# macOS
-*.xcodeproj/*
-!*.xcodeproj/project.pbxproj
-!*.xcodeproj/xcshareddata/
-!*.xcodeproj/project.xcworkspace/
-
-# Windows
 *.exe
 *.pdb
-
-# Coverage
-coverage/

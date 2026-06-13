@@ -2,9 +2,8 @@
 
 import 'dart:async';
 
+import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:google_generative_ai/google_generative_ai.dart';
 
 import '../constants/constants.dart';
 
@@ -39,13 +38,14 @@ class GeminiService {
   static final GeminiService _instance = GeminiService._internal();
   factory GeminiService() => _instance;
 
+  // gemini-3.5-flash = GA stable (June 2026)
   static const String _modelId = 'gemini-3.5-flash';
   static const int _maxRetries = 3;
   static const Duration _baseRetryDelay = Duration(seconds: 2);
   static const int _maxHistoryMessages = 20;
 
+  // Cache chỉ theo taskType, không cần cache theo apiKey nữa
   GenerativeModel? _cachedModel;
-  String? _cachedApiKey;
 
   Future<String> sendMessage(
     String message,
@@ -196,17 +196,14 @@ Tin nhắn cần phân tích:
   }
 
   GenerativeModel _getOrCreateModel(GeminiTaskType taskType) {
-    final apiKey = _resolveApiKey();
-
-    if (_cachedModel != null &&
-        _cachedApiKey == apiKey &&
-        taskType == GeminiTaskType.chat) {
+    // Chỉ cache model chat vì được dùng thường xuyên nhất
+    if (_cachedModel != null && taskType == GeminiTaskType.chat) {
       return _cachedModel!;
     }
 
-    final model = GenerativeModel(
+    // firebase_ai: không cần apiKey, lấy từ Firebase project
+    final model = FirebaseAI.googleAI().generativeModel(
       model: _modelId,
-      apiKey: apiKey,
       generationConfig: _buildGenerationConfig(taskType),
       safetySettings: _buildSafetySettings(),
       systemInstruction: Content.system(_buildSystemPrompt(taskType)),
@@ -214,24 +211,16 @@ Tin nhắn cần phân tích:
 
     if (taskType == GeminiTaskType.chat) {
       _cachedModel = model;
-      _cachedApiKey = apiKey;
     }
 
     return model;
-  }
-
-  String _resolveApiKey() {
-    final key = dotenv.env['GEMINI_API_KEY'];
-    if (key == null || key.isEmpty) {
-      throw const _ApiKeyMissingException();
-    }
-    return key;
   }
 
   GenerationConfig _buildGenerationConfig(GeminiTaskType taskType) {
     switch (taskType) {
       case GeminiTaskType.scamAnalysis:
       case GeminiTaskType.sentimentAnalysis:
+        // responseMimeType vẫn hợp lệ trong firebase_ai
         return GenerationConfig(
           maxOutputTokens: 512,
           temperature: 0.1,
@@ -249,20 +238,25 @@ Tin nhắn cần phân tích:
           temperature: 0.2,
         );
       case GeminiTaskType.chat:
+        // topP và topK vẫn được hỗ trợ trong firebase_ai GenerationConfig,
+        // nhưng không được khuyến nghị với gemini-3.5-flash (thinking model).
+        // Chỉ dùng temperature để tránh conflict với thinking pipeline.
         return GenerationConfig(
           maxOutputTokens: 2048,
           temperature: 0.7,
-          topP: 0.9,
-          topK: 40,
         );
     }
   }
 
   List<SafetySetting> _buildSafetySettings() => [
-        SafetySetting(HarmCategory.harassment, HarmBlockThreshold.medium),
-        SafetySetting(HarmCategory.hateSpeech, HarmBlockThreshold.medium),
-        SafetySetting(HarmCategory.sexuallyExplicit, HarmBlockThreshold.high),
-        SafetySetting(HarmCategory.dangerousContent, HarmBlockThreshold.medium),
+        // firebase_ai: enum values giữ nguyên tên (low/medium/high/none/off)
+        // Đã xác nhận từ pub.dev docs: HarmBlockThreshold.medium, HarmBlockThreshold.high
+        SafetySetting(HarmCategory.harassment, HarmBlockThreshold.medium, null),
+        SafetySetting(HarmCategory.hateSpeech, HarmBlockThreshold.medium, null),
+        SafetySetting(
+            HarmCategory.sexuallyExplicit, HarmBlockThreshold.high, null),
+        SafetySetting(
+            HarmCategory.dangerousContent, HarmBlockThreshold.medium, null),
       ];
 
   String _buildSystemPrompt(GeminiTaskType taskType) {
@@ -352,6 +346,7 @@ Tin nhắn cần phân tích:
         final text = response.text;
         if (text == null || text.isEmpty) {
           final candidate = response.candidates.firstOrNull;
+          // firebase_ai: FinishReason.safety (lowercase, đã xác nhận từ docs)
           if (candidate?.finishReason == FinishReason.safety) {
             return GeminiResponse.error(
               '⚠️ Nội dung bị chặn bởi bộ lọc an toàn. Vui lòng diễn đạt lại.',
@@ -365,12 +360,13 @@ Tin nhắn cần phân tích:
         return GeminiResponse(
           text: text,
           promptTokenCount: response.usageMetadata?.promptTokenCount,
+          // firebase_ai UsageMetadata: field tên là candidatesTokenCount (có 's')
+          // giống google_generative_ai, xác nhận từ JSON response schema
           candidateTokenCount: response.usageMetadata?.candidatesTokenCount,
         );
       } catch (e) {
         if (_isRateLimitError(e) && attempt < _maxRetries) {
           attempt++;
-
           final delay = _baseRetryDelay * (1 << attempt);
           debugPrint(
               '[GeminiService] Rate limited, retry $attempt sau ${delay.inSeconds}s');
@@ -395,21 +391,15 @@ Tin nhắn cần phân tích:
   }
 
   String _handleError(Object e) {
-    if (e is _ApiKeyMissingException) {
-      return '🔑 Lỗi: API Key Gemini chưa được thiết lập. '
-          'Kiểm tra file .env với biến GEMINI_API_KEY.';
-    }
-
     final msg = e.toString().toLowerCase();
 
     if (msg.contains('429') || msg.contains('quota') || msg.contains('rate')) {
       return '⚠️ Đã đạt giới hạn request. Vui lòng chờ 1 phút rồi thử lại.';
     }
     if (msg.contains('403') ||
-        msg.contains('api key') ||
-        msg.contains('api_key')) {
-      return '🔑 API Key không hợp lệ hoặc chưa được kích hoạt. '
-          'Kiểm tra lại Google AI Studio.';
+        msg.contains('permission') ||
+        msg.contains('unauthenticated')) {
+      return '🔑 Lỗi xác thực Firebase AI. Kiểm tra cấu hình Firebase project.';
     }
     if (msg.contains('socketexception') ||
         msg.contains('network') ||
@@ -429,15 +419,7 @@ Tin nhắn cần phân tích:
 
   void clearModelCache() {
     _cachedModel = null;
-    _cachedApiKey = null;
   }
-}
-
-class _ApiKeyMissingException implements Exception {
-  const _ApiKeyMissingException();
-  @override
-  String toString() =>
-      'ApiKeyMissingException: GEMINI_API_KEY chưa được thiết lập';
 }
 
 extension _ListTakeLast<T> on List<T> {

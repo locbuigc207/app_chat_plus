@@ -578,7 +578,7 @@ Dùng ngôn ngữ gần gũi, tích cực. Không lặp lại số liệu đã c
   try {
     const genAIInstance = new GoogleGenerativeAI(activeKey);
     const model = genAIInstance.getGenerativeModel({
-      model: "gemini-3.1-flash-lite",
+      model: MODEL_FLASH_LITE,
       generationConfig: {maxOutputTokens: 150, temperature: 0.6},
     });
     const result = await model.generateContent(prompt);

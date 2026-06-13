@@ -128,6 +128,7 @@ dependencies:
   translator: ^1.0.0
   package_info_plus: ^9.0.1
   emoji_regex: ^0.0.5
+  firebase_ai: ^3.12.2
 
 dev_dependencies:
   flutter_test:

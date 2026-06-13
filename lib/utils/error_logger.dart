@@ -1,9 +1,8 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
-
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:flutter/foundation.dart';
 
 class ErrorLogger {
   ErrorLogger._();
@@ -60,13 +59,17 @@ class ErrorLogger {
       if (context != null) {
         await _crashlytics.setCustomKey('error_context', context);
       }
-      await _crashlytics.setCustomKey('timestamp', DateTime.now().toIso8601String());
+      await _crashlytics.setCustomKey(
+          'timestamp', DateTime.now().toIso8601String());
 
       if (additionalInfo != null) {
         for (final entry in additionalInfo.entries) {
           final value = entry.value;
 
-          if (value is String || value is int || value is double || value is bool) {
+          if (value is String ||
+              value is int ||
+              value is double ||
+              value is bool) {
             await _crashlytics.setCustomKey(entry.key, value);
           } else {
             await _crashlytics.setCustomKey(entry.key, value.toString());
@@ -177,8 +180,8 @@ class ErrorLogger {
       'conversation_id': conversationId,
       'message_type': messageType,
       if (characterCount != null) 'char_count': characterCount,
-      'has_reply': hasReply,
-      'has_mention': hasMention,
+      'has_reply': hasReply ? 1 : 0,
+      'has_mention': hasMention ? 1 : 0,
     });
   }
 
@@ -247,15 +250,20 @@ class ErrorLogger {
     if (kDebugMode) debugPrint('🍞 [${category ?? "app"}] $message');
     if (kIsWeb) return;
     try {
-      await _crashlytics.log('${category != null ? "[$category] " : ""}$message');
+      await _crashlytics
+          .log('${category != null ? "[$category] " : ""}$message');
     } catch (_) {}
   }
 
   static String _sanitizeEventName(String name) {
-    return name.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_').substring(0, name.length.clamp(0, 40));
+    return name
+        .replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_')
+        .substring(0, name.length.clamp(0, 40));
   }
 
   static String _sanitizeParamKey(String key) {
-    return key.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_').substring(0, key.length.clamp(0, 40));
+    return key
+        .replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_')
+        .substring(0, key.length.clamp(0, 40));
   }
 }
