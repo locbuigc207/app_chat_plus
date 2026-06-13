@@ -3,7 +3,6 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 
@@ -31,7 +30,8 @@ class GeminiResponse {
     this.candidateTokenCount,
   });
 
-  factory GeminiResponse.error(String message) => GeminiResponse(text: message, isError: true);
+  factory GeminiResponse.error(String message) =>
+      GeminiResponse(text: message, isError: true);
 }
 
 class GeminiService {
@@ -39,7 +39,7 @@ class GeminiService {
   static final GeminiService _instance = GeminiService._internal();
   factory GeminiService() => _instance;
 
-  static const String _modelId = 'gemini-2.0-flash';
+  static const String _modelId = 'gemini-3.5-flash';
   static const int _maxRetries = 3;
   static const Duration _baseRetryDelay = Duration(seconds: 2);
   static const int _maxHistoryMessages = 20;
@@ -198,7 +198,9 @@ Tin nhắn cần phân tích:
   GenerativeModel _getOrCreateModel(GeminiTaskType taskType) {
     final apiKey = _resolveApiKey();
 
-    if (_cachedModel != null && _cachedApiKey == apiKey && taskType == GeminiTaskType.chat) {
+    if (_cachedModel != null &&
+        _cachedApiKey == apiKey &&
+        taskType == GeminiTaskType.chat) {
       return _cachedModel!;
     }
 
@@ -370,7 +372,8 @@ Tin nhắn cần phân tích:
           attempt++;
 
           final delay = _baseRetryDelay * (1 << attempt);
-          debugPrint('[GeminiService] Rate limited, retry $attempt sau ${delay.inSeconds}s');
+          debugPrint(
+              '[GeminiService] Rate limited, retry $attempt sau ${delay.inSeconds}s');
           await Future.delayed(delay);
           continue;
         }
@@ -402,11 +405,15 @@ Tin nhắn cần phân tích:
     if (msg.contains('429') || msg.contains('quota') || msg.contains('rate')) {
       return '⚠️ Đã đạt giới hạn request. Vui lòng chờ 1 phút rồi thử lại.';
     }
-    if (msg.contains('403') || msg.contains('api key') || msg.contains('api_key')) {
+    if (msg.contains('403') ||
+        msg.contains('api key') ||
+        msg.contains('api_key')) {
       return '🔑 API Key không hợp lệ hoặc chưa được kích hoạt. '
           'Kiểm tra lại Google AI Studio.';
     }
-    if (msg.contains('socketexception') || msg.contains('network') || msg.contains('connection')) {
+    if (msg.contains('socketexception') ||
+        msg.contains('network') ||
+        msg.contains('connection')) {
       return '📶 Lỗi kết nối mạng. Vui lòng kiểm tra internet.';
     }
     if (msg.contains('timeout') || msg.contains('deadline')) {
@@ -429,7 +436,8 @@ Tin nhắn cần phân tích:
 class _ApiKeyMissingException implements Exception {
   const _ApiKeyMissingException();
   @override
-  String toString() => 'ApiKeyMissingException: GEMINI_API_KEY chưa được thiết lập';
+  String toString() =>
+      'ApiKeyMissingException: GEMINI_API_KEY chưa được thiết lập';
 }
 
 extension _ListTakeLast<T> on List<T> {
