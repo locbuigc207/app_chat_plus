@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
@@ -22,6 +23,10 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// GROUP CHAT PAGE — 2026 UI/UX ARCHITECTURE + AI REMINDERS + GROUP CALLS
+// ═══════════════════════════════════════════════════════════════════════════
+
 class GroupChatPage extends StatefulWidget {
   const GroupChatPage({super.key, required this.group});
   final Group group;
@@ -35,7 +40,9 @@ class GroupChatPageState extends State<GroupChatPage>
         WidgetsBindingObserver,
         ResourceManagerMixin,
         TickerProviderStateMixin {
+  // ── Core state ───────────────────────────────────────────────────────────
   late String _currentUserId;
+  String get _currentUserName => _memberNames[_currentUserId] ?? 'Bạn';
   int _limit = 30;
   static const int _limitIncrement = 20;
 
@@ -46,6 +53,8 @@ class GroupChatPageState extends State<GroupChatPage>
   bool _isRecording = false;
   bool _showScrollToBottom = false;
   bool _isLoadingSmartReply = false;
+  bool _showAIPanel = false; // AI Action Panel (focus trigger)
+  bool _showAIContextBar = true; // AI Context Bar above messages
 
   String _recordingDuration = '0:00';
   int _recordingSeconds = 0;
@@ -88,11 +97,16 @@ class GroupChatPageState extends State<GroupChatPage>
   StreamSubscription? _reminderCountSub;
   late final Stream<List<EnhancedReminder>> _convoReminderStream;
 
+  // ── Animation controllers ────────────────────────────────────────────────
   late final AnimationController _appBarAnim;
   late final AnimationController _fabAnim;
   late final AnimationController _menuAnim;
   late final AnimationController _replyAnim;
+  late final AnimationController _aiPanelAnim;
+  late final AnimationController _aiContextBarAnim;
+  late final AnimationController _inputFocusAnim;
 
+  // ── Providers ────────────────────────────────────────────────────────────
   late ChatProvider _chatProvider;
   late AuthProvider _authProvider;
   late MessageProvider _messageProvider;
@@ -136,12 +150,22 @@ class GroupChatPageState extends State<GroupChatPage>
         vsync: this, duration: const Duration(milliseconds: 260));
     _replyAnim = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 260));
+    _aiPanelAnim = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 320));
+    _aiContextBarAnim = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 400))
+      ..forward();
+    _inputFocusAnim = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 200));
 
     resourceManager
       ..addAnimationController(_appBarAnim)
       ..addAnimationController(_fabAnim)
       ..addAnimationController(_menuAnim)
-      ..addAnimationController(_replyAnim);
+      ..addAnimationController(_replyAnim)
+      ..addAnimationController(_aiPanelAnim)
+      ..addAnimationController(_aiContextBarAnim)
+      ..addAnimationController(_inputFocusAnim);
 
     WidgetsBinding.instance.addObserver(this);
     _focusNode.addListener(_onFocusChange);
@@ -623,7 +647,14 @@ class GroupChatPageState extends State<GroupChatPage>
       setState(() {
         _isShowSticker = false;
         _showFeaturesMenu = false;
+        _showAIPanel = true;
       });
+      _aiPanelAnim.forward();
+      _inputFocusAnim.forward();
+    } else {
+      setState(() => _showAIPanel = false);
+      _aiPanelAnim.reverse();
+      _inputFocusAnim.reverse();
     }
   }
 
@@ -1706,6 +1737,28 @@ class GroupChatPageState extends State<GroupChatPage>
                 memberNames: _memberNames)));
   }
 
+  // ── More Bottom Sheet (replaces overflow popup menu) ─────────────────────
+  void _showMoreBottomSheet() {
+    HapticFeedback.lightImpact();
+    final theme = context.read<ThemeProvider>();
+    final p = theme.palette;
+    final primary = theme.primaryColor;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      useSafeArea: true,
+      builder: (_) => _MoreBottomSheet(
+        palette: p,
+        primary: primary,
+        bubbleCtx: _bubbleCtx,
+        activeReminderCount: _activeReminderCount,
+        onSelected: _onMenuSelected,
+      ),
+    );
+  }
+
   void _onMenuSelected(String value) {
     switch (value) {
       case 'autopilot':
@@ -1751,6 +1804,9 @@ class GroupChatPageState extends State<GroupChatPage>
       case 'search':
         _openSearch();
         break;
+      case 'reminders':
+        _openRemindersPage();
+        break;
       case 'autodelete':
         showDialog(
             context: context,
@@ -1773,9 +1829,6 @@ class GroupChatPageState extends State<GroupChatPage>
       case 'theme':
         Navigator.push(context,
             MaterialPageRoute(builder: (_) => const ThemeSettingsPage()));
-        break;
-      case 'reminders':
-        _openRemindersPage();
         break;
     }
   }
@@ -1845,6 +1898,13 @@ class GroupChatPageState extends State<GroupChatPage>
             _onBackPress();
           },
           child: Column(children: [
+            ActiveGroupCallBanner(
+              groupId: groupChatId,
+              currentUserId: _currentUserId,
+              currentUserName: _currentUserName, // <-- ADD THIS
+              memberIds: widget.group.memberIds,
+              groupName: widget.group.groupName, // Keep this
+            ),
             if (_showMentionSuggestions) _buildMentionSuggestions(p, theme),
             Expanded(child: _buildChatContent(p, theme)),
           ]),
@@ -1853,213 +1913,266 @@ class GroupChatPageState extends State<GroupChatPage>
     );
   }
 
-  // ── APP BAR ───────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // APP BAR — 2026 REDESIGN
+  // Two-row layout: Core info + Dynamic chips
+  // Minimal action icons: Search / Reminders / Call / More
+  // ══════════════════════════════════════════════════════════════════════════
 
   PreferredSizeWidget _buildAppBar(ThemePalette p, ThemeProvider theme) {
     return PreferredSize(
-      preferredSize: const Size.fromHeight(64),
+      preferredSize: const Size.fromHeight(72),
       child: FadeTransition(
         opacity: _appBarAnim,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 400),
           curve: Curves.easeOut,
           decoration: BoxDecoration(
-            // ← App bar colour adapts to BubbleMode
             color: _appBarColorFromMode(p),
             boxShadow: [
               BoxShadow(
-                  color: p.shadow, blurRadius: 8, offset: const Offset(0, 2))
+                  color: p.shadow.withValues(alpha: 0.12),
+                  blurRadius: 12,
+                  offset: const Offset(0, 2))
             ],
           ),
-          child: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            leading: IconButton(
-                icon: Icon(Icons.arrow_back_ios_new_rounded,
-                    color: theme.primaryColor, size: 20),
-                onPressed: _onBackPress),
-            title: InkWell(
-              onTap: _openGroupInfo,
-              borderRadius: BorderRadius.circular(12),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(children: [
-                  Hero(
-                    tag: 'group_avatar_${widget.group.id}',
-                    child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: LinearGradient(colors: [
-                              theme.primaryLightColor,
-                              theme.primaryColor
-                            ]),
-                            border: Border.all(
-                                color:
-                                    theme.primaryColor.withValues(alpha: 0.4),
-                                width: 1.5),
-                            boxShadow: [
-                              BoxShadow(
-                                  color: theme.primaryColor
-                                      .withValues(alpha: 0.25),
-                                  blurRadius: 8)
-                            ]),
-                        child: ClipOval(
-                            child: widget.group.groupPhotoUrl.isNotEmpty
-                                ? Image.network(widget.group.groupPhotoUrl,
-                                    fit: BoxFit.cover)
-                                : const Icon(Icons.group_rounded,
-                                    size: 20, color: Colors.white))),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                        Row(children: [
-                          Expanded(
-                              child: Text(widget.group.groupName,
-                                  style: TextStyle(
-                                      color: p.textPrimary,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: -0.3),
-                                  overflow: TextOverflow.ellipsis)),
-                          // ← BubbleMode badge
-                          if (_bubbleCtx.mode != BubbleMode.normal)
-                            Container(
-                              margin: const EdgeInsets.only(left: 6),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(8)),
-                              child: Text(_modeEmoji(_bubbleCtx.mode),
-                                  style: const TextStyle(fontSize: 12)),
-                            ),
-                        ]),
-                        Text('${widget.group.memberIds.length} thành viên',
-                            style: TextStyle(
-                                color: p.textSecondary, fontSize: 11.5)),
-                      ])),
-                ]),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── Row 1: Back + Avatar + Name/Status + Actions ────────────
+              AppBar(
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                toolbarHeight: 56,
+                leading: _buildBackButton(theme),
+                titleSpacing: 0,
+                title: _buildAppBarTitle(p, theme),
+                actions: _buildAppBarActions(p, theme),
               ),
-            ),
-            actions: [
-              if (_autoPilotProvider != null)
-                AutoPilotAppBarButton(
-                  conversationId: groupChatId,
-                  currentUserId: _currentUserId,
-                  isGroup: true,
-                ),
-              IconButton(
-                  icon: Icon(Icons.sports_esports_rounded,
-                      color: theme.primaryColor, size: 22),
-                  onPressed: _openGameCenter),
-              GroupVideoCallButton(
-                groupId: groupChatId,
-                groupName: widget.group.groupName,
-                memberIds: widget.group.memberIds,
-                groupAvatarUrl: widget.group.groupPhotoUrl,
-              ),
-              SentimentIndicatorWidget(groupChatId: groupChatId),
-              const SizedBox(width: 2),
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  IconButton(
-                    icon: Icon(Icons.alarm_rounded,
-                        color: theme.primaryColor, size: 22),
-                    tooltip: 'Nhắc nhở',
-                    onPressed: _openRemindersPage,
-                  ),
-                  if (_activeReminderCount > 0)
-                    Positioned(
-                      right: 6,
-                      top: 6,
-                      child: Container(
-                        width: 16,
-                        height: 16,
-                        decoration: BoxDecoration(
-                          color: theme.primaryColor,
-                          shape: BoxShape.circle,
-                          border:
-                              Border.all(color: p.appBarBackground, width: 1.5),
-                        ),
-                        child: Center(
-                          child: Text(
-                            _activeReminderCount > 9
-                                ? '9+'
-                                : '$_activeReminderCount',
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 8,
-                                fontWeight: FontWeight.w900),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              IconButton(
-                  icon: Icon(Icons.search_rounded,
-                      color: theme.primaryColor, size: 22),
-                  onPressed: _openSearch),
-              PopupMenuButton<String>(
-                onSelected: _onMenuSelected,
-                icon: Icon(Icons.more_vert_rounded,
-                    color: p.textSecondary, size: 22),
-                color: p.surface,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
-                itemBuilder: (_) => [
-                  _menuItem('autopilot', Icons.smart_toy_rounded, 'AutoPilot',
-                      const Color(0xFF8B5CF6), p),
-                  const PopupMenuDivider(),
-                  _menuItem('ai_assistant', Icons.auto_awesome, 'AI Assistant',
-                      const Color(0xFF8B5CF6), p),
-                  _menuItem('info', Icons.info_outline_rounded,
-                      'Thông tin nhóm', theme.primaryColor, p),
-                  _menuItem('media', Icons.perm_media_rounded, 'Media & Files',
-                      const Color(0xFF43C6AC), p),
-                  _menuItem('search', Icons.search_rounded, 'Tìm kiếm',
-                      p.textSecondary, p),
-                  _menuItem('reminders', Icons.alarm_rounded, 'Nhắc nhở',
-                      theme.primaryColor, p),
-                  const PopupMenuDivider(),
-                  _menuItem('summarize', Icons.summarize_rounded,
-                      'Tóm tắt & Phân tích', const Color(0xFF0EA5E9), p),
-                  _menuItem('tone_rewriter', Icons.edit_note_rounded,
-                      'Viết lại tông giọng', const Color(0xFF8B5CF6), p),
-                  _menuItem('insights', Icons.psychology_rounded,
-                      'AI Insights nhóm', const Color(0xFFF59E0B), p),
-                  _menuItem('weekly', Icons.analytics_rounded, 'Weekly Recap',
-                      const Color(0xFF10B981), p),
-                  _menuItem('group_call_history', Icons.history_rounded,
-                      'Lịch sử cuộc gọi', const Color(0xFF3B82F6), p),
-                  const PopupMenuDivider(),
-                  _menuItem('autodelete', Icons.timer_rounded, 'Tự xoá',
-                      p.warningColor, p),
-                  _menuItem('clear', Icons.delete_sweep_rounded, 'Xoá lịch sử',
-                      p.warningColor, p),
-                  // ← BUBBLE MENU ITEMS
-                  _menuItemWithBadge('bubble', Icons.bubble_chart_rounded,
-                      'Chat Bubble', p.successColor, p, _bubbleCtx.mode),
-                  _menuItem('settings_bubble', Icons.settings_rounded,
-                      'Cài đặt Bubble', Colors.grey, p),
-                  _menuItem('theme', Icons.palette_rounded, 'Giao diện',
-                      theme.primaryColor, p),
-                  const PopupMenuDivider(),
-                  _menuItem('leave', Icons.exit_to_app_rounded, 'Rời nhóm',
-                      p.dangerColor, p,
-                      isDestructive: true),
-                ],
-              ),
-              const SizedBox(width: 4),
+              // ── Row 2: Dynamic chips (AI Summary, Members, Voice Call) ──
+              _buildAppBarChips(p, theme),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildBackButton(ThemeProvider theme) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _onBackPress,
+        customBorder: const CircleBorder(),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Icon(Icons.arrow_back_ios_new_rounded,
+              color: theme.primaryColor, size: 20),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAppBarTitle(ThemePalette p, ThemeProvider theme) {
+    return GestureDetector(
+      onTap: _openGroupInfo,
+      child: Row(children: [
+        // ── Hero Avatar ────────────────────────────────────────────────
+        Hero(
+          tag: 'group_avatar_${widget.group.id}',
+          child: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                  colors: [theme.primaryLightColor, theme.primaryColor]),
+              border: Border.all(
+                  color: theme.primaryColor.withValues(alpha: 0.35),
+                  width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                    color: theme.primaryColor.withValues(alpha: 0.22),
+                    blurRadius: 10)
+              ],
+            ),
+            child: ClipOval(
+              child: widget.group.groupPhotoUrl.isNotEmpty
+                  ? Image.network(widget.group.groupPhotoUrl, fit: BoxFit.cover)
+                  : Icon(Icons.group_rounded, size: 22, color: Colors.white),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        // ── Name + Status ──────────────────────────────────────────────
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Row(children: [
+                Expanded(
+                  child: Text(
+                    widget.group.groupName,
+                    style: TextStyle(
+                        color: p.textPrimary,
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.3),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (_bubbleCtx.mode != BubbleMode.normal)
+                  _BubbleModeBadge(mode: _bubbleCtx.mode),
+              ]),
+              _buildOnlineStatus(p, theme),
+            ],
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildOnlineStatus(ThemePalette p, ThemeProvider theme) {
+    if (_presenceProvider == null) {
+      return Text('${widget.group.memberIds.length} thành viên',
+          style: TextStyle(color: p.textSecondary, fontSize: 11.5));
+    }
+    return StreamBuilder<Map<String, TypingInfo>>(
+      stream: _presenceProvider!.getTypingStatusStream(groupChatId),
+      builder: (_, snap) {
+        final typing = snap.hasData
+            ? snap.data!.entries
+                .where((e) => e.key != _currentUserId && e.value.isTyping)
+                .map((e) => _getSenderName(e.key))
+                .toList()
+            : <String>[];
+
+        if (typing.isNotEmpty) {
+          return AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: Row(key: const ValueKey('typing'), children: [
+              _TypingDots(color: theme.primaryColor),
+              const SizedBox(width: 5),
+              Text(
+                typing.length == 1
+                    ? '${typing.first} đang nhập…'
+                    : '${typing.length} người đang nhập…',
+                style: TextStyle(
+                    fontSize: 11.5,
+                    color: theme.primaryColor,
+                    fontStyle: FontStyle.italic,
+                    fontWeight: FontWeight.w500),
+              ),
+            ]),
+          );
+        }
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          child: Text(
+            key: const ValueKey('members'),
+            '${widget.group.memberIds.length} thành viên',
+            style: TextStyle(color: p.textSecondary, fontSize: 11.5),
+          ),
+        );
+      },
+    );
+  }
+
+  List<Widget> _buildAppBarActions(ThemePalette p, ThemeProvider theme) {
+    return [
+      if (_autoPilotProvider != null)
+        AutoPilotAppBarButton(
+          conversationId: groupChatId,
+          currentUserId: _currentUserId,
+          isGroup: true,
+        ),
+      // Search
+      _AppBarIconBtn(
+        icon: Icons.search_rounded,
+        color: p.textSecondary,
+        onTap: _openSearch,
+      ),
+      // Reminders (with active count badge)
+      _AppBarIconBtn(
+        icon: Icons.alarm_rounded,
+        color: theme.primaryColor,
+        onTap: _openRemindersPage,
+        badgeCount: _activeReminderCount,
+        appBarBackground: p.appBarBackground,
+      ),
+      // Video Call
+      GroupVideoCallButton(
+          groupId: groupChatId,
+          groupName: widget.group.groupName,
+          memberIds: widget.group.memberIds,
+          groupAvatarUrl: widget.group.groupPhotoUrl),
+      // More → Bottom Sheet
+      _AppBarIconBtn(
+        icon: Icons.more_vert_rounded,
+        color: p.textSecondary,
+        onTap: _showMoreBottomSheet,
+      ),
+      const SizedBox(width: 4),
+    ];
+  }
+
+  /// Row 2: contextual chips shown below the main title row
+  Widget _buildAppBarChips(ThemePalette p, ThemeProvider theme) {
+    return SizedBox(
+      height: 16,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 56),
+        child: Row(children: [
+          // AI Summary chip
+          _HeaderChip(
+            icon: Icons.auto_awesome,
+            label: 'AI tóm tắt',
+            color: const Color(0xFF8B5CF6),
+            onTap: _showSummaryAnalysis,
+          ),
+          const SizedBox(width: 6),
+          // Members chip
+          _HeaderChip(
+            icon: Icons.people_alt_rounded,
+            label: '${widget.group.memberIds.length}',
+            color: theme.primaryColor,
+            onTap: _openGroupInfo,
+          ),
+          const SizedBox(width: 6),
+          // Reminders chip
+          _HeaderChip(
+            icon: Icons.alarm_rounded,
+            label: _activeReminderCount > 0
+                ? 'Nhắc nhở ($_activeReminderCount)'
+                : 'Nhắc nhở',
+            color: theme.primaryColor,
+            onTap: _openRemindersPage,
+          ),
+          const SizedBox(width: 6),
+          _HeaderChip(
+            icon: Icons.insights_rounded,
+            label: 'Insights',
+            color: const Color(0xFFF59E0B),
+            onTap: _openInsightsPage,
+          ),
+          const SizedBox(width: 6),
+          _HeaderChip(
+            icon: Icons.analytics_rounded,
+            label: 'Recap',
+            color: const Color(0xFF10B981),
+            onTap: _openWeeklyRecap,
+          ),
+          const SizedBox(width: 6),
+          _HeaderChip(
+            icon: Icons.history_rounded,
+            label: 'Lịch sử gọi',
+            color: const Color(0xFF3B82F6),
+            onTap: () => _onMenuSelected('group_call_history'),
+          ),
+          SentimentIndicatorWidget(groupChatId: groupChatId),
+        ]),
       ),
     );
   }
@@ -2073,62 +2186,9 @@ class GroupChatPageState extends State<GroupChatPage>
         _ => p.appBarBackground,
       };
 
-  PopupMenuItem<String> _menuItem(String value, IconData icon, String label,
-          Color color, ThemePalette p,
-          {bool isDestructive = false}) =>
-      PopupMenuItem(
-          value: value,
-          child: Row(children: [
-            Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8)),
-                child: Icon(icon, color: color, size: 16)),
-            const SizedBox(width: 10),
-            Text(label,
-                style: TextStyle(
-                    color: isDestructive ? p.dangerColor : p.textPrimary,
-                    fontSize: 14,
-                    fontWeight:
-                        isDestructive ? FontWeight.w700 : FontWeight.w500)),
-          ]));
-
-  PopupMenuItem<String> _menuItemWithBadge(String value, IconData icon,
-          String label, Color color, ThemePalette p, BubbleMode mode) =>
-      PopupMenuItem(
-          value: value,
-          child: Row(children: [
-            Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8)),
-                child: Icon(icon, color: color, size: 16)),
-            const SizedBox(width: 10),
-            Expanded(
-                child: Text(label,
-                    style: TextStyle(
-                        color: p.textPrimary,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500))),
-            if (mode != BubbleMode.normal)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(6)),
-                child: Text(mode.name,
-                    style: TextStyle(
-                        fontSize: 9,
-                        color: color,
-                        fontWeight: FontWeight.w700)),
-              ),
-          ]));
-
-  // ── CHAT CONTENT ──────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // CHAT CONTENT
+  // ══════════════════════════════════════════════════════════════════════════
 
   List<dynamic> _processMessages(List<Map<dynamic, dynamic>> raw) {
     final grouped = <dynamic>[];
@@ -2181,6 +2241,7 @@ class GroupChatPageState extends State<GroupChatPage>
       child: Stack(children: [
         Column(children: [
           const OfflineIndicator(),
+          // ── Inline pending reminders bar (from convo reminder stream) ──
           if (_activeReminderCount > 0)
             StreamBuilder<List<EnhancedReminder>>(
               stream: _convoReminderStream,
@@ -2195,6 +2256,7 @@ class GroupChatPageState extends State<GroupChatPage>
                 );
               },
             ),
+          // ── AI Reminder suggestion panel (extracted from messages) ──────
           if (_showExtractPanel && _pendingExtracted.isNotEmpty)
             AiReminderSuggestionPanel(
               extracted: _pendingExtracted,
@@ -2206,19 +2268,31 @@ class GroupChatPageState extends State<GroupChatPage>
                 _pendingExtracted = [];
               }),
             ),
+          // ── Group Call status banner ─────────────────────────────────
           GroupCallStatusBanner(
             groupId: groupChatId,
             currentUserId: _currentUserId,
             currentUserName: _memberNames[_currentUserId] ?? 'Bạn',
             currentUserAvatar: _avatarUrlCache[_currentUserId] ?? '',
           ),
-          if (_pinnedMessages.isNotEmpty) _buildPinnedMessages(p, theme),
+          // ── Pinned Messages (Collapsed Banner) ─────────────────────
+          if (_pinnedMessages.isNotEmpty) _buildPinnedBanner(p, theme),
+          // ── AI Context Bar (floating card above message list) ───────
+          if (_showAIContextBar) _buildAIContextBar(p, theme),
+          // ── Message List ────────────────────────────────────────────
           _buildListMessage(p, theme),
+          // ── Typing Indicator ────────────────────────────────────────
           _buildTypingIndicator(p, theme),
+          // ── Sticker Panel ───────────────────────────────────────────
           if (_isShowSticker) _buildStickers(p, theme),
+          // ── Attachment Features Menu (Bottom Sheet style) ───────────
           if (_showFeaturesMenu) _buildFeaturesMenu(p, theme),
+          // ── AI Action Panel (appears on input focus) ─────────────
+          if (_showAIPanel) _buildAIActionPanel(p, theme),
+          // ── Main Input ──────────────────────────────────────────────
           if (!_isShowingSwipeCards) _buildInput(p, theme),
         ]),
+        // ── Loading overlays ──────────────────────────────────────────
         if (_isLoading)
           Positioned.fill(
               child: Container(
@@ -2228,6 +2302,7 @@ class GroupChatPageState extends State<GroupChatPage>
                           color: theme.primaryColor, strokeWidth: 2.5)))),
         if (_isLoadingMedia)
           Positioned.fill(child: _buildMediaOverlay(p, theme)),
+        // ── Swipe Cards ───────────────────────────────────────────────
         if (_isShowingSwipeCards)
           Positioned(
               bottom: 0,
@@ -2254,6 +2329,7 @@ class GroupChatPageState extends State<GroupChatPage>
                       });
                     }
                   })),
+        // ── Scroll-to-bottom FAB ──────────────────────────────────────
         Positioned(
             right: 12,
             bottom: _isShowingSwipeCards ? 200 : 90,
@@ -2265,18 +2341,240 @@ class GroupChatPageState extends State<GroupChatPage>
                       duration: const Duration(milliseconds: 400),
                       curve: Curves.easeOutCubic),
                   child: Container(
-                      width: 36,
-                      height: 36,
+                      width: 38,
+                      height: 38,
                       decoration: BoxDecoration(
                           color: p.surface,
                           shape: BoxShape.circle,
                           boxShadow: [
-                            BoxShadow(color: p.shadow, blurRadius: 8)
+                            BoxShadow(
+                                color: p.shadow,
+                                blurRadius: 10,
+                                offset: const Offset(0, 3))
                           ]),
                       child: Icon(Icons.keyboard_arrow_down_rounded,
                           color: p.textSecondary, size: 22))),
             )),
       ]),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PINNED MESSAGES — Collapsed Banner (Telegram-style)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildPinnedBanner(ThemePalette p, ThemeProvider theme) {
+    return Container(
+      height: 44,
+      decoration: BoxDecoration(
+        color: p.surface.withValues(alpha: 0.96),
+        border: Border(
+            bottom:
+                BorderSide(color: p.divider.withValues(alpha: 0.5), width: .8)),
+        boxShadow: [
+          BoxShadow(color: p.shadow.withValues(alpha: 0.06), blurRadius: 4)
+        ],
+      ),
+      child: Row(children: [
+        Container(
+          width: 3,
+          height: 28,
+          margin: const EdgeInsets.only(left: 12, right: 8),
+          decoration: BoxDecoration(
+              color: theme.primaryColor,
+              borderRadius: BorderRadius.circular(2)),
+        ),
+        Icon(Icons.push_pin_rounded, size: 14, color: theme.primaryColor),
+        const SizedBox(width: 6),
+        Expanded(
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: _pinnedMessages.length,
+            itemBuilder: (_, i) {
+              final message = MessageChat.fromDocument(_pinnedMessages[i]);
+              return GestureDetector(
+                onTap: () {
+                  final id = _pinnedMessages[i].id;
+                  _scrollToMessage(id);
+                },
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 180),
+                  margin: const EdgeInsets.only(right: 10),
+                  child: Text(
+                    message.content,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        color: p.textSecondary,
+                        fontWeight: FontWeight.w500),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        GestureDetector(
+          onTap: () => setState(() => _pinnedMessages = []),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Icon(Icons.close_rounded, size: 16, color: p.textHint),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // AI CONTEXT BAR — Glassmorphism floating card
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildAIContextBar(ThemePalette p, ThemeProvider theme) {
+    return SizeTransition(
+      sizeFactor: CurvedAnimation(
+          parent: _aiContextBarAnim, curve: Curves.easeOutCubic),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: theme.primaryColor.withValues(alpha: 0.07),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                    color: theme.primaryColor.withValues(alpha: 0.18),
+                    width: .8),
+              ),
+              child: Row(children: [
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: [
+                      const Color(0xFF8B5CF6),
+                      theme.primaryColor,
+                    ]),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.auto_awesome,
+                      color: Colors.white, size: 15),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('AI Nhận biết',
+                          style: TextStyle(
+                              fontSize: 10.5,
+                              color: theme.primaryColor,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.3)),
+                      Text('Đang theo dõi ngữ cảnh nhóm...',
+                          style:
+                              TextStyle(fontSize: 12, color: p.textSecondary),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  onTap: _showSummaryAnalysis,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: theme.primaryColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text('Xem',
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            color: theme.primaryColor,
+                            fontWeight: FontWeight.w700)),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: () {
+                    _aiContextBarAnim.reverse();
+                    setState(() => _showAIContextBar = false);
+                  },
+                  child: Icon(Icons.close_rounded, size: 16, color: p.textHint),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // AI ACTION PANEL — horizontal chips above input bar
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildAIActionPanel(ThemePalette p, ThemeProvider theme) {
+    final actions = [
+      _AIAction(Icons.edit_note_rounded, 'Viết lại', _showToneRewriter,
+          const Color(0xFF8B5CF6)),
+      _AIAction(Icons.translate_rounded, 'Dịch', () {
+        final t = _chatInputController.text.trim();
+        if (t.isNotEmpty) _translateMessage(t);
+      }, const Color(0xFF0EA5E9)),
+      _AIAction(Icons.summarize_rounded, 'Tóm tắt', _showSummaryAnalysis,
+          const Color(0xFF10B981)),
+      _AIAction(Icons.reply_rounded, 'Gợi ý', _triggerZeroTypeSwipe,
+          const Color(0xFFF59E0B)),
+      _AIAction(Icons.smart_toy_rounded, 'AutoPilot', _showAutoPilotSheet,
+          const Color(0xFFEC4899)),
+      _AIAction(Icons.alarm_add_rounded, 'Nhắc nhở', _openRemindersPage,
+          const Color(0xFF6366F1)),
+    ];
+
+    return SlideTransition(
+      position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
+          .animate(
+              CurvedAnimation(parent: _aiPanelAnim, curve: Curves.easeOutBack)),
+      child: Container(
+        height: 44,
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: actions.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 6),
+          itemBuilder: (_, i) {
+            final a = actions[i];
+            return GestureDetector(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                a.onTap();
+              },
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: a.color.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: a.color.withValues(alpha: 0.25)),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(a.icon, size: 14, color: a.color),
+                  const SizedBox(width: 5),
+                  Text(a.label,
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          color: a.color,
+                          fontWeight: FontWeight.w600)),
+                ]),
+              ),
+            );
+          },
+        ),
+      ),
     );
   }
 
@@ -2299,46 +2597,6 @@ class GroupChatPageState extends State<GroupChatPage>
         ]),
       )));
 
-  Widget _buildPinnedMessages(ThemePalette p, ThemeProvider theme) {
-    return Container(
-      height: 48,
-      decoration: BoxDecoration(
-          color: p.surface,
-          border: Border(bottom: BorderSide(color: p.divider, width: .8))),
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        itemCount: _pinnedMessages.length,
-        itemBuilder: (_, i) {
-          final message = MessageChat.fromDocument(_pinnedMessages[i]);
-          return Container(
-            constraints: const BoxConstraints(maxWidth: 220),
-            margin: const EdgeInsets.only(right: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-                color: p.pinnedBackground,
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(
-                    color: theme.primaryColor.withValues(alpha: .25),
-                    width: .8)),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.push_pin_rounded, size: 13, color: theme.primaryColor),
-              const SizedBox(width: 6),
-              Flexible(
-                  child: Text(message.content,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 12.5,
-                          color: theme.primaryColor,
-                          fontWeight: FontWeight.w500))),
-            ]),
-          );
-        },
-      ),
-    );
-  }
-
   Widget _buildListMessage(ThemePalette p, ThemeProvider theme) {
     return Flexible(
         child: groupChatId.isNotEmpty
@@ -2351,27 +2609,7 @@ class GroupChatPageState extends State<GroupChatPage>
                   prefetchLinkPreviews(display);
 
                   if (grouped.isEmpty) {
-                    return Center(
-                        child:
-                            Column(mainAxisSize: MainAxisSize.min, children: [
-                      Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                              color: p.primaryContainer,
-                              shape: BoxShape.circle),
-                          child: Icon(Icons.chat_bubble_outline_rounded,
-                              size: 40, color: theme.primaryColor)),
-                      const SizedBox(height: 16),
-                      Text('Chưa có tin nhắn',
-                          style: TextStyle(
-                              color: p.textPrimary,
-                              fontSize: 17,
-                              fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 6),
-                      Text('Hãy chào cả nhóm! 👋',
-                          style:
-                              TextStyle(color: p.textSecondary, fontSize: 14)),
-                    ]));
+                    return _buildEmptyState(p, theme);
                   }
                   return ListView.builder(
                     padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -2397,6 +2635,56 @@ class GroupChatPageState extends State<GroupChatPage>
             : Center(
                 child: CircularProgressIndicator(
                     color: theme.primaryColor, strokeWidth: 2)));
+  }
+
+  Widget _buildEmptyState(ThemePalette p, ThemeProvider theme) {
+    return Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+      // Animated icon container
+      TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.7, end: 1.0),
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.elasticOut,
+        builder: (_, v, child) => Transform.scale(scale: v, child: child),
+        child: Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+                colors: [theme.primaryLightColor, theme.primaryColor]),
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                  color: theme.primaryColor.withValues(alpha: 0.3),
+                  blurRadius: 24,
+                  spreadRadius: 4)
+            ],
+          ),
+          child: const Icon(Icons.chat_bubble_outline_rounded,
+              size: 36, color: Colors.white),
+        ),
+      ),
+      const SizedBox(height: 20),
+      Text('Chưa có tin nhắn',
+          style: TextStyle(
+              color: p.textPrimary, fontSize: 18, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 6),
+      Text('Hãy chào cả nhóm! 👋',
+          style: TextStyle(color: p.textSecondary, fontSize: 14)),
+      const SizedBox(height: 20),
+      // Quick start suggestions
+      Wrap(spacing: 8, children: [
+        _QuickStartChip(
+            '👋 Xin chào!',
+            () => _onSendMessage('Xin chào! 👋', TypeMessage.text),
+            theme.primaryColor,
+            p),
+        _QuickStartChip(
+            '📍 Chia sẻ vị trí', _shareLocation, const Color(0xFF10B981), p),
+        _QuickStartChip(
+            '🎮 Chơi game', _openGameCenter, const Color(0xFF8B5CF6), p),
+      ]),
+    ]));
   }
 
   Widget _buildMediaGroup(List<Map<dynamic, dynamic>> messages, ThemePalette p,
@@ -2809,7 +3097,7 @@ class GroupChatPageState extends State<GroupChatPage>
         UrlDetector.containsUrl(msg.content);
 
     Widget bubble = Container(
-      margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+      margin: EdgeInsets.only(bottom: isLastInGroup ? 10 : 3),
       child: Column(
           crossAxisAlignment:
               isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -2858,8 +3146,8 @@ class GroupChatPageState extends State<GroupChatPage>
                           boxShadow: [
                             BoxShadow(
                                 color: isMe
-                                    ? theme.primaryColor.withValues(alpha: 0.2)
-                                    : p.shadow,
+                                    ? theme.primaryColor.withValues(alpha: 0.18)
+                                    : p.shadow.withValues(alpha: 0.08),
                                 blurRadius: 8,
                                 offset: const Offset(0, 3))
                           ],
@@ -3004,7 +3292,7 @@ class GroupChatPageState extends State<GroupChatPage>
   Widget _buildImageMessage(String messageId, MessageChat msg, bool isMe,
       bool isLastInGroup, bool isPending, ThemePalette p, ThemeProvider theme) {
     return Container(
-        margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+        margin: EdgeInsets.only(bottom: isLastInGroup ? 10 : 3),
         alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
         child: Column(
             crossAxisAlignment:
@@ -3071,7 +3359,7 @@ class GroupChatPageState extends State<GroupChatPage>
     final videoUrl = parts.isNotEmpty ? parts[0] : '';
     final thumbUrl = parts.length > 1 ? parts[1] : '';
     return Container(
-        margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
+        margin: EdgeInsets.only(bottom: isLastInGroup ? 10 : 3),
         alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
         child: GestureDetector(
             onTap: () {
@@ -3242,9 +3530,10 @@ class GroupChatPageState extends State<GroupChatPage>
             Text(label, style: TextStyle(fontSize: 10.5, color: p.textHint)));
   }
 
-  // ── Typing indicator — uses BubbleTypingIndicator ─────────────────────────
+  // ── Typing indicator ──────────────────────────────────────────────────────
 
   Widget _buildTypingIndicator(ThemePalette p, ThemeProvider theme) {
+    // Typing is now shown in AppBar subtitle; keep a minimal inline indicator
     if (_presenceProvider == null) return const SizedBox.shrink();
     return StreamBuilder<Map<String, TypingInfo>>(
       stream: _presenceProvider!.getTypingStatusStream(groupChatId),
@@ -3252,22 +3541,26 @@ class GroupChatPageState extends State<GroupChatPage>
         if (!snap.hasData) return const SizedBox.shrink();
         final typing = snap.data!.entries
             .where((e) => e.key != _currentUserId && e.value.isTyping)
-            .map((e) => _getSenderName(e.key))
             .toList();
         if (typing.isEmpty) return const SizedBox.shrink();
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-          child: Row(children: [
-            const BubbleTypingIndicator.chat(), // ← BUBBLE TYPING INDICATOR
-            const SizedBox(width: 8),
-            Text(
-              typing.length == 1
-                  ? '${typing.first} đang nhập…'
-                  : '${typing.length} người đang nhập…',
-              style: TextStyle(
-                  fontSize: 12, color: p.textHint, fontStyle: FontStyle.italic),
-            ),
-          ]),
+        return AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: Row(children: [
+              const BubbleTypingIndicator.chat(),
+              const SizedBox(width: 8),
+              Text(
+                typing.length == 1
+                    ? '${_getSenderName(typing.first.key)} đang nhập…'
+                    : '${typing.length} người đang nhập…',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: p.textHint,
+                    fontStyle: FontStyle.italic),
+              ),
+            ]),
+          ),
         );
       },
     );
@@ -3341,6 +3634,10 @@ class GroupChatPageState extends State<GroupChatPage>
                               fit: BoxFit.cover)))))),
     );
   }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // FEATURES MENU — Bottom Sheet style (Grid layout)
+  // ══════════════════════════════════════════════════════════════════════════
 
   Widget _buildFeaturesMenu(ThemePalette p, ThemeProvider theme) {
     final items = [
@@ -3430,7 +3727,6 @@ class GroupChatPageState extends State<GroupChatPage>
       _GFeatureItem(Icons.video_call_rounded, 'Gọi nhóm', () async {
         setState(() => _showFeaturesMenu = false);
         _menuAnim.reverse();
-        // Dùng GroupCallProvider
         final provider = context.read<GroupCallProvider>();
         final call = await provider.startCall(
           groupId: groupChatId,
@@ -3453,6 +3749,10 @@ class GroupChatPageState extends State<GroupChatPage>
               ));
         }
       }, const Color(0xFF3B82F6)),
+      _GFeatureItem(Icons.alarm_add_rounded, 'Nhắc nhở', () {
+        setState(() => _showFeaturesMenu = false);
+        _openRemindersPage();
+      }, const Color(0xFF6366F1)),
       _GFeatureItem(Icons.sports_esports_rounded, 'Game', () {
         setState(() => _showFeaturesMenu = false);
         _openGameCenter();
@@ -3463,64 +3763,66 @@ class GroupChatPageState extends State<GroupChatPage>
       position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
           .animate(
               CurvedAnimation(parent: _menuAnim, curve: Curves.easeOutCubic)),
-      child: Container(
-        constraints: const BoxConstraints(maxHeight: 110),
-        decoration: BoxDecoration(
-            color: p.surface,
-            border: Border(top: BorderSide(color: p.divider, width: .8)),
-            boxShadow: [BoxShadow(color: p.shadow, blurRadius: 8)]),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
-            children: items
-                .map((item) => InkWell(
-                    onTap: resourceManager.isDisposed ? null : item.onTap,
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                        width: 68,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 4, vertical: 6),
-                        child:
-                            Column(mainAxisSize: MainAxisSize.min, children: [
-                          Container(
-                              width: 44,
-                              height: 44,
-                              decoration: BoxDecoration(
-                                  color: item.color.withValues(alpha: .12),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                      color: item.color.withValues(alpha: .25),
-                                      width: .8)),
-                              child:
-                                  Icon(item.icon, color: item.color, size: 22)),
-                          const SizedBox(height: 4),
-                          Text(item.label,
-                              style: TextStyle(
-                                  fontSize: 10.5,
-                                  color: p.textSecondary,
-                                  fontWeight: FontWeight.w500),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center),
-                        ]))))
-                .toList(),
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+          child: Container(
+            constraints: const BoxConstraints(maxHeight: 220),
+            decoration: BoxDecoration(
+              color: p.surface.withValues(alpha: 0.97),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(20)),
+              border: Border(
+                  top: BorderSide(
+                      color: p.divider.withValues(alpha: 0.6), width: .8)),
+              boxShadow: [
+                BoxShadow(
+                    color: p.shadow.withValues(alpha: 0.12), blurRadius: 12)
+              ],
+            ),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              // Handle bar
+              Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(top: 10, bottom: 8),
+                decoration: BoxDecoration(
+                    color: p.divider, borderRadius: BorderRadius.circular(2)),
+              ),
+              Flexible(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  child: Row(
+                    children: items
+                        .map((item) => _FeatureMenuTile(item: item, p: p))
+                        .toList(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ]),
           ),
         ),
       ),
     );
   }
 
-  // ── INPUT ─────────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // INPUT — 2026 Redesign: single unified bar
+  // [+] [TextField] [✨AI] [🎤/Send]
+  // ══════════════════════════════════════════════════════════════════════════
 
   Widget _buildInput(ThemePalette p, ThemeProvider theme) {
     final fs = theme.fontSizeMultiplier;
     return Container(
       margin: EdgeInsets.only(
           bottom: MediaQuery.of(context).padding.bottom + 8,
-          left: 12,
-          right: 12,
-          top: 6),
+          left: 10,
+          right: 10,
+          top: 4),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         if (_autoPilotProvider != null)
           AutoPilotInputStatusBar(
@@ -3528,11 +3830,13 @@ class GroupChatPageState extends State<GroupChatPage>
             currentUserId: _currentUserId,
             isGroup: true,
           ),
+        // Smart Reply Bar
         Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: _buildSmartReplyBar(p, theme)),
+        // Reply Preview
         AnimatedSize(
-          duration: const Duration(milliseconds: 260),
+          duration: const Duration(milliseconds: 240),
           curve: Curves.easeOutCubic,
           child: _replyingTo == null
               ? const SizedBox.shrink()
@@ -3554,13 +3858,7 @@ class GroupChatPageState extends State<GroupChatPage>
                                 color: theme.primaryColor, width: 3)),
                         boxShadow: [BoxShadow(color: p.shadow, blurRadius: 6)]),
                     child: Row(children: [
-                      Container(
-                          width: 3,
-                          height: 34,
-                          decoration: BoxDecoration(
-                              color: theme.primaryColor,
-                              borderRadius: BorderRadius.circular(2))),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 4),
                       Expanded(
                           child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -3591,6 +3889,7 @@ class GroupChatPageState extends State<GroupChatPage>
                     ]),
                   )),
         ),
+        // Recording indicator
         if (_isRecording)
           Container(
             margin: const EdgeInsets.only(bottom: 6),
@@ -3623,51 +3922,47 @@ class GroupChatPageState extends State<GroupChatPage>
                           color: Colors.white, size: 16))),
             ]),
           ),
-        Container(
+        // ── Unified Input Bar ─────────────────────────────────────────
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
           decoration: BoxDecoration(
               color: p.surface,
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: p.inputBorder, width: .6),
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(
+                  color: _focusNode.hasFocus
+                      ? theme.primaryColor.withValues(alpha: 0.4)
+                      : p.inputBorder,
+                  width: _focusNode.hasFocus ? 1.2 : .7),
               boxShadow: [
                 BoxShadow(
-                    color: p.shadow, blurRadius: 12, offset: const Offset(0, 3))
+                    color: _focusNode.hasFocus
+                        ? theme.primaryColor.withValues(alpha: 0.10)
+                        : p.shadow,
+                    blurRadius: _focusNode.hasFocus ? 16 : 10,
+                    offset: const Offset(0, 3))
               ]),
           child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            GestureDetector(
-                onTap: _toggleFeaturesMenu,
-                child: Padding(
-                    padding: const EdgeInsets.all(10.0),
-                    child: AnimatedRotation(
-                        turns: _showFeaturesMenu ? 0.125 : 0,
-                        duration: const Duration(milliseconds: 260),
-                        curve: Curves.easeOutBack,
-                        child: Icon(
-                            _showFeaturesMenu
-                                ? Icons.close_rounded
-                                : Icons.add_rounded,
-                            color: _showFeaturesMenu
-                                ? p.dangerColor
-                                : theme.primaryColor,
-                            size: 26)))),
+            // [+] Attachment
+            _InputIconBtn(
+              icon: _showFeaturesMenu ? Icons.close_rounded : Icons.add_rounded,
+              color: _showFeaturesMenu ? p.dangerColor : theme.primaryColor,
+              onTap: _toggleFeaturesMenu,
+              rotate: _showFeaturesMenu,
+            ),
+            // Sticker (hidden when features menu open to save space)
             if (!_showFeaturesMenu)
-              GestureDetector(
-                  onTap: _onPickImage,
-                  child: Padding(
-                      padding: const EdgeInsets.all(10.0),
-                      child: Icon(Icons.image_rounded,
-                          color: p.textHint, size: 24))),
-            GestureDetector(
+              _InputIconBtn(
+                icon: Icons.sentiment_satisfied_alt_rounded,
+                color: _isShowSticker ? theme.primaryColor : p.textHint,
                 onTap: _getSticker,
-                child: Padding(
-                    padding: const EdgeInsets.all(10.0),
-                    child: Icon(Icons.sentiment_satisfied_alt_rounded,
-                        color: _isShowSticker ? theme.primaryColor : p.textHint,
-                        size: 24))),
+              ),
+            // TextField
             Expanded(
                 child: Container(
                     constraints: const BoxConstraints(maxHeight: 120),
                     padding:
-                        const EdgeInsets.only(right: 8, top: 12, bottom: 12),
+                        const EdgeInsets.only(right: 4, top: 11, bottom: 11),
                     child: TextField(
                         controller: _chatInputController,
                         focusNode: _focusNode,
@@ -3681,6 +3976,21 @@ class GroupChatPageState extends State<GroupChatPage>
                             hintStyle: TextStyle(
                                 color: p.textHint, fontSize: 15 * fs)),
                         onChanged: _handleTextChange))),
+            // AI Magic button
+            _InputIconBtn(
+              icon: Icons.auto_awesome,
+              color: const Color(0xFF8B5CF6),
+              onTap: () {
+                HapticFeedback.lightImpact();
+                setState(() => _showAIPanel = !_showAIPanel);
+                if (_showAIPanel) {
+                  _aiPanelAnim.forward();
+                } else {
+                  _aiPanelAnim.reverse();
+                }
+              },
+            ),
+            // Mic / Send morphing button
             Padding(
                 padding: const EdgeInsets.all(6),
                 child: ValueListenableBuilder<TextEditingValue>(
@@ -3689,6 +3999,7 @@ class GroupChatPageState extends State<GroupChatPage>
                     final hasText = val.text.trim().isNotEmpty;
                     return GestureDetector(
                       onTap: () {
+                        HapticFeedback.mediumImpact();
                         if (hasText) {
                           _onSendMessage(
                               _chatInputController.text, TypeMessage.text);
@@ -3703,7 +4014,8 @@ class GroupChatPageState extends State<GroupChatPage>
                             }
                           : null,
                       child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOutBack,
                         width: 42,
                         height: 42,
                         decoration: BoxDecoration(
@@ -3722,7 +4034,9 @@ class GroupChatPageState extends State<GroupChatPage>
                                   ]
                                 : null),
                         child: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 180),
+                            duration: const Duration(milliseconds: 200),
+                            transitionBuilder: (child, anim) =>
+                                ScaleTransition(scale: anim, child: child),
                             child: Icon(
                                 hasText
                                     ? Icons.send_rounded
@@ -3768,9 +4082,520 @@ class GroupChatPageState extends State<GroupChatPage>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
 // PRIVATE SUB-WIDGETS
-// ─────────────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── App bar components ────────────────────────────────────────────────────
+
+class _AppBarIconBtn extends StatelessWidget {
+  const _AppBarIconBtn({
+    required this.icon,
+    required this.color,
+    required this.onTap,
+    this.badgeCount = 0,
+    this.appBarBackground,
+  });
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+  final int badgeCount;
+  final Color? appBarBackground;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Stack(clipBehavior: Clip.none, children: [
+              Icon(icon, color: color, size: 22),
+              if (badgeCount > 0)
+                Positioned(
+                  right: -4,
+                  top: -4,
+                  child: Container(
+                    width: 16,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                          color: appBarBackground ?? Colors.transparent,
+                          width: 1.5),
+                    ),
+                    child: Center(
+                      child: Text(
+                        badgeCount > 9 ? '9+' : '$badgeCount',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 8,
+                            fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+        ),
+      );
+}
+
+class _HeaderChip extends StatelessWidget {
+  const _HeaderChip(
+      {required this.icon,
+      required this.label,
+      required this.color,
+      required this.onTap});
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: color.withValues(alpha: 0.20), width: .7),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 10, color: color),
+            const SizedBox(width: 3),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 9.5, color: color, fontWeight: FontWeight.w600)),
+          ]),
+        ),
+      );
+}
+
+class _BubbleModeBadge extends StatelessWidget {
+  const _BubbleModeBadge({required this.mode});
+  final BubbleMode mode;
+
+  String get _emoji => switch (mode) {
+        BubbleMode.work => '💼',
+        BubbleMode.media => '🎵',
+        BubbleMode.location => '📍',
+        BubbleMode.secure => '🔒',
+        BubbleMode.shared => '🎨',
+        _ => '💬',
+      };
+
+  @override
+  Widget build(BuildContext context) => Container(
+        margin: const EdgeInsets.only(left: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+        decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(7)),
+        child: Text(_emoji, style: const TextStyle(fontSize: 11)),
+      );
+}
+
+// ── Typing dots animation ──────────────────────────────────────────────────
+
+class _TypingDots extends StatefulWidget {
+  const _TypingDots({required this.color});
+  final Color color;
+
+  @override
+  State<_TypingDots> createState() => _TypingDotsState();
+}
+
+class _TypingDotsState extends State<_TypingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 900))
+    ..repeat();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 24,
+      height: 12,
+      child: AnimatedBuilder(
+        animation: _ctrl,
+        builder: (_, __) => Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: List.generate(3, (i) {
+            final offset = (i / 3);
+            final v = ((_ctrl.value - offset) % 1.0).clamp(0.0, 1.0);
+            final scale = v < 0.5 ? (1.0 + v) : (2.0 - v);
+            return Transform.scale(
+              scale: scale.clamp(1.0, 1.5),
+              child: Container(
+                width: 5,
+                height: 5,
+                decoration: BoxDecoration(
+                    color: widget.color.withValues(alpha: 0.7 + v * 0.3),
+                    shape: BoxShape.circle),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+  }
+}
+
+// ── More Bottom Sheet ──────────────────────────────────────────────────────
+
+class _MoreBottomSheet extends StatelessWidget {
+  const _MoreBottomSheet({
+    required this.palette,
+    required this.primary,
+    required this.bubbleCtx,
+    required this.onSelected,
+    this.activeReminderCount = 0,
+  });
+  final ThemePalette palette;
+  final Color primary;
+  final BubbleContext bubbleCtx;
+  final int activeReminderCount;
+  final void Function(String) onSelected;
+
+  static const _sections = [
+    [
+      _SheetItem('autopilot', Icons.smart_toy_rounded, 'AutoPilot',
+          Color(0xFF8B5CF6), 'Tự động trả lời'),
+      _SheetItem('ai_assistant', Icons.auto_awesome, 'AI Assistant',
+          Color(0xFF8B5CF6), 'Phân tích nhóm'),
+      _SheetItem('summarize', Icons.summarize_rounded, 'Tóm tắt',
+          Color(0xFF0EA5E9), 'AI tóm tắt chat'),
+      _SheetItem('tone_rewriter', Icons.edit_note_rounded, 'Viết lại',
+          Color(0xFF8B5CF6), 'Đổi tông giọng'),
+    ],
+    [
+      _SheetItem('insights', Icons.psychology_rounded, 'Insights',
+          Color(0xFFF59E0B), 'Phân tích hành vi'),
+      _SheetItem('weekly', Icons.analytics_rounded, 'Recap', Color(0xFF10B981),
+          'Báo cáo tuần'),
+      _SheetItem('reminders', Icons.alarm_rounded, 'Nhắc nhở',
+          Color(0xFF6366F1), 'Quản lý nhắc nhở'),
+      _SheetItem('bubble', Icons.bubble_chart_rounded, 'Bubble',
+          Color(0xFF10B981), 'Chat bubble'),
+    ],
+    [
+      _SheetItem('media', Icons.perm_media_rounded, 'Media', Color(0xFF43C6AC),
+          'Ảnh & Tệp'),
+      _SheetItem('group_call_history', Icons.history_rounded, 'Lịch sử gọi',
+          Color(0xFF3B82F6), 'Cuộc gọi nhóm'),
+      _SheetItem('info', Icons.info_outline_rounded, 'Thông tin', null,
+          'Thành viên nhóm'),
+      _SheetItem(
+          'autodelete', Icons.timer_rounded, 'Tự xoá', null, 'Cài đặt tự xoá'),
+    ],
+    [
+      _SheetItem(
+          'theme', Icons.palette_rounded, 'Giao diện', null, 'Đổi chủ đề màu'),
+      _SheetItem('settings_bubble', Icons.settings_rounded, 'Cài đặt', null,
+          'Cài đặt bubble'),
+      _SheetItem('clear', Icons.delete_sweep_rounded, 'Xoá lịch sử', null,
+          'Xoá tất cả',
+          isDanger: true),
+      _SheetItem(
+          'leave', Icons.exit_to_app_rounded, 'Rời nhóm', null, 'Rời khỏi nhóm',
+          isDanger: true),
+    ],
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        boxShadow: [
+          BoxShadow(
+              color: palette.shadowStrong.withValues(alpha: 0.15),
+              blurRadius: 24,
+              offset: const Offset(0, -4))
+        ],
+      ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        // Handle
+        Container(
+          width: 36,
+          height: 4,
+          margin: const EdgeInsets.only(top: 12, bottom: 16),
+          decoration: BoxDecoration(
+              color: palette.divider, borderRadius: BorderRadius.circular(2)),
+        ),
+        // Header
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(children: [
+            Text('Tính năng',
+                style: TextStyle(
+                    color: palette.textPrimary,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700)),
+            const Spacer(),
+            if (activeReminderCount > 0)
+              Container(
+                margin: const EdgeInsets.only(right: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8)),
+                child: Text('⏰ $activeReminderCount',
+                    style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF6366F1),
+                        fontWeight: FontWeight.w700)),
+              ),
+            if (bubbleCtx.mode != BubbleMode.normal)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8)),
+                child: Text(
+                    '${bubbleCtx.mode.name} ${_modeEmoji(bubbleCtx.mode)}',
+                    style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF10B981),
+                        fontWeight: FontWeight.w700)),
+              ),
+          ]),
+        ),
+        const SizedBox(height: 12),
+        // Grid sections
+        Flexible(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: _sections.map((section) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: GridView.count(
+                    crossAxisCount: 4,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 8,
+                    childAspectRatio: 0.9,
+                    children: section.map((item) {
+                      final color = item.color ?? primary;
+                      final isDanger = item.isDanger;
+                      final showReminderBadge =
+                          item.value == 'reminders' && activeReminderCount > 0;
+                      return GestureDetector(
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          Navigator.pop(context);
+                          onSelected(item.value);
+                        },
+                        child: Stack(children: [
+                          Container(
+                            decoration: BoxDecoration(
+                              color:
+                                  (isDanger ? const Color(0xFFEF4444) : color)
+                                      .withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                  color: (isDanger
+                                          ? const Color(0xFFEF4444)
+                                          : color)
+                                      .withValues(alpha: 0.18)),
+                            ),
+                            child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(item.icon,
+                                      color: isDanger
+                                          ? const Color(0xFFEF4444)
+                                          : color,
+                                      size: 22),
+                                  const SizedBox(height: 5),
+                                  Text(item.label,
+                                      style: TextStyle(
+                                          fontSize: 11,
+                                          color: isDanger
+                                              ? const Color(0xFFEF4444)
+                                              : palette.textPrimary,
+                                          fontWeight: FontWeight.w600),
+                                      textAlign: TextAlign.center,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis),
+                                  Text(item.description,
+                                      style: TextStyle(
+                                          fontSize: 9.5,
+                                          color: palette.textHint),
+                                      textAlign: TextAlign.center,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis),
+                                ]),
+                          ),
+                          if (showReminderBadge)
+                            Positioned(
+                              right: 4,
+                              top: 4,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                    color: const Color(0xFF6366F1),
+                                    borderRadius: BorderRadius.circular(8)),
+                                child: Text(
+                                    activeReminderCount > 9
+                                        ? '9+'
+                                        : '$activeReminderCount',
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 8,
+                                        fontWeight: FontWeight.w900)),
+                              ),
+                            ),
+                        ]),
+                      );
+                    }).toList(),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  static String _modeEmoji(BubbleMode mode) => switch (mode) {
+        BubbleMode.work => '💼',
+        BubbleMode.media => '🎵',
+        BubbleMode.location => '📍',
+        BubbleMode.secure => '🔒',
+        BubbleMode.shared => '🎨',
+        _ => '💬',
+      };
+}
+
+class _SheetItem {
+  const _SheetItem(
+      this.value, this.icon, this.label, this.color, this.description,
+      {this.isDanger = false});
+  final String value;
+  final IconData icon;
+  final String label;
+  final Color? color;
+  final String description;
+  final bool isDanger;
+}
+
+// ── Input helper widgets ──────────────────────────────────────────────────
+
+class _InputIconBtn extends StatelessWidget {
+  const _InputIconBtn(
+      {required this.icon,
+      required this.color,
+      required this.onTap,
+      this.rotate = false});
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+  final bool rotate;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(10.0),
+          child: AnimatedRotation(
+            turns: rotate ? 0.125 : 0,
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutBack,
+            child: Icon(icon, color: color, size: 24),
+          ),
+        ),
+      );
+}
+
+class _FeatureMenuTile extends StatelessWidget {
+  const _FeatureMenuTile({required this.item, required this.p});
+  final _GFeatureItem item;
+  final ThemePalette p;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: item.onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          width: 68,
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                    color: item.color.withValues(alpha: .12),
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(
+                        color: item.color.withValues(alpha: .22), width: .8)),
+                child: Icon(item.icon, color: item.color, size: 23)),
+            const SizedBox(height: 5),
+            Text(item.label,
+                style: TextStyle(
+                    fontSize: 10.5,
+                    color: p.textSecondary,
+                    fontWeight: FontWeight.w500),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center),
+          ]),
+        ),
+      );
+}
+
+// ── Quick start chip ──────────────────────────────────────────────────────
+
+class _QuickStartChip extends StatelessWidget {
+  const _QuickStartChip(this.label, this.onTap, this.color, this.p);
+  final String label;
+  final VoidCallback onTap;
+  final Color color;
+  final ThemePalette p;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: color.withValues(alpha: 0.25))),
+          child: Text(label,
+              style: TextStyle(
+                  fontSize: 13, color: color, fontWeight: FontWeight.w600)),
+        ),
+      );
+}
+
+// ── AI Action data ────────────────────────────────────────────────────────
+
+class _AIAction {
+  const _AIAction(this.icon, this.label, this.onTap, this.color);
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color color;
+}
+
+// ── Banners / location content ─────────────────────────────────────────────
 
 class _GroupScamBanner extends StatelessWidget {
   const _GroupScamBanner({required this.reason, required this.palette});
@@ -3894,6 +4719,8 @@ class _GroupLocationContent extends StatelessWidget {
             )),
       ]);
 }
+
+// ── Dialogs & misc widgets ──────────────────────────────────────────────────
 
 class _ThemedDialog extends StatelessWidget {
   const _ThemedDialog(

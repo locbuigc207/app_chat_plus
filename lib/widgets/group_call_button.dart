@@ -381,12 +381,14 @@ class ActiveGroupCallBanner extends StatelessWidget {
   final String currentUserName;
   final String currentUserAvatar;
   final List<String> memberIds;
+  final String groupName; // <-- ADD THIS
 
   const ActiveGroupCallBanner({
     super.key,
     required this.groupId,
     required this.currentUserId,
     required this.currentUserName,
+    required this.groupName, // <-- ADD THIS
     this.currentUserAvatar = '',
     this.memberIds = const [],
   });
@@ -406,6 +408,7 @@ class ActiveGroupCallBanner extends StatelessWidget {
           currentUserId: currentUserId,
           currentUserName: currentUserName,
           currentUserAvatar: currentUserAvatar,
+          // You can now pass groupName to _ActiveBannerContent here if needed
         );
       },
     );
