@@ -68,6 +68,29 @@ class _CallListenerState extends State<CallListener>
       _showIncomingCall(call);
     }, onError: (e) {
       debugPrint('⚠️ [CallListener] Stream error: $e');
+
+      // FIX BUG 1a: Không nuốt lỗi (fail silent) nữa. Hiển thị lỗi ra UI
+      // để cảnh báo rõ ràng nếu thiếu Composite Index trong Firestore.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Lỗi đồng bộ cuộc gọi (Có thể do thiếu Firestore Index):\n$e',
+              style: const TextStyle(color: Colors.white),
+            ),
+            backgroundColor: Colors.red.shade800,
+            duration: const Duration(seconds: 10),
+            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(
+              label: 'Đóng',
+              textColor: Colors.white,
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              },
+            ),
+          ),
+        );
+      }
     });
   }
 

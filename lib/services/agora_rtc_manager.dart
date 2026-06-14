@@ -11,6 +11,23 @@ import 'package:permission_handler/permission_handler.dart';
 import 'realtime_ai_service.dart'; // MỚI: Import service AI của bạn
 
 // ──────────────────────────────────────────────────────────────────────────────
+// CUSTOM EXCEPTIONS (FIX BUG 2)
+// ──────────────────────────────────────────────────────────────────────────────
+class AgoraInitException implements Exception {
+  final String message;
+  AgoraInitException(this.message);
+  @override
+  String toString() => message;
+}
+
+class AgoraTokenException implements Exception {
+  final String message;
+  AgoraTokenException(this.message);
+  @override
+  String toString() => message;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // MODELS
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -130,9 +147,12 @@ class AgoraRtcManager extends ChangeNotifier {
   Future<bool> initialize() async {
     if (_initialized) return true;
     if (_disposed) return false;
+
+    // FIX BUG 2: Ném Exception thay vì fail silent nếu không có App ID
     if (_appId.isEmpty) {
       _emitError('AGORA_APP_ID chưa cấu hình trong .env');
-      return false;
+      throw AgoraInitException(
+          'Lỗi hệ thống: AGORA_APP_ID chưa được cấu hình. Không thể khởi tạo cuộc gọi.');
     }
 
     try {
@@ -144,7 +164,7 @@ class AgoraRtcManager extends ChangeNotifier {
     } catch (e, st) {
       debugPrint('❌ [AgoraRtcManager] initialize: $e\n$st');
       _emitError('Không thể khởi tạo engine: $e');
-      return false;
+      throw AgoraInitException('Lỗi khởi tạo Agora Engine: $e');
     }
   }
 
@@ -164,8 +184,8 @@ class AgoraRtcManager extends ChangeNotifier {
     }
 
     if (!_initialized) {
-      final ok = await initialize();
-      if (!ok) return false;
+      // Vì initialize() giờ có thể throw Exception, ta để nó sập vào catch bên dưới nếu lỗi
+      await initialize();
     }
 
     _joining = true;
@@ -177,10 +197,11 @@ class AgoraRtcManager extends ChangeNotifier {
       _setConnectionState(RtcConnectionState.connecting);
 
       final rtcToken = token ?? await _fetchToken(ch, uid: uid);
+
+      // FIX BUG 2: Ném Exception nếu token rỗng (đề phòng Agora Console đã bật Token Auth)
       if (rtcToken == null || rtcToken.isEmpty) {
-        _emitError('Không thể lấy Token cuộc gọi. Vui lòng thử lại.');
-        _setConnectionState(RtcConnectionState.failed);
-        return false;
+        throw AgoraTokenException(
+            'Token rỗng hoặc không hợp lệ. Vui lòng kiểm tra lại cấu hình Token Authentication.');
       }
 
       if (isVideoCall) {
@@ -210,7 +231,8 @@ class AgoraRtcManager extends ChangeNotifier {
       debugPrint('❌ [AgoraRtcManager] joinChannel: $e\n$st');
       _setConnectionState(RtcConnectionState.failed);
       _emitError('Không thể kết nối cuộc gọi: $e');
-      return false;
+      // FIX BUG 2: Bắt buộc rethrow để UI gọi hàm này bắt được lỗi và show Dialog
+      rethrow;
     } finally {
       _joining = false;
     }
@@ -332,7 +354,6 @@ class AgoraRtcManager extends ChangeNotifier {
         samplesPerCall: 1024,
       );
 
-      // SỬA Ở ĐÂY: Thêm .getMediaEngine()
       _engine!.getMediaEngine().registerAudioFrameObserver(
             AudioFrameObserver(
               onRecordAudioFrame: (String channelId, AudioFrame audioFrame) {
@@ -491,8 +512,11 @@ class AgoraRtcManager extends ChangeNotifier {
         await Future.delayed(Duration(seconds: 2 * (attempt + 1)));
       }
     }
+
     debugPrint('❌ [Agora] Could not fetch token after $maxRetries attempts');
-    return null;
+    // FIX BUG 2: Ném exception sau khi đã retries tối đa mà vẫn không có token
+    throw AgoraTokenException(
+        'Không thể kết nối đến máy chủ Token sau $maxRetries lần thử.');
   }
 
   // ── Permissions ───────────────────────────────────────────────────────────
@@ -575,7 +599,6 @@ class AgoraRtcManager extends ChangeNotifier {
     if (_disposed) return;
     _disposed = true;
 
-    // SỬA Ở ĐÂY: Thêm .getMediaEngine()
     try {
       _engine?.getMediaEngine().registerAudioFrameObserver(AudioFrameObserver(
             onRecordAudioFrame: (channelId, audioFrame) {},

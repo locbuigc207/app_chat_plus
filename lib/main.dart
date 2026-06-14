@@ -13,9 +13,11 @@ import 'package:flutter/services.dart';
 // ── App Constants, Pages, Utils & Widgets ──────────────────────────────────
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/firebase_options.dart';
+import 'package:flutter_chat_demo/models/call_model.dart';           // <-- THÊM IMPORT
+import 'package:flutter_chat_demo/models/group_call_model.dart';     // <-- THÊM IMPORT
 import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:flutter_chat_demo/providers/phone_auth_provider.dart'
-    as custom_auth;
+as custom_auth;
 import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_chat_demo/utils/utils.dart';
@@ -33,11 +35,11 @@ import 'package:timezone/timezone.dart' as tz;
 // ─────────────────────────────────────────────────────────────────────────────
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-    FlutterLocalNotificationsPlugin();
+FlutterLocalNotificationsPlugin();
 
 // Đã đổi tên để tránh lỗi circular reference trong AppRouter
 final GlobalKey<NavigatorState> globalNavigatorKey =
-    GlobalKey<NavigatorState>();
+GlobalKey<NavigatorState>();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FCM background handler (Must be top-level)
@@ -54,7 +56,7 @@ Future<void> _onBackgroundMessage(RemoteMessage message) async {
     debugPrint('⚠️ BubbleFcmHandler process error in background: $e');
   }
 
-  // ── THÊM: xử lý group call invite từ background ──────────────────────
+  // ── xử lý group call invite từ background ──────────────────────
   final type = message.data['type'] as String?;
   if (type == 'group_call_invite') {
     debugPrint('📞 Background group call invite: ${message.data['callId']}');
@@ -148,9 +150,6 @@ Future<void> _initializeFirebase() async {
     }
 
     // ── App Check ──────────────────────────────────────────────────────
-    // Trong lúc test, nếu Console đã đặt App Check = Unenforced cho
-    // Firestore/Functions, có thể bỏ qua activate() để loại trừ hoàn toàn
-    // lỗi "Too many attempts" do debug token dùng chung.
     const disableAppCheckForTesting = true; // đổi thành false khi xong test
 
     if (kDebugMode && disableAppCheckForTesting) {
@@ -158,9 +157,9 @@ Future<void> _initializeFirebase() async {
     } else {
       await FirebaseAppCheck.instance.activate(
         androidProvider:
-            kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+        kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
         appleProvider:
-            kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
+        kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
       );
     }
 
@@ -205,7 +204,6 @@ Future<void> _initializeFcm() async {
       await FcmTokenManager.initialize(
         onTokenAvailable: (token) async {
           debugPrint('📱 FCM Token mới: ${token.substring(0, 20)}...');
-          // Lưu token vào Firestore
           final uid = firebase_auth.FirebaseAuth.instance.currentUser?.uid;
           if (uid != null) {
             await FirebaseFirestore.instance
@@ -238,7 +236,7 @@ Future<void> _initializeLocalNotifications(
     FlutterLocalNotificationsPlugin plugin) async {
   try {
     const androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+    AndroidInitializationSettings('@mipmap/ic_launcher');
     final iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -255,20 +253,20 @@ Future<void> _initializeLocalNotifications(
     );
 
     final initSettings =
-        InitializationSettings(android: androidSettings, iOS: iosSettings);
+    InitializationSettings(android: androidSettings, iOS: iosSettings);
 
     await plugin.initialize(
       initSettings,
       onDidReceiveNotificationResponse: _onNotificationTapped,
       onDidReceiveBackgroundNotificationResponse:
-          _onBackgroundNotificationTapped,
+      _onBackgroundNotificationTapped,
     );
 
     if (Platform.isAndroid) await _setupAndroidNotificationChannels(plugin);
     if (Platform.isIOS) {
       await plugin
           .resolvePlatformSpecificImplementation<
-              IOSFlutterLocalNotificationsPlugin>()
+          IOSFlutterLocalNotificationsPlugin>()
           ?.requestPermissions(alert: true, badge: true, sound: true);
     }
     debugPrint('✅ Local Notifications khởi tạo xong');
@@ -324,7 +322,6 @@ Future<void> _setupAndroidNotificationChannels(
     ),
   );
 
-  // THÊM: Group call notification channel
   await androidPlugin.createNotificationChannel(
     const AndroidNotificationChannel(
       'call_channel', // GroupCallConstants.callChannelId
@@ -355,12 +352,9 @@ void _onNotificationTapped(NotificationResponse response) {
   if (payload == null) return;
   debugPrint('🔔 Notification tapped: $payload');
 
-  // ── THÊM: group call invite tap ──────────────────────────────────────
   if (payload.startsWith('group_call:')) {
     final callId = payload.replaceFirst('group_call:', '');
     debugPrint('📞 Group call tapped: $callId');
-    // GroupCallListener sẽ tự detect và navigate
-    // Không cần navigate thủ công ở đây
     return;
   }
 
@@ -727,7 +721,7 @@ class _MiniChatHeader extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: const BoxDecoration(
         gradient:
-            LinearGradient(colors: [Color(0xFF1E88E5), Color(0xFF1565C0)]),
+        LinearGradient(colors: [Color(0xFF1E88E5), Color(0xFF1565C0)]),
       ),
       child: Row(
         children: [
@@ -735,11 +729,11 @@ class _MiniChatHeader extends StatelessWidget {
             radius: 17,
             backgroundColor: Colors.white24,
             backgroundImage:
-                avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+            avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
             child: avatarUrl.isEmpty
                 ? Text(userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                    style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.bold))
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.bold))
                 : null,
           ),
           const SizedBox(width: 9),
@@ -843,28 +837,108 @@ class _AppInitializerState extends State<AppInitializer>
   void _startNotificationService() {
     _authSub =
         firebase_auth.FirebaseAuth.instance.authStateChanges().listen((user) {
-      if (user != null && !_notificationStarted) {
-        widget.notificationService.listenForNewMessages(user.uid);
-        _notificationStarted = true;
-        ErrorLogger.setUserId(user.uid);
+          if (user != null && !_notificationStarted) {
+            widget.notificationService.listenForNewMessages(user.uid);
+            _notificationStarted = true;
+            ErrorLogger.setUserId(user.uid);
 
+            try {
+              final callProvider = context.read<GroupCallProvider>();
+              callProvider.updateUserId(user.uid);
+            } catch (_) {}
+          } else if (user == null) {
+            widget.notificationService.stopListening();
+            _notificationStarted = false;
+            ErrorLogger.clearUserId();
+          }
+        });
+  }
+
+  // ── FIX BUG 1b & 3: Xử lý định tuyến từ Notification data ────────────────
+  Future<void> _routeFromNotificationMessage(RemoteMessage message) async {
+    final data = message.data;
+    final type = data['type'] as String?;
+
+    // TH 1: Gọi điện thoại 1-1
+    if (type == 'incoming_call') {
+      final callId = data['callId'] as String?;
+      if (callId != null) {
         try {
-          final callProvider = context.read<GroupCallProvider>();
-          callProvider.updateUserId(user.uid);
-        } catch (_) {}
-      } else if (user == null) {
-        widget.notificationService.stopListening();
-        _notificationStarted = false;
-        ErrorLogger.clearUserId();
+          final doc = await FirebaseFirestore.instance
+              .collection('calls')
+              .doc(callId)
+              .get();
+          if (doc.exists && doc.data() != null) {
+            final call = CallModel.fromMap(doc.data()!);
+            if (call.status.isActive) {
+              globalNavigatorKey.currentState?.push(
+                MaterialPageRoute(builder: (_) => IncomingCallPage(call: call)),
+              );
+            }
+          }
+        } catch (e) {
+          debugPrint('⚠️ Fetch call doc error: $e');
+        }
       }
-    });
+    }
+    // TH 2: Gọi nhóm
+    else if (type == 'group_call_invite') {
+      final callId = data['callId'] as String?;
+      if (callId != null) {
+        try {
+          final doc = await FirebaseFirestore.instance
+              .collection('group_calls')
+              .doc(callId)
+              .get();
+          if (doc.exists && doc.data() != null) {
+            final call = GroupCallModel.fromMap(doc.data()!, doc.id);
+            if (!call.isEnded) {
+              final uid =
+                  firebase_auth.FirebaseAuth.instance.currentUser?.uid ?? '';
+              final currentCtx = globalNavigatorKey.currentContext;
+              String userName = '';
+              String userAvatar = '';
+
+              if (currentCtx != null) {
+                final auth = currentCtx.read<AuthProvider>();
+                userName = auth.currentUserName ?? '';
+                userAvatar = auth.currentUserAvatar ?? '';
+              }
+
+              globalNavigatorKey.currentState?.push(
+                MaterialPageRoute(
+                  builder: (_) => IncomingGroupCallPage(
+                    call: call,
+                    currentUserId: uid,
+                    currentUserName: userName,
+                    currentUserAvatar: userAvatar,
+                  ),
+                ),
+              );
+            }
+          }
+        } catch (e) {
+          debugPrint('⚠️ Fetch group call doc error: $e');
+        }
+      }
+    }
+    // TH 3: Tin nhắn chat thông thường (Fallback)
+    else {
+      final peerId = data['peerId'] as String?;
+      final peerNickname = data['peerNickname'] as String?;
+      if (peerId != null && peerNickname != null) {
+        AppRouter.pushChatFromNotification(
+          peerId: peerId,
+          peerName: peerNickname,
+          peerAvatar: data['peerAvatar'] ?? '',
+        );
+      }
+    }
   }
 
   void _handleFcmForegroundMessages() {
     FirebaseMessaging.onMessage.listen((message) {
       debugPrint('📩 Foreground FCM: ${message.notification?.title}');
-
-      // ── THÊM: group call invite foreground ──────────────────────────────
       final type = message.data['type'] as String?;
       if (type == 'group_call_invite') {
         GroupCallNotificationService.instance.handleForegroundMessage(message);
@@ -874,33 +948,17 @@ class _AppInitializerState extends State<AppInitializer>
 
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
       debugPrint('🔔 FCM opened app: ${message.data}');
-      final peerId = message.data['peerId'] as String?;
-      final peerNickname = message.data['peerNickname'] as String?;
-      if (peerId != null && peerNickname != null) {
-        AppRouter.pushChatFromNotification(
-          peerId: peerId,
-          peerName: peerNickname,
-          peerAvatar: message.data['peerAvatar'] ?? '',
-        );
-      }
+      _routeFromNotificationMessage(message); // <-- GỌI HÀM FIX BUG ROUTING
     });
   }
 
   Future<void> _handleNotificationLaunch() async {
     try {
       final initialMessage =
-          await FirebaseMessaging.instance.getInitialMessage();
+      await FirebaseMessaging.instance.getInitialMessage();
       if (initialMessage != null) {
-        final peerId = initialMessage.data['peerId'] as String?;
-        final peerNickname = initialMessage.data['peerNickname'] as String?;
-        if (peerId != null && peerNickname != null) {
-          await Future.delayed(const Duration(milliseconds: 800));
-          AppRouter.pushChatFromNotification(
-            peerId: peerId,
-            peerName: peerNickname,
-            peerAvatar: initialMessage.data['peerAvatar'] ?? '',
-          );
-        }
+        await Future.delayed(const Duration(milliseconds: 800));
+        await _routeFromNotificationMessage(initialMessage); // <-- GỌI HÀM FIX BUG ROUTING
       }
     } catch (e) {
       debugPrint('⚠️ Initial FCM message lỗi: $e');
@@ -984,10 +1042,8 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
 
     if (!kIsWeb) {
       appTree = GroupCallMiniManager(
-        // ← THÊM bọc ngoài cùng
         child: BubbleChatChannelManager(
           child: GroupCallListener(
-            // ← đã có sẵn, giữ nguyên
             child: CallListener(
               child: BubbleManager(
                 child: MiniChatOverlayManager(
@@ -1013,7 +1069,7 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
               title: AppConstants.appTitle,
               debugShowCheckedModeBanner: false,
               navigatorKey:
-                  AppRouter.navigatorKey, // Using unified AppRouter Key
+              AppRouter.navigatorKey, // Using unified AppRouter Key
               themeMode: themeProvider.flutterThemeMode ?? ThemeMode.system,
               theme: themeProvider.lightTheme ??
                   _buildFallbackTheme(Brightness.light),
@@ -1038,10 +1094,10 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
           seedColor: const Color(0xFF2979FF), brightness: brightness),
       fontFamily: 'Inter',
       scaffoldBackgroundColor:
-          isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF4F7FF),
+      isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF4F7FF),
       appBarTheme: AppBarTheme(
         backgroundColor:
-            isDark ? const Color(0xFF1A1A2E) : const Color(0xFF2979FF),
+        isDark ? const Color(0xFF1A1A2E) : const Color(0xFF2979FF),
         foregroundColor: Colors.white,
         elevation: 0,
         systemOverlayStyle: SystemUiOverlayStyle.light,
@@ -1056,14 +1112,12 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
     required firebase_auth.FirebaseAuth firebaseAuth,
   }) {
     return [
-      // Đã đăng ký AutoPilotProvider vào đầu mảng theo yêu cầu
       ChangeNotifierProvider<AutoPilotProvider>(
         create: (_) => AutoPilotProvider(
           firebaseFirestore: firebaseFirestore,
           prefs: widget.prefs,
         ),
       ),
-      // Đăng ký InsightsProvider kế tiếp theo yêu cầu bổ sung
       ChangeNotifierProvider<InsightsProvider>(
         create: (_) => InsightsProvider(
           firebaseFirestore: firebaseFirestore,
@@ -1183,7 +1237,7 @@ class _AppBuilder extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class AppRouter {
-  static final navigatorKey = globalNavigatorKey; // Trỏ về global top-level key
+  static final navigatorKey = globalNavigatorKey;
 
   static const splash = '/';
   static const login = '/login';
@@ -1210,7 +1264,6 @@ class AppRouter {
       case bubbleSettings:
         return _slide(const BubbleSettingsPage());
       case '/group-call':
-        // Navigate handled by GroupCallListener
         return null;
       case '/group-call-history':
         final args = settings.arguments as Map<String, dynamic>?;
@@ -1226,22 +1279,22 @@ class AppRouter {
   }
 
   static PageRouteBuilder _fade(Widget page) => PageRouteBuilder(
-        pageBuilder: (_, __, ___) => page,
-        transitionDuration: const Duration(milliseconds: 220),
-        transitionsBuilder: (_, anim, __, child) =>
-            FadeTransition(opacity: anim, child: child),
-      );
+    pageBuilder: (_, __, ___) => page,
+    transitionDuration: const Duration(milliseconds: 220),
+    transitionsBuilder: (_, anim, __, child) =>
+        FadeTransition(opacity: anim, child: child),
+  );
 
   static PageRouteBuilder _slide(Widget page) => PageRouteBuilder(
-        pageBuilder: (_, __, ___) => page,
-        transitionDuration: const Duration(milliseconds: 260),
-        transitionsBuilder: (_, anim, sec, child) {
-          final tween =
-              Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
-                  .chain(CurveTween(curve: Curves.easeOutCubic));
-          return SlideTransition(position: anim.drive(tween), child: child);
-        },
-      );
+    pageBuilder: (_, __, ___) => page,
+    transitionDuration: const Duration(milliseconds: 260),
+    transitionsBuilder: (_, anim, sec, child) {
+      final tween =
+      Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+          .chain(CurveTween(curve: Curves.easeOutCubic));
+      return SlideTransition(position: anim.drive(tween), child: child);
+    },
+  );
 
   static void pushChatFromNotification({
     required String peerId,
@@ -1274,23 +1327,23 @@ class _NotFoundPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.error_outline_rounded,
-                  size: 64, color: Colors.grey),
-              const SizedBox(height: 16),
-              Text('Trang không tồn tại',
-                  style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () => AppRouter.navigatorKey.currentState
-                    ?.pushReplacementNamed(AppRouter.home),
-                child: const Text('Về trang chủ'),
-              ),
-            ],
+    body: Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.error_outline_rounded,
+              size: 64, color: Colors.grey),
+          const SizedBox(height: 16),
+          Text('Trang không tồn tại',
+              style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: () => AppRouter.navigatorKey.currentState
+                ?.pushReplacementNamed(AppRouter.home),
+            child: const Text('Về trang chủ'),
           ),
-        ),
-      );
+        ],
+      ),
+    ),
+  );
 }

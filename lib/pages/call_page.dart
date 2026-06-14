@@ -129,28 +129,42 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
       }
     });
 
-    final ok = await _rtc.initialize();
-    if (!ok) {
-      if (mounted)
-        setState(() {
-          _isInitializing = false;
-          _errorMessage = 'Không thể khởi tạo engine cuộc gọi.';
-        });
-      return;
-    }
-
-    if (widget.call.channelName.isNotEmpty) {
-      final joined = await _rtc.joinChannel(
-        channelName: widget.call.channelName,
-        isVideoCall: widget.call.isVideoCall,
-      );
-      if (!joined && mounted) {
-        setState(() {
-          _isInitializing = false;
-          _errorMessage = 'Không thể tham gia kênh cuộc gọi.';
-        });
+    // FIX BUG 2: Bọc khối khởi tạo và kết nối Agora vào Try-Catch để bắt lỗi ném ra từ AgoraRtcManager
+    try {
+      final ok = await _rtc.initialize();
+      if (!ok) {
+        if (mounted) {
+          setState(() {
+            _isInitializing = false;
+            _errorMessage = 'Không thể khởi tạo engine cuộc gọi.';
+          });
+        }
         return;
       }
+
+      if (widget.call.channelName.isNotEmpty) {
+        final joined = await _rtc.joinChannel(
+          channelName: widget.call.channelName,
+          isVideoCall: widget.call.isVideoCall,
+        );
+        if (!joined && mounted) {
+          setState(() {
+            _isInitializing = false;
+            _errorMessage = 'Không thể tham gia kênh cuộc gọi.';
+          });
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ [CallPage] _initCall Error: $e');
+      if (mounted) {
+        setState(() {
+          _isInitializing = false;
+          // Hiển thị rõ lỗi (chẳng hạn thiếu AppID hoặc sai Token) lên màn hình _buildError()
+          _errorMessage = e.toString();
+        });
+      }
+      return;
     }
 
     if (mounted) setState(() => _isInitializing = false);
@@ -250,6 +264,7 @@ class _CallPageState extends State<CallPage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    // Nếu có lỗi (thiếu AppID / Token), tự động hiển thị màn hình báo lỗi rõ ràng
     if (_errorMessage != null && !_isInitializing) return _buildError();
 
     if (widget.call.isVideoCall) {
@@ -1089,7 +1104,7 @@ class _TimerBadge extends StatelessWidget {
             ),
           ),
         ),
-      );
+      ); // <-- Kết thúc hàm bằng dấu chấm phẩy tại đây
 }
 
 class _ConnectingOverlay extends StatelessWidget {

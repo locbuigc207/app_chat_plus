@@ -336,6 +336,53 @@ class GroupCallModel {
     return GroupCallModel.fromJson(data);
   }
 
+  // ── THÊM MỚI: factory fromMap để tương thích với main.dart ──
+  factory GroupCallModel.fromMap(Map<String, dynamic> data, String documentId) {
+    final participantsRaw = data['participants'] as List<dynamic>? ?? [];
+    final reactionsRaw = data['recentReactions'] as List<dynamic>? ?? [];
+
+    return GroupCallModel(
+      // Ưu tiên dùng callId từ data, nếu không có thì fallback lấy documentId
+      callId: data['callId'] ?? documentId,
+      groupId: data['groupId'] ?? '',
+      groupName: data['groupName'] ?? '',
+      groupAvatarUrl: data['groupAvatarUrl'] ?? '',
+      initiatorId: data['initiatorId'] ?? '',
+      initiatorName: data['initiatorName'] ?? '',
+      callType: data['callType'] == 'voice'
+          ? GroupCallType.voice
+          : GroupCallType.video,
+      status: _parseStatus(data['status']),
+      channelName: data['channelName'] ?? '',
+      participants: participantsRaw
+          .map((p) => GroupCallParticipant.fromJson(p as Map<String, dynamic>))
+          .toList(),
+      invitedUserIds: List<String>.from(data['invitedUserIds'] ?? []),
+      declinedUserIds: List<String>.from(data['declinedUserIds'] ?? []),
+      kickedUserIds: List<String>.from(data['kickedUserIds'] ?? []),
+      createdAt: DateTime.fromMillisecondsSinceEpoch(
+          int.tryParse(data['createdAt']?.toString() ?? '0') ?? 0),
+      endedAt: data['endedAt'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(
+              int.tryParse(data['endedAt'].toString()) ?? 0)
+          : null,
+      durationSeconds: data['durationSeconds'] as int?,
+      screenShareUserId: data['screenShareUserId'] as String?,
+      recentReactions: reactionsRaw
+          .map((r) => CallReaction.fromJson(r as Map<String, dynamic>))
+          .toList(),
+      raisedHandUserIds: List<String>.from(data['raisedHandUserIds'] ?? []),
+      layoutMode: _parseLayout(data['layoutMode']),
+      pinnedUserId: data['pinnedUserId'] as String?,
+      recordingUrl: data['recordingUrl'] as String?,
+      isRecording: data['isRecording'] as bool? ?? false,
+      maxParticipants: (data['maxParticipants'] as int?) ?? 16,
+      meetingPassword: data['meetingPassword'] as String?,
+      waitingRoomEnabled: data['waitingRoomEnabled'] as bool? ?? false,
+      waitingRoomUserIds: List<String>.from(data['waitingRoomUserIds'] ?? []),
+    );
+  }
+
   factory GroupCallModel.fromJson(Map<String, dynamic> data) {
     final participantsRaw = data['participants'] as List<dynamic>? ?? [];
     final reactionsRaw = data['recentReactions'] as List<dynamic>? ?? [];

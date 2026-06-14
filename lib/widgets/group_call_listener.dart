@@ -1,14 +1,12 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
-import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:provider/provider.dart';
 
 import '../models/group_call_model.dart';
-import '../pages/group_call_page.dart';
 import '../pages/incoming_group_call_page.dart';
 import '../providers/providers.dart';
 import '../services/group_call_service.dart';
@@ -70,11 +68,36 @@ class _GroupCallListenerState extends State<GroupCallListener>
 
   void _subscribeToIncomingCalls(String uid) {
     _callSub = _service.incomingGroupCallStream(uid).listen(
-          (call) {
+      (call) {
         if (call == null) return;
         _handleIncomingCall(call, uid);
       },
-      onError: (e) => debugPrint('⚠️ GroupCallListener stream error: $e'),
+      onError: (e) {
+        debugPrint('⚠️ GroupCallListener stream error: $e');
+
+        // FIX BUG 1a: Không nuốt lỗi (fail silent) nữa. Hiển thị lỗi ra UI
+        // để cảnh báo rõ ràng nếu thiếu Composite Index trong Firestore.
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Lỗi đồng bộ gọi nhóm (Có thể do thiếu Firestore Index):\n$e',
+                style: const TextStyle(color: Colors.white),
+              ),
+              backgroundColor: Colors.red.shade800,
+              duration: const Duration(seconds: 10),
+              behavior: SnackBarBehavior.floating,
+              action: SnackBarAction(
+                label: 'Đóng',
+                textColor: Colors.white,
+                onPressed: () {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                },
+              ),
+            ),
+          );
+        }
+      },
     );
   }
 
@@ -159,24 +182,25 @@ class _IncomingCallRoute<T> extends PageRouteBuilder<T> {
 
   _IncomingCallRoute({required this.builder})
       : super(
-    opaque: true,
-    barrierDismissible: false,
-    transitionDuration: const Duration(milliseconds: 550),
-    reverseTransitionDuration: const Duration(milliseconds: 320),
-    pageBuilder: (ctx, anim, secondaryAnim) => builder(ctx),
-    transitionsBuilder: (ctx, anim, secondaryAnim, child) {
-      final slide = Tween<Offset>(
-        begin: const Offset(0, 1),
-        end: Offset.zero,
-      ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic));
-      final fade =
-      CurvedAnimation(parent: anim, curve: const Interval(0, 0.35));
-      return SlideTransition(
-        position: slide,
-        child: FadeTransition(opacity: fade, child: child),
-      );
-    },
-  );
+          opaque: true,
+          barrierDismissible: false,
+          transitionDuration: const Duration(milliseconds: 550),
+          reverseTransitionDuration: const Duration(milliseconds: 320),
+          pageBuilder: (ctx, anim, secondaryAnim) => builder(ctx),
+          transitionsBuilder: (ctx, anim, secondaryAnim, child) {
+            final slide = Tween<Offset>(
+              begin: const Offset(0, 1),
+              end: Offset.zero,
+            ).animate(
+                CurvedAnimation(parent: anim, curve: Curves.easeOutCubic));
+            final fade =
+                CurvedAnimation(parent: anim, curve: const Interval(0, 0.35));
+            return SlideTransition(
+              position: slide,
+              child: FadeTransition(opacity: fade, child: child),
+            );
+          },
+        );
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -221,8 +245,7 @@ class _CallNotificationOverlayState extends State<CallNotificationOverlay>
       ..forward();
     _slide = Tween<Offset>(begin: const Offset(0, -1.3), end: Offset.zero)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
-    _fade =
-        CurvedAnimation(parent: _ctrl, curve: const Interval(0, 0.4));
+    _fade = CurvedAnimation(parent: _ctrl, curve: const Interval(0, 0.4));
     _blur = Tween<double>(begin: 0, end: 20)
         .animate(CurvedAnimation(parent: _ctrl, curve: const Interval(0, 0.5)));
   }
@@ -237,7 +260,7 @@ class _CallNotificationOverlayState extends State<CallNotificationOverlay>
   Widget build(BuildContext context) {
     final isVideo = widget.call.isVideo;
     final accentColor =
-    isVideo ? const Color(0xFF3B82F6) : const Color(0xFF22C55E);
+        isVideo ? const Color(0xFF3B82F6) : const Color(0xFF22C55E);
 
     return SlideTransition(
       position: _slide,
@@ -263,7 +286,7 @@ class _CallNotificationOverlayState extends State<CallNotificationOverlay>
               ),
               child: Container(
                 padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
                 decoration: BoxDecoration(
                   color: const Color(0xF0111827),
                   borderRadius: BorderRadius.circular(22),
@@ -318,7 +341,7 @@ class _CallNotificationOverlayState extends State<CallNotificationOverlay>
                                   ? 'Cuộc gọi video nhóm'
                                   : 'Cuộc gọi thoại nhóm',
                               style:
-                              TextStyle(color: accentColor, fontSize: 11),
+                                  TextStyle(color: accentColor, fontSize: 11),
                             ),
                           ]),
                         ],
@@ -357,10 +380,10 @@ class _CallNotificationOverlayState extends State<CallNotificationOverlay>
     return Container(
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: accentColor.withValues(alpha: 0.5), width: 1.5),
+        border:
+            Border.all(color: accentColor.withValues(alpha: 0.5), width: 1.5),
         boxShadow: [
-          BoxShadow(
-              color: accentColor.withValues(alpha: 0.3), blurRadius: 10),
+          BoxShadow(color: accentColor.withValues(alpha: 0.3), blurRadius: 10),
         ],
       ),
       child: CircleAvatar(
@@ -370,8 +393,7 @@ class _CallNotificationOverlayState extends State<CallNotificationOverlay>
             : null,
         backgroundColor: const Color(0xFF1E2D40),
         child: widget.call.groupAvatarUrl.isEmpty
-            ? const Icon(Icons.group_rounded,
-            color: Colors.white54, size: 22)
+            ? const Icon(Icons.group_rounded, color: Colors.white54, size: 22)
             : null,
       ),
     );
@@ -423,7 +445,7 @@ class GroupCallHistoryTile extends StatelessWidget {
 
   bool get _wasParticipant =>
       call.participants.any((p) => p.userId == currentUserId) ||
-          call.initiatorId == currentUserId;
+      call.initiatorId == currentUserId;
 
   String get _statusLabel {
     switch (call.status) {
@@ -456,7 +478,7 @@ class GroupCallHistoryTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final isVideo = call.callType == GroupCallType.video;
     final iconColor =
-    isVideo ? const Color(0xFF3B82F6) : const Color(0xFF22C55E);
+        isVideo ? const Color(0xFF3B82F6) : const Color(0xFF22C55E);
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
@@ -504,8 +526,8 @@ class GroupCallHistoryTile extends StatelessWidget {
                   const SizedBox(width: 4),
                   Text(
                     _statusLabel,
-                    style: TextStyle(
-                        color: _statusColor(context), fontSize: 11),
+                    style:
+                        TextStyle(color: _statusColor(context), fontSize: 11),
                   ),
                   const SizedBox(width: 8),
                   const Icon(Icons.people_rounded,
@@ -513,8 +535,7 @@ class GroupCallHistoryTile extends StatelessWidget {
                   const SizedBox(width: 3),
                   Text(
                     '${call.participantCount} người',
-                    style: const TextStyle(
-                        color: Colors.white30, fontSize: 10),
+                    style: const TextStyle(color: Colors.white30, fontSize: 10),
                   ),
                 ]),
               ],
@@ -526,8 +547,8 @@ class GroupCallHistoryTile extends StatelessWidget {
             GestureDetector(
               onTap: onRejoin,
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: const Color(0xFF22C55E),
                   borderRadius: BorderRadius.circular(10),

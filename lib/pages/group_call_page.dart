@@ -221,9 +221,56 @@ class _GroupCallPageState extends State<GroupCallPage>
 
   // ── Agora init ────────────────────────────────────────────────────────────
   Future<void> _initCall() async {
-    await _requestPerms();
-    await _buildEngine();
-    await _joinChannel();
+    // FIX BUG 2: Bọc toàn bộ khởi tạo vào khối Try-Catch
+    try {
+      await _requestPerms();
+      await _buildEngine();
+      await _joinChannel();
+    } catch (e) {
+      debugPrint('❌ [GroupCallPage] Init error: $e');
+      if (mounted) {
+        // Hiển thị Dialog báo lỗi thay vì màn hình đen
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: _K.surface2,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.error_outline_rounded, color: _K.red),
+                SizedBox(width: 8),
+                Text('Lỗi kết nối',
+                    style: TextStyle(color: _K.text, fontSize: 18)),
+              ],
+            ),
+            content: Text(
+              e.toString().replaceAll('Exception: ', ''),
+              style: const TextStyle(color: _K.sub, fontSize: 14),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  _callEnded = true;
+                  if (widget.isInitiator) {
+                    await _svc.endCallForAll(widget.call.callId,
+                        startTime: _joinedAt);
+                  } else {
+                    await _svc.leaveCall(widget.call.callId);
+                  }
+                  _cleanup();
+                  if (mounted) Navigator.pop(context);
+                },
+                child:
+                    const Text('Quay lại', style: TextStyle(color: _K.accent)),
+              ),
+            ],
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _requestPerms() async {
@@ -234,8 +281,14 @@ class _GroupCallPageState extends State<GroupCallPage>
   }
 
   Future<void> _buildEngine() async {
-    _engine = createAgoraRtcEngine();
     final appId = dotenv.env['AGORA_APP_ID'] ?? '';
+    // FIX BUG 2: Kiểm tra cấu hình App ID
+    if (appId.isEmpty) {
+      throw Exception(
+          'AGORA_APP_ID chưa được cấu hình trong file .env. Không thể khởi tạo cuộc gọi.');
+    }
+
+    _engine = createAgoraRtcEngine();
     await _engine.initialize(RtcEngineContext(
       appId: appId,
       channelProfile: ChannelProfileType.channelProfileCommunication,
@@ -383,7 +436,13 @@ class _GroupCallPageState extends State<GroupCallPage>
         token = data['rtcToken'] as String? ?? '';
       }
     } catch (e) {
-      debugPrint('⚠️ Token fetch: $e — dùng token rỗng');
+      debugPrint('⚠️ Token fetch: $e');
+    }
+
+    // FIX BUG 2: Bắt lỗi nếu Token bị rỗng để tránh kẹt mãi ở màn hình Loading
+    if (token.isEmpty) {
+      throw Exception(
+          'Lỗi Token rỗng. Nếu Agora Console đang bật "App Certificate", vui lòng kiểm tra lại biến môi trường AGORA_TOKEN_SERVER của bạn.');
     }
 
     await _engine.joinChannel(
