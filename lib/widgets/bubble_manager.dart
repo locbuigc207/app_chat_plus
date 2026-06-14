@@ -9,6 +9,8 @@ import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:flutter_chat_demo/services/unified_bubble_service.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
 
+import '../main.dart' hide MiniChatOverlayWidget;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // BUBBLE MANAGER WIDGET
 // ═══════════════════════════════════════════════════════════════════════════
@@ -44,6 +46,7 @@ class _BubbleManagerState extends State<BubbleManager>
   // ── Mini-chat overlay ────────────────────────────────────────────────────
   OverlayEntry? _miniOverlay;
   String? _miniUserId;
+  bool _miniOverlayInserted = false;
 
   @override
   void initState() {
@@ -115,22 +118,28 @@ class _BubbleManagerState extends State<BubbleManager>
 
   void _onBubbleClick(BubbleClickEvent event) {
     if (!mounted) return;
-    debugPrint('🫧 Bubble tapped: ${event.userName}');
-    _showBubbleActionSheet(event);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      debugPrint('🫧 Bubble tapped: ${event.userName}');
+      _showBubbleActionSheet(event);
+    });
   }
 
   void _showBubbleActionSheet(BubbleClickEvent event) {
+    final ctx = globalNavigatorKey.currentContext;
+    if (ctx == null) return;
+
     showModalBottomSheet(
-      context: context,
+      context: ctx,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => _BubbleActionSheet(
         event: event,
         onOpenFullChat: () {
-          Navigator.pop(context);
+          Navigator.pop(ctx);
           _service.hideChatBubble(event.userId);
           _hideMiniChatOverlay();
-          Navigator.of(context).push(
+          globalNavigatorKey.currentState?.push(
             _fadeRoute(
               ChatPage(
                 arguments: ChatPageArguments(
@@ -143,7 +152,7 @@ class _BubbleManagerState extends State<BubbleManager>
           );
         },
         onOpenMiniChat: () async {
-          Navigator.pop(context);
+          Navigator.pop(ctx);
           await Future.delayed(const Duration(milliseconds: 180));
           await _showMiniChatOverlay(
             userId: event.userId,
@@ -152,7 +161,7 @@ class _BubbleManagerState extends State<BubbleManager>
           );
         },
         onDismiss: () {
-          Navigator.pop(context);
+          Navigator.pop(ctx);
           _service.hideChatBubble(event.userId);
         },
       ),
@@ -205,6 +214,14 @@ class _BubbleManagerState extends State<BubbleManager>
     await Future.delayed(const Duration(milliseconds: 100));
     if (!mounted) return;
 
+    late final OverlayState overlayState;
+    try {
+      overlayState = Overlay.of(context);
+    } catch (_) {
+      debugPrint('❌ BubbleManager: no Overlay in context');
+      return;
+    }
+
     _miniUserId = userId;
     _miniOverlay = OverlayEntry(
       builder: (_) => MiniChatOverlayWidget(
@@ -230,14 +247,21 @@ class _BubbleManagerState extends State<BubbleManager>
         },
       ),
     );
-    Overlay.of(context).insert(_miniOverlay!);
+
+    overlayState.insert(_miniOverlay!);
+    _miniOverlayInserted = true;
     debugPrint('✅ Mini-chat overlay shown for $userName');
   }
 
   void _hideMiniChatOverlay() {
-    _miniOverlay?.remove();
+    if (_miniOverlay != null && _miniOverlayInserted) {
+      try {
+        _miniOverlay!.remove();
+      } catch (_) {}
+    }
     _miniOverlay = null;
     _miniUserId = null;
+    _miniOverlayInserted = false;
   }
 
   void _minimizeMiniChat() {

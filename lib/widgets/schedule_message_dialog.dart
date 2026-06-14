@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:intl/intl.dart';
 
@@ -24,7 +23,6 @@ class ScheduleMessageResult {
 
 class ScheduleMessageDialog extends StatelessWidget {
   final String? initialMessage;
-
   final DateTime? minDate;
 
   const ScheduleMessageDialog({
@@ -60,7 +58,8 @@ class _ScheduleMessageContent extends StatefulWidget {
   const _ScheduleMessageContent({this.initialMessage, this.minDate});
 
   @override
-  State<_ScheduleMessageContent> createState() => _ScheduleMessageContentState();
+  State<_ScheduleMessageContent> createState() =>
+      _ScheduleMessageContentState();
 }
 
 class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
@@ -73,7 +72,6 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
   RepeatOption _repeat = RepeatOption.none;
   bool _notifyBefore = false;
   int _remindMinutes = 5;
-
   bool _isConfirming = false;
 
   late final AnimationController _entryController;
@@ -102,11 +100,13 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
       vsync: this,
       duration: const Duration(milliseconds: 340),
     );
-    _entryFade = CurvedAnimation(parent: _entryController, curve: Curves.easeOut);
+    _entryFade =
+        CurvedAnimation(parent: _entryController, curve: Curves.easeOut);
     _entrySlide = Tween<Offset>(
       begin: const Offset(0, 0.08),
       end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _entryController, curve: Curves.easeOutCubic));
+    ).animate(
+        CurvedAnimation(parent: _entryController, curve: Curves.easeOutCubic));
 
     _confirmController = AnimationController(
       vsync: this,
@@ -150,7 +150,8 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
     if (time == null || !mounted) return;
 
-    final selected = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    final selected =
+        DateTime(date.year, date.month, date.day, time.hour, time.minute);
 
     if (selected.isBefore(now)) {
       _showError('Please choose a future time.');
@@ -164,11 +165,11 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
   void _applyQuickPreset(Duration offset) {
     setState(() {
       _scheduledTime = DateTime.now().add(offset);
-
       final extra = _scheduledTime!.minute % 5;
       if (extra != 0) {
-        _scheduledTime =
-            _scheduledTime!.add(Duration(minutes: 5 - extra)).copyWith(second: 0, millisecond: 0);
+        _scheduledTime = _scheduledTime!
+            .add(Duration(minutes: 5 - extra))
+            .copyWith(second: 0, millisecond: 0);
       }
     });
     HapticFeedback.selectionClick();
@@ -193,6 +194,7 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
   }
 
+  // FIX LỖI 3: Bọc try/finally để _isConfirming luôn được reset dù có lỗi hay không
   Future<void> _handleSchedule() async {
     if (_isConfirming) return;
 
@@ -212,20 +214,25 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     }
 
     setState(() => _isConfirming = true);
-    await _confirmController.forward();
-    await Future.delayed(const Duration(milliseconds: 80));
-    await _confirmController.reverse();
-
-    HapticFeedback.mediumImpact();
-
-    if (!mounted) return;
-    Navigator.of(context).pop(ScheduleMessageResult(
-      message: text,
-      scheduledTime: _scheduledTime!,
-      repeat: _repeat,
-      notifyBeforeSend: _notifyBefore,
-      remindBeforeMinutes: _notifyBefore ? _remindMinutes : null,
-    ));
+    try {
+      await _confirmController.forward();
+      await Future.delayed(const Duration(milliseconds: 80));
+      await _confirmController.reverse();
+      HapticFeedback.mediumImpact();
+      if (!mounted) return;
+      Navigator.of(context).pop(ScheduleMessageResult(
+        message: text,
+        scheduledTime: _scheduledTime!,
+        repeat: _repeat,
+        notifyBeforeSend: _notifyBefore,
+        remindBeforeMinutes: _notifyBefore ? _remindMinutes : null,
+      ));
+    } catch (e) {
+      debugPrint('❌ _handleSchedule error: $e');
+      if (mounted) _showError('Đã xảy ra lỗi, vui lòng thử lại.');
+    } finally {
+      if (mounted) setState(() => _isConfirming = false);
+    }
   }
 
   void _showError(String msg) {
@@ -268,7 +275,8 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
         position: _entrySlide,
         child: Dialog(
           backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 32),
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 18, vertical: 32),
           child: Container(
             constraints: const BoxConstraints(maxWidth: 460, maxHeight: 680),
             decoration: BoxDecoration(
@@ -352,16 +360,13 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
               color: Colors.white.withValues(alpha: 0.20),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(
-              Icons.schedule_send_rounded,
-              color: Colors.white,
-              size: 22,
-            ),
+            child: const Icon(Icons.schedule_send_rounded,
+                color: Colors.white, size: 22),
           ),
           const SizedBox(width: 12),
-          Column(
+          const Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
+            children: [
               Text(
                 'Schedule Message',
                 style: TextStyle(
@@ -413,16 +418,10 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
           minLines: 2,
           maxLength: 1000,
           style: const TextStyle(
-            fontSize: 14,
-            color: Color(0xFF1A1A2E),
-            height: 1.5,
-          ),
+              fontSize: 14, color: Color(0xFF1A1A2E), height: 1.5),
           decoration: InputDecoration(
             hintText: 'Type your message here…',
-            hintStyle: TextStyle(
-              color: Colors.grey.shade400,
-              fontSize: 14,
-            ),
+            hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
             filled: true,
             fillColor: const Color(0xFFF8F9FF),
             counterStyle: TextStyle(color: Colors.grey.shade400, fontSize: 11),
@@ -432,7 +431,8 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(color: const Color(0xFFE8ECF4), width: 1.5),
+              borderSide:
+                  const BorderSide(color: Color(0xFFE8ECF4), width: 1.5),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
@@ -516,7 +516,9 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
                     ),
                     child: Icon(
                       Icons.calendar_today_rounded,
-                      color: _scheduledTime != null ? _primaryColor : Colors.grey.shade500,
+                      color: _scheduledTime != null
+                          ? _primaryColor
+                          : Colors.grey.shade500,
                       size: 18,
                     ),
                   ),
@@ -527,7 +529,8 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                DateFormat('EEEE, MMM d, yyyy').format(_scheduledTime!),
+                                DateFormat('EEEE, MMM d, yyyy')
+                                    .format(_scheduledTime!),
                                 style: TextStyle(
                                   color: _primaryColor,
                                   fontWeight: FontWeight.w600,
@@ -547,14 +550,14 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
                         : Text(
                             'Select date & time',
                             style: TextStyle(
-                              color: Colors.grey.shade500,
-                              fontSize: 14,
-                            ),
+                                color: Colors.grey.shade500, fontSize: 14),
                           ),
                   ),
                   Icon(
                     Icons.chevron_right_rounded,
-                    color: _scheduledTime != null ? _primaryColor : Colors.grey.shade400,
+                    color: _scheduledTime != null
+                        ? _primaryColor
+                        : Colors.grey.shade400,
                     size: 20,
                   ),
                 ],
@@ -566,12 +569,20 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
     );
   }
 
+  // FIX LỖI 1: Thêm .clamp(0.0, 1.0) cho opacity và scale để tránh crash
+  // khi Curves.easeOutBack overshoot ra ngoài [0.0, 1.0]
   Widget _buildTimeBadge() {
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOutBack,
-      builder: (_, v, child) => Opacity(opacity: v, child: Transform.scale(scale: v, child: child)),
+      builder: (_, v, child) => Opacity(
+        opacity: v.clamp(0.0, 1.0),
+        child: Transform.scale(
+          scale: v.clamp(0.0, 1.0),
+          child: child,
+        ),
+      ),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
         decoration: BoxDecoration(
@@ -582,7 +593,8 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
             ],
           ),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: _primaryColor.withValues(alpha: 0.20), width: 1),
+          border: Border.all(
+              color: _primaryColor.withValues(alpha: 0.20), width: 1),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -611,7 +623,7 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
         const SizedBox(height: 10),
         Row(
           children: RepeatOption.values.map((opt) {
-            final labels = {
+            const labels = {
               RepeatOption.none: 'None',
               RepeatOption.daily: 'Daily',
               RepeatOption.weekly: 'Weekly',
@@ -628,12 +640,16 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
                   },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
-                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                     decoration: BoxDecoration(
-                      color: isSelected ? _primaryColor : const Color(0xFFF8F9FF),
+                      color:
+                          isSelected ? _primaryColor : const Color(0xFFF8F9FF),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: isSelected ? _primaryColor : const Color(0xFFE8ECF4),
+                        color: isSelected
+                            ? _primaryColor
+                            : const Color(0xFFE8ECF4),
                         width: 1.5,
                       ),
                     ),
@@ -666,10 +682,14 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: _notifyBefore ? _primaryColor.withValues(alpha: 0.06) : const Color(0xFFF8F9FF),
+          color: _notifyBefore
+              ? _primaryColor.withValues(alpha: 0.06)
+              : const Color(0xFFF8F9FF),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: _notifyBefore ? _primaryColor.withValues(alpha: 0.35) : const Color(0xFFE8ECF4),
+            color: _notifyBefore
+                ? _primaryColor.withValues(alpha: 0.35)
+                : const Color(0xFFE8ECF4),
             width: 1.5,
           ),
         ),
@@ -690,7 +710,9 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: _notifyBefore ? _primaryColor : const Color(0xFF1A1A2E),
+                      color: _notifyBefore
+                          ? _primaryColor
+                          : const Color(0xFF1A1A2E),
                     ),
                   ),
                   if (_notifyBefore) ...[
@@ -698,9 +720,8 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
                     Text(
                       'Get a heads-up $_remindMinutes min before',
                       style: TextStyle(
-                        fontSize: 11,
-                        color: _primaryColor.withValues(alpha: 0.70),
-                      ),
+                          fontSize: 11,
+                          color: _primaryColor.withValues(alpha: 0.70)),
                     ),
                   ],
                 ],
@@ -723,7 +744,8 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
       tween: Tween(begin: 0, end: 1),
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeOut,
-      builder: (_, v, child) => Opacity(opacity: v, child: child),
+      builder: (_, v, child) =>
+          Opacity(opacity: v.clamp(0.0, 1.0), child: child),
       child: Padding(
         padding: const EdgeInsets.only(left: 2),
         child: Wrap(
@@ -737,7 +759,8 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
               },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: selected ? _primaryColor : Colors.grey.shade100,
                   borderRadius: BorderRadius.circular(20),
@@ -794,7 +817,8 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
                   gradient: LinearGradient(
                     colors: [
                       _primaryColor,
-                      _primaryColor.withBlue((_primaryColor.blue + 30).clamp(0, 255))
+                      _primaryColor
+                          .withBlue((_primaryColor.blue + 30).clamp(0, 255)),
                     ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -823,10 +847,11 @@ class _ScheduleMessageContentState extends State<_ScheduleMessageContent>
                               valueColor: AlwaysStoppedAnimation(Colors.white),
                             ),
                           )
-                        : Row(
+                        : const Row(
                             mainAxisAlignment: MainAxisAlignment.center,
-                            children: const [
-                              Icon(Icons.schedule_send_rounded, color: Colors.white, size: 18),
+                            children: [
+                              Icon(Icons.schedule_send_rounded,
+                                  color: Colors.white, size: 18),
                               SizedBox(width: 8),
                               Text(
                                 'Schedule',
@@ -885,14 +910,16 @@ class _QuickChip extends StatefulWidget {
   State<_QuickChip> createState() => _QuickChipState();
 }
 
-class _QuickChipState extends State<_QuickChip> with SingleTickerProviderStateMixin {
+class _QuickChipState extends State<_QuickChip>
+    with SingleTickerProviderStateMixin {
   late AnimationController _c;
   late Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
-    _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 120));
+    _c = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 120));
     _scale = Tween<double>(begin: 1.0, end: 0.93)
         .animate(CurvedAnimation(parent: _c, curve: Curves.easeIn));
   }
@@ -918,10 +945,14 @@ class _QuickChipState extends State<_QuickChip> with SingleTickerProviderStateMi
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(vertical: 9),
           decoration: BoxDecoration(
-            color: widget.isSelected ? widget.primaryColor : const Color(0xFFF8F9FF),
+            color: widget.isSelected
+                ? widget.primaryColor
+                : const Color(0xFFF8F9FF),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: widget.isSelected ? widget.primaryColor : const Color(0xFFE8ECF4),
+              color: widget.isSelected
+                  ? widget.primaryColor
+                  : const Color(0xFFE8ECF4),
               width: 1.5,
             ),
             boxShadow: widget.isSelected
@@ -930,7 +961,7 @@ class _QuickChipState extends State<_QuickChip> with SingleTickerProviderStateMi
                       color: widget.primaryColor.withValues(alpha: 0.25),
                       blurRadius: 8,
                       offset: const Offset(0, 3),
-                    )
+                    ),
                   ]
                 : [],
           ),
@@ -986,10 +1017,7 @@ class _AnimatedSwitch extends StatelessWidget {
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black12,
-                  blurRadius: 4,
-                  offset: Offset(0, 1),
-                )
+                    color: Colors.black12, blurRadius: 4, offset: Offset(0, 1)),
               ],
             ),
           ),

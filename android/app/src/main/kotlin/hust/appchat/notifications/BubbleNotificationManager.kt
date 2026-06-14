@@ -1,4 +1,3 @@
-// android/app/src/main/kotlin/hust/appchat/notifications/BubbleNotificationManager.kt
 package hust.appchat.notifications
 
 import android.app.Notification
@@ -17,41 +16,22 @@ import hust.appchat.shortcuts.AvatarLoader
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
-/**
- * BubbleNotificationManager — Android 11+ Bubble API.
- *
- * Architecture & Fixes:
- * • FIX-A (Resource Safety): getNotificationIconSafe() uses Resources.getIdentifier()
- * at runtime to avoid try-catch on compile-time constants.
- * • FIX-B (Bitmap Bounds): iconToBitmap() guards against zero-size intrinsic
- * dimensions, producing a 100×100 fallback bitmap to prevent crashes.
- * • FIX-C (PendingIntent): requestCode uses Math.abs(hashCode) to avoid negative IDs.
- * • FIX-D (Thread-Safety): Message history uses CopyOnWriteArrayList for lock-free,
- * safe iteration across threads.
- * • FIX-E (Smart Suppression): Tracks expanded state via `expandedUsers` to dynamically
- * suppress Heads-Up notifications if the conversation bubble is already open.
- */
 @RequiresApi(Build.VERSION_CODES.R)
 object BubbleNotificationManager {
 
-    private const val TAG                = "BubbleNotifManager"
-    private const val MAX_HISTORY        = 12
-    private const val BASE_ID            = 2_000
-    private const val CHANNEL_MESSAGES   = "chat_messages"
+    private const val TAG              = "BubbleNotifManager"
+    private const val MAX_HISTORY      = 12
+    private const val BASE_ID          = 2_000
+    private const val CHANNEL_MESSAGES = "chat_messages"
 
-    // Thread-safe message history tracking
-    private val history = ConcurrentHashMap<String, CopyOnWriteArrayList<Message>>()
-
-    // Users whose bubble window is currently expanded
+    private val history      = ConcurrentHashMap<String, CopyOnWriteArrayList<Message>>()
     private val expandedUsers = ConcurrentHashMap.newKeySet<String>()
 
-    // ─── Data models ──────────────────────────────────────────────────────
-
     data class Message(
-        val text      : String,
-        val timestamp : Long,
-        val fromUser  : Boolean,
-        val type      : MessageType = MessageType.TEXT,
+        val text     : String,
+        val timestamp: Long,
+        val fromUser : Boolean,
+        val type     : MessageType = MessageType.TEXT,
     )
 
     enum class MessageType { TEXT, IMAGE, VOICE, LOCATION }
@@ -60,23 +40,17 @@ object BubbleNotificationManager {
     // PUBLIC API
     // ═════════════════════════════════════════════════════════════════════
 
-    /**
-     * Add an incoming message and refresh the bubble notification.
-     * Returns the notification ID for the conversation.
-     */
     fun addMessage(
-        context   : Context,
-        userId    : String,
-        userName  : String,
-        message   : String,
-        avatarUrl : String,
-        fromUser  : Boolean,
-        type      : MessageType = MessageType.TEXT,
+        context  : Context,
+        userId   : String,
+        userName : String,
+        message  : String,
+        avatarUrl: String,
+        fromUser : Boolean,
+        type     : MessageType = MessageType.TEXT,
     ): Int {
         val msgs = history.getOrPut(userId) { CopyOnWriteArrayList() }
         msgs.add(Message(message, System.currentTimeMillis(), fromUser, type))
-
-        // Trim to max history size
         while (msgs.size > MAX_HISTORY) msgs.removeAt(0)
 
         val notifId = notifId(userId)
@@ -85,11 +59,11 @@ object BubbleNotificationManager {
     }
 
     fun updateNotification(
-        context   : Context,
-        userId    : String,
-        userName  : String,
-        message   : String,
-        avatarUrl : String,
+        context  : Context,
+        userId   : String,
+        userName : String,
+        message  : String,
+        avatarUrl: String,
     ) {
         if (!history.containsKey(userId)) {
             addMessage(context, userId, userName, message, avatarUrl, fromUser = false)
@@ -99,9 +73,9 @@ object BubbleNotificationManager {
         postNotification(context, userId, userName, avatarUrl, msgs.toList(), notifId(userId))
     }
 
-    fun markExpanded(userId: String)   { expandedUsers.add(userId) }
-    fun markCollapsed(userId: String)  { expandedUsers.remove(userId) }
-    fun isExpanded(userId: String)     = expandedUsers.contains(userId)
+    fun markExpanded(userId: String)  { expandedUsers.add(userId) }
+    fun markCollapsed(userId: String) { expandedUsers.remove(userId) }
+    fun isExpanded(userId: String)    = expandedUsers.contains(userId)
 
     fun clearHistory(userId: String) {
         history.remove(userId)
@@ -115,7 +89,6 @@ object BubbleNotificationManager {
     }
 
     fun getMessageCount(userId: String) = history[userId]?.size ?: 0
-
     fun getLastMessage(userId: String)  = history[userId]?.lastOrNull()
 
     fun getStats(): Map<String, Any> = mapOf(
@@ -136,12 +109,12 @@ object BubbleNotificationManager {
     // ═════════════════════════════════════════════════════════════════════
 
     private fun postNotification(
-        context   : Context,
-        userId    : String,
-        userName  : String,
-        avatarUrl : String,
-        messages  : List<Message>,
-        notifId   : Int,
+        context  : Context,
+        userId   : String,
+        userName : String,
+        avatarUrl: String,
+        messages : List<Message>,
+        notifId  : Int,
     ) {
         try {
             val avatarIcon = safeLoadIcon(context, avatarUrl, userName)
@@ -196,27 +169,36 @@ object BubbleNotificationManager {
     }
 
     private fun buildBubble(
-        context   : Context,
-        userId    : String,
-        userName  : String,
-        avatarUrl : String,
-        icon      : Icon,
+        context  : Context,
+        userId   : String,
+        userName : String,
+        avatarUrl: String,
+        icon     : Icon,
     ): Notification.BubbleMetadata {
         val intent = BubbleActivity.createIntent(context, userId, userName, avatarUrl)
 
-        // FIX-C: Math.abs() to prevent negative request codes
         val reqCode = Math.abs(userId.hashCode()) % Int.MAX_VALUE
-        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        else
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+
+        // FIX: bubble PendingIntent BẮT BUỘC phải MUTABLE
+        // FLAG_IMMUTABLE khiến Android reject toàn bộ bubble notification
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                    PendingIntent.FLAG_MUTABLE
+                else 0
 
         val pi = PendingIntent.getActivity(context, reqCode, intent, flags)
 
-        return Notification.BubbleMetadata.Builder(pi, icon)
+        // FIX: dùng adaptive bitmap icon thay vì raw bitmap
+        // Bubble API hoạt động tốt nhất với TYPE_URI hoặc TYPE_URI_ADAPTIVE_BITMAP
+        // Fallback: wrap bitmap thành adaptive bitmap
+        val bubbleIcon = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val bmp = iconToBitmap(context, icon)
+            if (bmp != null) Icon.createWithAdaptiveBitmap(bmp) else icon
+        } else icon
+
+        return Notification.BubbleMetadata.Builder(pi, bubbleIcon)
             .setDesiredHeight(640)
             .setAutoExpandBubble(false)
-            // Suppress heads-up banner when bubble window is already open
             .setSuppressNotification(isExpanded(userId))
             .build()
     }
@@ -228,18 +210,15 @@ object BubbleNotificationManager {
         MessageType.LOCATION -> "📍 Vị trí"
     }
 
-    // ─── Icon helpers ─────────────────────────────────────────────────────
+    // ─── Icon helpers ──────────────────────────────────────────────────────
 
-    /** FIX-A: Runtime resource check via getIdentifier() */
     private fun notifIconRes(ctx: Context): Int {
         val r   = ctx.resources
         val pkg = ctx.packageName
         val id  = r.getIdentifier("ic_notification", "drawable", pkg)
         if (id != 0) return id
-
         val lc = r.getIdentifier("ic_launcher", "mipmap", pkg)
         if (lc != 0) return lc
-
         Log.w(TAG, "⚠️ ic_notification not found; using android default")
         return android.R.drawable.ic_dialog_info
     }
@@ -258,13 +237,11 @@ object BubbleNotificationManager {
     private fun fallbackIcon(ctx: Context): Icon =
         Icon.createWithResource(ctx, notifIconRes(ctx))
 
-    /** FIX-B: Guard against zero-size intrinsic dimensions */
     private fun iconToBitmap(ctx: Context, icon: Icon): Bitmap? {
         return try {
             val drawable = icon.loadDrawable(ctx) ?: return null
             val w = if (drawable.intrinsicWidth  > 0) drawable.intrinsicWidth  else 100
             val h = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 100
-
             val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bmp)
             drawable.setBounds(0, 0, w, h)

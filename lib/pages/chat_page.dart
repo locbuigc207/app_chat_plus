@@ -1219,13 +1219,13 @@ class ChatPageState extends State<ChatPage>
 
   Future<void> _scheduleMessage() async {
     if (resourceManager.isDisposed) return;
-    final result = await showDialog<Map<String, dynamic>>(
+    final result = await showDialog<ScheduleMessageResult>(
         context: context,
         barrierDismissible: false,
         builder: (_) => ScheduleMessageDialog());
     if (result == null || resourceManager.isDisposed || !mounted) return;
-    final text = result['message'] as String;
-    final time = result['time'] as DateTime;
+    final text = result.message;
+    final time = result.scheduledTime;
     final delay = time.difference(DateTime.now());
     if (delay.isNegative) {
       _toast('Thời gian không hợp lệ');

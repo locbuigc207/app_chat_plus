@@ -10,7 +10,6 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-// ── App Constants, Pages, Utils & Widgets ──────────────────────────────────
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/firebase_options.dart';
 import 'package:flutter_chat_demo/models/call_model.dart';
@@ -37,12 +36,11 @@ import 'package:timezone/timezone.dart' as tz;
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
-// Đã đổi tên để tránh lỗi circular reference trong AppRouter
 final GlobalKey<NavigatorState> globalNavigatorKey =
     GlobalKey<NavigatorState>();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FCM background handler (Must be top-level)
+// FCM background handler
 // ─────────────────────────────────────────────────────────────────────────────
 
 @pragma('vm:entry-point')
@@ -56,11 +54,9 @@ Future<void> _onBackgroundMessage(RemoteMessage message) async {
     debugPrint('⚠️ BubbleFcmHandler process error in background: $e');
   }
 
-  // ── xử lý group call invite từ background ──────────────────────
   final type = message.data['type'] as String?;
   if (type == 'group_call_invite') {
     debugPrint('📞 Background group call invite: ${message.data['callId']}');
-    // GroupCallNotificationService xử lý khi app resume
   }
 }
 
@@ -87,22 +83,18 @@ Future<void> main() async {
     systemNavigationBarIconBrightness: Brightness.dark,
   ));
 
-  // ── 1. Firebase Init ───────────────────────────────────────────────────────
   await _initializeFirebase();
   await ErrorLogger.initialize();
 
-  // ── 2. Timezone Init ───────────────────────────────────────────────────────
   tz.initializeTimeZones();
   tz.setLocalLocation(tz.getLocation('Asia/Ho_Chi_Minh'));
 
   final prefs = await SharedPreferences.getInstance();
 
-  // ── 3. Background Services & Bubbles ───────────────────────────────────────
   if (!kIsWeb) {
     FirebaseMessaging.onBackgroundMessage(_onBackgroundMessage);
     await _initializeLocalNotifications(flutterLocalNotificationsPlugin);
 
-    // Khởi tạo theo đúng thứ tự
     await BubbleSettingsService().load();
     await BubbleSoundService().initialize();
 
@@ -115,7 +107,6 @@ Future<void> main() async {
     await _initializeFcm();
   }
 
-  // ── 4. Setup Base Services ─────────────────────────────────────────────────
   final unifiedBubbleService = UnifiedBubbleService();
   final chatBubbleService = ChatBubbleService();
   final notificationService = NotificationService();
@@ -149,8 +140,7 @@ Future<void> _initializeFirebase() async {
       debugPrint('⚠️ Offline Persistence (Web không hỗ trợ): $e');
     }
 
-    // ── App Check ──────────────────────────────────────────────────────
-    const disableAppCheckForTesting = true; // đổi thành false khi xong test
+    const disableAppCheckForTesting = true;
 
     if (kDebugMode && disableAppCheckForTesting) {
       debugPrint('⚠️ App Check ĐÃ TẮT cho mục đích test (debug mode)');
@@ -199,7 +189,6 @@ Future<void> _initializeFcm() async {
 
     debugPrint('🔔 FCM permission: ${settings.authorizationStatus.name}');
 
-    // Persistent Token Init Manager
     try {
       await FcmTokenManager.initialize(
         onTokenAvailable: (token) async {
@@ -214,7 +203,6 @@ Future<void> _initializeFcm() async {
         },
       );
     } catch (_) {
-      // Fallback
       final token = await messaging.getToken();
       if (token != null) {
         debugPrint('📱 FCM Token (Fallback): ${token.substring(0, 20)}...');
@@ -324,7 +312,7 @@ Future<void> _setupAndroidNotificationChannels(
 
   await androidPlugin.createNotificationChannel(
     const AndroidNotificationChannel(
-      'call_channel', // GroupCallConstants.callChannelId
+      'call_channel',
       'Cuộc gọi nhóm đến',
       description: 'Thông báo cuộc gọi nhóm video/thoại',
       importance: Importance.max,
@@ -337,7 +325,7 @@ Future<void> _setupAndroidNotificationChannels(
 
   await androidPlugin.createNotificationChannel(
     const AndroidNotificationChannel(
-      'ongoing_call_channel', // GroupCallConstants.ongoingChannelId
+      'ongoing_call_channel',
       'Cuộc gọi nhóm đang diễn ra',
       description: 'Hiển thị trong khi đang trong cuộc gọi nhóm',
       importance: Importance.low,
@@ -475,7 +463,7 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MiniChatOverlayManager & Overlay Logic
+// MiniChatOverlayManager
 // ─────────────────────────────────────────────────────────────────────────────
 
 class MiniChatOverlayManager extends StatefulWidget {
@@ -489,6 +477,8 @@ class MiniChatOverlayManager extends StatefulWidget {
 class _MiniChatOverlayManagerState extends State<MiniChatOverlayManager> {
   static const _channel = MethodChannel('mini_chat_channel');
   OverlayEntry? _overlay;
+  // FIX lỗi 7: track insertion state để tránh double-remove
+  bool _overlayInserted = false;
 
   @override
   void initState() {
@@ -520,7 +510,11 @@ class _MiniChatOverlayManagerState extends State<MiniChatOverlayManager> {
   }
 
   void _showOverlay(String userId, String userName, String avatarUrl) {
+    // Luôn remove overlay cũ trước
     _removeOverlay();
+
+    if (!mounted) return;
+
     _overlay = OverlayEntry(
       builder: (_) => _MiniChatOverlayScaffold(
         userId: userId,
@@ -536,19 +530,38 @@ class _MiniChatOverlayManagerState extends State<MiniChatOverlayManager> {
         },
       ),
     );
-    if (mounted) Overlay.of(context).insert(_overlay!);
+
+    // FIX lỗi 7: bọc insert trong try/catch, chỉ set flag khi insert thành công
+    try {
+      Overlay.of(context).insert(_overlay!);
+      _overlayInserted = true;
+    } catch (e) {
+      debugPrint('❌ MiniChatOverlayManager: insert failed: $e');
+      _overlay = null;
+      _overlayInserted = false;
+    }
   }
 
   void _removeOverlay() {
-    try {
-      _overlay?.remove();
-    } catch (_) {}
+    // FIX lỗi 7: chỉ remove nếu đã insert thành công
+    if (_overlay != null && _overlayInserted) {
+      try {
+        _overlay!.remove();
+      } catch (e) {
+        debugPrint('⚠️ MiniChatOverlayManager: remove failed: $e');
+      }
+    }
     _overlay = null;
+    _overlayInserted = false;
   }
 
   @override
   Widget build(BuildContext context) => widget.child;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _MiniChatOverlayScaffold & MiniChatOverlayWidget (giữ nguyên)
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _MiniChatOverlayScaffold extends StatelessWidget {
   final String userId, userName, avatarUrl;
@@ -788,6 +801,10 @@ class _HeaderButton extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// BubbleModeDetector
+// ─────────────────────────────────────────────────────────────────────────────
+
 class BubbleModeDetector {
   BubbleModeDetector._();
   static const _channel = MethodChannel('bubble_chat_channel');
@@ -854,12 +871,10 @@ class _AppInitializerState extends State<AppInitializer>
     });
   }
 
-  // ── FIX BUG 1b & 3: Xử lý định tuyến từ Notification data ────────────────
   Future<void> _routeFromNotificationMessage(RemoteMessage message) async {
     final data = message.data;
     final type = data['type'] as String?;
 
-    // TH 1: Gọi điện thoại 1-1
     if (type == 'incoming_call') {
       final callId = data['callId'] as String?;
       if (callId != null) {
@@ -880,9 +895,7 @@ class _AppInitializerState extends State<AppInitializer>
           debugPrint('⚠️ Fetch call doc error: $e');
         }
       }
-    }
-    // TH 2: Gọi nhóm
-    else if (type == 'group_call_invite') {
+    } else if (type == 'group_call_invite') {
       final callId = data['callId'] as String?;
       if (callId != null) {
         try {
@@ -921,9 +934,7 @@ class _AppInitializerState extends State<AppInitializer>
           debugPrint('⚠️ Fetch group call doc error: $e');
         }
       }
-    }
-    // TH 3: Tin nhắn chat thông thường (Fallback)
-    else {
+    } else {
       final peerId = data['peerId'] as String?;
       final peerNickname = data['peerNickname'] as String?;
       if (peerId != null && peerNickname != null) {
@@ -948,7 +959,7 @@ class _AppInitializerState extends State<AppInitializer>
 
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
       debugPrint('🔔 FCM opened app: ${message.data}');
-      _routeFromNotificationMessage(message); // <-- GỌI HÀM FIX BUG ROUTING
+      _routeFromNotificationMessage(message);
     });
   }
 
@@ -958,8 +969,7 @@ class _AppInitializerState extends State<AppInitializer>
           await FirebaseMessaging.instance.getInitialMessage();
       if (initialMessage != null) {
         await Future.delayed(const Duration(milliseconds: 800));
-        await _routeFromNotificationMessage(
-            initialMessage); // <-- GỌI HÀM FIX BUG ROUTING
+        await _routeFromNotificationMessage(initialMessage);
       }
     } catch (e) {
       debugPrint('⚠️ Initial FCM message lỗi: $e');
@@ -1006,7 +1016,7 @@ class _AppInitializerState extends State<AppInitializer>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ChatApp (Main Application Widget)
+// ChatApp
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ChatApp extends StatefulWidget {
@@ -1048,8 +1058,7 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
             child: MaterialApp(
               title: AppConstants.appTitle,
               debugShowCheckedModeBanner: false,
-              navigatorKey:
-                  AppRouter.navigatorKey, // Using unified AppRouter Key
+              navigatorKey: AppRouter.navigatorKey,
               themeMode: themeProvider.flutterThemeMode ?? ThemeMode.system,
               theme: themeProvider.lightTheme ??
                   _buildFallbackTheme(Brightness.light),
@@ -1058,20 +1067,26 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
               initialRoute: AppRouter.splash,
               onGenerateRoute: AppRouter.onGenerateRoute,
               builder: (context, child) {
-                // SỬA LỖI TẠI ĐÂY: Đưa các Listener vào bên trong builder
-                Widget appTree = AppInitializer(
+                // FIX lỗi 3: BubbleManager và MiniChatOverlayManager nằm
+                // bên trong MaterialApp builder — có đầy đủ Overlay và Navigator
+                //
+                // FIX thứ tự: AppInitializer bọc NGOÀI _AppBuilder để
+                // context.read<Provider>() hoạt động đúng
+                Widget tree = AppInitializer(
                   notificationService: widget.notificationService,
                   child: _AppBuilder(child: child!),
                 );
 
                 if (!kIsWeb) {
-                  appTree = GroupCallMiniManager(
+                  tree = GroupCallMiniManager(
                     child: BubbleChatChannelManager(
                       child: GroupCallListener(
                         child: CallListener(
+                          // FIX lỗi 3: BubbleManager vào đây — trong builder
+                          // nên có Overlay từ MaterialApp
                           child: BubbleManager(
                             child: MiniChatOverlayManager(
-                              child: appTree,
+                              child: tree,
                             ),
                           ),
                         ),
@@ -1080,7 +1095,7 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
                   );
                 }
 
-                return appTree;
+                return tree;
               },
             ),
           );
@@ -1193,8 +1208,6 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
               UserPresenceProvider(firebaseFirestore: firebaseFirestore)),
       Provider<LocationProvider>(create: (_) => LocationProvider()),
       Provider<TranslationProvider>(create: (_) => TranslationProvider()),
-
-      // Bubble Services
       Provider<ChatBubbleService>(create: (_) => widget.chatBubbleService),
       Provider<UnifiedBubbleService>(
           create: (_) => widget.unifiedBubbleService,
@@ -1205,8 +1218,6 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
       Provider<BubbleSoundService>(create: (_) => BubbleSoundService()),
       Provider<ContextualBubbleService>(
           create: (_) => ContextualBubbleService.instance),
-
-      // ── Group Call ──────────────────────────────────────────────────────────
       ChangeNotifierProvider<GroupCallProvider>(
         create: (_) => GroupCallProvider(
           currentUserId: widget.prefs.getString('currentUserId') ?? '',
@@ -1217,7 +1228,7 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AppBuilder — Overlays, Text Scaling
+// AppBuilder
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _AppBuilder extends StatelessWidget {
@@ -1325,7 +1336,6 @@ class AppRouter {
   }
 }
 
-// ─── 404 Page ─────────────────────────────────────────────────────────────
 class _NotFoundPage extends StatelessWidget {
   const _NotFoundPage();
 
