@@ -328,7 +328,14 @@ class AgoraRtcManager extends ChangeNotifier {
       profile: AudioProfileType.audioProfileMusicHighQualityStereo,
       scenario: AudioScenarioType.audioScenarioChatroom,
     );
-    await _engine!.setEnableSpeakerphone(true);
+
+    // FIX BUG 2A TẠI ĐÂY: Bọc setEnableSpeakerphone vào try-catch để tránh crash do lỗi -3 (ERR_NOT_READY) trên một số dòng Android
+    try {
+      await _engine!.setEnableSpeakerphone(true);
+    } catch (e) {
+      debugPrint(
+          '⚠️ [AgoraRtcManager] Lỗi thiết lập loa ngoài khi khởi tạo (sẽ retry sau): $e');
+    }
 
     // Echo cancellation & noise suppression
     await _engine!.setParameters('{"che.audio.enable.aec":true}');

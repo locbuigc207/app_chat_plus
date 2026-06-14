@@ -1908,6 +1908,8 @@ exports.onCallCreated = onDocumentCreated(
           type: "incoming_call",
           callId: event.params.callId,
           callerId: callData.callerId,
+          // SỬA LỖI TẠI ĐÂY: Thêm senderId để Bubble FCM parse thành công
+          senderId: callData.callerId,
           callerName: callData.callerName ?? "",
           callerAvatar: callData.callerAvatar ?? "",
           callType: String(callData.callType ?? 0),
@@ -1932,6 +1934,7 @@ exports.onGroupCallCreated = onDocumentCreated(
       invitedUserIds = [],
       groupName = "Nhóm",
       initiatorName = "Ai đó",
+      initiatorId = "", // Khai báo thêm initiatorId
       callType = "video",
     } = call;
 
@@ -1953,6 +1956,8 @@ exports.onGroupCallCreated = onDocumentCreated(
           callId,
           groupName,
           initiatorName,
+          // SỬA LỖI TẠI ĐÂY: Bổ sung senderId để Bubble nhận diện group call
+          senderId: initiatorId,
           isVideo: String(isVideo),
           callType,
         },

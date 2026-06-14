@@ -371,7 +371,15 @@ class _GroupCallPageState extends State<GroupCallPage>
       ));
     }
     await _engine.enableAudio();
-    await _engine.setEnableSpeakerphone(true);
+
+    // SỬA LỖI 2A TẠI ĐÂY: Bọc setEnableSpeakerphone vào try-catch
+    try {
+      await _engine.setEnableSpeakerphone(true);
+    } catch (e) {
+      debugPrint(
+          '⚠️ setEnableSpeakerphone before join: $e (sẽ retry sau join)');
+    }
+
     await _engine.enableAudioVolumeIndication(
         interval: 300, smooth: 3, reportVad: true);
 
@@ -427,13 +435,14 @@ class _GroupCallPageState extends State<GroupCallPage>
     try {
       final tokenServer = dotenv.env['AGORA_TOKEN_SERVER'] ?? '';
       if (tokenServer.isNotEmpty) {
+        // SỬA LỖI 2B TẠI ĐÂY: Sử dụng đúng định dạng Query String `?channelName=X&uid=0`
         final uri = Uri.parse(
-            '$tokenServer/rtc/${widget.call.channelName}/publisher/uid/0/');
+            '$tokenServer?channelName=${widget.call.channelName}&uid=0');
         final resp = await HttpClient().getUrl(uri);
         final response = await resp.close();
         final body = await response.transform(utf8.decoder).join();
         final data = jsonDecode(body) as Map<String, dynamic>;
-        token = data['rtcToken'] as String? ?? '';
+        token = data['rtcToken'] as String? ?? data['token'] as String? ?? '';
       }
     } catch (e) {
       debugPrint('⚠️ Token fetch: $e');
