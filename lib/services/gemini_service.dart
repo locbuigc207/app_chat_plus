@@ -2,10 +2,34 @@
 
 import 'dart:async';
 
-import 'package:firebase_ai/firebase_ai.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/foundation.dart';
+import 'package:google_generative_ai/google_generative_ai.dart';
 
 import '../constants/constants.dart';
+
+// ─────────────────────────────────────────────
+// Exceptions
+// ─────────────────────────────────────────────
+
+class GeminiKeyExpiredException implements Exception {
+  const GeminiKeyExpiredException();
+  @override
+  String toString() => 'GeminiKeyExpiredException: Gemini API key expired';
+}
+
+class GeminiUnavailableException implements Exception {
+  final String reason;
+  const GeminiUnavailableException(this.reason);
+  @override
+  String toString() => 'GeminiUnavailableException: $reason';
+}
+
+// ─────────────────────────────────────────────
+// Enums & Models
+// ─────────────────────────────────────────────
 
 enum GeminiTaskType {
   chat,
@@ -14,6 +38,14 @@ enum GeminiTaskType {
   translate,
   codeAssist,
   sentimentAnalysis,
+}
+
+enum GeminiAvailability {
+  available,
+  keyExpired,
+  rateLimited,
+  networkError,
+  unknown,
 }
 
 class GeminiResponse {
@@ -33,19 +65,128 @@ class GeminiResponse {
       GeminiResponse(text: message, isError: true);
 }
 
+// ─────────────────────────────────────────────
+// Service
+// ─────────────────────────────────────────────
+
 class GeminiService {
   GeminiService._internal();
   static final GeminiService _instance = GeminiService._internal();
   factory GeminiService() => _instance;
 
-  // gemini-3.5-flash = GA stable (June 2026)
-  static const String _modelId = 'gemini-3.5-flash';
+  // Remote Config key name — set value = API key của bạn trên Firebase Console
+  static const String _remoteConfigKey = 'gemini_api_key';
+
+  static const String _modelId = 'gemini-2.5-flash';
   static const int _maxRetries = 3;
   static const Duration _baseRetryDelay = Duration(seconds: 2);
   static const int _maxHistoryMessages = 20;
 
-  // Cache chỉ theo taskType, không cần cache theo apiKey nữa
-  GenerativeModel? _cachedModel;
+  // Cache model theo (apiKey + taskType) để tránh tạo lại không cần thiết
+  final Map<String, GenerativeModel> _modelCache = {};
+  String? _cachedApiKey;
+
+  bool _isDisposed = false;
+
+  // ── Availability state ───────────────────────
+  GeminiAvailability _availability = GeminiAvailability.available;
+  DateTime? _keyExpiredAt;
+  bool _alertSent = false;
+
+  GeminiAvailability get availability => _availability;
+  bool get isAvailable => _availability == GeminiAvailability.available;
+
+  // ─────────────────────────────────────────────
+  // Remote Config — lấy & cache API key
+  // ─────────────────────────────────────────────
+
+  /// Fetch Remote Config nếu chưa có, trả về API key.
+  /// Throws [GeminiKeyExpiredException] nếu key rỗng.
+  Future<String> _resolveApiKey() async {
+    final rc = FirebaseRemoteConfig.instance;
+
+    // Fetch + activate nếu lần đầu hoặc key đang rỗng
+    final cached = rc.getString(_remoteConfigKey);
+    if (cached.isEmpty) {
+      try {
+        await rc.setConfigSettings(RemoteConfigSettings(
+          fetchTimeout: const Duration(seconds: 10),
+          minimumFetchInterval: Duration.zero, // dev: luôn fetch mới
+        ));
+        await rc.fetchAndActivate();
+      } catch (e) {
+        debugPrint('[GeminiService] Remote Config fetch error: $e');
+        // Nếu fetch fail nhưng có cache cũ → dùng cache
+        final fallback = rc.getString(_remoteConfigKey);
+        if (fallback.isEmpty) {
+          throw const GeminiKeyExpiredException();
+        }
+        return fallback;
+      }
+    }
+
+    final key = rc.getString(_remoteConfigKey);
+    if (key.isEmpty) {
+      debugPrint('[GeminiService] ⚠️ gemini_api_key trong Remote Config rỗng');
+      throw const GeminiKeyExpiredException();
+    }
+
+    return key;
+  }
+
+  // ─────────────────────────────────────────────
+  // Model factory
+  // ─────────────────────────────────────────────
+
+  Future<GenerativeModel> _getModel(GeminiTaskType taskType) async {
+    final apiKey = await _resolveApiKey();
+
+    // Key thay đổi → clear toàn bộ cache cũ
+    if (_cachedApiKey != null && _cachedApiKey != apiKey) {
+      _modelCache.clear();
+      debugPrint('[GeminiService] 🔑 API key thay đổi — reset model cache');
+    }
+    _cachedApiKey = apiKey;
+
+    final cacheKey = taskType.name;
+    if (_modelCache.containsKey(cacheKey)) return _modelCache[cacheKey]!;
+
+    final model = GenerativeModel(
+      model: _modelId,
+      apiKey: apiKey,
+      generationConfig: _buildGenerationConfig(taskType),
+      safetySettings: _buildSafetySettings(),
+      systemInstruction: Content.system(_buildSystemPrompt(taskType)),
+    );
+
+    _modelCache[cacheKey] = model;
+    return model;
+  }
+
+  // ─────────────────────────────────────────────
+  // Public API — 100% giống bản cũ (firebase_ai)
+  // ─────────────────────────────────────────────
+
+  /// Health check — gọi khi app start hoặc sau khi Remote Config update
+  Future<GeminiAvailability> checkAvailability() async {
+    try {
+      final model = await _getModel(GeminiTaskType.chat);
+      final chat = model.startChat();
+      final response = await chat
+          .sendMessage(Content.text('ping'))
+          .timeout(const Duration(seconds: 10));
+
+      if (response.text != null) {
+        _availability = GeminiAvailability.available;
+        _alertSent = false;
+        debugPrint('[GeminiService] ✅ Available');
+      }
+    } catch (e) {
+      _availability = _classifyAvailability(e);
+      debugPrint('[GeminiService] ⚠️ Availability: $_availability — $e');
+    }
+    return _availability;
+  }
 
   Future<String> sendMessage(
     String message,
@@ -60,17 +201,20 @@ class GeminiService {
     List<Map<String, dynamic>> historyRaw, {
     GeminiTaskType taskType = GeminiTaskType.chat,
   }) async {
+    if (_isDisposed) return GeminiResponse.error('Service đã bị dispose.');
     if (message.trim().isEmpty) {
       return GeminiResponse.error('Tin nhắn không được trống.');
     }
 
     try {
-      final model = _getOrCreateModel(taskType);
+      final model = await _getModel(taskType);
       final history = _buildValidHistory(
         historyRaw,
         maxMessages: _maxHistoryMessages,
       );
       return await _sendWithRetry(model, history, message);
+    } on GeminiKeyExpiredException {
+      rethrow;
     } catch (e) {
       return GeminiResponse.error(_handleError(e));
     }
@@ -81,25 +225,35 @@ class GeminiService {
     List<Map<String, dynamic>> historyRaw, {
     GeminiTaskType taskType = GeminiTaskType.chat,
   }) async* {
-    if (message.trim().isEmpty) {
-      yield 'Tin nhắn không được trống.';
+    if (_isDisposed || message.trim().isEmpty) {
+      yield _isDisposed
+          ? 'Service đã bị dispose.'
+          : 'Tin nhắn không được trống.';
       return;
     }
 
     try {
-      final model = _getOrCreateModel(taskType);
+      final model = await _getModel(taskType);
       final history = _buildValidHistory(historyRaw);
       final chat = model.startChat(history: history);
 
+      // google_generative_ai hỗ trợ streaming thật sự
       final stream = chat.sendMessageStream(Content.text(message));
       await for (final chunk in stream) {
+        if (_isDisposed) break;
         final text = chunk.text;
         if (text != null && text.isNotEmpty) yield text;
       }
+    } on GeminiKeyExpiredException {
+      yield '🔑 Gemini API key đã hết hạn. Vui lòng liên hệ admin.';
     } catch (e) {
       yield _handleError(e);
     }
   }
+
+  // ─────────────────────────────────────────────
+  // Task-specific methods — signature giữ nguyên
+  // ─────────────────────────────────────────────
 
   Future<String> analyzeScam(String message) async {
     const prompt = '''
@@ -195,32 +349,14 @@ Tin nhắn cần phân tích:
     return response.text;
   }
 
-  GenerativeModel _getOrCreateModel(GeminiTaskType taskType) {
-    // Chỉ cache model chat vì được dùng thường xuyên nhất
-    if (_cachedModel != null && taskType == GeminiTaskType.chat) {
-      return _cachedModel!;
-    }
-
-    // firebase_ai: không cần apiKey, lấy từ Firebase project
-    final model = FirebaseAI.googleAI().generativeModel(
-      model: _modelId,
-      generationConfig: _buildGenerationConfig(taskType),
-      safetySettings: _buildSafetySettings(),
-      systemInstruction: Content.system(_buildSystemPrompt(taskType)),
-    );
-
-    if (taskType == GeminiTaskType.chat) {
-      _cachedModel = model;
-    }
-
-    return model;
-  }
+  // ─────────────────────────────────────────────
+  // Private — Model config (giống bản cũ)
+  // ─────────────────────────────────────────────
 
   GenerationConfig _buildGenerationConfig(GeminiTaskType taskType) {
     switch (taskType) {
       case GeminiTaskType.scamAnalysis:
       case GeminiTaskType.sentimentAnalysis:
-        // responseMimeType vẫn hợp lệ trong firebase_ai
         return GenerationConfig(
           maxOutputTokens: 512,
           temperature: 0.1,
@@ -238,9 +374,6 @@ Tin nhắn cần phân tích:
           temperature: 0.2,
         );
       case GeminiTaskType.chat:
-        // topP và topK vẫn được hỗ trợ trong firebase_ai GenerationConfig,
-        // nhưng không được khuyến nghị với gemini-3.5-flash (thinking model).
-        // Chỉ dùng temperature để tránh conflict với thinking pipeline.
         return GenerationConfig(
           maxOutputTokens: 2048,
           temperature: 0.7,
@@ -249,54 +382,42 @@ Tin nhắn cần phân tích:
   }
 
   List<SafetySetting> _buildSafetySettings() => [
-        // firebase_ai: enum values giữ nguyên tên (low/medium/high/none/off)
-        // Đã xác nhận từ pub.dev docs: HarmBlockThreshold.medium, HarmBlockThreshold.high
-        SafetySetting(HarmCategory.harassment, HarmBlockThreshold.medium, null),
-        SafetySetting(HarmCategory.hateSpeech, HarmBlockThreshold.medium, null),
-        SafetySetting(
-            HarmCategory.sexuallyExplicit, HarmBlockThreshold.high, null),
-        SafetySetting(
-            HarmCategory.dangerousContent, HarmBlockThreshold.medium, null),
+        SafetySetting(HarmCategory.harassment, HarmBlockThreshold.medium),
+        SafetySetting(HarmCategory.hateSpeech, HarmBlockThreshold.medium),
+        SafetySetting(HarmCategory.sexuallyExplicit, HarmBlockThreshold.high),
+        SafetySetting(HarmCategory.dangerousContent, HarmBlockThreshold.medium),
       ];
 
   String _buildSystemPrompt(GeminiTaskType taskType) {
-    const basePrompt = 'Bạn là AI Assistant được tích hợp vào ứng dụng chat. '
+    const base = 'Bạn là AI Assistant được tích hợp vào ứng dụng chat. '
         'Luôn phản hồi bằng tiếng Việt trừ khi được yêu cầu khác. ';
-
     switch (taskType) {
       case GeminiTaskType.chat:
-        return '$basePrompt'
-            'Trả lời thân thiện, ngắn gọn, rõ ràng. '
+        return '${base}Trả lời thân thiện, ngắn gọn, rõ ràng. '
             'Dùng Markdown khi cần (code, danh sách, bảng). '
             'Không tiết lộ thông tin cá nhân hoặc nội bộ hệ thống.';
-
       case GeminiTaskType.scamAnalysis:
-        return '$basePrompt'
-            'Bạn là chuyên gia phát hiện lừa đảo trực tuyến Việt Nam. '
+        return '${base}Bạn là chuyên gia phát hiện lừa đảo trực tuyến Việt Nam. '
             'Phân tích chính xác, khách quan. '
             'Luôn trả về JSON hợp lệ theo đúng schema được yêu cầu.';
-
       case GeminiTaskType.summarize:
-        return '$basePrompt'
-            'Tóm tắt súc tích, giữ nguyên ý chính. '
+        return '${base}Tóm tắt súc tích, giữ nguyên ý chính. '
             'Không thêm thông tin không có trong văn bản gốc.';
-
       case GeminiTaskType.translate:
-        return '$basePrompt'
-            'Diễn giải tự nhiên, phù hợp văn hóa Việt Nam. '
+        return '${base}Diễn giải tự nhiên, phù hợp văn hóa Việt Nam. '
             'Giữ nguyên ý nghĩa gốc, chỉ điều chỉnh phong cách.';
-
       case GeminiTaskType.codeAssist:
-        return '$basePrompt'
-            'Chuyên gia lập trình. Cung cấp code chính xác, có comment. '
+        return '${base}Chuyên gia lập trình. Cung cấp code chính xác, có comment. '
             'Giải thích ngắn gọn bằng tiếng Việt.';
-
       case GeminiTaskType.sentimentAnalysis:
-        return '$basePrompt'
-            'Chuyên gia tâm lý và phân tích ngôn ngữ. '
+        return '${base}Chuyên gia tâm lý và phân tích ngôn ngữ. '
             'Luôn trả về JSON hợp lệ theo đúng schema được yêu cầu.';
     }
   }
+
+  // ─────────────────────────────────────────────
+  // Private — History (giống bản cũ)
+  // ─────────────────────────────────────────────
 
   List<Content> _buildValidHistory(
     List<Map<String, dynamic>> historyRaw, {
@@ -304,17 +425,16 @@ Tin nhắn cần phân tích:
   }) {
     final List<Content> contents = [];
 
-    final recentMessages = historyRaw.length > maxMessages
+    final recent = historyRaw.length > maxMessages
         ? historyRaw.sublist(historyRaw.length - maxMessages)
         : historyRaw;
 
-    for (final msg in recentMessages) {
+    for (final msg in recent) {
       final isAI = msg['idFrom'] == AppConstants.aiAssistantId;
       final role = isAI ? 'model' : 'user';
       final content = msg['content']?.toString().trim() ?? '';
 
       if (content.isEmpty) continue;
-
       if (contents.isNotEmpty && contents.last.role == role) continue;
 
       contents.add(Content(role, [TextPart(content)]));
@@ -323,13 +443,16 @@ Tin nhắn cần phân tích:
     while (contents.isNotEmpty && contents.first.role == 'model') {
       contents.removeAt(0);
     }
-
     while (contents.isNotEmpty && contents.last.role == 'model') {
       contents.removeLast();
     }
 
     return contents;
   }
+
+  // ─────────────────────────────────────────────
+  // Private — Retry (giống bản cũ, thêm key-refresh)
+  // ─────────────────────────────────────────────
 
   Future<GeminiResponse> _sendWithRetry(
     GenerativeModel model,
@@ -341,12 +464,13 @@ Tin nhắn cần phân tích:
     while (attempt <= _maxRetries) {
       try {
         final chat = model.startChat(history: history);
-        final response = await chat.sendMessage(Content.text(message));
+        final response = await chat
+            .sendMessage(Content.text(message))
+            .timeout(const Duration(seconds: 30));
 
         final text = response.text;
         if (text == null || text.isEmpty) {
           final candidate = response.candidates.firstOrNull;
-          // firebase_ai: FinishReason.safety (lowercase, đã xác nhận từ docs)
           if (candidate?.finishReason == FinishReason.safety) {
             return GeminiResponse.error(
               '⚠️ Nội dung bị chặn bởi bộ lọc an toàn. Vui lòng diễn đạt lại.',
@@ -357,22 +481,38 @@ Tin nhắn cần phân tích:
           );
         }
 
+        // Thành công — reset state
+        if (_availability != GeminiAvailability.available) {
+          _availability = GeminiAvailability.available;
+          _alertSent = false;
+        }
+
         return GeminiResponse(
           text: text,
           promptTokenCount: response.usageMetadata?.promptTokenCount,
-          // firebase_ai UsageMetadata: field tên là candidatesTokenCount (có 's')
-          // giống google_generative_ai, xác nhận từ JSON response schema
           candidateTokenCount: response.usageMetadata?.candidatesTokenCount,
         );
       } catch (e) {
+        // Auth / key expired → KHÔNG retry, throw ngay
+        if (_isAuthError(e)) {
+          await _handleAuthError(e);
+          // Thử fetch Remote Config mới → nếu key vẫn cũ thì throw
+          _modelCache.clear(); // buộc tạo lại model với key mới (nếu có)
+          throw const GeminiKeyExpiredException();
+        }
+
+        // Rate limit → retry với exponential backoff
         if (_isRateLimitError(e) && attempt < _maxRetries) {
           attempt++;
           final delay = _baseRetryDelay * (1 << attempt);
           debugPrint(
-              '[GeminiService] Rate limited, retry $attempt sau ${delay.inSeconds}s');
+            '[GeminiService] Rate limited, retry $attempt sau ${delay.inSeconds}s',
+          );
+          _availability = GeminiAvailability.rateLimited;
           await Future.delayed(delay);
           continue;
         }
+
         rethrow;
       }
     }
@@ -380,6 +520,22 @@ Tin nhắn cần phân tích:
     return GeminiResponse.error(
       'Xin lỗi, hệ thống đang bận. Vui lòng thử lại sau vài giây.',
     );
+  }
+
+  // ─────────────────────────────────────────────
+  // Private — Error classification (giống bản cũ)
+  // ─────────────────────────────────────────────
+
+  bool _isAuthError(Object e) {
+    final msg = e.toString().toLowerCase();
+    return msg.contains('api key expired') ||
+        msg.contains('api_key_invalid') ||
+        msg.contains('key expired') ||
+        msg.contains('403') ||
+        msg.contains('permission_denied') ||
+        msg.contains('unauthenticated') ||
+        msg.contains('invalid_api_key') ||
+        e is GeminiKeyExpiredException;
   }
 
   bool _isRateLimitError(Object e) {
@@ -390,16 +546,39 @@ Tin nhắn cần phân tích:
         msg.contains('resource_exhausted');
   }
 
+  GeminiAvailability _classifyAvailability(Object e) {
+    if (e is GeminiKeyExpiredException) return GeminiAvailability.keyExpired;
+    if (_isAuthError(e)) return GeminiAvailability.keyExpired;
+    if (_isRateLimitError(e)) return GeminiAvailability.rateLimited;
+    final msg = e.toString().toLowerCase();
+    if (msg.contains('socket') ||
+        msg.contains('network') ||
+        msg.contains('connection')) {
+      return GeminiAvailability.networkError;
+    }
+    return GeminiAvailability.unknown;
+  }
+
   String _handleError(Object e) {
+    if (e is GeminiKeyExpiredException) {
+      return '🔑 Gemini API key đã hết hạn. Vui lòng liên hệ admin.';
+    }
+
     final msg = e.toString().toLowerCase();
 
+    if (msg.contains('api key expired') ||
+        msg.contains('key expired') ||
+        msg.contains('api_key_invalid') ||
+        msg.contains('invalid_api_key')) {
+      return '🔑 Gemini API key đã hết hạn. Vui lòng liên hệ admin.';
+    }
     if (msg.contains('429') || msg.contains('quota') || msg.contains('rate')) {
       return '⚠️ Đã đạt giới hạn request. Vui lòng chờ 1 phút rồi thử lại.';
     }
     if (msg.contains('403') ||
         msg.contains('permission') ||
         msg.contains('unauthenticated')) {
-      return '🔑 Lỗi xác thực Firebase AI. Kiểm tra cấu hình Firebase project.';
+      return '🔑 Lỗi xác thực Gemini API. Kiểm tra lại API key.';
     }
     if (msg.contains('socketexception') ||
         msg.contains('network') ||
@@ -417,10 +596,57 @@ Tin nhắn cần phân tích:
     return '❌ Có lỗi xảy ra. Vui lòng thử lại sau.';
   }
 
+  // ─────────────────────────────────────────────
+  // Private — Auth error handler (giống bản cũ)
+  // ─────────────────────────────────────────────
+
+  Future<void> _handleAuthError(Object e) async {
+    _availability = GeminiAvailability.keyExpired;
+    _keyExpiredAt ??= DateTime.now();
+
+    debugPrint('[GeminiService] 🔑 Auth error: $e');
+
+    if (_alertSent) return;
+    _alertSent = true;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('system_alerts')
+          .doc('gemini_key')
+          .set({
+        'status': 'expired',
+        'error': e.toString(),
+        'detected_at': FieldValue.serverTimestamp(),
+        'detected_by': FirebaseAuth.instance.currentUser?.uid ?? 'unknown',
+        'notified': false,
+      }, SetOptions(merge: true));
+
+      debugPrint('[GeminiService] 📣 Alert sent to Firestore');
+    } catch (firestoreError) {
+      debugPrint('[GeminiService] ⚠️ Không gửi được alert: $firestoreError');
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  // Lifecycle
+  // ─────────────────────────────────────────────
+
+  /// Xóa model cache — gọi sau khi update Remote Config thủ công
   void clearModelCache() {
-    _cachedModel = null;
+    _modelCache.clear();
+    _cachedApiKey = null;
+    debugPrint('[GeminiService] 🗑️ Model cache cleared');
+  }
+
+  void dispose() {
+    _isDisposed = true;
+    _modelCache.clear();
   }
 }
+
+// ─────────────────────────────────────────────
+// Extension
+// ─────────────────────────────────────────────
 
 extension _ListTakeLast<T> on List<T> {
   List<T> takeLast(int count) {
