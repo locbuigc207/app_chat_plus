@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../main.dart'; // Thêm import AppRouter (điều chỉnh đường dẫn nếu cần)
 import '../models/group_call_model.dart';
 import '../pages/incoming_group_call_page.dart';
 import '../providers/providers.dart';
@@ -144,7 +145,8 @@ class _GroupCallListenerState extends State<GroupCallListener>
 
   void _dismissCurrentIncoming() {
     try {
-      Navigator.of(context, rootNavigator: true).pop();
+      // ĐÃ SỬA LỖI NAVIGATOR (POP) Ở ĐÂY
+      AppRouter.navigatorKey.currentState?.pop();
     } catch (_) {}
     _isShowingIncoming = false;
     _displayedCallId = null;
@@ -155,8 +157,9 @@ class _GroupCallListenerState extends State<GroupCallListener>
     final userName = auth.currentUserName ?? '';
     final userAvatar = auth.currentUserAvatar ?? '';
 
-    Navigator.of(context, rootNavigator: true)
-        .push<void>(_IncomingCallRoute(
+    // ĐÃ SỬA LỖI NAVIGATOR (PUSH) Ở ĐÂY
+    AppRouter.navigatorKey.currentState
+        ?.push<void>(_IncomingCallRoute(
       builder: (_) => IncomingGroupCallPage(
         call: call,
         currentUserId: uid,

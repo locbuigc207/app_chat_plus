@@ -2791,13 +2791,19 @@ class GroupChatPageState extends State<GroupChatPage>
       ThemeProvider theme) {
     final isHighlighted = _pendingScrollToMessageId == localData['messageId'];
     final isPending = localData['status'] == 'pending';
+
+    // Sửa lỗi 4: Khởi tạo đầy đủ Game Properties khi lấy từ Local Database
     final msg = MessageChat(
         idFrom: localData['idFrom'] ?? '',
         idTo: localData['idTo'] ?? '',
         timestamp: localData['timestamp'] ?? '',
         content: localData['content'] ?? '',
         type: localData['type'] ?? 0,
-        isRead: localData['status'] == 'sent');
+        isRead: localData['status'] == 'sent',
+        matchId: localData['matchId'] as String?,
+        gameType: localData['gameType'] as String?,
+        matchStatus: localData['matchStatus'] as String?);
+
     bool isLastInGroup = true;
     if (index > 0) {
       isLastInGroup = fullList[index - 1]['idFrom'] != msg.idFrom;
@@ -2864,6 +2870,28 @@ class GroupChatPageState extends State<GroupChatPage>
                     : const SizedBox(width: 36),
               child,
             ]));
+
+    // Sửa lỗi 15: Kiểm tra và dựng Widget Bong bóng tin nhắn cấu trúc Game
+    if (msg.type == TypeMessage.gameInvite ||
+        msg.type == TypeMessage.gameLive) {
+      return wrapRow(GameInviteCardBubble(
+        message: msg,
+        currentUserId: _currentUserId,
+        currentUserName: _memberNames[_currentUserId] ?? 'Bạn',
+        currentUserAvatar: _avatarUrlCache[_currentUserId] ?? '',
+        groupId: groupChatId,
+      ));
+    }
+
+    if (msg.type == TypeMessage.gameResult) {
+      return wrapRow(GameResultCardBubble(
+        message: msg,
+        currentUserId: _currentUserId,
+        currentUserName: _memberNames[_currentUserId] ?? 'Bạn',
+        currentUserAvatar: _avatarUrlCache[_currentUserId] ?? '',
+        groupId: groupChatId,
+      ));
+    }
 
     if (localData['isViewOnce'] ?? false) {
       return wrapRow(ViewOnceMessageWidget(

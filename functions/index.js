@@ -1908,8 +1908,8 @@ exports.onCallCreated = onDocumentCreated(
           type: "incoming_call",
           callId: event.params.callId,
           callerId: callData.callerId,
-          // SỬA LỖI TẠI ĐÂY: Thêm senderId để Bubble FCM parse thành công
           senderId: callData.callerId,
+          userId: callData.calleeId,
           callerName: callData.callerName ?? "",
           callerAvatar: callData.callerAvatar ?? "",
           callType: String(callData.callType ?? 0),

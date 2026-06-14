@@ -646,8 +646,12 @@ class ChatProvider {
 
     String content = data[FirestoreConstants.content] as String? ?? '';
 
-    // Decrypt text messages
-    if (type == TypeMessage.text && content.isNotEmpty) {
+    // Sửa lỗi 3: Bỏ qua giải mã (decrypt) cho các định dạng Game Message thuần JSON
+    if (type == TypeMessage.gameInvite ||
+        type == TypeMessage.gameResult ||
+        type == TypeMessage.gameLive) {
+      // Bỏ qua giải mã, bảo toàn chuỗi content JSON thuần tuý
+    } else if (type == TypeMessage.text && content.isNotEmpty) {
       try {
         content = await EncryptionService().decryptPayload(
           content,
@@ -1126,7 +1130,12 @@ class ChatProvider {
 
       await firebaseFirestore.runTransaction((tx) async {
         final doc = await tx.get(docRef);
-        if (!doc.exists) return;
+        // Sửa lỗi 16: Cảnh báo log khi document không tồn tại
+        if (!doc.exists) {
+          _log(
+              '⚠️ [updateGameMessageStatus] Document messageId: $messageId không tồn tại trên Firestore.');
+          return;
+        }
         final data = doc.data()!;
         final currentType = data[FirestoreConstants.type] as int? ?? 0;
         if (currentType != TypeMessage.gameInvite &&

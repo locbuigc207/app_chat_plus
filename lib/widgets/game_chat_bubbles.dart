@@ -1,7 +1,9 @@
 import 'dart:convert';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/message_chat.dart';
 import 'package:flutter_chat_demo/pages/match_room_page.dart';
 import 'package:flutter_chat_demo/providers/chat_provider.dart';
@@ -76,6 +78,29 @@ class _GameInviteCardBubbleState extends State<GameInviteCardBubble> {
 
   Future<void> _joinMatch(String matchId) async {
     if (_isJoining) return;
+
+    // Sửa lỗi 10: Rào chắn (Guard) ngăn người không nằm trong thư mời đích danh bấm "Vào bàn"
+    final payload = _payload;
+    if (payload?.targetUserId != null &&
+        payload!.targetUserId != widget.currentUserId &&
+        payload.challengerName != widget.currentUserName) {
+      // Đối với người ngoài, họ sẽ tham gia dưới dạng khán giả (Spectator) và không trigger acceptMatch
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MatchRoomPage(
+            matchId: matchId,
+            currentUserId: widget.currentUserId,
+            currentUserName: widget.currentUserName,
+            currentUserAvatar: widget.currentUserAvatar,
+            groupId: widget.groupId,
+          ),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isJoining = true);
     HapticFeedback.mediumImpact();
 
@@ -211,12 +236,12 @@ class _GameInviteCardBubbleState extends State<GameInviteCardBubble> {
                         radius: 14,
                         backgroundColor: _C.accent.withOpacity(0.2),
                         backgroundImage:
-                            payload?.challengerAvatar.isNotEmpty == true
-                                ? NetworkImage(payload!.challengerAvatar)
-                                : null,
+                        payload?.challengerAvatar.isNotEmpty == true
+                            ? NetworkImage(payload!.challengerAvatar)
+                            : null,
                         child: payload?.challengerAvatar.isEmpty != false
                             ? const Icon(Icons.person_rounded,
-                                size: 14, color: _C.accent)
+                            size: 14, color: _C.accent)
                             : null,
                       ),
                       const SizedBox(width: 8),
@@ -251,22 +276,37 @@ class _GameInviteCardBubbleState extends State<GameInviteCardBubble> {
                           ],
                         ),
                       ),
-                      // Spectator count (chỉ hiện khi live)
-                      if (_status == MatchStatus.live &&
-                          payload != null &&
-                          payload.spectatorCount > 0)
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.remove_red_eye_rounded,
-                                size: 12, color: _C.live),
-                            const SizedBox(width: 3),
-                            Text(
-                              '${payload.spectatorCount}',
-                              style:
-                                  const TextStyle(color: _C.live, fontSize: 11),
-                            ),
-                          ],
+                      // Spectator count (chỉ hiện khi live) - Sửa lỗi 19 sử dụng StreamBuilder
+                      if (_status == MatchStatus.live && payload != null)
+                        StreamBuilder<DocumentSnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection(FirestoreConstants.pathGameMatchCollection)
+                              .doc(matchId)
+                              .snapshots(),
+                          builder: (context, snap) {
+                            int count = payload.spectatorCount;
+                            if (snap.hasData && snap.data!.exists) {
+                              final data = snap.data!.data() as Map<String, dynamic>?;
+                              final ids = data?[FirestoreConstants.spectatorIds] as List?;
+                              count = ids?.length ?? count;
+                            }
+
+                            if (count <= 0) return const SizedBox.shrink();
+
+                            return Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.remove_red_eye_rounded,
+                                    size: 12, color: _C.live),
+                                const SizedBox(width: 3),
+                                Text(
+                                  '$count',
+                                  style: const TextStyle(
+                                      color: _C.live, fontSize: 11),
+                                ),
+                              ],
+                            );
+                          },
                         ),
                     ],
                   ),
@@ -287,7 +327,7 @@ class _GameInviteCardBubbleState extends State<GameInviteCardBubble> {
   Widget _buildCTA(String matchId) {
     switch (_status) {
       case MatchStatus.waiting:
-        // Không hiện nút cho chính người tạo thách đấu
+      // Không hiện nút cho chính người tạo thách đấu
         final isChallenger = _payload?.challengerName == widget.currentUserName;
         if (isChallenger) {
           return const _WaitingChip();
@@ -360,8 +400,8 @@ class GameResultCardBubble extends StatelessWidget {
     final winnerName = isDraw
         ? null
         : (payload.winnerId == payload.player1Id
-            ? payload.player1Name
-            : payload.player2Name);
+        ? payload.player1Name
+        : payload.player2Name);
 
     final emoji = isDraw ? '🤝' : (isWinner ? '🏆' : '⚔️');
     final headline = isDraw ? 'Hòa nhau!' : '$winnerName đã thắng!';
@@ -593,36 +633,36 @@ class _CTAButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SizedBox(
-        width: double.infinity,
-        height: 36,
-        child: ElevatedButton.icon(
-          onPressed: isLoading ? null : onTap,
-          icon: isLoading
-              ? SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: color,
-                  ),
-                )
-              : Icon(icon, size: 16),
-          label: Text(label),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: color.withOpacity(0.15),
-            foregroundColor: color,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-              side: BorderSide(color: color.withOpacity(0.4)),
-            ),
-            textStyle: const TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+    width: double.infinity,
+    height: 36,
+    child: ElevatedButton.icon(
+      onPressed: isLoading ? null : onTap,
+      icon: isLoading
+          ? SizedBox(
+        width: 14,
+        height: 14,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: color,
         ),
-      );
+      )
+          : Icon(icon, size: 16),
+      label: Text(label),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color.withOpacity(0.15),
+        foregroundColor: color,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(color: color.withOpacity(0.4)),
+        ),
+        textStyle: const TextStyle(
+          fontSize: 12.5,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    ),
+  );
 }
 
 class _WaitingChip extends StatelessWidget {
@@ -630,36 +670,36 @@ class _WaitingChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        width: double.infinity,
-        height: 36,
-        decoration: BoxDecoration(
-          color: _C.waiting.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: _C.waiting.withOpacity(0.3)),
+    width: double.infinity,
+    height: 36,
+    decoration: BoxDecoration(
+      color: _C.waiting.withOpacity(0.08),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: _C.waiting.withOpacity(0.3)),
+    ),
+    child: const Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        SizedBox(
+          width: 12,
+          height: 12,
+          child: CircularProgressIndicator(
+            strokeWidth: 1.5,
+            color: _C.waiting,
+          ),
         ),
-        child: const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: 12,
-              height: 12,
-              child: CircularProgressIndicator(
-                strokeWidth: 1.5,
-                color: _C.waiting,
-              ),
-            ),
-            SizedBox(width: 7),
-            Text(
-              'Chờ đối thủ chấp nhận...',
-              style: TextStyle(
-                color: _C.waiting,
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
+        SizedBox(width: 7),
+        Text(
+          'Chờ đối thủ chấp nhận...',
+          style: TextStyle(
+            color: _C.waiting,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+          ),
         ),
-      );
+      ],
+    ),
+  );
 }
 
 class _EndedChip extends StatelessWidget {
@@ -669,23 +709,23 @@ class _EndedChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        width: double.infinity,
-        height: 30,
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.07),
-          borderRadius: BorderRadius.circular(8),
+    width: double.infinity,
+    height: 30,
+    decoration: BoxDecoration(
+      color: color.withOpacity(0.07),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Center(
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 11.5,
+          fontWeight: FontWeight.w600,
         ),
-        child: Center(
-          child: Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      );
+      ),
+    ),
+  );
 }
 
 class _PlayerResultChip extends StatelessWidget {
@@ -720,13 +760,13 @@ class _PlayerResultChip extends StatelessWidget {
             backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
             child: avatar.isEmpty
                 ? Text(
-                    name.isNotEmpty ? name[0].toUpperCase() : '?',
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  )
+              name.isNotEmpty ? name[0].toUpperCase() : '?',
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            )
                 : null,
           ),
           const SizedBox(height: 4),

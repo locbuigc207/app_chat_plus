@@ -228,6 +228,18 @@ class GameStateProvider extends ChangeNotifier {
       }
 
       _applyMatchData(match);
+
+      // Sửa lỗi 7: Khi match đang chạy hoặc đã xong, lấy lại lịch sử di chuyển (moves) ngay lập tức
+      // để khán giả vào phòng không bị thấy bàn cờ trống.
+      if (match.isPlaying || match.isFinished) {
+        final moves = await _firebase.fetchAllMoves(matchId);
+        if (moves.isNotEmpty) {
+          _rebuildBoardFromHistory(moves);
+          _nextMoveIndex = moves.length;
+          _currentTurnUserId = _computeCurrentTurn(match);
+        }
+      }
+
       _role = _detectRole(match, currentUserId);
 
       if (_role == PlayerRole.spectator) {
@@ -314,34 +326,42 @@ class GameStateProvider extends ChangeNotifier {
     _moveSub = _firebase.watchLatestMove(matchId).listen((move) {
       if (move == null) return;
       if (move.movedBy != _currentUserId && move.moveIndex >= _nextMoveIndex) {
-        _applyMoveToBoard(move);
+        // Sửa lỗi 8: Đồng bộ bất đồng bộ khi gap index do lag
+        unawaited(_syncMove(move));
       }
     });
   }
 
+  // Phương thức helper mới cho lỗi số 8:
+  Future<void> _syncMove(GameMove move) async {
+    if (move.moveIndex > _nextMoveIndex && _match != null) {
+      final allMoves = await _firebase.fetchAllMoves(_match!.matchId);
+      _rebuildBoardFromHistory(allMoves);
+      _nextMoveIndex = allMoves.length;
+      _currentTurnUserId = _computeCurrentTurn(_match!);
+    } else {
+      _applyMoveToBoard(move);
+    }
+    notifyListeners();
+  }
+
   void _subscribeDisconnect(String matchId) {
     _disconnectSub?.cancel();
+    // Sửa lỗi 6: Stream trả về DisconnectInfo thay vì Map, cần parse type chuẩn.
     _disconnectSub = _firebase.watchDisconnectStatus(matchId).listen((info) {
       if (info == null) {
         _cancelDisconnectTimer();
-      } else {
-        // Fix lỗi The operator '[]' isn't defined bằng cách ép kiểu rõ ràng
-        final userId = info is Map
-            ? (info as Map)['userId'] as String?
-            : (info as dynamic).userId as String?;
-
-        if (userId != null && userId != _currentUserId) {
-          _startDisconnectCountdown(userId);
-        }
+      } else if (info is DisconnectInfo && info.userId != _currentUserId) {
+        _startDisconnectCountdown(info.userId);
       }
     });
   }
 
   void _subscribeDrawRequest(String matchId) {
     _drawSub?.cancel();
+    // Sửa lỗi 6: Tương tự như trên đối với stream trả về DrawRequestInfo.
     _drawSub = _firebase.watchDrawRequest(matchId).listen((info) {
       if (info == null) {
-        // Đã bị xóa → clear local pending
         if (_pendingDrawRequest != null && _pendingDrawRequest!.isAnswered) {
           _pendingDrawRequest = null;
           notifyListeners();
@@ -349,33 +369,14 @@ class GameStateProvider extends ChangeNotifier {
         return;
       }
 
-      // Xử lý đối tượng hoặc Map để tương thích an toàn
-      final reqId = info is Map
-          ? (info as Map)['requesterId']
-          : (info as dynamic).requesterId;
-
-      final sentAtData =
-          info is Map ? (info as Map)['sentAt'] : (info as dynamic).sentAt;
-
-      // Nhận draw request từ đối thủ
-      if (reqId != null && reqId != _currentUserId) {
-        // Tạo pending draw request nếu chưa có hoặc là mới hơn
+      if (info is DrawRequestInfo && info.requesterId != _currentUserId) {
         if (_pendingDrawRequest == null ||
-            _pendingDrawRequest!.requesterId != reqId) {
-          DateTime parsedSentAt;
-          if (sentAtData is String) {
-            parsedSentAt = DateTime.fromMillisecondsSinceEpoch(
-                int.tryParse(sentAtData) ??
-                    DateTime.now().millisecondsSinceEpoch);
-          } else if (sentAtData is DateTime) {
-            parsedSentAt = sentAtData;
-          } else {
-            parsedSentAt = DateTime.now();
-          }
-
+            _pendingDrawRequest!.requesterId != info.requesterId) {
           _pendingDrawRequest = DrawRequest(
-            requesterId: reqId as String,
-            sentAt: parsedSentAt,
+            requesterId: info.requesterId,
+            sentAt: DateTime.fromMillisecondsSinceEpoch(
+                int.tryParse(info.sentAt) ??
+                    DateTime.now().millisecondsSinceEpoch),
           );
           notifyListeners();
         }
@@ -806,6 +807,7 @@ class GameStateProvider extends ChangeNotifier {
       }
     }
 
+    // Sửa lỗi 8: nextMoveIndex cần được tăng dựa trên chỉ số của Move đối với opponent để không nhảy số.
     _nextMoveIndex = move.moveIndex + 1;
     _currentTurnUserId = _computeCurrentTurn(match);
     notifyListeners();

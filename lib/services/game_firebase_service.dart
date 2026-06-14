@@ -147,7 +147,15 @@ class GameFirebaseService {
             }
           }
           return matches;
-        });
+        })
+        .transform(StreamTransformer.fromHandlers(
+          handleError: (error, stackTrace, sink) {
+            // Sửa lỗi 2: Bắt lỗi index chưa build xong (FAILED_PRECONDITION)
+            // Thay vì làm crash ứng dụng, ta emit một danh sách rỗng an toàn
+            _log('⚠️ watchLiveMatchesInGroup index error: $error');
+            sink.add(const <GameMatch>[]);
+          },
+        ));
   }
 
   // =========================================================

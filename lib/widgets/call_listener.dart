@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../models/call_model.dart';
 import '../pages/incoming_call_page.dart';
 import '../services/call_service.dart';
+import '../main.dart'; // Đảm bảo import đúng đường dẫn tới AppRouter của bạn
 
 // ══════════════════════════════════════════════════════
 // CALL LISTENER
@@ -106,8 +107,15 @@ class _CallListenerState extends State<CallListener>
     _showingIncoming = true;
     HapticFeedback.heavyImpact();
 
-    final navigator = Navigator.of(context, rootNavigator: true);
-    navigator
+    // SỬA LỖI NAVIGATOR Ở ĐÂY
+    final navigatorState = AppRouter.navigatorKey.currentState;
+    if (navigatorState == null) {
+      _showingIncoming = false;
+      _activeCallId = null;
+      return;
+    }
+
+    navigatorState
         .push<void>(
       _CallOverlayRoute(call: call),
     )
@@ -243,12 +251,12 @@ class _IncomingCallBannerState extends State<IncomingCallBanner>
               filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
               child: Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 decoration: BoxDecoration(
                   color: const Color(0xF0111827),
                   borderRadius: BorderRadius.circular(20),
                   border:
-                      Border.all(color: Colors.white.withValues(alpha: 0.15)),
+                  Border.all(color: Colors.white.withValues(alpha: 0.15)),
                   boxShadow: [
                     BoxShadow(
                         color: Colors.black.withValues(alpha: 0.4),
@@ -269,9 +277,9 @@ class _IncomingCallBannerState extends State<IncomingCallBanner>
                     child: ClipOval(
                       child: avatar.isNotEmpty
                           ? Image.network(avatar,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) =>
-                                  _Initial(name: name))
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              _Initial(name: name))
                           : _Initial(name: name),
                     ),
                   ),
@@ -280,30 +288,30 @@ class _IncomingCallBannerState extends State<IncomingCallBanner>
                   // Info
                   Expanded(
                       child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(name,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
-                      const SizedBox(height: 2),
-                      Row(children: [
-                        Icon(
-                            isVid
-                                ? Icons.videocam_rounded
-                                : Icons.phone_rounded,
-                            size: 12,
-                            color: Colors.white54),
-                        const SizedBox(width: 4),
-                        Text(isVid ? 'Gọi video đến' : 'Gọi thoại đến',
-                            style: const TextStyle(
-                                color: Colors.white54, fontSize: 12)),
-                      ]),
-                    ],
-                  )),
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(name,
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis),
+                          const SizedBox(height: 2),
+                          Row(children: [
+                            Icon(
+                                isVid
+                                    ? Icons.videocam_rounded
+                                    : Icons.phone_rounded,
+                                size: 12,
+                                color: Colors.white54),
+                            const SizedBox(width: 4),
+                            Text(isVid ? 'Gọi video đến' : 'Gọi thoại đến',
+                                style: const TextStyle(
+                                    color: Colors.white54, fontSize: 12)),
+                          ]),
+                        ],
+                      )),
 
                   const SizedBox(width: 8),
 
@@ -337,7 +345,7 @@ class _Initial extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-          child: Text(
+      child: Text(
         name.isNotEmpty ? name[0].toUpperCase() : '?',
         style: const TextStyle(
             color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700),
@@ -354,24 +362,24 @@ class _BannerBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: () {
-          HapticFeedback.mediumImpact();
-          onTap();
-        },
-        child: Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                  color: color.withValues(alpha: 0.4),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3))
-            ],
-          ),
-          child: Icon(icon, color: Colors.white, size: 20),
-        ),
-      );
+    onTap: () {
+      HapticFeedback.mediumImpact();
+      onTap();
+    },
+    child: Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+              color: color.withValues(alpha: 0.4),
+              blurRadius: 10,
+              offset: const Offset(0, 3))
+        ],
+      ),
+      child: Icon(icon, color: Colors.white, size: 20),
+    ),
+  );
 }

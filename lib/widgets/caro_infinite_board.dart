@@ -1,28 +1,26 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/providers/game_state_provider.dart';
 
 // ─── Design tokens (khớp dark theme của group_chat_page) ─────────────────
 abstract final class _C {
-  static const bg           = Color(0xFF0D0F14);
-  static const gridLine     = Color(0xFF1E2340);
-  static const gridLineSub  = Color(0xFF151828);
-  static const cellX        = Color(0xFFFF5252);
-  static const cellO        = Color(0xFF40C4FF);
-  static const cellXGlow    = Color(0x40FF5252);
-  static const cellOGlow    = Color(0x4040C4FF);
+  static const bg = Color(0xFF0D0F14);
+  static const gridLine = Color(0xFF1E2340);
+  static const gridLineSub = Color(0xFF151828);
+  static const cellX = Color(0xFFFF5252);
+  static const cellO = Color(0xFF40C4FF);
+  static const cellXGlow = Color(0x40FF5252);
+  static const cellOGlow = Color(0x4040C4FF);
   static const lastMoveRing = Color(0xFF64FFDA);
   static const winLineColor = Color(0xFF64FFDA);
-  static const hintColor    = Color(0xFF2A3050);
-  static const coordColor   = Color(0xFF3A4060);
+  static const hintColor = Color(0xFF2A3050);
+  static const coordColor = Color(0xFF3A4060);
 }
 
 // ─── Cell size constant ───────────────────────────────────────────────────
 const double _kCellSize = 44.0;
-const double _kStroke   = 2.0;
-const double _kPieceR   = 14.0;
+const double _kStroke = 2.0;
+const double _kPieceR = 14.0;
 
 // =========================================================
 // CARO INFINITE BOARD
@@ -37,14 +35,14 @@ const double _kPieceR   = 14.0;
 /// [onTap]   : callback khi player tap ô hợp lệ (row, col)
 /// [isMyTurn]: khóa tương tác khi không phải lượt mình
 class CaroInfiniteBoard extends StatefulWidget {
-  final Map<String, String> board;      // key: 'row,col', value: 'X'|'O'
+  final Map<String, String> board; // key: 'row,col', value: 'X'|'O'
   final CaroCell? lastMove;
   final List<CaroCell> winLine;
   final bool isMyTurn;
   final bool isGameOver;
-  final int boardSize;                  // 0 = vô hạn, 3 = 3x3
+  final int boardSize; // 0 = vô hạn, 3 = 3x3
   final void Function(int row, int col) onTap;
-  final String mySymbol;                // 'X' hoặc 'O'
+  final String mySymbol; // 'X' hoặc 'O'
 
   const CaroInfiniteBoard({
     super.key,
@@ -109,7 +107,9 @@ class _CaroInfiniteBoardState extends State<CaroInfiniteBoard>
     final boardPx = _visibleGrid * _kCellSize;
     final dx = (size.width - boardPx) / 2;
     final dy = (size.height - boardPx) / 2 - 60;
-    _transform.value = Matrix4.identity()..translate(dx, dy.clamp(0.0, dy));
+
+    // Đã sửa lỗi 1: dy < 0 ? 0.0 : dy để tránh exception
+    _transform.value = Matrix4.identity()..translate(dx, dy < 0 ? 0.0 : dy);
   }
 
   // ── Coordinate helpers ────────────────────────────────────────────────────
@@ -162,7 +162,8 @@ class _CaroInfiniteBoardState extends State<CaroInfiniteBoard>
     const size = 3 * _kCellSize;
     return Center(
       child: GestureDetector(
-        onTapUp: (d) {
+        // Đã sửa lỗi 13: Đổi từ onTapUp sang onTapDown để chính xác hơn
+        onTapDown: (d) {
           if (!widget.isMyTurn || widget.isGameOver) return;
           final cell = _tapToCell(d.localPosition);
           if (cell != null) {
@@ -202,7 +203,8 @@ class _CaroInfiniteBoardState extends State<CaroInfiniteBoard>
         maxScale: 2.5,
         constrained: false,
         child: GestureDetector(
-          onTapUp: (d) {
+          // Đã sửa lỗi 13: Đổi từ onTapUp sang onTapDown để chính xác hơn
+          onTapDown: (d) {
             if (!widget.isMyTurn || widget.isGameOver) return;
             final cell = _tapToCell(d.localPosition);
             if (cell != null) {
@@ -242,7 +244,7 @@ class _BoardPainter extends CustomPainter {
   final CaroCell? lastMove;
   final List<CaroCell> winLine;
   final double winProgress;
-  final int boardSize;   // 0 = infinite, 3 = 3x3
+  final int boardSize; // 0 = infinite, 3 = 3x3
   final int origin;
   final double cellSize;
   final String mySymbol;
@@ -315,9 +317,9 @@ class _BoardPainter extends CustomPainter {
       final px = boardSize == 3
           ? Offset(col * cellSize + cellSize / 2, row * cellSize + cellSize / 2)
           : Offset(
-        (col + origin) * cellSize + cellSize / 2,
-        (row + origin) * cellSize + cellSize / 2,
-      );
+              (col + origin) * cellSize + cellSize / 2,
+              (row + origin) * cellSize + cellSize / 2,
+            );
 
       final isLast = lastMove?.row == row && lastMove?.col == col;
       _drawPiece(canvas, px, entry.value, isLast);
@@ -327,7 +329,7 @@ class _BoardPainter extends CustomPainter {
   void _drawPiece(Canvas canvas, Offset center, String symbol, bool isLast) {
     final isX = symbol == 'X';
     final color = isX ? _C.cellX : _C.cellO;
-    final glow  = isX ? _C.cellXGlow : _C.cellOGlow;
+    final glow = isX ? _C.cellXGlow : _C.cellOGlow;
 
     // Glow
     if (isLast) {
@@ -397,17 +399,18 @@ class _BoardPainter extends CustomPainter {
     if (winLine.length < 2 || winProgress <= 0) return;
 
     final first = winLine.first;
-    final last  = winLine.last;
+    final last = winLine.last;
 
     Offset cellCenter(CaroCell c) => boardSize == 3
-        ? Offset(c.col * cellSize + cellSize / 2, c.row * cellSize + cellSize / 2)
+        ? Offset(
+            c.col * cellSize + cellSize / 2, c.row * cellSize + cellSize / 2)
         : Offset(
-      (c.col + origin) * cellSize + cellSize / 2,
-      (c.row + origin) * cellSize + cellSize / 2,
-    );
+            (c.col + origin) * cellSize + cellSize / 2,
+            (c.row + origin) * cellSize + cellSize / 2,
+          );
 
     final start = cellCenter(first);
-    final end   = cellCenter(last);
+    final end = cellCenter(last);
     final current = Offset.lerp(start, end, winProgress)!;
 
     // Glow pass
@@ -434,8 +437,8 @@ class _BoardPainter extends CustomPainter {
   @override
   bool shouldRepaint(_BoardPainter old) =>
       old.board != board ||
-          old.lastMove != lastMove ||
-          old.winLine != winLine ||
-          old.winProgress != winProgress ||
-          old.isMyTurn != isMyTurn;
+      old.lastMove != lastMove ||
+      old.winLine != winLine ||
+      old.winProgress != winProgress ||
+      old.isMyTurn != isMyTurn;
 }

@@ -160,6 +160,11 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
   }
 
   void _onStateChanged() {
+    // Sửa lỗi 11: Huỷ bộ đếm timeout nếu phòng đã được chấp nhận và chơi
+    if (_gs.match?.isPlaying == true) {
+      _inviteTimeoutTimer?.cancel();
+    }
+
     if (_gs.isGameOver && !_resultPushed && _gs.finalResult != null) {
       _resultPushed = true;
       _pushResult();
@@ -169,6 +174,14 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
   Future<void> _pushResult() async {
     final match = _gs.match;
     if (match == null) return;
+
+    // Sửa lỗi 9: Chỉ gửi tin nhắn Result khi bạn là người chiến thắng.
+    // Trong trường hợp hoà, mặc định Player 1 đảm nhận việc gửi kết quả tránh Race Condition double send
+    final shouldSend = _gs.finalResult == GameResult.draw
+        ? widget.currentUserId == match.player1Id
+        : _gs.winnerUserId == widget.currentUserId;
+
+    if (!shouldSend) return;
 
     try {
       final chatProvider = context.read<ChatProvider>();
@@ -193,6 +206,7 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
           currentUserId: widget.currentUserId,
           payload: payload);
 
+      // Cập nhật thẻ message hiện tại trên group chat sang finish status (Sửa lỗi 14)
       if (match.inviteMessageId != null) {
         await chatProvider.updateGameMessageStatus(
             groupChatId: widget.groupId,
@@ -291,6 +305,7 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
             spectatorCount: match.spectatorCount,
             matchId: match.matchId,
             currentUserId: widget.currentUserId,
+            // Cờ đánh dấu spectator đã được fix logic update role bên trong GameStateProvider init
             isSpectator: gs.isSpectator),
       ])),
     );

@@ -1067,27 +1067,22 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
               initialRoute: AppRouter.splash,
               onGenerateRoute: AppRouter.onGenerateRoute,
               builder: (context, child) {
-                // FIX lỗi 3: BubbleManager và MiniChatOverlayManager nằm
-                // bên trong MaterialApp builder — có đầy đủ Overlay và Navigator
-                //
-                // FIX thứ tự: AppInitializer bọc NGOÀI _AppBuilder để
-                // context.read<Provider>() hoạt động đúng
-                Widget tree = AppInitializer(
+                // FIX LỖI NAVIGATOR Ở ĐÂY:
+                // Khối AppInitializer vẫn xử lý child trực tiếp, nhưng các Manager (Listener)
+                // giờ được lồng ghép chính xác bên trong Builder của MaterialApp.
+
+                Widget content = AppInitializer(
                   notificationService: widget.notificationService,
                   child: _AppBuilder(child: child!),
                 );
 
                 if (!kIsWeb) {
-                  tree = GroupCallMiniManager(
+                  content = GroupCallMiniManager(
                     child: BubbleChatChannelManager(
                       child: GroupCallListener(
                         child: CallListener(
-                          // FIX lỗi 3: BubbleManager vào đây — trong builder
-                          // nên có Overlay từ MaterialApp
                           child: BubbleManager(
-                            child: MiniChatOverlayManager(
-                              child: tree,
-                            ),
+                            child: MiniChatOverlayManager(child: content),
                           ),
                         ),
                       ),
@@ -1095,7 +1090,7 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
                   );
                 }
 
-                return tree;
+                return content;
               },
             ),
           );
