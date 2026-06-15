@@ -513,14 +513,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.4"
-  ffmpeg_kit_flutter:
+  ffmpeg_kit_flutter_new:
     dependency: "direct main"
     description:
-      name: ffmpeg_kit_flutter
-      sha256: "843aae41823ca94a0988d975b4b6cdc6948744b9b7e2707d81a3a9cd237b0100"
+      name: ffmpeg_kit_flutter_new
+      sha256: "213ca74666ce8aa01fdaa77adc40444e9ef39e140b264747787bb0555da06783"
       url: "https://pub.dev"
     source: hosted
-    version: "6.0.3"
+    version: "4.2.1"
   ffmpeg_kit_flutter_platform_interface:
     dependency: transitive
     description:
@@ -1177,13 +1177,13 @@ packages:
     source: hosted
     version: "2.17.1"
   google_maps_flutter_android:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
       name: google_maps_flutter_android
-      sha256: "06c9c886e887dd61b9a8728c43344e58071279182bbc7a3c4001d322fc3cd111"
+      sha256: f1eb5ffa34ba41f8591e53ce439f78af179a506e8386a1297d0ecd202e05c734
       url: "https://pub.dev"
     source: hosted
-    version: "2.19.10"
+    version: "2.19.8"
   google_maps_flutter_ios:
     dependency: transitive
     description:

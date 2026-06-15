@@ -146,10 +146,6 @@ dependencies {
 
 configurations.all {
     resolutionStrategy {
-        // ĐÃ SỬA: Nâng lên chuẩn Kotlin 2.0.21 để tối ưu sức mạnh của Dart 3.12 / Flutter 3.44
-        force 'org.jetbrains.kotlin:kotlin-stdlib:2.0.21'
-        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.0.21'
-        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.0.21'
 
         force 'androidx.activity:activity:1.9.3'
         force 'androidx.activity:activity-ktx:1.9.3'
