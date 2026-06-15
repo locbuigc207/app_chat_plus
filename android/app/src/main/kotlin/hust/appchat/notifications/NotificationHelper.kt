@@ -10,7 +10,6 @@ import android.util.Log
 import hust.appchat.shortcuts.AvatarLoader
 import hust.appchat.shortcuts.ShortcutHelper
 import kotlinx.coroutines.*
-import kotlin.math.abs
 
 /**
  * NotificationHelper — Utility layer on top of [NotificationManager].
@@ -114,8 +113,9 @@ object NotificationHelper {
         }
     }
 
+    // ĐÃ SỬA: Đồng bộ cách tính ID với BubbleNotificationManager để hủy thông báo chính xác
     fun getNotificationId(userId: String): Int {
-        return BASE_NOTIF_ID + (abs(userId.hashCode()) % 1_000)
+        return BASE_NOTIF_ID + ((userId.hashCode() and 0x7FFFFFFF) % 1_000)
     }
 
     // ========================================
@@ -174,7 +174,12 @@ object NotificationHelper {
 
         return try {
             val nm = context.getSystemService(NotificationManager::class.java) ?: return false
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+
+            // ĐÃ SỬA: Bổ sung kiểm tra canBubble() cho Channel từ API 30+ (Android 11+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val channel = nm.getNotificationChannel(CHANNEL_MESSAGES)
+                nm.areBubblesAllowed() && (channel?.canBubble() ?: false)
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 nm.areBubblesAllowed()
             } else {
                 val channel = nm.getNotificationChannel(CHANNEL_MESSAGES) ?: return false

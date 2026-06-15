@@ -1,10 +1,10 @@
 // lib/services/bubble_sound_service.dart
 import 'dart:io';
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/models/models.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -99,14 +99,29 @@ class BubbleSoundService {
     if (_initialized || kIsWeb) return;
     try {
       await _loadPreferences();
-      // Pre-create players for each mode
-      for (final mode in BubbleMode.values) {
+
+      // Pre-create and preload players for each unique asset
+      final uniqueAssets = _profiles.values
+          .map((p) => p.asset)
+          .whereType<String>()
+          .toSet();
+
+      for (final asset in uniqueAssets) {
+        final key = asset.split('/').last;
         final player = AudioPlayer();
-        await player.setReleaseMode(ReleaseMode.stop);
-        _players[mode.name] = player;
+        await player.setAsset(asset);
+        _players[key] = player;
       }
+
+      // Additional generic sounds
+      for (final s in ['tap.mp3', 'error.mp3']) {
+        final player = AudioPlayer();
+        await player.setAsset('assets/sounds/$s');
+        _players[s] = player;
+      }
+
       _initialized = true;
-      debugPrint('✅ BubbleSoundService initialized');
+      debugPrint('✅ BubbleSoundService initialized (just_audio)');
     } catch (e) {
       debugPrint('❌ BubbleSoundService init: $e');
     }
@@ -193,11 +208,17 @@ class BubbleSoundService {
   Future<void> _playAsset(String asset, double volume) async {
     try {
       final key = asset.split('/').last;
-      final player = _players[key] ?? AudioPlayer();
-      if (!_players.containsKey(key)) _players[key] = player;
+      var player = _players[key];
+
+      if (player == null) {
+        player = AudioPlayer();
+        await player.setAsset(asset);
+        _players[key] = player;
+      }
 
       await player.setVolume(volume);
-      await player.play(AssetSource(asset.replaceFirst('assets/', '')));
+      await player.seek(Duration.zero);
+      player.play(); // Fire and forget (không await để tránh block UI)
     } catch (e) {
       // Sound asset missing in dev — silent fail
       debugPrint('⚠️ Sound missing: $asset ($e)');
@@ -217,7 +238,9 @@ class BubbleSoundService {
   // ─── Dispose ─────────────────────────────────────────────────────────────
 
   Future<void> dispose() async {
-    for (final p in _players.values) await p.dispose();
+    for (final p in _players.values) {
+      await p.dispose();
+    }
     _players.clear();
     _initialized = false;
   }

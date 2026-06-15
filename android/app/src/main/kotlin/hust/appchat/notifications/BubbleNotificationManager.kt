@@ -177,7 +177,8 @@ object BubbleNotificationManager {
     ): Notification.BubbleMetadata {
         val intent = BubbleActivity.createIntent(context, userId, userName, avatarUrl)
 
-        val reqCode = Math.abs(userId.hashCode()) % Int.MAX_VALUE
+        // ĐÃ SỬA: Dùng toán tử bitwise AND để tránh ngoại lệ Math.abs(Int.MIN_VALUE) gây tràn số âm
+        val reqCode = (userId.hashCode() and 0x7FFFFFFF)
 
         // FIX: bubble PendingIntent BẮT BUỘC phải MUTABLE
         // FLAG_IMMUTABLE khiến Android reject toàn bộ bubble notification
@@ -253,6 +254,7 @@ object BubbleNotificationManager {
         }
     }
 
+    // ĐÃ SỬA: Đồng bộ cách tính notifId bằng bitwise AND để không bị lệch ID khi gọi NotificationHelper.cancelNotification()
     private fun notifId(userId: String) =
-        BASE_ID + (Math.abs(userId.hashCode()) % 1_000)
+        BASE_ID + ((userId.hashCode() and 0x7FFFFFFF) % 1_000)
 }

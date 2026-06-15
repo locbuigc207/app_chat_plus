@@ -14,21 +14,6 @@ import androidx.core.graphics.drawable.IconCompat
 import hust.appchat.BubbleActivity
 import kotlinx.coroutines.*
 
-/**
- * ShortcutHelper — Dynamic shortcut management for the Android Bubble API.
- *
- * Requirements:
- * • Android 11+ requires a [ShortcutInfo] with setLongLived(true) and a
- * [Person] before a Bubble notification can be shown. Without it, the bubble
- * is suppressed into a regular notification.
- *
- * Architecture & Thread Safety:
- * • API 30+ (Android 11): ShortcutManager.pushDynamicShortcut + Person.
- * • API 26-29            : ShortcutManagerCompat layer.
- * • All ShortcutManager mutations must run on [Dispatchers.Main] for OEM safety.
- * • Heavy avatar loading via [AvatarLoader] runs on [Dispatchers.IO].
- * • Integrates caching APIs for efficient batch operations.
- */
 @android.annotation.SuppressLint("NewApi")
 object ShortcutHelper {
 
@@ -201,7 +186,8 @@ object ShortcutHelper {
     }
 
     fun cleanup() {
-        scope.cancel()
+        // ĐÃ SỬA: Dùng cancelChildren thay vì cancel() để không phá hủy scope vĩnh viễn
+        scope.coroutineContext.cancelChildren()
         Log.d(TAG, "✅ ShortcutHelper cleanup complete")
     }
 
@@ -311,13 +297,13 @@ object ShortcutHelper {
     private fun buildBubbleIntent(
         context: Context, userId: String, userName: String, avatarUrl: String
     ): Intent {
+        // ĐÃ SỬA: Sửa Intent để tuân thủ luật Explicit Intent của Android 16. Bỏ Action ngầm, bỏ FLAG_ACTIVITY_CLEAR_TOP.
         return Intent(context, BubbleActivity::class.java).apply {
-            action = Intent.ACTION_VIEW // Required for shortcuts
             putExtra("userId", userId)
             putExtra("userName", userName)
             putExtra("avatarUrl", avatarUrl)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
         }
     }
 }

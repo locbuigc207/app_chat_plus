@@ -16,22 +16,6 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.util.concurrent.ConcurrentHashMap
 
-/**
- * BubbleManager — singleton coordinator for all floating chat bubbles.
- *
- * Responsibilities
- * ─────────────────
- * • Keep an in-memory registry of active bubbles.
- * • Delegate all visual work to [BubbleOverlayService] via Intents (Android < 11).
- * • Persist bubble state in SharedPreferences (Gson) across process restarts.
- * • Set up / tear down Firestore listeners for unread-count live updates.
- * • Recalculate positions on screen rotation via [onConfigurationChanged].
- *
- * Threading
- * ──────────
- * All public write methods are annotated @Synchronized so they can be called
- * from any thread (Firestore callbacks run on background threads).
- */
 object BubbleManager {
 
     private const val TAG          = "BubbleManager"
@@ -240,15 +224,20 @@ object BubbleManager {
     }
 
     // ═════════════════════════════════════════════════════════════════════
-    // CONFIGURATION CHANGE (rotation)
+    // CONFIGURATION CHANGE (rotation & DeX)
     // ═════════════════════════════════════════════════════════════════════
 
     fun onConfigurationChanged(ctx: Context, cfg: Configuration) {
-        if (cfg.orientation == orientation) return
-
-        val oldW = screenW; val oldH = screenH
+        val oldW = screenW
+        val oldH = screenH
         refreshScreen(ctx)
+
+        // ĐÃ SỬA: Check sự thay đổi của cả kích thước màn hình để hỗ trợ Samsung DeX (DeX không đổi orientation)
+        if (cfg.orientation == orientation && oldW == screenW && oldH == screenH) return
+
         orientation = cfg.orientation
+
+        if (oldW == 0 || oldH == 0) return
 
         // Remap positions proportionally
         positions.replaceAll { _, pos ->
@@ -261,7 +250,7 @@ object BubbleManager {
 
         restack(ctx)
         persist()
-        Log.d(TAG, "📱 Rotation → ${screenW}×${screenH}")
+        Log.d(TAG, "📱 Resolution/Rotation changed → ${screenW}×${screenH}")
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -269,6 +258,11 @@ object BubbleManager {
     // ═════════════════════════════════════════════════════════════════════
 
     fun onAppResumed(ctx: Context) {
+        // ĐÃ SỬA: Bỏ qua hoàn toàn trên Android 11+ vì BubbleNotificationService đã quản lý việc khôi phục
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return
+        }
+
         Log.d(TAG, "▶️ onAppResumed — restoring ${registry.size} bubble(s)")
         registry.values.forEach { e ->
             val pos = positions[e.userId] ?: positionFor(ctx, e.userId)

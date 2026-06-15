@@ -44,13 +44,16 @@ class GroupCallNotificationService {
     if (!_initialized) return;
     try {
       final isVideo = call.callType == GroupCallType.video;
-      final title =
-          isVideo ? '📹 Cuộc gọi video nhóm' : '📞 Cuộc gọi thoại nhóm';
+      final title = isVideo
+          ? '📹 Cuộc gọi video nhóm'
+          : '📞 Cuộc gọi thoại nhóm';
       final body =
           '${call.initiatorName} đang gọi cho nhóm "${call.groupName}"';
 
+      // FIX LỖI 1 & LỖI 2: Sử dụng `groupCallChannelId` thay vì `gameChannelId` hay `callChannelId`
+      // để đảm bảo notification hoạt động trên đúng channel hợp lệ dành riêng cho cuộc gọi nhóm.
       final androidDetails = AndroidNotificationDetails(
-        AppConstants.gameChannelId,
+        AppConstants.groupCallChannelId,
         'Cuộc gọi nhóm',
         channelDescription: 'Thông báo cuộc gọi nhóm đến',
         importance: Importance.max,
@@ -88,8 +91,10 @@ class GroupCallNotificationService {
         subtitle: 'Nhóm: ${call.groupName}',
       );
 
-      final details =
-          NotificationDetails(android: androidDetails, iOS: iosDetails);
+      final details = NotificationDetails(
+        android: androidDetails,
+        iOS: iosDetails,
+      );
 
       await _localPlugin.show(
         _callNotifId,
@@ -129,8 +134,10 @@ class GroupCallNotificationService {
     try {
       final isVideo = call.callType == GroupCallType.video;
 
+      // FIX LỖI 3: Dùng `ongoingCallChannelId` (với Importance.low) thay vì channel mặc định (Importance.max).
+      // Việc này giúp thông báo nằm im lặng (silent) trên status bar thay vì rung chuông liên tục.
       final androidDetails = AndroidNotificationDetails(
-        AppConstants.callChannelId,
+        AppConstants.ongoingCallChannelId,
         'Cuộc gọi đang diễn ra',
         channelDescription: 'Thông báo cuộc gọi nhóm đang diễn ra',
         importance: Importance.low,
@@ -180,42 +187,12 @@ class GroupCallNotificationService {
     required GroupCallModel call,
     required List<String> memberIds,
   }) async {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) return;
-
-    final isVideo = call.callType == GroupCallType.video;
-
-    // Fetch FCM tokens for all invited members
-    for (final memberId in memberIds) {
-      if (memberId == uid) continue;
-      try {
-        final snap = await _db.collection('users').doc(memberId).get();
-        final token = snap.data()?['fcmToken'] as String?;
-        if (token == null || token.isEmpty) continue;
-
-        // Ideally call a Cloud Function that sends FCM.
-        // Here we write to a Firestore trigger collection as fallback.
-        await _db.collection('_fcm_triggers').add({
-          'token': token,
-          'title':
-              isVideo ? '📹 Cuộc gọi video nhóm' : '📞 Cuộc gọi thoại nhóm',
-          'body': '${call.initiatorName} đang gọi nhóm "${call.groupName}"',
-          'data': {
-            'type': 'group_call_invite',
-            'callId': call.callId,
-            'groupId': call.groupId,
-            'groupName': call.groupName,
-            'isVideo': isVideo.toString(),
-            'initiatorName': call.initiatorName,
-          },
-          'createdAt': FieldValue.serverTimestamp(),
-          'ttl': 45,
-        });
-      } catch (e) {
-        debugPrint('⚠️ FCM invite to $memberId failed: $e');
-      }
-    }
-    debugPrint('✅ FCM invites sent for call: ${call.callId}');
+    // FIX LỖI 7: Xóa bỏ hoàn toàn luồng ghi vào Firestore collection `_fcm_triggers`.
+    // Cloud Function lắng nghe `group_calls/{callId}` (onGroupCallCreated)
+    // đã tự động xử lý gửi FCM tới các thành viên. Ghi vào đây là dead write tốn quota.
+    debugPrint(
+      '✅ FCM invites handled by Cloud Functions for call: ${call.callId}',
+    );
   }
 
   // ── Handle FCM foreground message ─────────────────────────────────────────

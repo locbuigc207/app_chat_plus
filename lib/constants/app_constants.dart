@@ -12,6 +12,12 @@ class AppConstants {
   static const String reminderChannelId = "reminder_channel";
   static const String callChannelId = "call_channel";
 
+  // Bổ sung Channel ID cho cuộc gọi nhóm để tránh lỗi trùng lặp (Khắc phục Lỗi 1 & Lỗi 2)
+  static const String groupCallChannelId = "group_call_channel";
+
+  // Bổ sung Channel ID cho cuộc gọi đang diễn ra để chạy chế độ silent (Khắc phục Lỗi 3)
+  static const String ongoingCallChannelId = "ongoing_call_channel";
+
   // ─── Game Center ──────────────────────────────────────────────────────────
 
   /// Channel ID cho notification thách đấu game.

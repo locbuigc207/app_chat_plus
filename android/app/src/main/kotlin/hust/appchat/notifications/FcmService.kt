@@ -12,40 +12,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-/**
- * FcmService — native Firebase messaging receiver.
- *
- * This is the ONLY entry-point that fires when the app is:
- *   • In the BACKGROUND (paused, not visible)
- *   • KILLED (process not running)
- *
- * Flow for an incoming chat message
- * ──────────────────────────────────
- * 1. Extract sender / message from [RemoteMessage.data].
- * 2. Ensure a dynamic shortcut exists (required for Bubble API on API 30+).
- * 3. Delegate to [BubbleNotificationService.showBubbleNotification] which:
- *      API 30+ → MessagingStyle notification with BubbleMetadata.
- *      API <30  → WindowManager overlay (via BubbleManager.showBubble).
- * 4. The system renders the bubble independently of the Flutter engine;
- *    no engine warm-up is needed here.
- *
- * Token management
- * ─────────────────
- * [onNewToken] fires whenever the FCM registration token changes
- * (device reinstall, token rotation, etc.).  Persist the new token to
- * Firestore so the server can target this device going forward.
- *
- * Registration in AndroidManifest.xml
- * ─────────────────────────────────────
- * <service
- *     android:name=".notifications.FcmService"
- *     android:exported="false">
- *     <intent-filter>
- *         <action android:name="com.google.firebase.MESSAGING_EVENT" />
- *     </intent-filter>
- * </service>
- */
 class FcmService : FirebaseMessagingService() {
 
     companion object {
@@ -116,13 +84,15 @@ class FcmService : FirebaseMessagingService() {
         Log.d(TAG, "📩 Data message — sender: $senderName, " +
                 "type: $typeStr, body: ${body.take(40)}")
 
-        val messageType = resolveType(typeStr)
         val preview     = formatPreview(body, typeStr)
 
         scope.launch {
             try {
-                // 1. Init services if needed (process may have been cold-started)
-                BubbleNotificationService.init(applicationContext)
+                // ĐÃ SỬA: Chuyển các tác vụ khởi tạo về Main Thread để tránh Deadlock khi app bị kill
+                withContext(Dispatchers.Main) {
+                    // 1. Init services if needed (process may have been cold-started)
+                    BubbleNotificationService.init(applicationContext)
+                }
 
                 // 2. Ensure shortcut for Bubble API
                 if (ShortcutHelper.isShortcutsSupported()) {
@@ -130,14 +100,16 @@ class FcmService : FirebaseMessagingService() {
                         applicationContext, senderId, senderName, avatarUrl)
                 }
 
-                // 3. Show bubble notification
-                BubbleNotificationService.showBubbleNotification(
-                    context       = applicationContext,
-                    userId    = senderId,
-                    userName  = senderName,
-                    message   = preview,
-                    avatarUrl = avatarUrl,
-                )
+                withContext(Dispatchers.Main) {
+                    // 3. Show bubble notification
+                    BubbleNotificationService.showBubbleNotification(
+                        context   = applicationContext,
+                        userId    = senderId,
+                        userName  = senderName,
+                        message   = preview,
+                        avatarUrl = avatarUrl,
+                    )
+                }
 
                 Log.d(TAG, "✅ Bubble notification created for $senderName")
 
@@ -222,7 +194,7 @@ class FcmService : FirebaseMessagingService() {
     // HELPERS
     // ═════════════════════════════════════════════════════════════════════
 
-    @android.annotation.SuppressLint("NewApi") // Thêm dòng này để fix lỗi API 30
+    @android.annotation.SuppressLint("NewApi")
     private fun resolveType(typeStr: String): BubbleNotificationManager.MessageType =
         when (typeStr.lowercase()) {
             TYPE_IMAGE    -> BubbleNotificationManager.MessageType.IMAGE

@@ -14,7 +14,6 @@ import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewOutlineProvider
-import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
@@ -27,15 +26,6 @@ import hust.appchat.R
 import kotlin.math.abs
 import kotlin.math.sqrt
 
-/**
- * BubbleView — Production-Ready Floating Chat Bubble
- * * Merges V1 stability fixes with V2 rich UI features:
- * • FIX-A (Glide): Uses applicationContext and strict isDetached checks to prevent lifecycle crashes.
- * • FIX-B (Haptics): Respects system settings via performHapticFeedback, falls back to VibratorManager/Vibrator.
- * • UI Richness: Initials fallback, Online Pulse, Typing Indicator, Badge Pop animations.
- * • Interaction: Long-press detection, drag-to-delete callbacks, accessibility performClick.
- * • Compatibility: Supports both property-based (v2) and setter-based (v1) callback bindings.
- */
 class BubbleView(
     context: Context,
     val userId: String,
@@ -165,7 +155,7 @@ class BubbleView(
                     override fun onLoadFailed(
                         e: com.bumptech.glide.load.engine.GlideException?,
                         model: Any?,
-                        target: com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable>, // Bỏ '?' ở đây
+                        target: com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable>,
                         isFirstResource: Boolean
                     ): Boolean {
                         if (!_isDetached) showInitials()
@@ -173,10 +163,10 @@ class BubbleView(
                     }
 
                     override fun onResourceReady(
-                        resource: android.graphics.drawable.Drawable, // Bỏ '?' ở đây
-                        model: Any,                                   // Bỏ '?' ở đây
+                        resource: android.graphics.drawable.Drawable,
+                        model: Any,
                         target: com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable>?,
-                        dataSource: com.bumptech.glide.load.DataSource, // Bỏ '?' ở đây
+                        dataSource: com.bumptech.glide.load.DataSource,
                         isFirstResource: Boolean
                     ): Boolean {
                         if (!_isDetached) {
@@ -312,7 +302,9 @@ class BubbleView(
 
     fun setOnDragListener(listener: (Boolean, Float, Float) -> Unit) { onDragDelta = listener }
     fun setOnDragEndListener(listener: () -> Unit) { onDragEnd = listener }
-    fun setOnClickListener(listener: () -> Unit) { onBubbleClick = listener }
+
+    // ĐÃ SỬA: Đổi tên hàm để không ghi đè View.setOnClickListener mặc định
+    fun setOnBubbleClickListener(listener: () -> Unit) { onBubbleClick = listener }
 
     fun updateUnreadCount(count: Int) = setUnreadCount(count)
     fun updateLastMessage(msg: String) = setLastMessage(msg)
@@ -506,7 +498,6 @@ class BubbleView(
             else
                 HapticFeedbackConstants.VIRTUAL_KEY
 
-            // Do NOT use FLAG_IGNORE_GLOBAL_SETTING so it respects user's system preferences.
             val success = performHapticFeedback(constant)
             if (!success) fallbackVibrate(type)
         } catch (_: Exception) {

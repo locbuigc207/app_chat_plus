@@ -10,36 +10,20 @@ import android.os.Looper
 import android.util.Log
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
-import androidx.activity.ComponentActivity
-import androidx.activity.OnBackPressedCallback
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.MethodChannel
 
-/**
- * BubbleActivity — embeddable Flutter activity for Android Bubble API.
- *
- * Design decisions & Fixes
- * ─────────────────
- * • Uses a SHARED engine (SHARED_ENGINE_ID) cached in [FlutterEngineCache].
- * warmUpSharedEngine() should be called from MainActivity.onCreate() so
- * the engine is hot when a bubble is first opened.
- * • onBackPressed → moveTaskToBack(true): keeps the bubble alive rather
- * than destroying it.
- * • Navigation is sent via MethodChannel "bubble_chat_channel" →
- * navigateToChat(). Retried until Flutter reports "flutterReady".
- * • State is persisted across process-death via onSaveInstanceState.
- * • K2-compiler-safe (FIX-BACK-K2): explicit `(this as ComponentActivity)` cast
- * for onBackPressedDispatcher to resolve inheritance issues.
- */
 class BubbleActivity : FlutterActivity() {
 
     // ─── Constants ────────────────────────────────────────────────────────
     companion object {
         private const val TAG = "BubbleActivity"
-        const val SHARED_ENGINE_ID = "shared_flutter_engine"
+
+        // ĐÃ SỬA: Đổi sang Engine dành riêng cho Bubble để tránh xung đột với MainActivity
+        const val BUBBLE_ENGINE_ID = "bubble_flutter_engine"
 
         private const val CHANNEL        = "bubble_chat_channel"
         private const val EXTRA_UID      = "userId"
@@ -48,30 +32,32 @@ class BubbleActivity : FlutterActivity() {
 
         private const val RETRY_INTERVAL_MS    = 60L
         private const val MAX_RETRIES          = 60          // ~3.6 s
-        private const val FALLBACK_READY_MS    = 600L
+
+        // ĐÃ SỬA: Tăng thời gian chờ Fallback lên 1500ms
+        private const val FALLBACK_READY_MS    = 1500L
         private const val KEYBOARD_DELAY_MS    = 350L
         private const val MAX_NAV_CACHE        = 50
 
         /** Idempotent — safe to call multiple times. */
-        fun warmUpSharedEngine(ctx: Context) {
+        fun warmUpBubbleEngine(ctx: Context) {
             val cache = FlutterEngineCache.getInstance()
-            cache.get(SHARED_ENGINE_ID)
+            cache.get(BUBBLE_ENGINE_ID)
                 ?.takeIf { it.dartExecutor.isExecutingDart }
-                ?.also { Log.d(TAG, "♻️ Engine already warm"); return }
+                ?.also { Log.d(TAG, "♻️ Bubble Engine already warm"); return }
 
-            cache.get(SHARED_ENGINE_ID)?.let {
+            cache.get(BUBBLE_ENGINE_ID)?.let {
                 Log.w(TAG, "⚠️ Stale engine — evicting")
-                cache.remove(SHARED_ENGINE_ID)
+                cache.remove(BUBBLE_ENGINE_ID)
             }
 
-            Log.d(TAG, "🔥 Warming shared engine…")
+            Log.d(TAG, "🔥 Warming bubble engine…")
             val eng = FlutterEngine(ctx.applicationContext)
             eng.dartExecutor.executeDartEntrypoint(
                 DartExecutor.DartEntrypoint.createDefault()
             )
-            eng.lifecycleChannel.appIsResumed()
-            cache.put(SHARED_ENGINE_ID, eng)
-            Log.d(TAG, "✅ Shared engine warm")
+            // Không gọi lifecycleChannel.appIsResumed() ở đây vì Bubble chưa thực sự hiện lên
+            cache.put(BUBBLE_ENGINE_ID, eng)
+            Log.d(TAG, "✅ Bubble engine warm")
         }
 
         fun createIntent(
@@ -112,14 +98,8 @@ class BubbleActivity : FlutterActivity() {
             Log.w(TAG, "⚠️ Bubble API requires Android 11+"); finish(); return
         }
 
-        // Back = minimise, not finish (K2 compiler safe cast)
-        (this as ComponentActivity).onBackPressedDispatcher
-            .addCallback(this, object : OnBackPressedCallback(true) {
-                override fun handleOnBackPressed() {
-                    Log.d(TAG, "⬅️ Back pressed — minimizing to bubble")
-                    moveTaskToBack(true)
-                }
-            })
+        // ĐÃ SỬA: Xóa hoàn toàn (this as ComponentActivity) và OnBackPressedCallback
+        // Lý do: Android Bubble tự động xử lý back system để thu nhỏ bubble.
 
         if (savedInstanceState == null) readExtras(intent)
         if (!validateUser()) { Log.e(TAG, "❌ Missing user info"); finish(); return }
@@ -129,23 +109,22 @@ class BubbleActivity : FlutterActivity() {
 
     override fun provideFlutterEngine(ctx: Context): FlutterEngine? {
         val cache = FlutterEngineCache.getInstance()
-        var eng = cache.get(SHARED_ENGINE_ID)
+        var eng = cache.get(BUBBLE_ENGINE_ID)
 
         if (eng != null && !eng.dartExecutor.isExecutingDart) {
             Log.w(TAG, "⚠️ Cached engine dead — recreating")
-            cache.remove(SHARED_ENGINE_ID); eng = null
+            cache.remove(BUBBLE_ENGINE_ID); eng = null
         }
 
         if (eng == null) {
-            Log.d(TAG, "🔧 Creating new shared engine")
+            Log.d(TAG, "🔧 Creating new bubble engine")
             eng = FlutterEngine(ctx.applicationContext)
             eng.dartExecutor.executeDartEntrypoint(
                 DartExecutor.DartEntrypoint.createDefault()
             )
-            eng.lifecycleChannel.appIsResumed()
-            cache.put(SHARED_ENGINE_ID, eng)
+            cache.put(BUBBLE_ENGINE_ID, eng)
         } else {
-            Log.d(TAG, "♻️ Reusing shared engine")
+            Log.d(TAG, "♻️ Reusing bubble engine")
         }
         return eng
     }
@@ -169,11 +148,20 @@ class BubbleActivity : FlutterActivity() {
         hideKeyboard()
     }
 
+    // ĐÃ SỬA: Thêm bắt sự kiện khi người dùng nhấn nút Home
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        Log.d(TAG, "🏠 User pressed Home — closing bubble view")
+        finish() // Thu nhỏ bong bóng về biểu tượng nổi thay vì vứt bỏ task
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         val newUid  = intent.getStringExtra(EXTRA_UID)  ?: return
         val newName = intent.getStringExtra(EXTRA_NAME) ?: return
-        if (newUid == currentUid) return           // same user — no re-nav
+
+        // ĐÃ SỬA: Xóa return nếu newUid == currentUid. Xóa khỏi danh sách nav để tái kích hoạt sự kiện Navigate
+        navigatedUsers.remove(newUid)
 
         Log.d(TAG, "🔄 New intent → $newName")
         currentUid    = newUid
@@ -198,7 +186,9 @@ class BubbleActivity : FlutterActivity() {
         currentAvatar = saved.getString("avatar")
         saved.getStringArrayList("navDone")?.let { navigatedUsers.addAll(it) }
         setPending()
-        if (isFlutterReady) scheduleNav(0)
+
+        // ĐÃ SỬA: Kiểm tra channel an toàn trước khi scheduleNav
+        if (isFlutterReady && channel != null) scheduleNav(0)
     }
 
     override fun onDestroy() {
@@ -208,7 +198,7 @@ class BubbleActivity : FlutterActivity() {
         isFlutterReady = false
         navigatedUsers.clear()
         super.onDestroy()
-        Log.d(TAG, "✅ onDestroy — shared engine kept in cache")
+        Log.d(TAG, "✅ onDestroy — bubble engine kept in cache")
     }
 
     // ─── Engine setup ─────────────────────────────────────────────────────
@@ -234,7 +224,8 @@ class BubbleActivity : FlutterActivity() {
                     scheduleNav(0)
                     result.success(true)
                 }
-                "minimize"     -> { moveTaskToBack(true); result.success(true) }
+                // ĐÃ SỬA: Không dùng moveTaskToBack cho API 35+, dùng finish() để gập bubble
+                "minimize"     -> { finish(); result.success(true) }
                 "close"        -> { finish(); result.success(true) }
                 "getUserInfo"  -> result.success(mapOf(
                     "userId"    to currentUid,
@@ -250,7 +241,7 @@ class BubbleActivity : FlutterActivity() {
             }
         }
 
-        // Fallback: assume Flutter ready after short timeout
+        // Fallback an toàn
         mainHandler.postDelayed({
             if (!isFlutterReady && !isFinishing) {
                 Log.d(TAG, "⏰ Flutter ready (fallback)")
@@ -282,6 +273,9 @@ class BubbleActivity : FlutterActivity() {
             mainHandler.postDelayed({ scheduleNav(attempt + 1) }, RETRY_INTERVAL_MS)
             return
         }
+
+        // ĐÃ SỬA: Xác nhận lại channel không rỗng để tránh Null Pointer exception ngầm
+        if (channel == null) return
         doNavigate(uid, name, av)
     }
 

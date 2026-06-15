@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <!-- ── Launch / normal themes (Flutter standard) ──────────────────── -->
     <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <item name="android:windowBackground">@drawable/launch_background</item>
         <item name="android:windowNoTitle">true</item>
@@ -12,7 +11,6 @@
         <item name="android:windowNoTitle">true</item>
     </style>
 
-    <!-- ── Transparent floating window — FlutterMiniChatActivity ──────── -->
     <style name="TransparentFloatingTheme" parent="@android:style/Theme.Translucent.NoTitleBar">
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowIsTranslucent">true</item>
@@ -23,15 +21,15 @@
         <item name="android:windowSoftInputMode">adjustResize</item>
     </style>
 
-    <!-- ── Bubble full-screen theme — BubbleActivity ──────────────────── -->
-    <style name="BubbleTheme" parent="@android:style/Theme.Black.NoTitleBar">
-        <item name="android:windowBackground">@android:color/black</item>
+    <style name="BubbleTheme" parent="@android:style/Theme.Translucent.NoTitleBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowFullscreen">false</item>
         <item name="android:windowActionBar">false</item>
+        <item name="android:colorBackgroundCacheHint">@null</item>
     </style>
 
-    <!-- ── Notification content style ─────────────────────────────────── -->
     <style name="NotificationTitle" parent="@android:style/TextAppearance">
         <item name="android:textSize">14sp</item>
         <item name="android:textStyle">bold</item>

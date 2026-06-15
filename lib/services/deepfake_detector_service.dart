@@ -25,6 +25,11 @@ class DeepfakeDetectorService {
 
   AudioFeatures? _lastFeatures;
   AudioFeatures? get lastFeatures => _lastFeatures;
+
+  // FIX LỖI D-2: Bổ sung biến lưu kết quả phân tích cuối cùng để tầng API gửi lên Cloud Function phân tích thực tế, thay vì hardcode 0.6
+  DeepfakeAnalysisResult? _lastResult;
+  DeepfakeAnalysisResult? get lastResult => _lastResult;
+
   EnrollmentStatus get currentEnrollmentStatus => _fingerprint.status;
 
   void startAnalysis(String callId) {
@@ -46,7 +51,8 @@ class DeepfakeDetectorService {
   }
 
   Future<DeepfakeAnalysisResult?> analyzeAudioBuffer(
-      Int16List audioBuffer) async {
+    Int16List audioBuffer,
+  ) async {
     if (!_isActive || _activeCallId == null) return null;
 
     final features = await _extractor.extractFromBuffer(audioBuffer);
@@ -64,9 +70,10 @@ class DeepfakeDetectorService {
     final localResult = _runLocalHeuristics(features);
     final similarity = _fingerprint.compareLive(features);
     final combinedResult = _combineResults(
-        localResult: localResult,
-        similarityResult: similarity,
-        features: features);
+      localResult: localResult,
+      similarityResult: similarity,
+      features: features,
+    );
 
     if (combinedResult.isLikelyDeepfake) {
       _consecutiveSuspiciousFrames++;
@@ -76,8 +83,11 @@ class DeepfakeDetectorService {
 
     final finalResult =
         _consecutiveSuspiciousFrames >= _suspiciousFrameThreshold
-            ? combinedResult
-            : DeepfakeAnalysisResult.safe();
+        ? combinedResult
+        : DeepfakeAnalysisResult.safe();
+
+    // Lưu lại kết quả cuối cùng trước khi đưa vào luồng Stream
+    _lastResult = finalResult;
 
     if (!_resultCtrl.isClosed) _resultCtrl.add(finalResult);
     return finalResult;
@@ -85,30 +95,30 @@ class DeepfakeDetectorService {
 
   DeepfakeAnalysisResult _runLocalHeuristics(AudioFeatures features) {
     final signals = <DeepfakeSignal>[];
-    final weights = <DeepfakeSignal, double>{};
+    // FIX LỖI D-6: Loại bỏ hoàn toàn mảng `weights` (Map cấp phát vùng nhớ không cần thiết)
     double score = 0.0;
 
     if (features.pitchMean > 0 && features.pitchVariance < 6.0) {
       signals.add(DeepfakeSignal.pitchAnomalous);
       final weight = (6.0 - features.pitchVariance) / 6.0 * 0.35;
-      weights[DeepfakeSignal.pitchAnomalous] = weight;
       score += weight;
     }
 
     if (features.pitchVariance > 80.0) {
-      if (!signals.contains(DeepfakeSignal.pitchAnomalous))
+      if (!signals.contains(DeepfakeSignal.pitchAnomalous)) {
         signals.add(DeepfakeSignal.pitchAnomalous);
+      }
       final weight = math.min(0.25, (features.pitchVariance - 80) / 100 * 0.25);
-      weights[DeepfakeSignal.pitchAnomalous] =
-          (weights[DeepfakeSignal.pitchAnomalous] ?? 0) + weight;
       score += weight;
     }
 
     if (features.spectralFlatness > 0.65) {
       signals.add(DeepfakeSignal.spectralFlat);
-      final weight = (features.spectralFlatness - 0.65) / 0.35 * 0.25;
-      weights[DeepfakeSignal.spectralFlat] = weight.clamp(0, 0.25);
-      score += weights[DeepfakeSignal.spectralFlat]!;
+      final weight = ((features.spectralFlatness - 0.65) / 0.35 * 0.25).clamp(
+        0.0,
+        0.25,
+      );
+      score += weight;
     }
 
     if (features.backgroundNoiseLevel < 0.001 && features.pitchMean > 80) {
@@ -141,7 +151,9 @@ class DeepfakeDetectorService {
     if (similarityResult != null && similarityResult.isMismatch) {
       allSignals.add(DeepfakeSignal.voiceprintMismatch);
       combinedScore = math.min(
-          1.0, combinedScore + similarityResult.deepfakeProbability * 0.3);
+        1.0,
+        combinedScore + similarityResult.deepfakeProbability * 0.3,
+      );
     }
 
     return DeepfakeAnalysisResult(
@@ -156,7 +168,9 @@ class DeepfakeDetectorService {
   }
 
   String _buildExplanation(
-      List<DeepfakeSignal> signals, AudioFeatures features) {
+    List<DeepfakeSignal> signals,
+    AudioFeatures features,
+  ) {
     if (signals.isEmpty) return '';
     final parts = <String>[];
     for (final signal in signals) {
@@ -185,13 +199,15 @@ class DeepfakeDetectorService {
 
   void _emitCalibrating() {
     if (!_resultCtrl.isClosed) {
-      _resultCtrl.add(const DeepfakeAnalysisResult(
-        isLikelyDeepfake: false,
-        confidenceScore: 0,
-        signals: [],
-        explanation: 'Đang phân tích giọng nói...',
-        source: DeepfakeSource.local,
-      ));
+      _resultCtrl.add(
+        const DeepfakeAnalysisResult(
+          isLikelyDeepfake: false,
+          confidenceScore: 0,
+          signals: [],
+          explanation: 'Đang phân tích giọng nói...',
+          source: DeepfakeSource.local,
+        ),
+      );
     }
   }
 }

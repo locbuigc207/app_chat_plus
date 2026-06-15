@@ -46,13 +46,18 @@ class _AICallShieldState extends State<AICallShield>
     super.initState();
 
     _pulseCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1400))
-      ..repeat(reverse: true);
-    _pulseAnim = Tween<double>(begin: 0.55, end: 1.0)
-        .animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat(reverse: true);
+    _pulseAnim = Tween<double>(
+      begin: 0.55,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
 
     _shakeCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 500));
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
     _shakeAnim = TweenSequence<double>([
       TweenSequenceItem(tween: Tween(begin: 0.0, end: -7.0), weight: 1),
       TweenSequenceItem(tween: Tween(begin: -7.0, end: 7.0), weight: 2),
@@ -62,21 +67,29 @@ class _AICallShieldState extends State<AICallShield>
     ]).animate(CurvedAnimation(parent: _shakeCtrl, curve: Curves.easeOut));
 
     _panelCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 320));
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
+    );
     _panelFade = CurvedAnimation(parent: _panelCtrl, curve: Curves.easeOut);
-    _panelSlide = Tween<Offset>(begin: const Offset(0, -0.15), end: Offset.zero)
-        .animate(
-            CurvedAnimation(parent: _panelCtrl, curve: Curves.easeOutCubic));
+    _panelSlide = Tween<Offset>(
+      begin: const Offset(0, -0.15),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _panelCtrl, curve: Curves.easeOutCubic));
 
     _scanCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1800))
-      ..repeat();
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat();
     _scanAnim = Tween<double>(begin: 0, end: 1).animate(_scanCtrl);
 
     _expandCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 350));
-    _expandAnim =
-        CurvedAnimation(parent: _expandCtrl, curve: Curves.easeOutCubic);
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _expandAnim = CurvedAnimation(
+      parent: _expandCtrl,
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
@@ -90,11 +103,8 @@ class _AICallShieldState extends State<AICallShield>
   }
 
   void _onEvent(SecurityEvent event) {
-    // =========================================================================
-    // 💡 TÍCH HỢP DEEPFAKE: Bỏ qua xử lý UI ở đây nếu là sự kiện Deepfake
-    // Vì Widget DeepfakeStatusBadge (chuyên biệt) sẽ chịu trách nhiệm hiển thị.
-    // =========================================================================
-    if (event.category == ThreatCategory.deepfake) return;
+    // FIX LỖI D-4: Đã xóa lệnh return chặn sự kiện Deepfake để AICallShield
+    // có thể trực tiếp xử lý và hiển thị cảnh báo Deepfake đồng nhất với các cảnh báo khác.
 
     if (event.status == _event.status && event.message == _event.message) {
       return;
@@ -256,12 +266,15 @@ class _WarningPanel extends StatelessWidget {
                 color: theme.surface.withOpacity(0.92),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                    color: theme.primary.withOpacity(0.55), width: 1.5),
+                  color: theme.primary.withOpacity(0.55),
+                  width: 1.5,
+                ),
                 boxShadow: [
                   BoxShadow(
-                      color: theme.primary.withOpacity(0.3),
-                      blurRadius: 20,
-                      offset: const Offset(0, 4)),
+                    color: theme.primary.withOpacity(0.3),
+                    blurRadius: 20,
+                    offset: const Offset(0, 4),
+                  ),
                 ],
               ),
               child: Row(
@@ -272,11 +285,12 @@ class _WarningPanel extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(top: 1),
                     child: Icon(
-                        event.status == SecurityStatus.danger
-                            ? Icons.crisis_alert_rounded
-                            : Icons.warning_amber_rounded,
-                        color: theme.primary,
-                        size: 17),
+                      event.status == SecurityStatus.danger
+                          ? Icons.crisis_alert_rounded
+                          : Icons.warning_amber_rounded,
+                      color: theme.primary,
+                      size: 17,
+                    ),
                   ),
                   const SizedBox(width: 8),
 
@@ -286,45 +300,58 @@ class _WarningPanel extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        ...event.message.split('\n').map((line) => Text(
-                              line,
-                              style: TextStyle(
-                                color: line.startsWith('⚠️') ||
-                                        line.startsWith('🔍')
-                                    ? theme.primary
-                                    : Colors.white70,
-                                fontSize: 12,
-                                fontWeight: line.startsWith('⚠️') ||
-                                        line.startsWith('🔍')
-                                    ? FontWeight.w700
-                                    : FontWeight.w400,
-                                height: 1.45,
+                        ...event.message
+                            .split('\n')
+                            .map(
+                              (line) => Text(
+                                line,
+                                style: TextStyle(
+                                  color:
+                                      line.startsWith('⚠️') ||
+                                          line.startsWith('🔍')
+                                      ? theme.primary
+                                      : Colors.white70,
+                                  fontSize: 12,
+                                  fontWeight:
+                                      line.startsWith('⚠️') ||
+                                          line.startsWith('🔍')
+                                      ? FontWeight.w700
+                                      : FontWeight.w400,
+                                  height: 1.45,
+                                ),
                               ),
-                            )),
+                            ),
                         if (event.riskScore > 0) ...[
                           const SizedBox(height: 8),
                           _RiskBar(
-                              score: event.riskScore, color: theme.primary),
+                            score: event.riskScore,
+                            color: theme.primary,
+                          ),
                         ],
                         const SizedBox(height: 8),
                         GestureDetector(
                           onTap: onExpand,
-                          child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            Text(
-                              expanded ? 'Thu gọn' : 'Xem chi tiết',
-                              style: TextStyle(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                expanded ? 'Thu gọn' : 'Xem chi tiết',
+                                style: TextStyle(
                                   color: theme.primary,
                                   fontSize: 11,
-                                  fontWeight: FontWeight.w700),
-                            ),
-                            const SizedBox(width: 3),
-                            Icon(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(width: 3),
+                              Icon(
                                 expanded
                                     ? Icons.keyboard_arrow_up_rounded
                                     : Icons.keyboard_arrow_down_rounded,
                                 color: theme.primary,
-                                size: 14),
-                          ]),
+                                size: 14,
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
@@ -335,8 +362,11 @@ class _WarningPanel extends StatelessWidget {
                     onTap: onDismiss,
                     child: const Padding(
                       padding: EdgeInsets.only(left: 4),
-                      child: Icon(Icons.close_rounded,
-                          color: Colors.white30, size: 16),
+                      child: Icon(
+                        Icons.close_rounded,
+                        color: Colors.white30,
+                        size: 16,
+                      ),
                     ),
                   ),
                 ],
@@ -386,28 +416,42 @@ class _DetailCard extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               // Header
-              Row(children: [
-                Icon(Icons.security_rounded, color: theme.primary, size: 14),
-                const SizedBox(width: 6),
-                Text('Báo cáo bảo mật',
+              Row(
+                children: [
+                  Icon(Icons.security_rounded, color: theme.primary, size: 14),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Báo cáo bảo mật',
                     style: TextStyle(
-                        color: theme.primary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700)),
-              ]),
+                      color: theme.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 10),
               const Divider(color: Colors.white12, height: 1),
               const SizedBox(height: 10),
 
               // Threat info
-              _InfoRow('Loại nguy cơ:', _categoryLabel(event.category),
-                  theme.primary),
-              const SizedBox(height: 6),
-              _InfoRow('Mức độ rủi ro:', '${(event.riskScore * 100).round()}%',
-                  theme.primary),
+              _InfoRow(
+                'Loại nguy cơ:',
+                _categoryLabel(event.category),
+                theme.primary,
+              ),
               const SizedBox(height: 6),
               _InfoRow(
-                  'Thời điểm:', _timeLabel(event.timestamp), Colors.white54),
+                'Mức độ rủi ro:',
+                '${(event.riskScore * 100).round()}%',
+                theme.primary,
+              ),
+              const SizedBox(height: 6),
+              _InfoRow(
+                'Thời điểm:',
+                _timeLabel(event.timestamp),
+                Colors.white54,
+              ),
 
               // Recommendations
               if (event.status == SecurityStatus.danger) ...[
@@ -420,37 +464,55 @@ class _DetailCard extends StatelessWidget {
                 const SizedBox(height: 12),
                 const Divider(color: Colors.white12, height: 1),
                 const SizedBox(height: 8),
-                const Text('Lịch sử phát hiện:',
-                    style: TextStyle(
-                        color: Colors.white54,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600)),
+                const Text(
+                  'Lịch sử phát hiện:',
+                  style: TextStyle(
+                    color: Colors.white54,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const SizedBox(height: 6),
-                ...history.reversed.take(3).map((e) => Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Row(children: [
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: _themeFor(e.status).primary.withOpacity(0.8),
-                          ),
+                ...history.reversed
+                    .take(3)
+                    .map(
+                      (e) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: _themeFor(
+                                  e.status,
+                                ).primary.withOpacity(0.8),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                _categoryLabel(e.category),
+                                style: TextStyle(
+                                  color: _themeFor(
+                                    e.status,
+                                  ).primary.withOpacity(0.7),
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              _timeLabel(e.timestamp),
+                              style: const TextStyle(
+                                color: Colors.white24,
+                                fontSize: 9,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                            child: Text(
-                          _categoryLabel(e.category),
-                          style: TextStyle(
-                              color:
-                                  _themeFor(e.status).primary.withOpacity(0.7),
-                              fontSize: 10),
-                        )),
-                        Text(_timeLabel(e.timestamp),
-                            style: const TextStyle(
-                                color: Colors.white24, fontSize: 9)),
-                      ]),
-                    )),
+                      ),
+                    ),
               ],
             ],
           ),
@@ -476,7 +538,7 @@ class _DetailCard extends StatelessWidget {
       case ThreatCategory.urgencyTrick:
         return 'Tạo áp lực khẩn cấp';
       case ThreatCategory.deepfake:
-        return 'Giọng giả mạo (Deepfake)'; // Giữ lại dự phòng
+        return 'Giọng giả mạo (Deepfake)';
       case ThreatCategory.unknown:
       case ThreatCategory.none:
         return 'Nội dung đáng ngờ';
@@ -491,22 +553,29 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(label,
-              style: const TextStyle(
-                  color: Colors.white38,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500)),
-          const SizedBox(width: 4),
-          Flexible(
-              child: Text(value,
-                  style: TextStyle(
-                      color: valueColor,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600))),
-        ],
-      );
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white38,
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      const SizedBox(width: 4),
+      Flexible(
+        child: Text(
+          value,
+          style: TextStyle(
+            color: valueColor,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    ],
+  );
 }
 
 class _RecommendationBox extends StatelessWidget {
@@ -515,36 +584,54 @@ class _RecommendationBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: theme.primary.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: theme.primary.withOpacity(0.25)),
-        ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Icon(Icons.tips_and_updates_rounded,
-                color: theme.primary, size: 12),
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+      color: theme.primary.withOpacity(0.08),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: theme.primary.withOpacity(0.25)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              Icons.tips_and_updates_rounded,
+              color: theme.primary,
+              size: 12,
+            ),
             const SizedBox(width: 5),
-            Text('Khuyến nghị',
-                style: TextStyle(
-                    color: theme.primary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700)),
-          ]),
-          const SizedBox(height: 6),
-          ...[
-            '🚫 Không cung cấp OTP/mã PIN',
-            '🚫 Không chuyển tiền theo yêu cầu lạ',
-            '✅ Cúp máy và gọi lại số chính thức',
-          ].map((tip) => Padding(
-                padding: const EdgeInsets.only(bottom: 2),
-                child: Text(tip,
-                    style: const TextStyle(
-                        color: Colors.white60, fontSize: 10, height: 1.5)),
-              )),
-        ]),
-      );
+            Text(
+              'Khuyến nghị',
+              style: TextStyle(
+                color: theme.primary,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ...[
+          '🚫 Không cung cấp OTP/mã PIN',
+          '🚫 Không chuyển tiền theo yêu cầu lạ',
+          '✅ Cúp máy và gọi lại số chính thức',
+        ].map(
+          (tip) => Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Text(
+              tip,
+              style: const TextStyle(
+                color: Colors.white60,
+                fontSize: 10,
+                height: 1.5,
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 // ══════════════════════════════════════════════════════
@@ -568,9 +655,13 @@ class _RiskBarState extends State<_RiskBar>
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 600));
-    _anim = Tween<double>(begin: 0, end: widget.score)
-        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _anim = Tween<double>(
+      begin: 0,
+      end: widget.score,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
     _ctrl.forward();
   }
 
@@ -578,8 +669,10 @@ class _RiskBarState extends State<_RiskBar>
   void didUpdateWidget(_RiskBar old) {
     super.didUpdateWidget(old);
     if (old.score != widget.score) {
-      _anim = Tween<double>(begin: _anim.value, end: widget.score)
-          .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
+      _anim = Tween<double>(
+        begin: _anim.value,
+        end: widget.score,
+      ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
       _ctrl.forward(from: 0);
     }
   }
@@ -592,31 +685,34 @@ class _RiskBarState extends State<_RiskBar>
 
   @override
   Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AnimatedBuilder(
-            animation: _anim,
-            builder: (_, __) => Text('Rủi ro: ${(_anim.value * 100).round()}%',
-                style: TextStyle(
-                    color: widget.color.withOpacity(0.75),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600)),
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      AnimatedBuilder(
+        animation: _anim,
+        builder: (_, __) => Text(
+          'Rủi ro: ${(_anim.value * 100).round()}%',
+          style: TextStyle(
+            color: widget.color.withOpacity(0.75),
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
           ),
-          const SizedBox(height: 4),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: AnimatedBuilder(
-              animation: _anim,
-              builder: (_, __) => LinearProgressIndicator(
-                value: _anim.value.clamp(0.0, 1.0),
-                minHeight: 4,
-                backgroundColor: Colors.white12,
-                valueColor: AlwaysStoppedAnimation<Color>(widget.color),
-              ),
-            ),
+        ),
+      ),
+      const SizedBox(height: 4),
+      ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: AnimatedBuilder(
+          animation: _anim,
+          builder: (_, __) => LinearProgressIndicator(
+            value: _anim.value.clamp(0.0, 1.0),
+            minHeight: 4,
+            backgroundColor: Colors.white12,
+            valueColor: AlwaysStoppedAnimation<Color>(widget.color),
           ),
-        ],
-      );
+        ),
+      ),
+    ],
+  );
 }
 
 // ══════════════════════════════════════════════════════
@@ -650,46 +746,56 @@ class _ShieldBadge extends StatelessWidget {
               filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 400),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 7,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.5),
                   borderRadius: BorderRadius.circular(28),
                   border: Border.all(
-                    color: theme.primary
-                        .withOpacity(0.25 + pulseAnim.value * 0.45),
+                    color: theme.primary.withOpacity(
+                      0.25 + pulseAnim.value * 0.45,
+                    ),
                     width: 1.5,
                   ),
                   boxShadow: event.isAlert
                       ? [
                           BoxShadow(
-                            color: theme.primary
-                                .withOpacity(pulseAnim.value * 0.2),
+                            color: theme.primary.withOpacity(
+                              pulseAnim.value * 0.2,
+                            ),
                             blurRadius: 14,
                             spreadRadius: 1,
                           ),
                         ]
                       : null,
                 ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  _buildIcon(),
-                  const SizedBox(width: 7),
-                  AnimatedDefaultTextStyle(
-                    duration: const Duration(milliseconds: 300),
-                    style: TextStyle(
-                      color: theme.primary,
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.2,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildIcon(),
+                    const SizedBox(width: 7),
+                    AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 300),
+                      style: TextStyle(
+                        color: theme.primary,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.2,
+                      ),
+                      child: Text(theme.label),
                     ),
-                    child: Text(theme.label),
-                  ),
-                  if (onTap != null) ...[
-                    const SizedBox(width: 4),
-                    Icon(Icons.expand_more_rounded,
-                        color: theme.primary.withOpacity(0.7), size: 13),
+                    if (onTap != null) ...[
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.expand_more_rounded,
+                        color: theme.primary.withOpacity(0.7),
+                        size: 13,
+                      ),
+                    ],
                   ],
-                ]),
+                ),
               ),
             ),
           );
@@ -702,19 +808,19 @@ class _ShieldBadge extends StatelessWidget {
     if (event.status == SecurityStatus.scanning) {
       return AnimatedBuilder(
         animation: scanAnim,
-        builder: (_, child) => Transform.rotate(
-          angle: scanAnim.value * 2 * math.pi,
-          child: child,
-        ),
+        builder: (_, child) =>
+            Transform.rotate(angle: scanAnim.value * 2 * math.pi, child: child),
         child: Icon(Icons.radar_rounded, color: theme.primary, size: 14),
       );
     }
 
     return AnimatedBuilder(
       animation: pulseAnim,
-      builder: (_, __) => Icon(theme.icon,
-          color: theme.primary.withOpacity(0.65 + pulseAnim.value * 0.35),
-          size: 14),
+      builder: (_, __) => Icon(
+        theme.icon,
+        color: theme.primary.withOpacity(0.65 + pulseAnim.value * 0.35),
+        size: 14,
+      ),
     );
   }
 }

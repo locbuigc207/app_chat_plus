@@ -36,7 +36,7 @@ enum RtcConnectionState {
   connecting,
   connected,
   reconnecting,
-  failed
+  failed,
 }
 
 enum NetworkQuality { unknown, excellent, good, poor, bad, veryBad, down }
@@ -71,10 +71,10 @@ class RemoteUserState {
   });
 
   RemoteUserState copyWith({bool? videoOn, bool? audioOn}) => RemoteUserState(
-        uid: uid,
-        videoOn: videoOn ?? this.videoOn,
-        audioOn: audioOn ?? this.audioOn,
-      );
+    uid: uid,
+    videoOn: videoOn ?? this.videoOn,
+    audioOn: audioOn ?? this.audioOn,
+  );
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -138,9 +138,10 @@ class AgoraRtcManager extends ChangeNotifier {
   String? get currentChannel => _currentChannel;
   RtcEngine? get engine => _engine;
 
-  String get _tokenServerBase => (dotenv.env['AGORA_TOKEN_SERVER'] ??
-          'https://asia-southeast1-flutter-chat-app-3e625.cloudfunctions.net/generateAgoraToken')
-      .trim();
+  String get _tokenServerBase =>
+      (dotenv.env['AGORA_TOKEN_SERVER'] ??
+              'https://asia-southeast1-flutter-chat-app-3e625.cloudfunctions.net/generateAgoraToken')
+          .trim();
   String get _appId => (dotenv.env['AGORA_APP_ID'] ?? '').trim();
 
   // ── Initialize ────────────────────────────────────────────────────────────
@@ -152,7 +153,8 @@ class AgoraRtcManager extends ChangeNotifier {
     if (_appId.isEmpty) {
       _emitError('AGORA_APP_ID chưa cấu hình trong .env');
       throw AgoraInitException(
-          'Lỗi hệ thống: AGORA_APP_ID chưa được cấu hình. Không thể khởi tạo cuộc gọi.');
+        'Lỗi hệ thống: AGORA_APP_ID chưa được cấu hình. Không thể khởi tạo cuộc gọi.',
+      );
     }
 
     try {
@@ -201,7 +203,8 @@ class AgoraRtcManager extends ChangeNotifier {
       // FIX BUG 2: Ném Exception nếu token rỗng (đề phòng Agora Console đã bật Token Auth)
       if (rtcToken == null || rtcToken.isEmpty) {
         throw AgoraTokenException(
-            'Token rỗng hoặc không hợp lệ. Vui lòng kiểm tra lại cấu hình Token Authentication.');
+          'Token rỗng hoặc không hợp lệ. Vui lòng kiểm tra lại cấu hình Token Authentication.',
+        );
       }
 
       if (isVideoCall) {
@@ -296,7 +299,9 @@ class AgoraRtcManager extends ChangeNotifier {
     if (_disposed) return;
     await _safeCall(
       () => _engine?.adjustUserPlaybackSignalVolume(
-          uid: uid, volume: volume.clamp(0, 400)),
+        uid: uid,
+        volume: volume.clamp(0, 400),
+      ),
     );
   }
 
@@ -313,15 +318,17 @@ class AgoraRtcManager extends ChangeNotifier {
   Future<void> _initEngine() async {
     _engine = createAgoraRtcEngine();
 
-    await _engine!.initialize(RtcEngineContext(
-      appId: _appId,
-      channelProfile: ChannelProfileType.channelProfileCommunication,
-      logConfig: const LogConfig(
-        level: LogLevel.logLevelWarn,
-        filePath: '/agora_rtc.log',
-        fileSizeInKB: 512,
+    await _engine!.initialize(
+      RtcEngineContext(
+        appId: _appId,
+        channelProfile: ChannelProfileType.channelProfileCommunication,
+        logConfig: const LogConfig(
+          level: LogLevel.logLevelWarn,
+          filePath: '/agora_rtc.log',
+          fileSizeInKB: 512,
+        ),
       ),
-    ));
+    );
 
     await _engine!.enableAudio();
     await _engine!.setAudioProfile(
@@ -334,7 +341,8 @@ class AgoraRtcManager extends ChangeNotifier {
       await _engine!.setEnableSpeakerphone(true);
     } catch (e) {
       debugPrint(
-          '⚠️ [AgoraRtcManager] Lỗi thiết lập loa ngoài khi khởi tạo (sẽ retry sau): $e');
+        '⚠️ [AgoraRtcManager] Lỗi thiết lập loa ngoài khi khởi tạo (sẽ retry sau): $e',
+      );
     }
 
     // Echo cancellation & noise suppression
@@ -349,46 +357,47 @@ class AgoraRtcManager extends ChangeNotifier {
       reportVad: true,
     );
 
-// =========================================================================
+    // =========================================================================
     // 💡 TÍCH HỢP DEEPFAKE DETECTION TẠI ĐÂY
     // Cấu hình Agora để xuất luồng Raw Audio 16kHz, 1 Channel
     // =========================================================================
     try {
+      // FIX LỖI D-1: Nâng cấp số lượng samplesPerCall từ 1024 lên 2048 để cung cấp đủ dữ liệu cho hàm trích xuất
+      // đặc trưng giọng nói (audioFeatureExtractor). 2048 bytes đảm bảo ít nhất 4 frames phục vụ cho thuật toán nhận diện.
       await _engine!.setRecordingAudioFrameParameters(
         sampleRate: 16000,
         channel: 1,
         mode: RawAudioFrameOpModeType.rawAudioFrameOpModeReadOnly,
-        samplesPerCall: 1024,
+        samplesPerCall: 2048,
       );
 
       _engine!.getMediaEngine().registerAudioFrameObserver(
-            AudioFrameObserver(
-              onRecordAudioFrame: (String channelId, AudioFrame audioFrame) {
-                if (audioFrame.buffer != null) {
-                  try {
-                    // Chuyển đổi mảng Uint8List từ C++ sang Int16List (Zero-copy)
-                    final bytes = audioFrame.buffer!;
-                    final pcm16Data = Int16List.view(
-                      bytes.buffer,
-                      bytes.offsetInBytes,
-                      bytes.lengthInBytes ~/ 2,
-                    );
+        AudioFrameObserver(
+          onRecordAudioFrame: (String channelId, AudioFrame audioFrame) {
+            if (audioFrame.buffer != null) {
+              try {
+                // Chuyển đổi mảng Uint8List từ C++ sang Int16List (Zero-copy)
+                final bytes = audioFrame.buffer!;
+                final pcm16Data = Int16List.view(
+                  bytes.buffer,
+                  bytes.offsetInBytes,
+                  bytes.lengthInBytes ~/ 2,
+                );
 
-                    // Gửi dữ liệu âm thanh thô vào Engine AI
-                    RealtimeAIService().feedAudioBuffer(pcm16Data);
-                  } catch (e) {
-                    debugPrint('[Deepfake] Lỗi khi xử lý Audio Frame: $e');
-                  }
-                }
-              },
-              onPlaybackAudioFrame:
-                  (String channelId, AudioFrame audioFrame) {},
-              onMixedAudioFrame: (String channelId, AudioFrame audioFrame) {},
-              onEarMonitoringAudioFrame: (AudioFrame audioFrame) {},
-              onPlaybackAudioFrameBeforeMixing:
-                  (String channelId, int uid, AudioFrame audioFrame) {},
-            ),
-          );
+                // Gửi dữ liệu âm thanh thô vào Engine AI
+                RealtimeAIService().feedAudioBuffer(pcm16Data);
+              } catch (e) {
+                debugPrint('[Deepfake] Lỗi khi xử lý Audio Frame: $e');
+              }
+            }
+          },
+          onPlaybackAudioFrame: (String channelId, AudioFrame audioFrame) {},
+          onMixedAudioFrame: (String channelId, AudioFrame audioFrame) {},
+          onEarMonitoringAudioFrame: (AudioFrame audioFrame) {},
+          onPlaybackAudioFrameBeforeMixing:
+              (String channelId, int uid, AudioFrame audioFrame) {},
+        ),
+      );
       debugPrint('✅ [Agora] Đã đăng ký AudioFrameObserver cho Deepfake Engine');
     } catch (e) {
       debugPrint('❌ [Agora] Không thể đăng ký AudioFrameObserver: $e');
@@ -396,101 +405,106 @@ class AgoraRtcManager extends ChangeNotifier {
     // =========================================================================
     // =========================================================================
 
-    _engine!.registerEventHandler(RtcEngineEventHandler(
-      onJoinChannelSuccess: (conn, elapsed) {
-        debugPrint('✅ [Agora] Joined: ${conn.channelId} (${elapsed}ms)');
-        _setConnectionState(RtcConnectionState.connected);
-      },
-      onRejoinChannelSuccess: (conn, elapsed) {
-        debugPrint('✅ [Agora] Rejoined: ${conn.channelId}');
-        _setConnectionState(RtcConnectionState.connected);
-      },
-      onLeaveChannel: (conn, stats) {
-        debugPrint('✅ [Agora] Left channel');
-        _setConnectionState(RtcConnectionState.disconnected);
-      },
-      onUserJoined: (conn, uid, elapsed) {
-        debugPrint('✅ [Agora] Remote joined: $uid');
-        _remoteUsers[uid] = RemoteUserState(uid: uid);
-        if (!_remoteJoinedCtrl.isClosed) _remoteJoinedCtrl.add(uid);
-        _safeNotify();
-      },
-      onUserOffline: (conn, uid, reason) {
-        debugPrint('✅ [Agora] Remote left: $uid (reason: $reason)');
-        _remoteUsers.remove(uid);
-        if (!_remoteLeftCtrl.isClosed) _remoteLeftCtrl.add(uid);
-        _safeNotify();
-      },
-      onConnectionStateChanged: (conn, state, reason) {
-        debugPrint('ℹ️ [Agora] Connection state: $state (reason: $reason)');
-        _setConnectionState(_mapConnState(state));
-      },
-      onConnectionLost: (conn) {
-        debugPrint('⚠️ [Agora] Connection lost');
-        _setConnectionState(RtcConnectionState.reconnecting);
-      },
-      onRemoteVideoStateChanged: (conn, uid, state, reason, elapsed) {
-        if (_remoteUsers.containsKey(uid)) {
-          final on = state == RemoteVideoState.remoteVideoStateDecoding ||
-              state == RemoteVideoState.remoteVideoStateStarting;
-          _remoteUsers[uid] = _remoteUsers[uid]!.copyWith(videoOn: on);
+    _engine!.registerEventHandler(
+      RtcEngineEventHandler(
+        onJoinChannelSuccess: (conn, elapsed) {
+          debugPrint('✅ [Agora] Joined: ${conn.channelId} (${elapsed}ms)');
+          _setConnectionState(RtcConnectionState.connected);
+        },
+        onRejoinChannelSuccess: (conn, elapsed) {
+          debugPrint('✅ [Agora] Rejoined: ${conn.channelId}');
+          _setConnectionState(RtcConnectionState.connected);
+        },
+        onLeaveChannel: (conn, stats) {
+          debugPrint('✅ [Agora] Left channel');
+          _setConnectionState(RtcConnectionState.disconnected);
+        },
+        onUserJoined: (conn, uid, elapsed) {
+          debugPrint('✅ [Agora] Remote joined: $uid');
+          _remoteUsers[uid] = RemoteUserState(uid: uid);
+          if (!_remoteJoinedCtrl.isClosed) _remoteJoinedCtrl.add(uid);
           _safeNotify();
-        }
-      },
-      onRemoteAudioStateChanged: (conn, uid, state, reason, elapsed) {
-        if (_remoteUsers.containsKey(uid)) {
-          final on = state == RemoteAudioState.remoteAudioStateDecoding ||
-              state == RemoteAudioState.remoteAudioStateStarting;
-          _remoteUsers[uid] = _remoteUsers[uid]!.copyWith(audioOn: on);
+        },
+        onUserOffline: (conn, uid, reason) {
+          debugPrint('✅ [Agora] Remote left: $uid (reason: $reason)');
+          _remoteUsers.remove(uid);
+          if (!_remoteLeftCtrl.isClosed) _remoteLeftCtrl.add(uid);
           _safeNotify();
-        }
-      },
-      onActiveSpeaker: (conn, uid) {
-        if (!_activeSpeakerCtrl.isClosed) _activeSpeakerCtrl.add(uid);
-      },
-      onAudioVolumeIndication: (conn, speakers, speakerNum, totalVolume) {
-        if (_disposed || _audioLevelCtrl.isClosed) return;
-        // totalVolume: 0-255; normalize to 0.0-1.0
-        final normalized = (totalVolume / 255.0).clamp(0.0, 1.0);
-        _audioLevelCtrl.add(normalized.toDouble());
-      },
-      onNetworkQuality: (conn, uid, txQuality, rxQuality) {
-        if (uid == 0) {
-          final worst =
-              txQuality.index > rxQuality.index ? txQuality : rxQuality;
-          final q = _mapNetQuality(worst);
-          if (q != _networkQuality) {
-            _networkQuality = q;
-            if (!_networkQualityCtrl.isClosed) _networkQualityCtrl.add(q);
+        },
+        onConnectionStateChanged: (conn, state, reason) {
+          debugPrint('ℹ️ [Agora] Connection state: $state (reason: $reason)');
+          _setConnectionState(_mapConnState(state));
+        },
+        onConnectionLost: (conn) {
+          debugPrint('⚠️ [Agora] Connection lost');
+          _setConnectionState(RtcConnectionState.reconnecting);
+        },
+        onRemoteVideoStateChanged: (conn, uid, state, reason, elapsed) {
+          if (_remoteUsers.containsKey(uid)) {
+            final on =
+                state == RemoteVideoState.remoteVideoStateDecoding ||
+                state == RemoteVideoState.remoteVideoStateStarting;
+            _remoteUsers[uid] = _remoteUsers[uid]!.copyWith(videoOn: on);
+            _safeNotify();
           }
-        }
-      },
-      onRtcStats: (conn, rtcStats) {
-        if (_disposed) return;
-        _stats = RtcCallStats(
-          txBitrate: rtcStats.txKBitRate ?? 0,
-          rxBitrate: rtcStats.rxKBitRate ?? 0,
-          txPacketLoss: rtcStats.txPacketLossRate ?? 0,
-          rxPacketLoss: rtcStats.rxPacketLossRate ?? 0,
-          rtt: rtcStats.lastmileDelay ?? 0,
-          duration: rtcStats.duration ?? 0,
-        );
-        _safeNotify();
-      },
-      onTokenPrivilegeWillExpire: (conn, token) async {
-        debugPrint('⚠️ [Agora] Token expiring — refreshing');
-        if (_currentChannel != null) {
-          final newToken = await _fetchToken(_currentChannel!);
-          if (newToken != null) {
-            await _engine?.renewToken(newToken);
+        },
+        onRemoteAudioStateChanged: (conn, uid, state, reason, elapsed) {
+          if (_remoteUsers.containsKey(uid)) {
+            final on =
+                state == RemoteAudioState.remoteAudioStateDecoding ||
+                state == RemoteAudioState.remoteAudioStateStarting;
+            _remoteUsers[uid] = _remoteUsers[uid]!.copyWith(audioOn: on);
+            _safeNotify();
           }
-        }
-      },
-      onError: (err, msg) {
-        debugPrint('❌ [Agora] Error $err: $msg');
-        _emitError('Lỗi cuộc gọi ($err): $msg');
-      },
-    ));
+        },
+        onActiveSpeaker: (conn, uid) {
+          if (!_activeSpeakerCtrl.isClosed) _activeSpeakerCtrl.add(uid);
+        },
+        onAudioVolumeIndication: (conn, speakers, speakerNum, totalVolume) {
+          if (_disposed || _audioLevelCtrl.isClosed) return;
+          // totalVolume: 0-255; normalize to 0.0-1.0
+          final normalized = (totalVolume / 255.0).clamp(0.0, 1.0);
+          _audioLevelCtrl.add(normalized.toDouble());
+        },
+        onNetworkQuality: (conn, uid, txQuality, rxQuality) {
+          if (uid == 0) {
+            final worst = txQuality.index > rxQuality.index
+                ? txQuality
+                : rxQuality;
+            final q = _mapNetQuality(worst);
+            if (q != _networkQuality) {
+              _networkQuality = q;
+              if (!_networkQualityCtrl.isClosed) _networkQualityCtrl.add(q);
+            }
+          }
+        },
+        onRtcStats: (conn, rtcStats) {
+          if (_disposed) return;
+          _stats = RtcCallStats(
+            txBitrate: rtcStats.txKBitRate ?? 0,
+            rxBitrate: rtcStats.rxKBitRate ?? 0,
+            txPacketLoss: rtcStats.txPacketLossRate ?? 0,
+            rxPacketLoss: rtcStats.rxPacketLossRate ?? 0,
+            rtt: rtcStats.lastmileDelay ?? 0,
+            duration: rtcStats.duration ?? 0,
+          );
+          _safeNotify();
+        },
+        onTokenPrivilegeWillExpire: (conn, token) async {
+          debugPrint('⚠️ [Agora] Token expiring — refreshing');
+          if (_currentChannel != null) {
+            final newToken = await _fetchToken(_currentChannel!);
+            if (newToken != null) {
+              await _engine?.renewToken(newToken);
+            }
+          }
+        },
+        onError: (err, msg) {
+          debugPrint('❌ [Agora] Error $err: $msg');
+          _emitError('Lỗi cuộc gọi ($err): $msg');
+        },
+      ),
+    );
   }
 
   // ── Token fetch ───────────────────────────────────────────────────────────
@@ -498,8 +512,9 @@ class AgoraRtcManager extends ChangeNotifier {
     const maxRetries = 3;
     for (int attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        final url =
-            Uri.parse('$_tokenServerBase?channelName=$channelName&uid=$uid');
+        final url = Uri.parse(
+          '$_tokenServerBase?channelName=$channelName&uid=$uid',
+        );
         final res = await http.get(url).timeout(const Duration(seconds: 15));
 
         if (res.statusCode == 200) {
@@ -523,7 +538,8 @@ class AgoraRtcManager extends ChangeNotifier {
     debugPrint('❌ [Agora] Could not fetch token after $maxRetries attempts');
     // FIX BUG 2: Ném exception sau khi đã retries tối đa mà vẫn không có token
     throw AgoraTokenException(
-        'Không thể kết nối đến máy chủ Token sau $maxRetries lần thử.');
+      'Không thể kết nối đến máy chủ Token sau $maxRetries lần thử.',
+    );
   }
 
   // ── Permissions ───────────────────────────────────────────────────────────
@@ -600,20 +616,22 @@ class AgoraRtcManager extends ChangeNotifier {
     }
   }
 
-// ── Dispose ───────────────────────────────────────────────────────────────
+  // ── Dispose ───────────────────────────────────────────────────────────────
   @override
   void dispose() {
     if (_disposed) return;
     _disposed = true;
 
     try {
-      _engine?.getMediaEngine().registerAudioFrameObserver(AudioFrameObserver(
-            onRecordAudioFrame: (channelId, audioFrame) {},
-            onPlaybackAudioFrame: (channelId, audioFrame) {},
-            onMixedAudioFrame: (channelId, audioFrame) {},
-            onEarMonitoringAudioFrame: (audioFrame) {},
-            onPlaybackAudioFrameBeforeMixing: (channelId, uid, audioFrame) {},
-          ));
+      _engine?.getMediaEngine().registerAudioFrameObserver(
+        AudioFrameObserver(
+          onRecordAudioFrame: (channelId, audioFrame) {},
+          onPlaybackAudioFrame: (channelId, audioFrame) {},
+          onMixedAudioFrame: (channelId, audioFrame) {},
+          onEarMonitoringAudioFrame: (audioFrame) {},
+          onPlaybackAudioFrameBeforeMixing: (channelId, uid, audioFrame) {},
+        ),
+      );
     } catch (_) {}
 
     _engine?.leaveChannel().catchError((_) {});

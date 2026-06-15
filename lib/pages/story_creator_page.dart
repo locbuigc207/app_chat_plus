@@ -3,8 +3,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:deepar_flutter_plus/deepar_flutter_plus.dart';
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/return_code.dart';
+// ĐÃ SỬA: Thay đổi đường dẫn import sang package chính thức ffmpeg_kit_flutter
+import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter/return_code.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -47,10 +48,12 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
       ..addListener(() {
         if (_tab.indexIsChanging) setState(() => _tabIndex = _tab.index);
       });
-    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
-    ));
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+      ),
+    );
   }
 
   @override
@@ -107,11 +110,12 @@ class _StoryCreatorPageState extends State<StoryCreatorPage>
             ),
             const Spacer(),
             _TabPill(
-                index: _tabIndex,
-                onSelect: (i) {
-                  _tab.animateTo(i);
-                  setState(() => _tabIndex = i);
-                }),
+              index: _tabIndex,
+              onSelect: (i) {
+                _tab.animateTo(i);
+                setState(() => _tabIndex = i);
+              },
+            ),
             const Spacer(),
             const SizedBox(width: 40),
           ],
@@ -162,8 +166,11 @@ class _TabPill extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(t.icon,
-                      size: 15, color: sel ? Colors.black : Colors.white70),
+                  Icon(
+                    t.icon,
+                    size: 15,
+                    color: sel ? Colors.black : Colors.white70,
+                  ),
                   const SizedBox(width: 5),
                   Text(
                     t.label,
@@ -228,115 +235,115 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
   ColorFilter _getColorFilter(StoryFilter f) {
     return switch (f) {
       StoryFilter.clarendon => const ColorFilter.matrix([
-          1.1,
-          0,
-          0,
-          0,
-          0,
-          0,
-          1.1,
-          0,
-          0,
-          0,
-          0,
-          0,
-          1.2,
-          0,
-          0,
-          0,
-          0,
-          0,
-          1,
-          0,
-        ]),
+        1.1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1.1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1.2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+      ]),
       StoryFilter.moon => const ColorFilter.matrix([
-          0.33,
-          0.33,
-          0.33,
-          0,
-          0,
-          0.33,
-          0.33,
-          0.33,
-          0,
-          0,
-          0.33,
-          0.33,
-          0.33,
-          0,
-          0,
-          0,
-          0,
-          0,
-          1,
-          0,
-        ]),
+        0.33,
+        0.33,
+        0.33,
+        0,
+        0,
+        0.33,
+        0.33,
+        0.33,
+        0,
+        0,
+        0.33,
+        0.33,
+        0.33,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+      ]),
       StoryFilter.lark => const ColorFilter.matrix([
-          1.0,
-          0,
-          0,
-          0,
-          15,
-          0,
-          1.05,
-          0,
-          0,
-          5,
-          0,
-          0,
-          0.9,
-          0,
-          -5,
-          0,
-          0,
-          0,
-          1,
-          0,
-        ]),
+        1.0,
+        0,
+        0,
+        0,
+        15,
+        0,
+        1.05,
+        0,
+        0,
+        5,
+        0,
+        0,
+        0.9,
+        0,
+        -5,
+        0,
+        0,
+        0,
+        1,
+        0,
+      ]),
       StoryFilter.juno => const ColorFilter.matrix([
-          1.15,
-          0,
-          0,
-          0,
-          0,
-          0,
-          1.0,
-          0,
-          0,
-          0,
-          0,
-          0,
-          0.9,
-          0,
-          0,
-          0,
-          0,
-          0,
-          1,
-          0,
-        ]),
+        1.15,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1.0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.9,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+      ]),
       StoryFilter.slumber => const ColorFilter.matrix([
-          0.85,
-          0.1,
-          0.05,
-          0,
-          10,
-          0.05,
-          0.85,
-          0.1,
-          0,
-          5,
-          0.1,
-          0.05,
-          0.85,
-          0,
-          5,
-          0,
-          0,
-          0,
-          0.9,
-          0,
-        ]),
+        0.85,
+        0.1,
+        0.05,
+        0,
+        10,
+        0.05,
+        0.85,
+        0.1,
+        0,
+        5,
+        0.1,
+        0.05,
+        0.85,
+        0,
+        5,
+        0,
+        0,
+        0,
+        0.9,
+        0,
+      ]),
       _ => const ColorFilter.mode(Colors.transparent, BlendMode.multiply),
     };
   }
@@ -370,16 +377,16 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
 
     try {
       final id = await context.read<StoryProvider>().createImageStory(
-            userId: widget.userId,
-            userName: widget.userName,
-            userPhotoUrl: widget.userPhotoUrl,
-            imageFile: _image!,
-            caption: _captionCtrl.text.trim().isEmpty
-                ? null
-                : _captionCtrl.text.trim(),
-            privacy: _privacy,
-            filter: _filter,
-          );
+        userId: widget.userId,
+        userName: widget.userName,
+        userPhotoUrl: widget.userPhotoUrl,
+        imageFile: _image!,
+        caption: _captionCtrl.text.trim().isEmpty
+            ? null
+            : _captionCtrl.text.trim(),
+        privacy: _privacy,
+        filter: _filter,
+      );
 
       if (!mounted) return;
       if (id != null) {
@@ -443,7 +450,7 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
                   end: Alignment.topCenter,
                   colors: [
                     Colors.black.withValues(alpha: 0.85),
-                    Colors.transparent
+                    Colors.transparent,
                   ],
                 ),
               ),
@@ -461,7 +468,7 @@ class _PhotoCreatorState extends State<_PhotoCreator> {
                   end: Alignment.bottomCenter,
                   colors: [
                     Colors.black.withValues(alpha: 0.4),
-                    Colors.transparent
+                    Colors.transparent,
                   ],
                 ),
               ),
@@ -611,7 +618,7 @@ class _TextCreatorState extends State<_TextCreator> {
     null,
     'Georgia',
     'Courier New',
-    'serif'
+    'serif',
   ];
   static const _fontLabels = ['Classic', 'Serif', 'Mono', 'Slab'];
 
@@ -627,9 +634,11 @@ class _TextCreatorState extends State<_TextCreator> {
   ];
 
   Color get _bg1 => Color(_backgrounds[_bgIdx][0]);
-  Color get _bg2 => Color(_backgrounds[_bgIdx].length > 1
-      ? _backgrounds[_bgIdx][1]
-      : _backgrounds[_bgIdx][0]);
+  Color get _bg2 => Color(
+    _backgrounds[_bgIdx].length > 1
+        ? _backgrounds[_bgIdx][1]
+        : _backgrounds[_bgIdx][0],
+  );
   Color get _tc => Color(_textColors[_colorIdx]);
   List<Color> get _gradColors =>
       _backgrounds[_bgIdx].map((c) => Color(c)).toList();
@@ -648,23 +657,25 @@ class _TextCreatorState extends State<_TextCreator> {
 
     try {
       final id = await context.read<StoryProvider>().createTextStory(
-            userId: widget.userId,
-            userName: widget.userName,
-            userPhotoUrl: widget.userPhotoUrl,
-            textContent: text,
-            backgroundColor: _bg1,
-            textColor: _tc,
-            fontFamily: _fontFamilies[_fontIdx],
-            fontSize: _fontSize,
-            privacy: _privacy,
-            gradientColors: _gradColors,
-          );
+        userId: widget.userId,
+        userName: widget.userName,
+        userPhotoUrl: widget.userPhotoUrl,
+        textContent: text,
+        backgroundColor: _bg1,
+        textColor: _tc,
+        fontFamily: _fontFamilies[_fontIdx],
+        fontSize: _fontSize,
+        privacy: _privacy,
+        gradientColors: _gradColors,
+      );
 
       if (!mounted) return;
       if (id != null) {
         Navigator.of(context).pop(true);
         Fluttertoast.showToast(
-            msg: '✨ Story shared!', backgroundColor: Colors.green.shade700);
+          msg: '✨ Story shared!',
+          backgroundColor: Colors.green.shade700,
+        );
       }
     } catch (e) {
       if (!mounted) return;
@@ -723,9 +734,10 @@ class _TextCreatorState extends State<_TextCreator> {
                       ? null
                       : [
                           Shadow(
-                              color: Colors.black.withValues(alpha: 0.5),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2)),
+                            color: Colors.black.withValues(alpha: 0.5),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
                         ],
                 ),
                 decoration: InputDecoration(
@@ -753,28 +765,30 @@ class _TextCreatorState extends State<_TextCreator> {
                     : Icons.font_download_outlined,
                 label: _fontLabels[_fontIdx],
                 onTap: () => setState(
-                    () => _fontIdx = (_fontIdx + 1) % _fontFamilies.length),
+                  () => _fontIdx = (_fontIdx + 1) % _fontFamilies.length,
+                ),
               ),
               const SizedBox(height: 12),
               _ColorDot(
                 color: _tc,
                 onTap: () => setState(
-                    () => _colorIdx = (_colorIdx + 1) % _textColors.length),
+                  () => _colorIdx = (_colorIdx + 1) % _textColors.length,
+                ),
               ),
               const SizedBox(height: 12),
               _SideAction(
                 icon: _align == TextAlign.center
                     ? Icons.format_align_center_rounded
                     : _align == TextAlign.left
-                        ? Icons.format_align_left_rounded
-                        : Icons.format_align_right_rounded,
+                    ? Icons.format_align_left_rounded
+                    : Icons.format_align_right_rounded,
                 label: 'Align',
                 onTap: () => setState(() {
                   _align = _align == TextAlign.center
                       ? TextAlign.left
                       : _align == TextAlign.left
-                          ? TextAlign.right
-                          : TextAlign.center;
+                      ? TextAlign.right
+                      : TextAlign.center;
                 }),
               ),
               const SizedBox(height: 12),
@@ -810,8 +824,11 @@ class _TextCreatorState extends State<_TextCreator> {
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Row(
                     children: [
-                      const Icon(Icons.text_decrease_rounded,
-                          color: Colors.white54, size: 18),
+                      const Icon(
+                        Icons.text_decrease_rounded,
+                        color: Colors.white54,
+                        size: 18,
+                      ),
                       Expanded(
                         child: SliderTheme(
                           data: SliderThemeData(
@@ -821,7 +838,8 @@ class _TextCreatorState extends State<_TextCreator> {
                             thumbColor: Colors.white,
                             overlayColor: Colors.white.withValues(alpha: 0.2),
                             thumbShape: const RoundSliderThumbShape(
-                                enabledThumbRadius: 8),
+                              enabledThumbRadius: 8,
+                            ),
                           ),
                           child: Slider(
                             value: _fontSize,
@@ -831,8 +849,11 @@ class _TextCreatorState extends State<_TextCreator> {
                           ),
                         ),
                       ),
-                      const Icon(Icons.text_increase_rounded,
-                          color: Colors.white54, size: 18),
+                      const Icon(
+                        Icons.text_increase_rounded,
+                        color: Colors.white54,
+                        size: 18,
+                      ),
                     ],
                   ),
                 ),
@@ -845,8 +866,9 @@ class _TextCreatorState extends State<_TextCreator> {
                     itemCount: _backgrounds.length,
                     itemBuilder: (_, i) {
                       final sel = i == _bgIdx;
-                      final colors =
-                          _backgrounds[i].map((c) => Color(c)).toList();
+                      final colors = _backgrounds[i]
+                          .map((c) => Color(c))
+                          .toList();
                       return GestureDetector(
                         onTap: () {
                           setState(() => _bgIdx = i);
@@ -873,9 +895,9 @@ class _TextCreatorState extends State<_TextCreator> {
                             boxShadow: sel
                                 ? [
                                     BoxShadow(
-                                        color:
-                                            colors.last.withValues(alpha: 0.6),
-                                        blurRadius: 10)
+                                      color: colors.last.withValues(alpha: 0.6),
+                                      blurRadius: 10,
+                                    ),
                                   ]
                                 : null,
                           ),
@@ -924,11 +946,13 @@ class _ArFilter {
     try {
       final manifestJson = await rootBundle.loadString('AssetManifest.json');
       final manifest = json.decode(manifestJson) as Map<String, dynamic>;
-      final effectPaths = manifest.keys
-          .where(
-              (k) => k.startsWith('assets/effects/') && k.endsWith('.deepar'))
-          .toList()
-        ..sort();
+      final effectPaths =
+          manifest.keys
+              .where(
+                (k) => k.startsWith('assets/effects/') && k.endsWith('.deepar'),
+              )
+              .toList()
+            ..sort();
 
       return [
         _ArFilter.none,
@@ -1000,10 +1024,7 @@ class _VideoCreatorState extends State<_VideoCreator>
   }
 
   Future<void> _initDeepAr() async {
-    final statuses = await [
-      Permission.camera,
-      Permission.microphone,
-    ].request();
+    final statuses = await [Permission.camera, Permission.microphone].request();
 
     if (statuses[Permission.camera]!.isGranted &&
         statuses[Permission.microphone]!.isGranted) {
@@ -1037,8 +1058,9 @@ class _VideoCreatorState extends State<_VideoCreator>
         if (path != null) {
           setState(() {
             _selectedAudioPath = path;
-            _selectedAudioName =
-                name.length > 15 ? '${name.substring(0, 15)}…' : name;
+            _selectedAudioName = name.length > 15
+                ? '${name.substring(0, 15)}…'
+                : name;
           });
           await _audioPlayer.setFilePath(path);
           Fluttertoast.showToast(msg: '✅ Music added!');
@@ -1133,22 +1155,25 @@ class _VideoCreatorState extends State<_VideoCreator>
       }
 
       final id = await context.read<StoryProvider>().createVideoStory(
-            userId: widget.userId,
-            userName: widget.userName,
-            userPhotoUrl: widget.userPhotoUrl,
-            videoFile: finalVideo,
-            privacy: _privacy,
-            videoDuration: Duration(
-                seconds: _recordSeconds > 0
-                    ? _recordSeconds.clamp(1, _maxSeconds)
-                    : 15),
-          );
+        userId: widget.userId,
+        userName: widget.userName,
+        userPhotoUrl: widget.userPhotoUrl,
+        videoFile: finalVideo,
+        privacy: _privacy,
+        videoDuration: Duration(
+          seconds: _recordSeconds > 0
+              ? _recordSeconds.clamp(1, _maxSeconds)
+              : 15,
+        ),
+      );
 
       if (!mounted) return;
       if (id != null) {
         Navigator.of(context).pop(true);
         Fluttertoast.showToast(
-            msg: '✨ Story shared!', backgroundColor: Colors.green.shade700);
+          msg: '✨ Story shared!',
+          backgroundColor: Colors.green.shade700,
+        );
       }
     } catch (e) {
       if (!mounted) return;
@@ -1193,23 +1218,28 @@ class _VideoCreatorState extends State<_VideoCreator>
                       shape: BoxShape.circle,
                       gradient: RadialGradient(
                         colors: [
-                          const Color(0xFFFF2D55)
-                              .withValues(alpha: 0.8 + _pulseCtrl.value * 0.2),
+                          const Color(
+                            0xFFFF2D55,
+                          ).withValues(alpha: 0.8 + _pulseCtrl.value * 0.2),
                           const Color(0xFFFF2D55).withValues(alpha: 0.2),
                         ],
                       ),
                     ),
-                    child: const Icon(Icons.videocam_rounded,
-                        color: Colors.white, size: 50),
+                    child: const Icon(
+                      Icons.videocam_rounded,
+                      color: Colors.white,
+                      size: 50,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 20),
                 const Text(
                   'Video ready',
                   style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700),
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -1254,8 +1284,10 @@ class _VideoCreatorState extends State<_VideoCreator>
                   children: [
                     CircularProgressIndicator(color: Color(0xFFFF2D55)),
                     SizedBox(height: 16),
-                    Text('Uploading…',
-                        style: TextStyle(color: Colors.white, fontSize: 16)),
+                    Text(
+                      'Uploading…',
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
                   ],
                 ),
               ),
@@ -1266,7 +1298,10 @@ class _VideoCreatorState extends State<_VideoCreator>
               left: 16,
               right: 16,
               child: _PublishButton(
-                  loading: false, onTap: _publish, label: 'Share Video'),
+                loading: false,
+                onTap: _publish,
+                label: 'Share Video',
+              ),
             ),
         ],
       );
@@ -1280,8 +1315,10 @@ class _VideoCreatorState extends State<_VideoCreator>
           children: [
             CircularProgressIndicator(color: ColorConstants.primaryColor),
             SizedBox(height: 16),
-            Text('Initializing camera…',
-                style: TextStyle(color: Colors.white54)),
+            Text(
+              'Initializing camera…',
+              style: TextStyle(color: Colors.white54),
+            ),
           ],
         ),
       );
@@ -1322,8 +1359,10 @@ class _VideoCreatorState extends State<_VideoCreator>
             right: 0,
             child: Center(
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.black54,
                   borderRadius: BorderRadius.circular(20),
@@ -1339,9 +1378,10 @@ class _VideoCreatorState extends State<_VideoCreator>
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: Color.lerp(
-                              Colors.red,
-                              Colors.red.withValues(alpha: 0.2),
-                              _pulseCtrl.value),
+                            Colors.red,
+                            Colors.red.withValues(alpha: 0.2),
+                            _pulseCtrl.value,
+                          ),
                         ),
                       ),
                     ),
@@ -1349,9 +1389,10 @@ class _VideoCreatorState extends State<_VideoCreator>
                     Text(
                       '${_recordSeconds}s / ${_maxSeconds}s',
                       style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700),
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ],
                 ),
@@ -1385,10 +1426,12 @@ class _VideoCreatorState extends State<_VideoCreator>
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               gradient: sel
-                                  ? const LinearGradient(colors: [
-                                      Color(0xFF2196F3),
-                                      Color(0xFF7C4DFF)
-                                    ])
+                                  ? const LinearGradient(
+                                      colors: [
+                                        Color(0xFF2196F3),
+                                        Color(0xFF7C4DFF),
+                                      ],
+                                    )
                                   : null,
                               color: sel ? null : Colors.white24,
                               border: Border.all(
@@ -1427,8 +1470,11 @@ class _VideoCreatorState extends State<_VideoCreator>
                       border: Border.all(color: Colors.white, width: 4),
                       color: Colors.white30,
                     ),
-                    child: const Icon(Icons.videocam,
-                        color: Colors.white, size: 36),
+                    child: const Icon(
+                      Icons.videocam,
+                      color: Colors.white,
+                      size: 36,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -1479,7 +1525,7 @@ class _MediaPickerPrompt extends StatelessWidget {
           colors: [
             primaryColor.withValues(alpha: 0.15),
             secondaryColor.withValues(alpha: 0.08),
-            Colors.black
+            Colors.black,
           ],
           stops: const [0.0, 0.4, 1.0],
         ),
@@ -1502,9 +1548,10 @@ class _MediaPickerPrompt extends StatelessWidget {
                   borderRadius: BorderRadius.circular(34),
                   boxShadow: [
                     BoxShadow(
-                        color: primaryColor.withValues(alpha: 0.5),
-                        blurRadius: 30,
-                        offset: const Offset(0, 10)),
+                      color: primaryColor.withValues(alpha: 0.5),
+                      blurRadius: 30,
+                      offset: const Offset(0, 10),
+                    ),
                   ],
                 ),
                 child: Icon(icon, color: Colors.white, size: 52),
@@ -1524,7 +1571,10 @@ class _MediaPickerPrompt extends StatelessWidget {
               Text(
                 subtitle,
                 style: const TextStyle(
-                    color: Colors.white54, fontSize: 14, height: 1.5),
+                  color: Colors.white54,
+                  fontSize: 14,
+                  height: 1.5,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 48),
@@ -1583,9 +1633,10 @@ class _BigPickBtn extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-                color: gradient.last.withValues(alpha: 0.4),
-                blurRadius: 16,
-                offset: const Offset(0, 6))
+              color: gradient.last.withValues(alpha: 0.4),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
           ],
         ),
         child: Column(
@@ -1593,11 +1644,14 @@ class _BigPickBtn extends StatelessWidget {
           children: [
             Icon(icon, color: Colors.white, size: 30),
             const SizedBox(height: 8),
-            Text(label,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14)),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+              ),
+            ),
           ],
         ),
       ),
@@ -1679,16 +1733,19 @@ class _ColorDot extends StatelessWidget {
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white, width: 2.5),
               boxShadow: [
-                BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 10)
+                BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 10),
               ],
             ),
           ),
           const SizedBox(height: 4),
-          const Text('Color',
-              style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600)),
+          const Text(
+            'Color',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
       ),
     );
@@ -1735,9 +1792,10 @@ class _PrivacyButton extends StatelessWidget {
           Text(
             label,
             style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 10,
-                fontWeight: FontWeight.w600),
+              color: Colors.white70,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+            ),
             textAlign: TextAlign.center,
             maxLines: 1,
           ),
@@ -1760,7 +1818,7 @@ class _CaptionInput extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.white24),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 20)
+          BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 20),
         ],
       ),
       child: TextField(
@@ -1773,8 +1831,11 @@ class _CaptionInput extends StatelessWidget {
           border: InputBorder.none,
           prefixIcon: Padding(
             padding: EdgeInsets.only(left: 14, right: 8),
-            child:
-                Icon(Icons.edit_note_rounded, color: Colors.white38, size: 22),
+            child: Icon(
+              Icons.edit_note_rounded,
+              color: Colors.white38,
+              size: 22,
+            ),
           ),
           prefixIconConstraints: BoxConstraints(minWidth: 0, minHeight: 0),
         ),
@@ -1805,8 +1866,11 @@ class _FilterStrip extends StatelessWidget {
     'Perpetua',
   ];
 
-  const _FilterStrip(
-      {required this.selected, required this.image, required this.onSelect});
+  const _FilterStrip({
+    required this.selected,
+    required this.image,
+    required this.onSelect,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1897,14 +1961,16 @@ class _PublishButton extends StatelessWidget {
                   end: Alignment.centerRight,
                 )
               : LinearGradient(
-                  colors: [Colors.grey.shade800, Colors.grey.shade700]),
+                  colors: [Colors.grey.shade800, Colors.grey.shade700],
+                ),
           borderRadius: BorderRadius.circular(28),
           boxShadow: active
               ? [
                   BoxShadow(
-                      color: const Color(0xFF7B61FF).withValues(alpha: 0.4),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8))
+                    color: const Color(0xFF7B61FF).withValues(alpha: 0.4),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
                 ]
               : null,
         ),
@@ -1914,13 +1980,18 @@ class _PublishButton extends StatelessWidget {
                   width: 22,
                   height: 22,
                   child: CircularProgressIndicator(
-                      color: Colors.white, strokeWidth: 2.5),
+                    color: Colors.white,
+                    strokeWidth: 2.5,
+                  ),
                 )
               : Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.auto_awesome_rounded,
-                        color: Colors.white, size: 18),
+                    const Icon(
+                      Icons.auto_awesome_rounded,
+                      color: Colors.white,
+                      size: 18,
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       label,

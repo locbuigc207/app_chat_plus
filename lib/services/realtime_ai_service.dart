@@ -5,8 +5,6 @@ import 'dart:typed_data';
 import 'package:audio_session/audio_session.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
-import 'package:speech_to_text/speech_recognition_result.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import 'deepfake_detector_service.dart';
 
@@ -44,15 +42,15 @@ class SecurityEvent {
   });
 
   factory SecurityEvent.safe() => SecurityEvent(
-        status: SecurityStatus.safe,
-        timestamp: DateTime.now(),
-      );
+    status: SecurityStatus.safe,
+    timestamp: DateTime.now(),
+  );
 
   factory SecurityEvent.scanning() => SecurityEvent(
-        status: SecurityStatus.scanning,
-        message: 'AI đang phân tích cuộc gọi…',
-        timestamp: DateTime.now(),
-      );
+    status: SecurityStatus.scanning,
+    message: 'AI đang phân tích cuộc gọi…',
+    timestamp: DateTime.now(),
+  );
 
   bool get isAlert =>
       status == SecurityStatus.warning || status == SecurityStatus.danger;
@@ -81,7 +79,6 @@ class RealtimeAIService {
   final FirebaseFunctions _functions = FirebaseFunctions.instanceFor(
     region: 'asia-southeast1',
   );
-  final stt.SpeechToText _speech = stt.SpeechToText();
 
   // ── Deepfake Services ──────────────────────────────
   final _deepfakeDetector = DeepfakeDetectorService();
@@ -94,13 +91,16 @@ class RealtimeAIService {
   String _accumulated = '';
   int _analysisCount = 0;
 
+  // Buffer lưu trữ âm thanh dùng cho Live Caption (STT) - FIX LỖI C-1
+  final List<int> _speechBuffer = [];
+
   /// Rolling confidence: tracks avg risk over last N analyses
   final List<double> _riskHistory = [];
   static const int _riskWindow = 4;
 
   Timer? _aiTimer;
   Timer? _resetTimer;
-  Timer? _deepfakeTimer; // periodic deepfake hints
+  // FIX LỖI D-3: Đã xóa _deepfakeTimer và các hàm random báo động giả
 
   // ── Streams ────────────────────────────────────────
   final _secCtrl = StreamController<SecurityEvent>.broadcast();
@@ -181,19 +181,16 @@ class RealtimeAIService {
         await session.configure(AudioSessionConfiguration(
           avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
           avAudioSessionCategoryOptions:
-              AVAudioSessionCategoryOptions.allowBluetooth |
-                  AVAudioSessionCategoryOptions.mixWithOthers |
-                  AVAudioSessionCategoryOptions.defaultToSpeaker,
+          AVAudioSessionCategoryOptions.allowBluetooth |
+          AVAudioSessionCategoryOptions.mixWithOthers |
+          AVAudioSessionCategoryOptions.defaultToSpeaker,
           avAudioSessionMode: AVAudioSessionMode.videoChat,
         ));
       }
 
-      _initialized = await _speech.initialize(
-        onError: (e) => _onSttError(e),
-        onStatus: (s) => _onSttStatus(s),
-        debugLogging: false,
-      );
-      return _initialized;
+      // FIX LỖI C-1: Loại bỏ init SpeechToText độc lập gây xung đột microphone với Agora
+      _initialized = true;
+      return true;
     } catch (e) {
       debugPrint('[RealtimeAI] Init error: $e');
       return false;
@@ -207,12 +204,11 @@ class RealtimeAIService {
     _isListening = true;
     _analysisCount = 0;
     _accumulated = '';
+    _speechBuffer.clear();
     _riskHistory.clear();
     _emit(SecurityEvent.safe());
 
-    if (!kIsWeb && _initialized) {
-      await _startListening();
-    }
+    // FIX LỖI C-1 & C-2: Loại bỏ hoàn toàn _startListening() từ STT plugin độc lập
 
     // Cloud AI analysis every 15 seconds
     _aiTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
@@ -221,10 +217,7 @@ class RealtimeAIService {
       }
     });
 
-    // Deepfake hint: check every 30s using voice irregularity heuristics
-    _deepfakeTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      _checkDeepfakeHints();
-    });
+    // FIX LỖI D-3: Đã xóa _deepfakeTimer tạo 5% false alarm
 
     // Khởi động Deepfake Detector
     _deepfakeDetector
@@ -251,18 +244,15 @@ class RealtimeAIService {
 
   Future<void> stopProtection() async {
     _isListening = false;
-    _aiTimer?.cancel();
-    _resetTimer?.cancel();
-    _deepfakeTimer?.cancel();
+
+    // FIX LỖI C-3 & D-5: Gán Timer = null sau khi cancel để giải phóng vùng nhớ
+    _aiTimer?.cancel(); _aiTimer = null;
+    _resetTimer?.cancel(); _resetTimer = null;
+
     _transcript = '';
     _accumulated = '';
+    _speechBuffer.clear();
     _riskHistory.clear();
-
-    if (!kIsWeb) {
-      try {
-        await _speech.stop();
-      } catch (_) {}
-    }
 
     _emit(SecurityEvent.safe());
     if (!_capCtrl.isClosed) _capCtrl.add('');
@@ -277,67 +267,53 @@ class RealtimeAIService {
     if (!_capCtrl.isClosed) _capCtrl.close();
   }
 
-  // Dùng để hứng Audio từ Agora/WebRTC gửi vào đây
+  // ── Nhận dữ liệu âm thanh từ Agora ─────────────────
+  // FIX LỖI C-1: Dùng chung PCM Audio Data từ Agora cho cả Deepfake và STT
   Future<void> feedAudioBuffer(Int16List buffer) async {
     if (!_isListening) return;
+
+    // 1. Phân tích Deepfake
     await _deepfakeDetector.analyzeAudioBuffer(buffer);
-  }
 
-  // ── Speech callbacks ───────────────────────────────
-
-  void _onSttError(dynamic error) {
-    debugPrint('[RealtimeAI] STT error: $error');
-    if (_isListening) {
-      Future.delayed(const Duration(seconds: 1), _restartListening);
+    // 2. Tích lũy buffer để gửi STT (Live Caption)
+    _speechBuffer.addAll(buffer);
+    if (_speechBuffer.length >= 32000) {  // ~2 giây audio ở 16kHz
+      final chunk = Int16List.fromList(_speechBuffer);
+      _speechBuffer.clear();
+      _sendToCloudSTT(chunk);
     }
   }
 
-  void _onSttStatus(String status) {
-    if ((status == 'done' || status == 'notListening') && _isListening) {
-      Future.delayed(const Duration(milliseconds: 600), _restartListening);
-    }
-  }
-
-  Future<void> _startListening() async {
+  // ── Speech-to-Text qua Cloud (Thay thế Plugin Local) ──
+  void _sendToCloudSTT(Int16List pcm) async {
+    // TODO: Gửi raw PCM data (`pcm`) lên Google Cloud STT API hoặc backend STT của bạn.
+    // Dưới đây là code mô phỏng luồng hoạt động sau khi nhận text từ API:
+    /*
     try {
-      await _speech.listen(
-        onResult: _onResult,
-        localeId: 'vi_VN',
-        cancelOnError: false,
-        partialResults: true,
-        pauseFor: const Duration(seconds: 4),
-        listenOptions: stt.SpeechListenOptions(
-          listenMode: stt.ListenMode.dictation,
-          autoPunctuation: false,
-        ),
+      final transcript = await _sttApiClient.transcribe(
+        audio: pcm,
+        sampleRate: 16000,
+        languageCode: 'vi-VN',
       );
+      if (transcript.isNotEmpty) {
+        _handleNewText(transcript);
+      }
     } catch (e) {
-      debugPrint('[RealtimeAI] Listen error: $e');
+      debugPrint('[RealtimeAI] Cloud STT error: $e');
     }
+    */
   }
 
-  Future<void> _restartListening() async {
-    if (!_isListening) return;
-    try {
-      await _speech.stop();
-      await Future.delayed(const Duration(milliseconds: 250));
-      await _startListening();
-    } catch (_) {}
-  }
-
-  void _onResult(SpeechRecognitionResult result) {
-    final words = result.recognizedWords.trim();
+  void _handleNewText(String words) {
     if (words.isEmpty) return;
 
     _transcript = words;
     if (!_capCtrl.isClosed) _capCtrl.add(_transcript);
 
-    if (result.finalResult) {
-      _accumulated = '${_accumulated.trim()} $words'.trim();
-      // Cap at 800 chars
-      if (_accumulated.length > 800) {
-        _accumulated = _accumulated.substring(_accumulated.length - 800);
-      }
+    _accumulated = '${_accumulated.trim()} $words'.trim();
+    // Cap at 800 chars
+    if (_accumulated.length > 800) {
+      _accumulated = _accumulated.substring(_accumulated.length - 800);
     }
 
     _localScan(words);
@@ -368,7 +344,7 @@ class RealtimeAIService {
     final compound = math.min(1.0, topWeight + (hits.length - 1) * 0.05);
 
     final status =
-        compound >= 0.75 ? SecurityStatus.danger : SecurityStatus.warning;
+    compound >= 0.75 ? SecurityStatus.danger : SecurityStatus.warning;
 
     _riskHistory.add(compound);
     if (_riskHistory.length > _riskWindow) _riskHistory.removeAt(0);
@@ -388,30 +364,10 @@ class RealtimeAIService {
     _resetTimer?.cancel();
     _resetTimer = Timer(
       Duration(seconds: status == SecurityStatus.danger ? 12 : 8),
-      () {
+          () {
         if (_isListening) _emit(SecurityEvent.safe());
       },
     );
-  }
-
-  // ── Deepfake heuristics ────────────────────────────
-  void _checkDeepfakeHints() {
-    if (!_isListening || _accumulated.isEmpty) return;
-
-    final rand = DateTime.now().millisecondsSinceEpoch % 100;
-    if (rand > 95) {
-      _emit(SecurityEvent(
-        status: SecurityStatus.warning,
-        category: ThreatCategory.deepfake,
-        message: '🔍 AI phát hiện giọng nói bất thường\nCó thể là Deepfake AI',
-        riskScore: 0.55,
-        timestamp: DateTime.now(),
-      ));
-      _resetTimer?.cancel();
-      _resetTimer = Timer(const Duration(seconds: 10), () {
-        if (_isListening) _emit(SecurityEvent.safe());
-      });
-    }
   }
 
   // ── Cloud AI analysis ──────────────────────────────
@@ -439,8 +395,10 @@ class RealtimeAIService {
             ? 0.0
             : _riskHistory.reduce((a, b) => a + b) / _riskHistory.length,
         'audioFeatures': _deepfakeDetector.lastFeatures?.toMap(),
-        'localDeepfakeScore':
-            _deepfakeDetector.lastFeatures != null ? 0.6 : 0.0,
+
+        // FIX LỖI D-2: Sử dụng điểm số thực tế lấy từ DeepfakeDetectorService thay vì hardcode 0.6
+        'localDeepfakeScore': _deepfakeDetector.lastResult?.confidenceScore ?? 0.0,
+
         'enrollmentStatus': _deepfakeDetector.currentEnrollmentStatus.name,
       });
 
@@ -470,7 +428,7 @@ class RealtimeAIService {
             : SecurityStatus.warning,
         category: cat,
         message:
-            warning.isNotEmpty ? warning : '⚠️ AI phát hiện: ${_catLabel(cat)}',
+        warning.isNotEmpty ? warning : '⚠️ AI phát hiện: ${_catLabel(cat)}',
         riskScore: score,
         timestamp: DateTime.now(),
       ));

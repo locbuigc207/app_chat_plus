@@ -6,8 +6,8 @@ publish_to: none
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.3.0 <4.0.0"
-  flutter: ">=3.19.0 <4.0.0"
+  sdk: ">=3.12.0 <4.0.0"
+  flutter: ">=3.44.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -29,7 +29,6 @@ dependencies:
 
   # ── Authentication ────────────────────────────────────────────────────────
   google_sign_in: ^6.2.1
-  # google_sign_in_web: ^0.12.4+2  # XÓA — chỉ cần cho web
   local_auth: ^3.0.0
 
   # ── State management ──────────────────────────────────────────────────────
@@ -56,12 +55,10 @@ dependencies:
   image: ^4.2.0
 
   # ── Audio & Voice ─────────────────────────────────────────────────────────
-  flutter_sound: ^9.16.0   # XÓA — conflict audio session với just_audio
-  audioplayers: ^6.0.0     # XÓA — redundant với just_audio
   audio_session: ^0.1.21
   just_audio: ^0.10.5
   audio_waveforms: ^2.0.2
-  record: ^6.2.1             # NÂNG LÊN từ ^5.0.4 — fix lỗi build
+  record: ^6.2.1
   noise_meter: ^5.1.0
   speech_to_text: ^7.3.0
 
@@ -109,7 +106,7 @@ dependencies:
   mobile_scanner: ^7.1.0
   camera: ^0.11.0+2
   deepar_flutter_plus: ^0.2.1
-  ffmpeg_kit_flutter_new: ^4.1.0
+  ffmpeg_kit_flutter: ^6.0.3
   google_mlkit_face_detection: ^0.11.0
 
   # ── Crypto & Security ─────────────────────────────────────────────────────
@@ -130,6 +127,7 @@ dependencies:
   firebase_ai: ^3.12.2
   google_generative_ai: ^0.4.7
   firebase_remote_config: ^6.5.2
+  google_sign_in_web: ^0.12.4+4
 
 dev_dependencies:
   flutter_test:
@@ -144,7 +142,7 @@ dependency_overrides:
   permission_handler: ^12.0.0
   firebase_core: ^4.1.0
   firebase_auth: ^6.0.0
-  record_linux: ^1.1.0   # FIX lỗi build — record_linux 0.7.2 incompatible
+  record_linux: ^1.1.0
 
 flutter:
   uses-material-design: true

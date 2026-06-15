@@ -358,22 +358,44 @@ class BubbleServiceV2 {
       final raw = _prefs?.getString(_prefKey);
       if (raw == null || raw.isEmpty) return;
 
-      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      final dynamic decoded = jsonDecode(raw);
+
+      // ĐÃ SỬA: Đảm bảo payload trả về phải là một Map trước khi xử lý để tránh lỗi TypeError
+      if (decoded is! Map) {
+        debugPrint('⚠️ Saved bubbles format invalid');
+        await _clearSavedBubbles();
+        return;
+      }
+
       int restored = 0;
       for (final entry in decoded.entries) {
         try {
-          final data = BubbleData.fromJson(
-              Map<String, dynamic>.from(entry.value as Map));
+          if (entry.value is! Map) continue;
+
+          final mapData = Map<String, dynamic>.from(entry.value as Map);
+
+          // ĐÃ SỬA: Null-safe parse cho trường timestamp
+          if (mapData['timestamp'] == null) {
+            mapData['timestamp'] = DateTime.now().toIso8601String();
+          }
+
+          final data = BubbleData.fromJson(mapData);
+
           if (!data.isValid || data.isStale) continue;
           _activeBubbles[entry.key] = data;
           restored++;
         } catch (e) {
+          // Bắt lỗi riêng cho từng bong bóng, không xóa trắng nếu chỉ 1 bong bóng lỗi
           debugPrint('⚠️ Failed to restore bubble ${entry.key}: $e');
         }
       }
+
       if (restored > 0) {
         _emitActiveBubbles();
         debugPrint('📦 Restored $restored bubble(s)');
+      } else {
+        // Nếu không restore được bong bóng nào hợp lệ thì mới xóa rác
+        await _clearSavedBubbles();
       }
     } catch (e) {
       debugPrint('❌ _restoreBubbles: $e');

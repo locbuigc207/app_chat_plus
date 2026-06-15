@@ -22,7 +22,7 @@ class UnifiedBubbleService {
 
   // ── Singleton ─────────────────────────────────────────────────────────────
   static final UnifiedBubbleService _instance =
-      UnifiedBubbleService._internal();
+  UnifiedBubbleService._internal();
   factory UnifiedBubbleService() => _instance;
 
   UnifiedBubbleService._internal() {
@@ -83,17 +83,23 @@ class UnifiedBubbleService {
 
     _initCompleter = Completer<void>();
     try {
-      _impl = await _detectImpl();
+      // Thêm timeout cho _detectImpl để tránh treo hệ thống vĩnh viễn (Vấn đề 14)
+      _impl = await _detectImpl().timeout(const Duration(seconds: 3));
       debugPrint('✅ UnifiedBubbleService: using ${_impl.name}');
+    } catch (e, st) {
+      debugPrint('❌ UnifiedBubbleService init failed/timeout: $e\n$st');
+      // Fallback an toàn nếu có lỗi khởi tạo
+      _impl = Platform.isAndroid
+          ? BubbleImplementation.windowManager
+          : BubbleImplementation.none;
+      debugPrint('⚠️ Falling back to ${_impl.name}');
+    } finally {
       _ensureCtrl();
       _forwardStreams();
       _isInitialized = true;
       _initCompleter!.complete();
-    } catch (e, st) {
-      debugPrint('❌ UnifiedBubbleService init failed: $e\n$st');
-      _initCompleter!.completeError(e, st);
-    } finally {
       _initCompleter = null;
+      _drainQueue(); // Kích hoạt chạy lại hàng đợi sau khi đã init xong
     }
   }
 
@@ -120,7 +126,7 @@ class UnifiedBubbleService {
 
     void forwardClick(Stream<BubbleClickEvent> src) {
       _subs.add(src.listen(
-        (e) {
+            (e) {
           if (!(_clickCtrl?.isClosed ?? true)) _clickCtrl!.add(e);
         },
         onError: (Object err) => debugPrint('⚠️ click stream error: $err'),
@@ -130,7 +136,7 @@ class UnifiedBubbleService {
 
     void forwardBubbles(Stream<Map<String, BubbleData>> src) {
       _subs.add(src.listen(
-        (b) {
+            (b) {
           if (!(_bubblesCtrl?.isClosed ?? true)) _bubblesCtrl!.add(b);
         },
         onError: (Object err) => debugPrint('⚠️ bubbles stream error: $err'),
@@ -145,7 +151,7 @@ class UnifiedBubbleService {
       forwardClick(_windowMgr.bubbleClickStream);
       forwardBubbles(_windowMgr.activeBubblesStream);
       _subs.add(_windowMgr.miniChatMessageStream.listen(
-        (m) {
+            (m) {
           if (!(_miniMsgCtrl?.isClosed ?? true)) _miniMsgCtrl!.add(m);
         },
         cancelOnError: false,
@@ -212,29 +218,37 @@ class UnifiedBubbleService {
       });
 
   Future<bool> hideChatBubble(String userId) => _queue<bool>(() async {
-        if (_impl == BubbleImplementation.bubbleApi) {
-          return _bubbleApi.hideBubble(userId);
-        } else if (_impl == BubbleImplementation.windowManager) {
-          return _windowMgr.hideChatBubble(userId);
-        }
-        return false;
-      }).then((v) => v ?? false);
+    if (_impl == BubbleImplementation.bubbleApi) {
+      return _bubbleApi.hideBubble(userId);
+    } else if (_impl == BubbleImplementation.windowManager) {
+      return _windowMgr.hideChatBubble(userId);
+    }
+    return false;
+  }).then((v) => v ?? false);
 
   Future<void> hideAllBubbles() => _queue(() async {
-        if (_impl == BubbleImplementation.bubbleApi) {
-          await _bubbleApi.hideAllBubbles();
-        } else if (_impl == BubbleImplementation.windowManager) {
-          await _windowMgr.hideAllBubbles();
-        }
-      });
+    if (_impl == BubbleImplementation.bubbleApi) {
+      await _bubbleApi.hideAllBubbles();
+    } else if (_impl == BubbleImplementation.windowManager) {
+      await _windowMgr.hideAllBubbles();
+    }
+  });
 
   Future<void> clearUnread(String userId) => _queue(() async {
-        if (_impl == BubbleImplementation.bubbleApi) {
-          await _bubbleApi.clearUnread(userId);
-        } else if (_impl == BubbleImplementation.windowManager) {
-          await _windowMgr.clearUnread(userId);
-        }
-      });
+    if (_impl == BubbleImplementation.bubbleApi) {
+      await _bubbleApi.clearUnread(userId);
+    } else if (_impl == BubbleImplementation.windowManager) {
+      await _windowMgr.clearUnread(userId);
+    }
+  });
+
+  // ĐÃ THÊM: Xử lý ẩn Bubble Overlay khi rơi vào trạng thái Split-screen (Vấn đề 15)
+  Future<void> onAppHidden() => _queue(() async {
+    if (_impl == BubbleImplementation.windowManager) {
+      await _windowMgr.hideAllBubbles();
+      debugPrint('🙈 App hidden (Split screen) - WindowManager Bubbles auto-hidden');
+    }
+  });
 
   // ── Mini Chat (WindowManager only) ────────────────────────────────────────
 
@@ -256,11 +270,11 @@ class UnifiedBubbleService {
       }).then((v) => v ?? false);
 
   Future<bool> hideMiniChat() => _queue<bool>(() async {
-        if (_impl == BubbleImplementation.windowManager) {
-          return _windowMgr.hideMiniChat();
-        }
-        return false;
-      }).then((v) => v ?? false);
+    if (_impl == BubbleImplementation.windowManager) {
+      return _windowMgr.hideMiniChat();
+    }
+    return false;
+  }).then((v) => v ?? false);
 
   // ── Advanced (BubbleApi only) ──────────────────────────────────────────────
 
@@ -378,11 +392,11 @@ class UnifiedBubbleService {
   }
 
   String get implementationInfo => switch (_impl) {
-        BubbleImplementation.bubbleApi => 'Bubble API (Android 11+)',
-        BubbleImplementation.windowManager => 'WindowManager (Android < 11)',
-        BubbleImplementation.none => 'Not supported',
-        BubbleImplementation.unknown => 'Detecting...',
-      };
+    BubbleImplementation.bubbleApi => 'Bubble API (Android 11+)',
+    BubbleImplementation.windowManager => 'WindowManager (Android < 11)',
+    BubbleImplementation.none => 'Not supported',
+    BubbleImplementation.unknown => 'Detecting...',
+  };
 
   String getMessageTypeFromContent(String content, int typeCode) =>
       _resolveType(content, typeCode);
@@ -395,7 +409,15 @@ class UnifiedBubbleService {
     final completer = Completer<T?>();
     _opQueue.add(_QueuedOp(run: () async {
       try {
-        completer.complete(await op());
+        // ĐÃ SỬA: Thêm giới hạn Timeout 5s để Queue không bị kẹt vĩnh viễn (Lỗi 16)
+        final result = await op().timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            debugPrint('⚠️ Queue operation timeout after 5s');
+            throw TimeoutException('Bubble operation timed out');
+          },
+        );
+        completer.complete(result);
       } catch (e, st) {
         completer.completeError(e, st);
       }
@@ -408,6 +430,11 @@ class UnifiedBubbleService {
     if (_processingQueue) return;
     _processingQueue = true;
     try {
+      // ĐÃ SỬA: Chờ _initialize hoàn tất để tránh xả hàng đợi khi hệ thống chưa ready
+      if (!_isInitialized && _initCompleter != null) {
+        await _initCompleter!.future.catchError((_) {});
+      }
+
       while (_opQueue.isNotEmpty) {
         final op = _opQueue.removeAt(0);
         try {
@@ -426,14 +453,14 @@ class UnifiedBubbleService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   String _resolveType(String content, int typeCode) => switch (typeCode) {
-        1 => 'image',
-        2 => 'text',
-        3 => 'voice',
-        4 => 'location',
-        _ when content.contains('maps.google') || content.contains('📍') =>
-          'location',
-        _ => 'text',
-      };
+    1 => 'image',
+    2 => 'text',
+    3 => 'voice',
+    4 => 'location',
+    _ when content.contains('maps.google') || content.contains('📍') =>
+    'location',
+    _ => 'text',
+  };
 
   // ═══════════════════════════════════════════════════════════════════════════
   // LIFECYCLE

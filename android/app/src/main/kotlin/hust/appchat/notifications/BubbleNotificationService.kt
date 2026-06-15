@@ -10,20 +10,6 @@ import hust.appchat.shortcuts.AvatarLoader
 import hust.appchat.shortcuts.ShortcutHelper
 import kotlinx.coroutines.*
 
-/**
- * BubbleNotificationService — Central orchestrator for chat bubbles.
- *
- * Responsibilities:
- * • Android 11+: Create/push shortcuts → show Bubble API notification.
- * • Android < 11: Delegate to BubbleManager (WindowManager overlay).
- * • Manage active-bubble set, stats, avatar cache, and shortcut sync.
- * • Expose lifecycle hooks (onAppPaused / onAppResumed).
- *
- * Threading & Architecture:
- * • All coroutines run on an IO Dispatcher with a SupervisorJob (one failure
- * doesn't cancel siblings).
- * • activeBubbles tracking is thread-safe using synchronized blocks.
- */
 @android.annotation.SuppressLint("NewApi")
 object BubbleNotificationService {
 
@@ -130,9 +116,15 @@ object BubbleNotificationService {
         message: String,
         avatarUrl: String
     ) {
-        // 1. Preload avatar
+        // ĐÃ SỬA: Bao bọc try-catch và timeout để tránh văng app ngầm nếu quá tải mạng khi tải ảnh
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            AvatarLoader.loadAvatarIconAsync(context, avatarUrl, userName)
+            try {
+                withTimeout(3000L) {
+                    AvatarLoader.loadAvatarIconAsync(context, avatarUrl, userName)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "⚠️ Failed to load avatar async, using fallback: $e")
+            }
         }
 
         // 2. Ensure shortcut exists (required for Bubble API)
@@ -295,10 +287,15 @@ object BubbleNotificationService {
         Log.d(TAG, "🔗 Shortcut missing, creating for: $userName")
         ShortcutHelper.createShortcut(context, userId, userName, avatarUrl)
 
-        delay(400) // Brief delay to let the system index the shortcut
+        // ĐÃ SỬA: Chờ tối đa 2 giây bằng Polling thay vì hard-delay 400ms dễ gây lỗi crash
+        var attempts = 0
+        while (!ShortcutHelper.shortcutExists(context, userId) && attempts < 40) {
+            delay(50)
+            attempts++
+        }
 
         if (!ShortcutHelper.shortcutExists(context, userId)) {
-            Log.e(TAG, "❌ Shortcut creation failed for $userName")
+            Log.e(TAG, "❌ Shortcut creation failed/timeout for $userName")
             throw IllegalStateException("Shortcut not created")
         }
     }
@@ -458,13 +455,25 @@ object BubbleNotificationService {
     private fun syncState(context: Context) {
         scope.launch {
             try {
-                val managerKeys = BubbleManager.getActiveBubbles().keys
+                val managerBubbles = BubbleManager.getActiveBubbles()
+                val managerKeys = managerBubbles.keys
+
                 synchronized(activeBubbles) {
                     activeBubbles.clear()
                     activeBubbles.addAll(managerKeys)
                 }
+
                 syncShortcuts(context)
-                Log.d(TAG, "✅ State synced: ${managerKeys.size} bubbles active")
+
+                // ĐÃ SỬA: Restore (vẽ lại) bong bóng chat bằng Bubble API cho thiết bị Android 11+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    managerBubbles.forEach { (uid, bubbleData) ->
+                        val lastMsg = BubbleNotificationManager.getLastMessage(uid)?.text ?: ""
+                        updateBubbleNotification(context, uid, bubbleData.userName, lastMsg, bubbleData.avatarUrl)
+                    }
+                }
+
+                Log.d(TAG, "✅ State synced & restored: ${managerKeys.size} bubbles active")
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Sync bubble state failed: $e")
             }

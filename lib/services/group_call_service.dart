@@ -15,8 +15,9 @@ class GroupCallService {
 
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFunctions _functions =
-      FirebaseFunctions.instanceFor(region: 'asia-southeast1');
+  final FirebaseFunctions _functions = FirebaseFunctions.instanceFor(
+    region: 'asia-southeast1',
+  );
 
   static const String _col = 'group_calls';
   static const int _timeoutSeconds = 60;
@@ -29,8 +30,8 @@ class GroupCallService {
   final Map<String, int> _lastReactionTimes = {};
   static const int _reactionCooldownMs = 400;
 
-  // Cache cho cancelListeners (dùng từ main.dart)
-  final List<StreamSubscription> _activeSubscriptions = [];
+  // FIX LỖI 6: Đã xóa hoàn toàn mảng _activeSubscriptions vì đây là dead code gây memory leak.
+  // Các hàm trả về Stream tự quản lý Subscription ở phía UI.
 
   String? get _uid => _auth.currentUser?.uid;
   CollectionReference<Map<String, dynamic>> get _calls => _db.collection(_col);
@@ -125,13 +126,7 @@ class GroupCallService {
         debugPrint('⚠️ [GroupCallService] system message: $e');
       }
 
-      unawaited(sendCallInviteNotification(
-        callId: callId,
-        groupName: groupName,
-        initiatorName: initiatorName,
-        callType: callType,
-        memberIds: otherIds,
-      ));
+      // FIX LỖI 7: Đã xóa dòng gọi `sendCallInviteNotification` vì Cloud Function đã tự động xử lý.
 
       _scheduleTimeout(callId);
       debugPrint('✅ [GroupCallService] Call initiated: $callId');
@@ -266,8 +261,9 @@ class GroupCallService {
         final call = _parse(doc);
         if (call == null) return;
 
-        final remaining =
-            call.participants.where((p) => p.userId != uid).toList();
+        final remaining = call.participants
+            .where((p) => p.userId != uid)
+            .toList();
 
         if (remaining.isEmpty) {
           final duration = DateTime.now().difference(call.createdAt).inSeconds;
@@ -328,21 +324,21 @@ class GroupCallService {
             .doc(call.groupId)
             .collection(call.groupId)
             .add({
-          'idFrom': _uid ?? '',
-          'idTo': call.groupId,
-          'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
-          'content': jsonEncode(
-            GroupCallMessageHelper.buildCallEndContent(
-              callId: callId,
-              callType: call.callType,
-              durationSeconds: duration,
-              participantCount: call.participantCount,
-              recordingUrl: recordingUrl,
-            ),
-          ),
-          'type': GroupCallMessageTypes.groupCallEnded,
-          'isRead': false,
-        });
+              'idFrom': _uid ?? '',
+              'idTo': call.groupId,
+              'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
+              'content': jsonEncode(
+                GroupCallMessageHelper.buildCallEndContent(
+                  callId: callId,
+                  callType: call.callType,
+                  durationSeconds: duration,
+                  participantCount: call.participantCount,
+                  recordingUrl: recordingUrl,
+                ),
+              ),
+              'type': GroupCallMessageTypes.groupCallEnded,
+              'isRead': false,
+            });
       } catch (e) {
         debugPrint('⚠️ [GroupCallService] ended system message: $e');
       }
@@ -427,7 +423,8 @@ class GroupCallService {
 
         final updated = call.participants
             .map(
-                (p) => p.userId == targetUserId ? p.copyWith(isMuted: mute) : p)
+              (p) => p.userId == targetUserId ? p.copyWith(isMuted: mute) : p,
+            )
             .toList();
 
         tx.update(_calls.doc(callId), {
@@ -456,8 +453,9 @@ class GroupCallService {
         final self = call.getParticipant(uid);
         if (self == null || !self.isAdmin) return;
 
-        final updated =
-            call.participants.where((p) => p.userId != targetUserId).toList();
+        final updated = call.participants
+            .where((p) => p.userId != targetUserId)
+            .toList();
 
         tx.update(_calls.doc(callId), {
           'participants': updated.map((p) => p.toJson()).toList(),
@@ -473,9 +471,7 @@ class GroupCallService {
   // ── Pin participant ────────────────────────────────────────────────────────
   Future<void> pinParticipant(String callId, String? userId) async {
     try {
-      await _calls.doc(callId).update({
-        'pinnedUserId': userId,
-      });
+      await _calls.doc(callId).update({'pinnedUserId': userId});
     } catch (e) {
       debugPrint('❌ [GroupCallService] pinParticipant: $e');
     }
@@ -553,8 +549,9 @@ class GroupCallService {
         var recentReactions = List<dynamic>.from(data['recentReactions'] ?? []);
         recentReactions.add(r.toJson());
         if (recentReactions.length > 30) {
-          recentReactions =
-              recentReactions.sublist(recentReactions.length - 30);
+          recentReactions = recentReactions.sublist(
+            recentReactions.length - 30,
+          );
         }
         tx.update(_calls.doc(callId), {'recentReactions': recentReactions});
       });
@@ -579,8 +576,9 @@ class GroupCallService {
         final updated = call.participants
             .map((p) => p.userId == uid ? p : p.copyWith(isMuted: true))
             .toList();
-        tx.update(_calls.doc(callId),
-            {'participants': updated.map((p) => p.toJson()).toList()});
+        tx.update(_calls.doc(callId), {
+          'participants': updated.map((p) => p.toJson()).toList(),
+        });
       });
     } catch (e) {
       debugPrint('❌ [GroupCallService] muteAll: $e');
@@ -601,11 +599,13 @@ class GroupCallService {
         if (self == null || !self.isAdmin) return;
 
         final updated = call.participants
-            .map((p) =>
-                p.userId == targetUserId ? p.copyWith(isCoHost: true) : p)
+            .map(
+              (p) => p.userId == targetUserId ? p.copyWith(isCoHost: true) : p,
+            )
             .toList();
-        tx.update(_calls.doc(callId),
-            {'participants': updated.map((p) => p.toJson()).toList()});
+        tx.update(_calls.doc(callId), {
+          'participants': updated.map((p) => p.toJson()).toList(),
+        });
       });
     } catch (e) {
       debugPrint('❌ [GroupCallService] promoteToCoHost: $e');
@@ -626,9 +626,7 @@ class GroupCallService {
 
   Future<void> setRecordingState(String callId, bool isRecording) async {
     try {
-      await _calls.doc(callId).update({
-        'isRecording': isRecording,
-      });
+      await _calls.doc(callId).update({'isRecording': isRecording});
     } catch (e) {
       debugPrint('❌ [GroupCallService] setRecordingState: $e');
     }
@@ -639,12 +637,9 @@ class GroupCallService {
     required String channelName,
   }) async {
     try {
-      final result =
-          await _functions.httpsCallable('startGroupCallRecording').call({
-        'callId': callId,
-        'channelName': channelName,
-        'uid': '0',
-      });
+      final result = await _functions
+          .httpsCallable('startGroupCallRecording')
+          .call({'callId': callId, 'channelName': channelName, 'uid': '0'});
       final data = result.data as Map<String, dynamic>;
       final resourceId = data['resourceId'] as String?;
       final sid = data['sid'] as String?;
@@ -665,12 +660,9 @@ class GroupCallService {
     required String sid,
   }) async {
     try {
-      final result =
-          await _functions.httpsCallable('stopGroupCallRecording').call({
-        'callId': callId,
-        'resourceId': resourceId,
-        'sid': sid,
-      });
+      final result = await _functions
+          .httpsCallable('stopGroupCallRecording')
+          .call({'callId': callId, 'resourceId': resourceId, 'sid': sid});
       final data = result.data as Map<String, dynamic>;
       final url = data['recordingUrl'] as String? ?? '';
       await updateRecordingUrl(callId, url);
@@ -682,7 +674,6 @@ class GroupCallService {
   }
 
   // ── FCM Notifications ──────────────────────────────────────────────────────
-  /// Ghi FCM trigger document để Cloud Function gửi notification.
   Future<void> sendCallInviteNotification({
     required String callId,
     required String groupName,
@@ -690,19 +681,12 @@ class GroupCallService {
     required GroupCallType callType,
     required List<String> memberIds,
   }) async {
-    try {
-      await _db.collection('_fcm_triggers').add({
-        'type': 'group_call_invite',
-        'callId': callId,
-        'groupName': groupName,
-        'initiatorName': initiatorName,
-        'callType': callType.name,
-        'memberIds': memberIds,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      debugPrint('❌ [GroupCallService] sendCallInviteNotification: $e');
-    }
+    // FIX LỖI 7: Cloud Function đã tự động xử lý FCM Invite.
+    // Phương thức này giữ lại signature để không gây vỡ code ở các file khác nếu có gọi đến,
+    // nhưng nội dung đã được dọn dẹp để tiết kiệm quota Firestore.
+    debugPrint(
+      '✅ [GroupCallService] FCM invites handled by Cloud Functions for call: $callId',
+    );
   }
 
   // ── Streams ────────────────────────────────────────────────────────────────
@@ -737,16 +721,16 @@ class GroupCallService {
         .limit(10)
         .snapshots()
         .map((snap) {
-      final calls = <GroupCallModel>[];
-      for (final doc in snap.docs) {
-        final c = _parse(doc);
-        if (c == null) continue;
-        final isParticipant = c.participants.any((p) => p.userId == uid);
-        final isInvited = c.invitedUserIds.contains(uid);
-        if (isParticipant || isInvited) calls.add(c);
-      }
-      return calls;
-    });
+          final calls = <GroupCallModel>[];
+          for (final doc in snap.docs) {
+            final c = _parse(doc);
+            if (c == null) continue;
+            final isParticipant = c.participants.any((p) => p.userId == uid);
+            final isInvited = c.invitedUserIds.contains(uid);
+            if (isParticipant || isInvited) calls.add(c);
+          }
+          return calls;
+        });
   }
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
@@ -759,8 +743,10 @@ class GroupCallService {
     }
   }
 
-  Future<List<GroupCallModel>> getGroupCallHistory(String groupId,
-      {int limit = 20}) async {
+  Future<List<GroupCallModel>> getGroupCallHistory(
+    String groupId, {
+    int limit = 20,
+  }) async {
     try {
       final snap = await _calls
           .where('groupId', isEqualTo: groupId)
@@ -824,19 +810,19 @@ class GroupCallService {
               .doc(call.groupId)
               .collection(call.groupId)
               .add({
-            'idFrom': call.initiatorId,
-            'idTo': call.groupId,
-            'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
-            'content': jsonEncode(
-              GroupCallMessageHelper.buildCallMissedContent(
-                callId: callId,
-                callType: call.callType,
-                initiatorName: call.initiatorName,
-              ),
-            ),
-            'type': GroupCallMessageTypes.groupCallMissed,
-            'isRead': false,
-          });
+                'idFrom': call.initiatorId,
+                'idTo': call.groupId,
+                'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
+                'content': jsonEncode(
+                  GroupCallMessageHelper.buildCallMissedContent(
+                    callId: callId,
+                    callType: call.callType,
+                    initiatorName: call.initiatorName,
+                  ),
+                ),
+                'type': GroupCallMessageTypes.groupCallMissed,
+                'isRead': false,
+              });
         } catch (e) {
           debugPrint('⚠️ [GroupCallService] missed system message: $e');
         }
@@ -846,23 +832,14 @@ class GroupCallService {
     }
   }
 
-  void cancelListeners() {
-    for (final sub in _activeSubscriptions) {
-      sub.cancel();
-    }
-    _activeSubscriptions.clear();
-  }
-
   void dispose() {
     for (final t in _timeoutTimers.values) {
       t.cancel();
     }
     _timeoutTimers.clear();
 
-    for (final sub in _activeSubscriptions) {
-      sub.cancel();
-    }
-    _activeSubscriptions.clear();
+    // FIX LỖI 6: Đã dọn dẹp các logic clear/cancel mảng _activeSubscriptions tại đây.
+
     _lastReactionTimes.clear();
   }
 }
