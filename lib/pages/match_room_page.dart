@@ -10,6 +10,7 @@ import 'package:flutter_chat_demo/providers/game_state_provider.dart';
 import 'package:flutter_chat_demo/providers/theme_provider.dart';
 import 'package:flutter_chat_demo/services/game_firebase_service.dart';
 import 'package:flutter_chat_demo/widgets/caro_infinite_board.dart';
+import 'package:flutter_chat_demo/widgets/chess_board_widget.dart'; // Đã thêm thư viện Cờ vua
 import 'package:flutter_chat_demo/widgets/game_replay_controls.dart';
 import 'package:flutter_chat_demo/widgets/spectator_panel.dart';
 import 'package:provider/provider.dart';
@@ -115,6 +116,10 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
     _gs = context.read<GameStateProvider>();
     await _gs.initialize(
         matchId: widget.matchId, currentUserId: widget.currentUserId);
+
+    // SỬA LỖI 7: Guard mounted sau quá trình await initialize
+    if (!mounted) return;
+
     _gs.addListener(_onStateChanged);
 
     // Auto-start replay nếu vào phòng đã kết thúc
@@ -143,7 +148,9 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
       // Update invite message status
       if (match.inviteMessageId != null) {
         try {
-          await context.read<ChatProvider>().updateGameMessageStatus(
+          // Lưu cache Provider trước khi xử lý nếu có thao tác rủi ro
+          final chatProvider = context.read<ChatProvider>();
+          await chatProvider.updateGameMessageStatus(
               groupChatId: widget.groupId,
               messageId: match.inviteMessageId!,
               newStatus: MatchStatus.aborted);
@@ -184,6 +191,7 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
     if (!shouldSend) return;
 
     try {
+      // Đã lấy Provider lên đầu khối try để bảo đảm cache trước khi await (Sửa lỗi 8)
       final chatProvider = context.read<ChatProvider>();
 
       final payload = GameResultPayload(
@@ -461,23 +469,35 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
     );
   }
 
+  // SỬA LỖI 2 & 9: Phân loại linh hoạt Cờ Vua và Caro
   Widget _buildBoard(GameStateProvider gs, GameMatch match) => Container(
         margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         decoration: BoxDecoration(
             color: const Color(0xFF0A0C12),
             borderRadius: BorderRadius.circular(16)),
         clipBehavior: Clip.hardEdge,
-        child: CaroInfiniteBoard(
-          board: gs.caroBoard,
-          lastMove: gs.lastMove,
-          winLine: gs.winLine,
-          isMyTurn: gs.isMyTurn,
-          isGameOver: gs.isGameOver,
-          boardSize: match.boardSize,
-          mySymbol: gs.role == PlayerRole.player1 ? 'X' : 'O',
-          onTap: (row, col) => gs.playCaroMove(row, col),
-        ),
+        child: match.gameType == GameType.chess
+            ? _buildChessBoard(gs, match)
+            : CaroInfiniteBoard(
+                board: gs.caroBoard,
+                lastMove: gs.lastMove,
+                winLine: gs.winLine,
+                isMyTurn: gs.isMyTurn,
+                isGameOver: gs.isGameOver,
+                boardSize: match.boardSize,
+                mySymbol: gs.role == PlayerRole.player1 ? 'X' : 'O',
+                onTap: (row, col) => gs.playCaroMove(row, col),
+              ),
       );
+
+  Widget _buildChessBoard(GameStateProvider gs, GameMatch match) {
+    return ChessBoardWidget(
+      fen: gs.chessFen,
+      isMyTurn: gs.isMyTurn,
+      myRole: gs.role,
+      onMove: (from, to) => gs.playChessMove(from, to),
+    );
+  }
 
   Widget _buildActionBar(GameStateProvider gs) => Padding(
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
@@ -640,6 +660,12 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
 
   Future<void> _confirmLeave() async {
     final gs = context.read<GameStateProvider>();
+
+    // SỬA LỖI 6: Xử lý giải phóng Spectator dứt điểm trước khi Navigator.pop thay vì gọi async trong dispose()
+    if (gs.isSpectator && gs.match != null) {
+      await gs.leaveAsSpectator();
+    }
+
     if (gs.isPlayer && !gs.isGameOver && gs.match?.isPlaying == true) {
       final ok = await showDialog<bool>(
           context: context,

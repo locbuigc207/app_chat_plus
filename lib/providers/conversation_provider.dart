@@ -77,8 +77,10 @@ class ConversationProvider {
         final aPinned = aData['isPinned'] as bool? ?? false;
         final bPinned = bData['isPinned'] as bool? ?? false;
 
+        // Ưu tiên hội thoại được ghim lên đầu
         if (aPinned != bPinned) return aPinned ? -1 : 1;
 
+        // Sắp xếp theo thời gian tin nhắn mới nhất
         final aTime =
             int.tryParse(aData['lastMessageTime']?.toString() ?? '0') ?? 0;
         final bTime =
@@ -96,7 +98,24 @@ class ConversationProvider {
         .where(FirestoreConstants.participants, arrayContains: userId)
         .where('archivedBy', arrayContains: userId)
         .snapshots()
-        .map((s) => s.docs);
+        .map((snapshot) {
+      final docs = snapshot.docs;
+
+      // Bổ sung sắp xếp cho danh sách lưu trữ
+      docs.sort((a, b) {
+        final aData = a.data() as Map<String, dynamic>? ?? {};
+        final bData = b.data() as Map<String, dynamic>? ?? {};
+
+        final aTime =
+            int.tryParse(aData['lastMessageTime']?.toString() ?? '0') ?? 0;
+        final bTime =
+            int.tryParse(bData['lastMessageTime']?.toString() ?? '0') ?? 0;
+
+        return bTime.compareTo(aTime);
+      });
+
+      return docs;
+    });
   }
 
   Stream<List<QueryDocumentSnapshot>> getUnreadConversations(String userId) {
@@ -105,7 +124,24 @@ class ConversationProvider {
         .where(FirestoreConstants.participants, arrayContains: userId)
         .where('unreadCount', isGreaterThan: 0)
         .snapshots()
-        .map((s) => s.docs);
+        .map((snapshot) {
+      final docs = snapshot.docs;
+
+      // Bổ sung sắp xếp cho danh sách chưa đọc (Fix lỗi 4 trong phân tích)
+      docs.sort((a, b) {
+        final aData = a.data() as Map<String, dynamic>? ?? {};
+        final bData = b.data() as Map<String, dynamic>? ?? {};
+
+        final aTime =
+            int.tryParse(aData['lastMessageTime']?.toString() ?? '0') ?? 0;
+        final bTime =
+            int.tryParse(bData['lastMessageTime']?.toString() ?? '0') ?? 0;
+
+        return bTime.compareTo(aTime);
+      });
+
+      return docs;
+    });
   }
 
   Stream<DocumentSnapshot> watchConversation(String conversationId) {

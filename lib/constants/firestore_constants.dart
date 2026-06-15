@@ -118,6 +118,9 @@ class FirestoreConstants {
   /// Kích thước bàn Caro: 3 = 3×3, 0 = vô hạn.
   static const String boardSize = 'boardSize';
 
+  /// FEN ban đầu của bàn cờ vua (nếu không có thì dùng FEN chuẩn).
+  static const String initialFen = 'initialFen';
+
   /// Trạng thái match: 'waiting' | 'playing' | 'finished' | 'aborted'
   static const String gameStatus = 'gameStatus';
 

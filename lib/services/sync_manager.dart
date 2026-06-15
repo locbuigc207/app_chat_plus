@@ -382,15 +382,15 @@ class SyncManager {
       'status': MessageStatus.sent,
     });
 
-    // 3. Cập nhật dữ liệu hội thoại (metadata preview)
+    // 3. Cập nhật dữ liệu hội thoại (metadata preview) - Đã Sửa Lỗi update()
     await FirebaseFirestore.instance
         .collection('conversations')
         .doc(conversationId)
-        .update({
+        .set({
       'lastMessage': plainContent,
       'lastMessageTime': timestamp,
       'lastMessageType': messageType,
-    }).catchError((_) {}); // Bỏ qua nếu lỗi không nghiêm trọng
+    }, SetOptions(merge: true));
 
     // 4. Cập nhật trạng thái database cục bộ: pending → sent
     await _localDb.updateMessageStatus(
@@ -467,23 +467,23 @@ class SyncManager {
       'status': MessageStatus.sent,
     });
 
-    // Cập nhật lại khung tin nhắn cuối cùng hiển thị ngoài màn hình danh sách chat
+    // Cập nhật lại khung tin nhắn cuối cùng hiển thị ngoài màn hình danh sách chat - Đã Sửa Lỗi update()
     await FirebaseFirestore.instance
         .collection('conversations')
         .doc(conversationId)
-        .update({
+        .set({
       'lastMessage':
           aiText.length > 80 ? '${aiText.substring(0, 80)}…' : aiText,
       'lastMessageTime': aiTimestamp,
       'lastMessageType': TypeMessage.text,
-    }).catchError((_) {});
+    }, SetOptions(merge: true));
 
     debugPrint('[SyncManager] 🤖 AI response synced for $conversationId');
     return true;
   }
 
   // ═════════════════════════════════════════════════════════════════════════
-  // AI CONTENT BRIDGE MECHANICS
+  // AI CONTENT Bridge MECHANICS
   // ═════════════════════════════════════════════════════════════════════════
 
   /// Đẩy ngầm plain text (đã che thông tin nhạy cảm) lên bộ nhớ xử lý `ai_content`.

@@ -58,6 +58,20 @@ class GameInviteCardBubble extends StatefulWidget {
 
 class _GameInviteCardBubbleState extends State<GameInviteCardBubble> {
   bool _isJoining = false;
+  Stream<DocumentSnapshot>? _matchStream;
+
+  @override
+  void initState() {
+    super.initState();
+    // Khởi tạo stream 1 lần trong initState để tránh memory leak và rebuild vô ích
+    final matchId = widget.message.matchId;
+    if (matchId != null && matchId.isNotEmpty) {
+      _matchStream = FirebaseFirestore.instance
+          .collection(FirestoreConstants.pathGameMatchCollection)
+          .doc(matchId)
+          .snapshots();
+    }
+  }
 
   GameInvitePayload? get _payload {
     try {
@@ -68,7 +82,6 @@ class _GameInviteCardBubbleState extends State<GameInviteCardBubble> {
     }
   }
 
-  MatchStatus get _status => widget.message.parsedMatchStatus;
   GameType get _gameType => widget.message.parsedGameType;
 
   List<Color> get _gradient =>
@@ -76,15 +89,15 @@ class _GameInviteCardBubbleState extends State<GameInviteCardBubble> {
 
   // ── Join match ────────────────────────────────────────────────────────────
 
-  Future<void> _joinMatch(String matchId) async {
+  Future<void> _joinMatch(String matchId, MatchStatus currentStatus) async {
     if (_isJoining) return;
 
-    // Sửa lỗi 10: Rào chắn (Guard) ngăn người không nằm trong thư mời đích danh bấm "Vào bàn"
+    // Rào chắn (Guard) ngăn người không nằm trong thư mời đích danh bấm "Vào bàn"
     final payload = _payload;
     if (payload?.targetUserId != null &&
         payload!.targetUserId != widget.currentUserId &&
         payload.challengerName != widget.currentUserName) {
-      // Đối với người ngoài, họ sẽ tham gia dưới dạng khán giả (Spectator) và không trigger acceptMatch
+      // Đối với người ngoài, họ sẽ tham gia dưới dạng khán giả (Spectator)
       if (!mounted) return;
       Navigator.push(
         context,
@@ -107,8 +120,9 @@ class _GameInviteCardBubbleState extends State<GameInviteCardBubble> {
     try {
       final chatProvider = context.read<ChatProvider>();
 
-      // Nếu đang waiting → player2 accept
-      if (_status == MatchStatus.waiting) {
+      // Kiểm tra trạng thái Realtime thay vì trạng thái tĩnh của tin nhắn
+      if (currentStatus == MatchStatus.waiting) {
+        // Hàm acceptMatch trong GameFirebaseService đã áp dụng Transaction để tránh Double-Accept
         await GameFirebaseService().acceptMatch(
           matchId: matchId,
           player2Id: widget.currentUserId,
@@ -158,7 +172,7 @@ class _GameInviteCardBubbleState extends State<GameInviteCardBubble> {
   Widget build(BuildContext context) {
     final payload = _payload;
     final matchId = widget.message.matchId ?? '';
-    if (matchId.isEmpty) return const SizedBox.shrink();
+    if (matchId.isEmpty || _matchStream == null) return const SizedBox.shrink();
 
     return Container(
       width: 260,
@@ -176,158 +190,161 @@ class _GameInviteCardBubbleState extends State<GameInviteCardBubble> {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header gradient
-            Container(
-              height: 56,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(colors: _gradient),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              child: Row(
-                children: [
-                  Text(
-                    _gameType.emoji,
-                    style: const TextStyle(fontSize: 22),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Thách đấu ${_gameType.displayName}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        if (payload?.timeControlSeconds != null &&
-                            payload!.timeControlSeconds > 0)
-                          Text(
-                            '${(payload.timeControlSeconds / 60).round()} phút',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.7),
-                              fontSize: 10.5,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  _StatusBadge(status: _status),
-                ],
-              ),
-            ),
+        // KHẮC PHỤC LỖI 12: Bao bọc bằng StreamBuilder để đồng bộ UI Realtime hoàn toàn
+        child: StreamBuilder<DocumentSnapshot>(
+          stream: _matchStream,
+          builder: (context, snap) {
+            MatchStatus liveStatus = widget.message.parsedMatchStatus;
+            int spectatorCount = payload?.spectatorCount ?? 0;
 
-            // Body
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Challenger info
-                  Row(
+            if (snap.hasData && snap.data!.exists) {
+              final data = snap.data!.data() as Map<String, dynamic>?;
+              final statusStr = data?[FirestoreConstants.gameStatus] as String?;
+              if (statusStr != null) {
+                liveStatus = MatchStatus.fromString(statusStr);
+              }
+              final ids = data?[FirestoreConstants.spectatorIds] as List?;
+              spectatorCount = ids?.length ?? spectatorCount;
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header gradient
+                Container(
+                  height: 56,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: _gradient),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: Row(
                     children: [
-                      CircleAvatar(
-                        radius: 14,
-                        backgroundColor: _C.accent.withOpacity(0.2),
-                        backgroundImage:
-                        payload?.challengerAvatar.isNotEmpty == true
-                            ? NetworkImage(payload!.challengerAvatar)
-                            : null,
-                        child: payload?.challengerAvatar.isEmpty != false
-                            ? const Icon(Icons.person_rounded,
-                            size: 14, color: _C.accent)
-                            : null,
+                      Text(
+                        _gameType.emoji,
+                        style: const TextStyle(fontSize: 22),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              payload?.challengerName ?? '...',
+                              'Thách đấu ${_gameType.displayName}',
                               style: const TextStyle(
-                                color: _C.text1,
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
-                            if (payload?.targetUserName != null)
+                            if (payload?.timeControlSeconds != null &&
+                                payload!.timeControlSeconds > 0)
                               Text(
-                                'thách @${payload!.targetUserName}',
-                                style: const TextStyle(
-                                  color: _C.text2,
-                                  fontSize: 10.5,
-                                ),
-                              )
-                            else
-                              const Text(
-                                'thách đấu mở',
+                                '${(payload.timeControlSeconds / 60).round()} phút',
                                 style: TextStyle(
-                                  color: _C.text2,
+                                  color: Colors.white.withOpacity(0.7),
                                   fontSize: 10.5,
                                 ),
                               ),
                           ],
                         ),
                       ),
-                      // Spectator count (chỉ hiện khi live) - Sửa lỗi 19 sử dụng StreamBuilder
-                      if (_status == MatchStatus.live && payload != null)
-                        StreamBuilder<DocumentSnapshot>(
-                          stream: FirebaseFirestore.instance
-                              .collection(FirestoreConstants.pathGameMatchCollection)
-                              .doc(matchId)
-                              .snapshots(),
-                          builder: (context, snap) {
-                            int count = payload.spectatorCount;
-                            if (snap.hasData && snap.data!.exists) {
-                              final data = snap.data!.data() as Map<String, dynamic>?;
-                              final ids = data?[FirestoreConstants.spectatorIds] as List?;
-                              count = ids?.length ?? count;
-                            }
+                      _StatusBadge(status: liveStatus),
+                    ],
+                  ),
+                ),
 
-                            if (count <= 0) return const SizedBox.shrink();
-
-                            return Row(
+                // Body
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Challenger info
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 14,
+                            backgroundColor: _C.accent.withOpacity(0.2),
+                            backgroundImage:
+                                payload?.challengerAvatar.isNotEmpty == true
+                                    ? NetworkImage(payload!.challengerAvatar)
+                                    : null,
+                            child: payload?.challengerAvatar.isEmpty != false
+                                ? const Icon(Icons.person_rounded,
+                                    size: 14, color: _C.accent)
+                                : null,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  payload?.challengerName ?? '...',
+                                  style: const TextStyle(
+                                    color: _C.text1,
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                if (payload?.targetUserName != null)
+                                  Text(
+                                    'thách @${payload!.targetUserName}',
+                                    style: const TextStyle(
+                                      color: _C.text2,
+                                      fontSize: 10.5,
+                                    ),
+                                  )
+                                else
+                                  const Text(
+                                    'thách đấu mở',
+                                    style: TextStyle(
+                                      color: _C.text2,
+                                      fontSize: 10.5,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          // Spectator count
+                          if (liveStatus == MatchStatus.live &&
+                              spectatorCount > 0)
+                            Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 const Icon(Icons.remove_red_eye_rounded,
                                     size: 12, color: _C.live),
                                 const SizedBox(width: 3),
                                 Text(
-                                  '$count',
+                                  '$spectatorCount',
                                   style: const TextStyle(
                                       color: _C.live, fontSize: 11),
                                 ),
                               ],
-                            );
-                          },
-                        ),
+                            ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      // CTA button theo trạng thái realtime
+                      _buildCTA(matchId, liveStatus),
                     ],
                   ),
-
-                  const SizedBox(height: 10),
-
-                  // CTA button
-                  _buildCTA(matchId),
-                ],
-              ),
-            ),
-          ],
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _buildCTA(String matchId) {
-    switch (_status) {
+  Widget _buildCTA(String matchId, MatchStatus liveStatus) {
+    switch (liveStatus) {
       case MatchStatus.waiting:
-      // Không hiện nút cho chính người tạo thách đấu
+        // Không hiện nút cho chính người tạo thách đấu
         final isChallenger = _payload?.challengerName == widget.currentUserName;
         if (isChallenger) {
           return const _WaitingChip();
@@ -337,7 +354,7 @@ class _GameInviteCardBubbleState extends State<GameInviteCardBubble> {
           icon: Icons.sports_esports_rounded,
           color: _C.accent,
           isLoading: _isJoining,
-          onTap: () => _joinMatch(matchId),
+          onTap: () => _joinMatch(matchId, liveStatus),
         );
 
       case MatchStatus.live:
@@ -346,7 +363,7 @@ class _GameInviteCardBubbleState extends State<GameInviteCardBubble> {
           icon: Icons.live_tv_rounded,
           color: _C.live,
           isLoading: _isJoining,
-          onTap: () => _joinMatch(matchId),
+          onTap: () => _joinMatch(matchId, liveStatus),
         );
 
       case MatchStatus.finished:
@@ -400,8 +417,8 @@ class GameResultCardBubble extends StatelessWidget {
     final winnerName = isDraw
         ? null
         : (payload.winnerId == payload.player1Id
-        ? payload.player1Name
-        : payload.player2Name);
+            ? payload.player1Name
+            : payload.player2Name);
 
     final emoji = isDraw ? '🤝' : (isWinner ? '🏆' : '⚔️');
     final headline = isDraw ? 'Hòa nhau!' : '$winnerName đã thắng!';
@@ -551,7 +568,6 @@ class GameResultCardBubble extends StatelessWidget {
         ),
       ),
     );
-    // GameStateProvider.startReplay() được gọi tự động khi detect isGameOver
   }
 }
 
@@ -633,36 +649,36 @@ class _CTAButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SizedBox(
-    width: double.infinity,
-    height: 36,
-    child: ElevatedButton.icon(
-      onPressed: isLoading ? null : onTap,
-      icon: isLoading
-          ? SizedBox(
-        width: 14,
-        height: 14,
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-          color: color,
+        width: double.infinity,
+        height: 36,
+        child: ElevatedButton.icon(
+          onPressed: isLoading ? null : onTap,
+          icon: isLoading
+              ? SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: color,
+                  ),
+                )
+              : Icon(icon, size: 16),
+          label: Text(label),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: color.withOpacity(0.15),
+            foregroundColor: color,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: BorderSide(color: color.withOpacity(0.4)),
+            ),
+            textStyle: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ),
-      )
-          : Icon(icon, size: 16),
-      label: Text(label),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color.withOpacity(0.15),
-        foregroundColor: color,
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-          side: BorderSide(color: color.withOpacity(0.4)),
-        ),
-        textStyle: const TextStyle(
-          fontSize: 12.5,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    ),
-  );
+      );
 }
 
 class _WaitingChip extends StatelessWidget {
@@ -670,36 +686,36 @@ class _WaitingChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    height: 36,
-    decoration: BoxDecoration(
-      color: _C.waiting.withOpacity(0.08),
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: _C.waiting.withOpacity(0.3)),
-    ),
-    child: const Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        SizedBox(
-          width: 12,
-          height: 12,
-          child: CircularProgressIndicator(
-            strokeWidth: 1.5,
-            color: _C.waiting,
-          ),
+        width: double.infinity,
+        height: 36,
+        decoration: BoxDecoration(
+          color: _C.waiting.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _C.waiting.withOpacity(0.3)),
         ),
-        SizedBox(width: 7),
-        Text(
-          'Chờ đối thủ chấp nhận...',
-          style: TextStyle(
-            color: _C.waiting,
-            fontSize: 11.5,
-            fontWeight: FontWeight.w600,
-          ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(
+                strokeWidth: 1.5,
+                color: _C.waiting,
+              ),
+            ),
+            SizedBox(width: 7),
+            Text(
+              'Chờ đối thủ chấp nhận...',
+              style: TextStyle(
+                color: _C.waiting,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
-      ],
-    ),
-  );
+      );
 }
 
 class _EndedChip extends StatelessWidget {
@@ -709,23 +725,23 @@ class _EndedChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    height: 30,
-    decoration: BoxDecoration(
-      color: color.withOpacity(0.07),
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Center(
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 11.5,
-          fontWeight: FontWeight.w600,
+        width: double.infinity,
+        height: 30,
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.07),
+          borderRadius: BorderRadius.circular(8),
         ),
-      ),
-    ),
-  );
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      );
 }
 
 class _PlayerResultChip extends StatelessWidget {
@@ -760,13 +776,13 @@ class _PlayerResultChip extends StatelessWidget {
             backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
             child: avatar.isEmpty
                 ? Text(
-              name.isNotEmpty ? name[0].toUpperCase() : '?',
-              style: TextStyle(
-                color: color,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-              ),
-            )
+                    name.isNotEmpty ? name[0].toUpperCase() : '?',
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  )
                 : null,
           ),
           const SizedBox(height: 4),

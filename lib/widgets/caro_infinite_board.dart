@@ -66,6 +66,9 @@ class _CaroInfiniteBoardState extends State<CaroInfiniteBoard>
   late final AnimationController _winAnim;
   late Animation<double> _winProgress;
 
+  // KHẮC PHỤC LỖI 16: Flag kiểm tra bàn cờ vô hạn đã định vị vị trí xong chưa
+  bool _boardReady = false;
+
   // Kích thước grid (ô) hiển thị cho bàn vô hạn
   static const int _visibleGrid = 21; // 21×21 ô trung tâm
   // Offset để row/col 0 nằm ở giữa grid (-10..+10)
@@ -81,8 +84,20 @@ class _CaroInfiniteBoardState extends State<CaroInfiniteBoard>
     );
     _winProgress = CurvedAnimation(parent: _winAnim, curve: Curves.easeOut);
 
-    // Center board on init
-    WidgetsBinding.instance.addPostFrameCallback((_) => _centerBoard());
+    // Bàn cờ tĩnh 3x3 không sử dụng InteractiveViewer nên luôn sẵn sàng nhận click
+    if (widget.boardSize == 3) {
+      _boardReady = true;
+    } else {
+      // Center board on init dành cho chế độ vô hạn
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _centerBoard();
+        if (mounted) {
+          setState(() {
+            _boardReady = true;
+          });
+        }
+      });
+    }
   }
 
   @override
@@ -108,42 +123,35 @@ class _CaroInfiniteBoardState extends State<CaroInfiniteBoard>
     final dx = (size.width - boardPx) / 2;
     final dy = (size.height - boardPx) / 2 - 60;
 
-    // Đã sửa lỗi 1: dy < 0 ? 0.0 : dy để tránh exception
     _transform.value = Matrix4.identity()..translate(dx, dy < 0 ? 0.0 : dy);
   }
 
   // ── Coordinate helpers ────────────────────────────────────────────────────
 
-  /// Chuyển tap position → (row, col) trong hệ tọa độ game.
+  /// KHẮC PHỤC LỖI 17: Tính toán tọa độ độc lập không ma trận cho bàn 3x3 tĩnh
+  (int row, int col)? _tapToCell3x3(Offset local) {
+    final gridCol = (local.dx / _kCellSize).floor();
+    final gridRow = (local.dy / _kCellSize).floor();
+
+    if (gridRow < 0 || gridRow >= 3 || gridCol < 0 || gridCol >= 3) {
+      return null;
+    }
+    return (gridRow, gridCol);
+  }
+
+  /// Chuyển tap position → (row, col) trong hệ tọa độ game Caro Vô hạn.
   (int row, int col)? _tapToCell(Offset local) {
     final m = _transform.value;
     final inv = Matrix4.inverted(m);
     final transformed = MatrixUtils.transformPoint(inv, local);
+
     final gridCol = (transformed.dx / _kCellSize).floor();
     final gridRow = (transformed.dy / _kCellSize).floor();
-
-    if (widget.boardSize == 3) {
-      if (gridRow < 0 || gridRow >= 3 || gridCol < 0 || gridCol >= 3) {
-        return null;
-      }
-      return (gridRow, gridCol);
-    }
 
     // Vô hạn: chuyển về game coordinates
     final gameRow = gridRow - _origin;
     final gameCol = gridCol - _origin;
     return (gameRow, gameCol);
-  }
-
-  /// Chuyển (row, col) game → pixel top-left trên canvas.
-  Offset _cellToPixel(int row, int col) {
-    if (widget.boardSize == 3) {
-      return Offset(col * _kCellSize, row * _kCellSize);
-    }
-    return Offset(
-      (col + _origin) * _kCellSize,
-      (row + _origin) * _kCellSize,
-    );
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -162,10 +170,10 @@ class _CaroInfiniteBoardState extends State<CaroInfiniteBoard>
     const size = 3 * _kCellSize;
     return Center(
       child: GestureDetector(
-        // Đã sửa lỗi 13: Đổi từ onTapUp sang onTapDown để chính xác hơn
-        onTapDown: (d) {
+        // Sửa thành onTapUp theo thiết kế chuẩn để bắt vị trí chính xác hơn
+        onTapUp: (d) {
           if (!widget.isMyTurn || widget.isGameOver) return;
-          final cell = _tapToCell(d.localPosition);
+          final cell = _tapToCell3x3(d.localPosition);
           if (cell != null) {
             HapticFeedback.lightImpact();
             widget.onTap(cell.$1, cell.$2);
@@ -203,9 +211,9 @@ class _CaroInfiniteBoardState extends State<CaroInfiniteBoard>
         maxScale: 2.5,
         constrained: false,
         child: GestureDetector(
-          // Đã sửa lỗi 13: Đổi từ onTapUp sang onTapDown để chính xác hơn
-          onTapDown: (d) {
-            if (!widget.isMyTurn || widget.isGameOver) return;
+          // Sửa thành onTapUp, và thêm cờ kiểm tra Ready bảo vệ vị trí chạm
+          onTapUp: (d) {
+            if (!_boardReady || !widget.isMyTurn || widget.isGameOver) return;
             final cell = _tapToCell(d.localPosition);
             if (cell != null) {
               HapticFeedback.lightImpact();

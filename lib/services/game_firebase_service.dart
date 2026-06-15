@@ -52,12 +52,14 @@ class GameFirebaseService {
     }
   }
 
+  // SỬA LỖI 15: Sử dụng update() thay vì set(merge:true) để bảo vệ tính toàn vẹn dữ liệu
+  // update() sẽ thất bại (an toàn) nếu document không tồn tại
   Future<void> updateMatch(
     String matchId,
     Map<String, dynamic> data,
   ) async {
     try {
-      await _matchDoc(matchId).set(data, SetOptions(merge: true));
+      await _matchDoc(matchId).update(data);
       _log('📝 Match updated: $matchId → ${data.keys.join(', ')}');
     } catch (e) {
       _log('❌ updateMatch error: $e');
@@ -65,20 +67,37 @@ class GameFirebaseService {
     }
   }
 
+  // SỬA LỖI 13: Sử dụng Transaction ngăn chặn Double-Accept
   Future<void> acceptMatch({
     required String matchId,
     required String player2Id,
     required String player2Name,
     required String player2Avatar,
   }) async {
-    final now = DateTime.now().millisecondsSinceEpoch.toString();
-    await updateMatch(matchId, {
-      FirestoreConstants.player2Id: player2Id,
-      FirestoreConstants.player2Name: player2Name,
-      FirestoreConstants.player2Avatar: player2Avatar,
-      FirestoreConstants.gameStatus: GameMatchStatus.playing.name,
-      FirestoreConstants.startedAt: now,
+    final docRef = _matchDoc(matchId);
+
+    await _db.runTransaction((transaction) async {
+      final snapshot = await transaction.get(docRef);
+
+      if (!snapshot.exists) {
+        throw Exception('Trận đấu không tồn tại!');
+      }
+
+      final data = snapshot.data();
+      if (data?[FirestoreConstants.player2Id] != null) {
+        throw Exception('Trận đấu đã có người tham gia!');
+      }
+
+      final now = DateTime.now().millisecondsSinceEpoch.toString();
+      transaction.update(docRef, {
+        FirestoreConstants.player2Id: player2Id,
+        FirestoreConstants.player2Name: player2Name,
+        FirestoreConstants.player2Avatar: player2Avatar,
+        FirestoreConstants.gameStatus: GameMatchStatus.playing.name,
+        FirestoreConstants.startedAt: now,
+      });
     });
+
     _log('🎮 Match accepted by $player2Name: $matchId');
   }
 
@@ -124,6 +143,9 @@ class GameFirebaseService {
     });
   }
 
+  // SỬA LỖI 14 (Lưu ý): Truy vấn này yêu cầu tạo Compound Index trên Firebase Console:
+  // Collection: GameMatch
+  // Fields: sourceGroupId (Ascending) + gameStatus (Arrays/In) + createdAt (Descending)
   Stream<List<GameMatch>> watchLiveMatchesInGroup(String groupId) {
     return _matchesRef
         .where(FirestoreConstants.sourceGroupId, isEqualTo: groupId)
@@ -150,8 +172,6 @@ class GameFirebaseService {
         })
         .transform(StreamTransformer.fromHandlers(
           handleError: (error, stackTrace, sink) {
-            // Sửa lỗi 2: Bắt lỗi index chưa build xong (FAILED_PRECONDITION)
-            // Thay vì làm crash ứng dụng, ta emit một danh sách rỗng an toàn
             _log('⚠️ watchLiveMatchesInGroup index error: $error');
             sink.add(const <GameMatch>[]);
           },
@@ -244,7 +264,6 @@ class GameFirebaseService {
   // 5. SPECTATOR CHAT
   // =========================================================
 
-  /// Gửi tin nhắn vào spectator chat của trận.
   Future<void> sendSpectatorMessage({
     required String matchId,
     required String userId,
@@ -263,7 +282,6 @@ class GameFirebaseService {
     }
   }
 
-  /// Stream tin nhắn spectator chat (realtime, limit 50 mới nhất).
   Stream<List<SpectatorChatMessage>> watchSpectatorMessages(String matchId) {
     return _chatRef(matchId)
         .orderBy(FirestoreConstants.spectatorSentAt, descending: true)
@@ -283,7 +301,6 @@ class GameFirebaseService {
   // 6. REACTIONS (live feed)
   // =========================================================
 
-  /// Gửi reaction vào sub-collection reactions.
   Future<void> sendReaction({
     required String matchId,
     required String userId,
@@ -301,7 +318,6 @@ class GameFirebaseService {
     }
   }
 
-  /// Stream 10 reaction gần nhất (live feed).
   Stream<List<GameReaction>> watchRecentReactions(String matchId) {
     return _reactionsRef(matchId)
         .orderBy(FirestoreConstants.reactionSentAt, descending: true)
@@ -321,25 +337,24 @@ class GameFirebaseService {
   // 7. DRAW REQUEST
   // =========================================================
 
-  /// Ghi draw request lên Firestore để đối thủ nhận được.
   Future<void> updateDrawRequest({
     required String matchId,
     required String requesterId,
   }) async {
     final now = DateTime.now().millisecondsSinceEpoch.toString();
     try {
-      await _matchDoc(matchId).set({
+      // Đã cập nhật thành update() tương tự lỗi 15
+      await _matchDoc(matchId).update({
         FirestoreConstants.drawRequest: {
           'requesterId': requesterId,
           'sentAt': now,
         },
-      }, SetOptions(merge: true));
+      });
     } catch (e) {
       _log('❌ updateDrawRequest error: $e');
     }
   }
 
-  /// Xóa draw request sau khi đã xử lý (chấp nhận / từ chối).
   Future<void> clearDrawRequest(String matchId) async {
     try {
       await _matchDoc(matchId).update({
@@ -350,7 +365,6 @@ class GameFirebaseService {
     }
   }
 
-  /// Stream theo dõi draw request — emit khi có thay đổi.
   Stream<DrawRequestInfo?> watchDrawRequest(String matchId) {
     return _matchDoc(matchId).snapshots().map((doc) {
       if (!doc.exists) return null;
@@ -375,14 +389,11 @@ class GameFirebaseService {
   ) async {
     final now = DateTime.now().millisecondsSinceEpoch.toString();
     try {
-      await _matchDoc(matchId).set(
+      await _matchDoc(matchId).update(
         {
-          FirestoreConstants.disconnectedPlayerId:
-              userId, // Ensure this constant matches 'disconnectedPlayerId'
-          FirestoreConstants.disconnectedAt:
-              now, // Ensure this constant matches 'disconnectedAt'
+          FirestoreConstants.disconnectedPlayerId: userId,
+          FirestoreConstants.disconnectedAt: now,
         },
-        SetOptions(merge: true),
       );
       _log('⚡ Player disconnected: $userId in $matchId');
     } catch (e) {
@@ -447,8 +458,6 @@ class GameFirebaseService {
     }
   }
 
-  /// Xóa toàn bộ dữ liệu của trận (khi abort sớm).
-  /// Không xóa document gốc — chỉ xóa sub-collections nặng.
   Future<void> cleanupMatchData(String matchId) async {
     try {
       await Future.wait([
@@ -487,7 +496,6 @@ class GameFirebaseService {
 // VALUE OBJECTS
 // =========================================================
 
-/// Tin nhắn spectator chat.
 class SpectatorChatMessage {
   final String userId;
   final String text;
@@ -500,7 +508,6 @@ class SpectatorChatMessage {
   });
 }
 
-/// Reaction từ khán giả.
 class GameReaction {
   final String userId;
   final String emoji;
@@ -513,7 +520,6 @@ class GameReaction {
   });
 }
 
-/// Thông tin draw request đang pending.
 class DrawRequestInfo {
   final String requesterId;
   final String sentAt;
@@ -524,7 +530,6 @@ class DrawRequestInfo {
   });
 }
 
-/// Thông tin player đang bị disconnect.
 class DisconnectInfo {
   final String userId;
   final String at;

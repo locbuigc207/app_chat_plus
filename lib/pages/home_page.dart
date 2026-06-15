@@ -29,7 +29,7 @@ void _onNotificationResponse(NotificationResponse response) {
 
 // ════════════════════════════════════════════════════════════════════════════
 // DESIGN TOKENS
-// Clean, OLED-first palette. Accent: iOS blue. No mesh, no heavy gradients.
+// OLED-first palette. Accent: iOS blue. Clean, minimal, no heavy gradients.
 // ════════════════════════════════════════════════════════════════════════════
 
 Color _bg(bool d) => d ? const Color(0xFF000000) : const Color(0xFFF2F2F7);
@@ -42,6 +42,8 @@ Color _secondary(bool d) =>
     d ? const Color(0xFF8E8E93) : const Color(0xFF6C6C70);
 const _kAccent = Color(0xFF0A84FF);
 const _kGreen = Color(0xFF30D158);
+const _kRed = Color(0xFFFF3B30);
+const _kOrange = Color(0xFFFF9500);
 const _kAiGradient = [Color(0xFF7B61FF), Color(0xFF4285F4)];
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -87,7 +89,7 @@ class _HomePageState extends State<HomePage>
   int _searchLimit = 20;
   bool _isLoadingMore = false;
   static const int _limitIncrement = 20;
-  static const List<String> _filterLabels = ['All', 'Unread', 'Groups'];
+  static const List<String> _filterLabels = ['Tất cả', 'Chưa đọc', 'Nhóm'];
 
   // ── Friends / stories ──────────────────────────────────────────────────────
   List<String> _myFriendIds = [];
@@ -96,6 +98,9 @@ class _HomePageState extends State<HomePage>
   // ── Stable streams ─────────────────────────────────────────────────────────
   Stream<List<QueryDocumentSnapshot>>? _conversationsStream;
   late final Stream<QuerySnapshot> _friendRequestsStream;
+
+  // ── Unread count stream (dùng chung cho badge + filter chip) ──────────────
+  late final Stream<QuerySnapshot> _unreadCountStream;
 
   // ── Profile cache ──────────────────────────────────────────────────────────
   final Map<String, UserChat> _userProfileCache = {};
@@ -112,6 +117,7 @@ class _HomePageState extends State<HomePage>
   late Animation<double> _headerFadeAnim;
   late Animation<Offset> _headerSlideAnim;
 
+  // ── Menu ───────────────────────────────────────────────────────────────────
   late final List<MenuSetting> _menus;
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -137,6 +143,7 @@ class _HomePageState extends State<HomePage>
     _conversationProvider = ConversationProvider(
         firebaseFirestore: _homeProvider.firebaseFirestore);
 
+    // Menu — Archive đã chuyển vào đây thay vì AppBar icon riêng lẻ
     _menus = [
       const MenuSetting(title: 'New Chat', icon: Icons.edit_square),
       const MenuSetting(title: 'Friends', icon: Icons.people_outline_rounded),
@@ -144,6 +151,7 @@ class _HomePageState extends State<HomePage>
       const MenuSetting(title: 'Call History', icon: Icons.call_outlined),
       const MenuSetting(title: 'My QR Code', icon: Icons.qr_code_2_rounded),
       const MenuSetting(title: 'Create Group', icon: Icons.group_add_outlined),
+      const MenuSetting(title: 'Archive', icon: Icons.archive_outlined),
       const MenuSetting(title: 'Bubble Chat', icon: Icons.bubble_chart_rounded),
       const MenuSetting(title: 'Theme', icon: Icons.palette_outlined),
       const MenuSetting(title: 'Settings', icon: Icons.settings_outlined),
@@ -151,10 +159,18 @@ class _HomePageState extends State<HomePage>
     ];
 
     _updateConversationsStream();
+
     _friendRequestsStream = FirebaseFirestore.instance
         .collection(FirestoreConstants.pathFriendRequestCollection)
         .where(FirestoreConstants.receiverId, isEqualTo: _currentUserId)
         .where(FirestoreConstants.status, isEqualTo: 'pending')
+        .snapshots();
+
+    // Stream unread count — dùng chung để tránh tạo nhiều listener
+    _unreadCountStream = FirebaseFirestore.instance
+        .collection(FirestoreConstants.pathConversationCollection)
+        .where(FirestoreConstants.participants, arrayContains: _currentUserId)
+        .where('unreadCount', isGreaterThan: 0)
         .snapshots();
 
     _initAnimations();
@@ -191,15 +207,29 @@ class _HomePageState extends State<HomePage>
   void _updateConversationsStream() {
     switch (_activeFilterIndex) {
       case 1:
-        _conversationsStream =
-            _conversationProvider.getUnreadConversations(_currentUserId);
+      // FIX LỖI PHỤ: Thêm sort cho unread filter
+        _conversationsStream = _conversationProvider
+            .getUnreadConversations(_currentUserId)
+            .map((docs) {
+          final sorted = List<QueryDocumentSnapshot>.from(docs);
+          sorted.sort((a, b) {
+            final aData = a.data() as Map<String, dynamic>;
+            final bData = b.data() as Map<String, dynamic>;
+            final aTime =
+                int.tryParse(aData['lastMessageTime']?.toString() ?? '0') ?? 0;
+            final bTime =
+                int.tryParse(bData['lastMessageTime']?.toString() ?? '0') ?? 0;
+            return bTime.compareTo(aTime);
+          });
+          return sorted;
+        });
       case 2:
         _conversationsStream = _conversationProvider
             .getConversationsWithPinned(_currentUserId)
             .map((docs) => docs
-                .where((d) =>
-                    (d.data() as Map<String, dynamic>)['isGroup'] == true)
-                .toList());
+            .where((d) =>
+        (d.data() as Map<String, dynamic>)['isGroup'] == true)
+            .toList());
       default:
         _conversationsStream =
             _conversationProvider.getConversationsWithPinned(_currentUserId);
@@ -229,7 +259,7 @@ class _HomePageState extends State<HomePage>
           if (!_groupCache.containsKey(doc.id)) missingGroupIds.add(doc.id);
         } else {
           final participants =
-              List<String>.from(data['participants'] as List? ?? []);
+          List<String>.from(data['participants'] as List? ?? []);
           final otherId = participants.firstWhere((id) => id != _currentUserId,
               orElse: () => '');
           if (otherId.isNotEmpty && !_userProfileCache.containsKey(otherId)) {
@@ -333,7 +363,7 @@ class _HomePageState extends State<HomePage>
         requestBadgePermission: false,
         requestSoundPermission: false);
     const linuxSettings =
-        LinuxInitializationSettings(defaultActionName: 'Open notification');
+    LinuxInitializationSettings(defaultActionName: 'Open notification');
     _localNotifications.initialize(
       const InitializationSettings(
           android: androidSettings,
@@ -360,7 +390,7 @@ class _HomePageState extends State<HomePage>
       icon: 'app_icon',
       largeIcon: const DrawableResourceAndroidBitmap('app_icon'),
       styleInformation:
-          BigTextStyleInformation(n.body ?? '', contentTitle: n.title),
+      BigTextStyleInformation(n.body ?? '', contentTitle: n.title),
     );
     const darwinDetails = DarwinNotificationDetails(
         presentAlert: true, presentBadge: true, presentSound: true);
@@ -384,13 +414,15 @@ class _HomePageState extends State<HomePage>
         .snapshots()
         .listen((snap1) async {
       final ids = <String>{};
-      for (final d in snap1.docs)
+      for (final d in snap1.docs) {
         ids.add(d[FirestoreConstants.userId2] as String);
+      }
       final snap2 = await fs
           .where(FirestoreConstants.userId2, isEqualTo: _currentUserId)
           .get();
-      for (final d in snap2.docs)
+      for (final d in snap2.docs) {
         ids.add(d[FirestoreConstants.userId1] as String);
+      }
       if (mounted) setState(() => _myFriendIds = ids.take(9).toList());
     });
   }
@@ -425,7 +457,6 @@ class _HomePageState extends State<HomePage>
     if (mounted) setState(() => _isSearchFocused = _searchFocusNode.hasFocus);
   }
 
-  // FAB is now a simple compose button — no expand state
   void _closeFab() {}
 
   // ── Navigation ─────────────────────────────────────────────────────────────
@@ -450,6 +481,9 @@ class _HomePageState extends State<HomePage>
         _push(const MyQRCodePage());
       case 'Create Group':
         _push(CreateGroupPage());
+    // Archive đã chuyển vào menu
+      case 'Archive':
+        _push(const ArchivedChatsPage());
       case 'Bubble Chat':
         _push(const BubbleSettingsPage());
       case 'Theme':
@@ -496,7 +530,65 @@ class _HomePageState extends State<HomePage>
 
   void _push(Widget page) => Navigator.push(context, _slideRoute(page));
 
-  // ── Conversation options ───────────────────────────────────────────────────
+  // ── Conversation swipe actions ─────────────────────────────────────────────
+
+  /// Swipe phải → Mark as read. Swipe trái → Archive.
+  Widget _wrapWithSwipe({
+    required Widget child,
+    required Conversation conversation,
+  }) {
+    return Dismissible(
+      key: ValueKey('swipe_${conversation.id}'),
+      // Swipe phải → Mark as read (xanh lam)
+      background: Container(
+        color: _kAccent,
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.only(left: 24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.done_all_rounded, color: Colors.white, size: 22),
+          const SizedBox(height: 4),
+          Text('Đã đọc',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600)),
+        ]),
+      ),
+      // Swipe trái → Archive (cam)
+      secondaryBackground: Container(
+        color: _kOrange,
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.archive_rounded, color: Colors.white, size: 22),
+          const SizedBox(height: 4),
+          Text('Lưu trữ',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600)),
+        ]),
+      ),
+      confirmDismiss: (direction) async {
+        if (direction == DismissDirection.startToEnd) {
+          // Mark as read — không dismiss, chỉ action
+          await _conversationProvider.markAsRead(
+              conversation.id, _currentUserId);
+          HapticFeedback.lightImpact();
+          return false; // Không remove tile khỏi list
+        } else {
+          // Archive — confirm dismiss
+          await _conversationProvider.toggleArchiveConversation(
+              conversation.id, _currentUserId, true);
+          HapticFeedback.mediumImpact();
+          return true; // Tile biến mất khỏi list (đã archive)
+        }
+      },
+      child: child,
+    );
+  }
+
+  // ── Conversation options (long-press) ─────────────────────────────────────
 
   void _showConversationOptions(Conversation conversation) {
     HapticFeedback.mediumImpact();
@@ -527,12 +619,12 @@ class _HomePageState extends State<HomePage>
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   String _lastMessagePreview(String msg, int? type) {
-    if (type == TypeMessage.image) return '📷 Photo';
+    if (type == TypeMessage.image) return '📷 Ảnh';
     if (type == TypeMessage.sticker) return '😊 Sticker';
     if (type == TypeMessage.video) return '🎥 Video';
-    if (type == TypeMessage.voice) return '🎵 Audio';
-    if (type == TypeMessage.document) return '📄 Document';
-    if (msg.isEmpty) return 'Start a conversation';
+    if (type == TypeMessage.voice) return '🎵 Tin nhắn thoại';
+    if (type == TypeMessage.document) return '📄 Tài liệu';
+    if (msg.isEmpty) return 'Bắt đầu cuộc trò chuyện';
     return msg.length > 44 ? '${msg.substring(0, 44)}…' : msg;
   }
 
@@ -540,11 +632,11 @@ class _HomePageState extends State<HomePage>
     try {
       final t = DateTime.fromMillisecondsSinceEpoch(int.parse(timestamp));
       final diff = DateTime.now().difference(t);
-      if (diff.inDays > 6) return DateFormat('MMM d').format(t);
+      if (diff.inDays > 6) return DateFormat('d MMM').format(t);
       if (diff.inDays > 0) return DateFormat('EEE').format(t);
-      if (diff.inHours > 0) return '${diff.inHours}h';
-      if (diff.inMinutes > 0) return '${diff.inMinutes}m';
-      return 'now';
+      if (diff.inHours > 0) return '${diff.inHours}g';
+      if (diff.inMinutes > 0) return '${diff.inMinutes}ph';
+      return 'vừa xong';
     } catch (_) {
       return '';
     }
@@ -624,14 +716,14 @@ class _HomePageState extends State<HomePage>
                     parent: AlwaysScrollableScrollPhysics()),
                 slivers: [
                   if (_textSearch.isEmpty) ...[
-                    // Stories row (compact, no separate online row)
+                    // Stories row
                     SliverToBoxAdapter(
                       child: FadeTransition(
                         opacity: _filterAnim,
                         child: _buildStoriesRow(storyProvider, isDark),
                       ),
                     ),
-                    // Filter chips
+                    // Filter chips với unread count
                     SliverToBoxAdapter(
                       child: FadeTransition(
                         opacity: _filterAnim,
@@ -640,13 +732,13 @@ class _HomePageState extends State<HomePage>
                     ),
                   ],
 
-                  // Chat list or search results
+                  // Chat list hoặc search results
                   SliverToBoxAdapter(
                     child: _textSearch.isEmpty
                         ? _buildChatList(isDark)
                         : Container(
-                            color: _surface(isDark),
-                            child: _buildSearchResults(isDark)),
+                        color: _surface(isDark),
+                        child: _buildSearchResults(isDark)),
                   ),
 
                   // Bottom padding for FAB + dock
@@ -709,7 +801,8 @@ class _HomePageState extends State<HomePage>
 
   // ════════════════════════════════════════════════════════════════════════════
   // APP BAR
-  // Minimal single row: avatar → title + badge → bell → archive → QR → menu
+  // Gọn hơn: avatar → title + badge → bell → QR → menu
+  // Archive đã chuyển vào More Menu để giảm icon density
   // ════════════════════════════════════════════════════════════════════════════
 
   Widget _buildAppBar(bool isDark) {
@@ -730,14 +823,36 @@ class _HomePageState extends State<HomePage>
         // Title + unread badge
         Expanded(
           child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-            Text('Messages',
+            Text('Tin nhắn',
                 style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.6,
                     color: _primary(isDark))),
             const SizedBox(width: 8),
-            _UnreadBadge(userId: _currentUserId, isDark: isDark),
+            // Tái dụng _unreadCountStream đã khởi tạo ở initState
+            StreamBuilder<QuerySnapshot>(
+              stream: _unreadCountStream,
+              builder: (_, snap) {
+                final count = snap.hasData ? snap.data!.docs.length : 0;
+                if (count == 0) return const SizedBox.shrink();
+                return AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: Container(
+                      key: ValueKey(count),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                          color: _kAccent,
+                          borderRadius: BorderRadius.circular(10)),
+                      child: Text(count > 99 ? '99+' : '$count',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700))),
+                );
+              },
+            ),
           ]),
         ),
 
@@ -761,23 +876,15 @@ class _HomePageState extends State<HomePage>
         ),
         const SizedBox(width: 4),
 
-        // Archive shortcut
-        _NavBtn(
-            icon: Icons.archive_outlined,
-            isDark: isDark,
-            tooltip: 'Archived',
-            onTap: () => _push(const ArchivedChatsPage())),
-        const SizedBox(width: 4),
-
         // QR scan
         _NavBtn(
             icon: Icons.qr_code_scanner_rounded,
             isDark: isDark,
-            tooltip: 'Scan QR',
+            tooltip: 'Quét QR',
             onTap: _scanQRCode),
         const SizedBox(width: 4),
 
-        // More menu
+        // More menu (kể cả Archive)
         _buildMenuButton(isDark),
       ]),
     );
@@ -819,7 +926,7 @@ class _HomePageState extends State<HomePage>
                       color: _primary(isDark),
                       fontWeight: FontWeight.w400),
                   decoration: InputDecoration(
-                      hintText: 'Search people, groups…',
+                      hintText: 'Tìm người, nhóm chat…',
                       hintStyle: TextStyle(
                           color: _secondary(isDark),
                           fontSize: 14.5,
@@ -881,54 +988,67 @@ class _HomePageState extends State<HomePage>
 
   // ════════════════════════════════════════════════════════════════════════════
   // FILTER CHIPS
-  // Pill-style tabs — replaces segmented control, saves vertical space
+  // Pill tabs với unread count badge trên chip "Chưa đọc"
   // ════════════════════════════════════════════════════════════════════════════
 
   Widget _buildFilterChips(bool isDark) {
-    return Container(
-      color: _bg(isDark),
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-      child: Row(
-        children: List.generate(_filterLabels.length, (i) {
-          final active = _activeFilterIndex == i;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: GestureDetector(
-              onTap: () {
-                if (_activeFilterIndex == i) return;
-                HapticFeedback.selectionClick();
-                setState(() {
-                  _activeFilterIndex = i;
-                  _updateConversationsStream();
-                });
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding:
+    return StreamBuilder<QuerySnapshot>(
+      stream: _unreadCountStream,
+      builder: (_, snap) {
+        final unreadCount = snap.hasData ? snap.data!.docs.length : 0;
+
+        return Container(
+          color: _bg(isDark),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Row(
+            children: List.generate(_filterLabels.length, (i) {
+              final active = _activeFilterIndex == i;
+              // Chip "Chưa đọc" hiển thị count nếu > 0
+              final label = (i == 1 && unreadCount > 0)
+                  ? '${_filterLabels[i]} $unreadCount'
+                  : _filterLabels[i];
+
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: GestureDetector(
+                  onTap: () {
+                    if (_activeFilterIndex == i) return;
+                    HapticFeedback.selectionClick();
+                    setState(() {
+                      _activeFilterIndex = i;
+                      _updateConversationsStream();
+                    });
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                decoration: BoxDecoration(
-                  color: active ? _kAccent : _surface2(isDark),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  _filterLabels[i],
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: active ? FontWeight.w600 : FontWeight.w500,
-                    color: active ? Colors.white : _secondary(isDark),
+                    decoration: BoxDecoration(
+                      color: active ? _kAccent : _surface2(isDark),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight:
+                        active ? FontWeight.w600 : FontWeight.w500,
+                        color: active ? Colors.white : _secondary(isDark),
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-          );
-        }),
-      ),
+              );
+            }),
+          ),
+        );
+      },
     );
   }
 
   // ════════════════════════════════════════════════════════════════════════════
   // STORIES ROW
-  // Single compact row — removed separate Online bar (online visible via dots)
+  // Compact khi rỗng, đầy đủ khi có story
   // ════════════════════════════════════════════════════════════════════════════
 
   Widget _buildStoriesRow(StoryProvider provider, bool isDark) {
@@ -940,24 +1060,32 @@ class _HomePageState extends State<HomePage>
               currentUserId: _currentUserId, friendIds: _myFriendIds),
           builder: (ctx, snap) {
             final stories = snap.data ?? [];
+            final hasStories = stories.isNotEmpty;
+
+            // Empty state compact: chỉ hiển thị "+" button nhỏ + label
+            if (!hasStories) {
+              return _buildStoriesEmptyCompact(isDark);
+            }
+
             return StoriesBar(
               storiesList: stories,
               currentUserId: _currentUserId,
               onAddStory: _openStoryCreator,
               onViewStories: (userStories) {
-                final others =
-                    stories.where((s) => s.userId != _currentUserId).toList();
-                final idx =
-                    others.indexWhere((s) => s.userId == userStories.userId);
+                final others = stories
+                    .where((s) => s.userId != _currentUserId)
+                    .toList();
+                final idx = others
+                    .indexWhere((s) => s.userId == userStories.userId);
                 _push(StoryViewerPage(
                     allUserStories: others.isNotEmpty ? others : stories,
                     initialUserIndex: idx < 0 ? 0 : idx,
                     currentUserId: _currentUserId,
                     currentUserName: _authProvider.prefs
-                            .getString(FirestoreConstants.nickname) ??
+                        .getString(FirestoreConstants.nickname) ??
                         '',
                     currentUserPhotoUrl: _authProvider.prefs
-                            .getString(FirestoreConstants.photoUrl) ??
+                        .getString(FirestoreConstants.photoUrl) ??
                         ''));
               },
             );
@@ -965,6 +1093,53 @@ class _HomePageState extends State<HomePage>
         ),
         Divider(height: 1, thickness: 0.5, color: _sep(isDark)),
       ]),
+    );
+  }
+
+  /// Compact row khi chưa có story nào — tiết kiệm vertical space
+  Widget _buildStoriesEmptyCompact(bool isDark) {
+    return GestureDetector(
+      onTap: _openStoryCreator,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(children: [
+          // Add story button nhỏ
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                  color: _kAccent.withOpacity(0.4),
+                  width: 1.5,
+                  strokeAlign: BorderSide.strokeAlignOutside),
+              color: _kAccent.withOpacity(0.08),
+            ),
+            child: const Icon(Icons.add_rounded, color: _kAccent, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Thêm story của bạn',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: _primary(isDark))),
+                  const SizedBox(height: 2),
+                  Text('Chia sẻ khoảnh khắc với bạn bè',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: _secondary(isDark),
+                          fontWeight: FontWeight.w400)),
+                ]),
+          ),
+          Icon(Icons.chevron_right_rounded,
+              size: 18, color: _secondary(isDark).withOpacity(0.5)),
+        ]),
+      ),
     );
   }
 
@@ -979,8 +1154,6 @@ class _HomePageState extends State<HomePage>
 
   // ════════════════════════════════════════════════════════════════════════════
   // CHAT LIST
-  // Flat surface — no card wrapper, no rounded container, no shadow clutter.
-  // AI item pinned at top as a standard row. Pinned convos show an icon inline.
   // ════════════════════════════════════════════════════════════════════════════
 
   Widget _buildChatList(bool isDark) {
@@ -997,7 +1170,8 @@ class _HomePageState extends State<HomePage>
         final allDocs = snap.data ?? [];
         final activeDocs = allDocs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
-          final archived = List<String>.from(data['archivedBy'] as List? ?? []);
+          final archived =
+          List<String>.from(data['archivedBy'] as List? ?? []);
           return !archived.contains(_currentUserId);
         }).toList();
         _schedulePrefetch(activeDocs);
@@ -1082,13 +1256,12 @@ class _HomePageState extends State<HomePage>
                                   letterSpacing: -0.2,
                                   color: _primary(isDark))),
                           const SizedBox(width: 6),
-                          // "AI" chip
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                                gradient:
-                                    const LinearGradient(colors: _kAiGradient),
+                                gradient: const LinearGradient(
+                                    colors: _kAiGradient),
                                 borderRadius: BorderRadius.circular(5)),
                             child: const Text('AI',
                                 style: TextStyle(
@@ -1098,7 +1271,7 @@ class _HomePageState extends State<HomePage>
                           ),
                         ]),
                     const SizedBox(height: 3),
-                    Text('Powered by Gemini · Ask me anything',
+                    Text('Được hỗ trợ bởi Gemini · Hỏi tôi bất cứ điều gì',
                         style: TextStyle(
                             fontSize: 13.5,
                             color: _secondary(isDark),
@@ -1113,7 +1286,7 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  // ── Conversation Item ──────────────────────────────────────────────────────
+  // ── Conversation Item — với swipe actions ──────────────────────────────────
 
   Widget _buildConversationItem(DocumentSnapshot doc, bool isDark) {
     final conversation = Conversation.fromDocument(doc);
@@ -1121,12 +1294,14 @@ class _HomePageState extends State<HomePage>
     if (conversation.isGroup) {
       final group = _groupCache[conversation.id];
       if (group == null) return _SkeletonTile(isDark: isDark);
-      return _ConversationTile(
+
+      final tile = _ConversationTile(
         id: conversation.id,
         name: group.groupName,
         photoUrl: group.groupPhotoUrl,
         lastMessage: _lastMessagePreview(
-            conversation.lastMessage ?? '', conversation.lastMessageType ?? 0),
+            conversation.lastMessage ?? '',
+            conversation.lastMessageType ?? 0),
         timeLabel: _timeAgo(conversation.lastMessageTime ?? ''),
         isPinned: conversation.isPinned,
         isMuted: conversation.isMuted,
@@ -1148,6 +1323,8 @@ class _HomePageState extends State<HomePage>
         },
         onLongPress: () => _showConversationOptions(conversation),
       );
+
+      return _wrapWithSwipe(child: tile, conversation: conversation);
     }
 
     final otherId = conversation.participants
@@ -1155,12 +1332,14 @@ class _HomePageState extends State<HomePage>
     if (otherId.isEmpty) return const SizedBox.shrink();
     final userChat = _userProfileCache[otherId];
     if (userChat == null) return _SkeletonTile(isDark: isDark);
-    return _ConversationTile(
+
+    final tile = _ConversationTile(
       id: conversation.id,
       name: userChat.nickname,
       photoUrl: userChat.photoUrl,
       lastMessage: _lastMessagePreview(
-          conversation.lastMessage ?? '', conversation.lastMessageType ?? 0),
+          conversation.lastMessage ?? '',
+          conversation.lastMessageType ?? 0),
       timeLabel: _timeAgo(conversation.lastMessageTime ?? ''),
       isPinned: conversation.isPinned,
       isMuted: conversation.isMuted,
@@ -1168,6 +1347,8 @@ class _HomePageState extends State<HomePage>
       isDark: isDark,
       onlineUserId: otherId,
       unreadCount: conversation.unreadCount ?? 0,
+      isSentByMe: conversation.isSentByMe ?? false,
+      isRead: conversation.isRead ?? false,
       onTap: () {
         HapticFeedback.lightImpact();
         if (widget.isWebSidebar && widget.onChatSelected != null) {
@@ -1186,6 +1367,8 @@ class _HomePageState extends State<HomePage>
       },
       onLongPress: () => _showConversationOptions(conversation),
     );
+
+    return _wrapWithSwipe(child: tile, conversation: conversation);
   }
 
   // ── Search Results ─────────────────────────────────────────────────────────
@@ -1195,24 +1378,24 @@ class _HomePageState extends State<HomePage>
     final isPhone = RegExp(r'^[+\d][\d\s-]*$').hasMatch(query);
     final stream = isPhone
         ? _homeProvider.firebaseFirestore
-            .collection(FirestoreConstants.pathUserCollection)
-            .where(FirestoreConstants.phoneNumber, isEqualTo: query)
-            .limit(_searchLimit)
-            .snapshots()
+        .collection(FirestoreConstants.pathUserCollection)
+        .where(FirestoreConstants.phoneNumber, isEqualTo: query)
+        .limit(_searchLimit)
+        .snapshots()
         : _homeProvider.firebaseFirestore
-            .collection(FirestoreConstants.pathUserCollection)
-            .where(FirestoreConstants.nickname, isGreaterThanOrEqualTo: query)
-            .where(FirestoreConstants.nickname,
-                isLessThanOrEqualTo: '$query\uf8ff')
-            .limit(_searchLimit)
-            .snapshots();
+        .collection(FirestoreConstants.pathUserCollection)
+        .where(FirestoreConstants.nickname, isGreaterThanOrEqualTo: query)
+        .where(FirestoreConstants.nickname,
+        isLessThanOrEqualTo: '$query\uf8ff')
+        .limit(_searchLimit)
+        .snapshots();
 
     return StreamBuilder<QuerySnapshot>(
       stream: stream,
       builder: (_, snap) {
         if (!snap.hasData) return _buildSkeleton(isDark);
         final docs =
-            snap.data!.docs.where((d) => d.id != _currentUserId).toList();
+        snap.data!.docs.where((d) => d.id != _currentUserId).toList();
         if (docs.isEmpty) return _buildSearchEmpty(isDark);
         return Column(children: [
           ListView.separated(
@@ -1228,7 +1411,8 @@ class _HomePageState extends State<HomePage>
                   isDark: isDark,
                   onTap: () {
                     HapticFeedback.lightImpact();
-                    if (widget.isWebSidebar && widget.onChatSelected != null) {
+                    if (widget.isWebSidebar &&
+                        widget.onChatSelected != null) {
                       widget.onChatSelected!({
                         'peerId': user.id,
                         'peerAvatar': user.photoUrl,
@@ -1267,14 +1451,17 @@ class _HomePageState extends State<HomePage>
         final isLogout = m.title == 'Log out';
         return PopupMenuItem<MenuSetting>(
             value: m,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-            child: _MenuItemRow(menu: m, isLogout: isLogout, isDark: isDark));
+            padding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+            child:
+            _MenuItemRow(menu: m, isLogout: isLogout, isDark: isDark));
       }).toList(),
       child: Container(
         width: 38,
         height: 38,
         decoration: BoxDecoration(
-            color: _surface2(isDark), borderRadius: BorderRadius.circular(12)),
+            color: _surface2(isDark),
+            borderRadius: BorderRadius.circular(12)),
         child: Icon(Icons.more_vert_rounded,
             color: isDark
                 ? Colors.white.withOpacity(0.75)
@@ -1287,83 +1474,87 @@ class _HomePageState extends State<HomePage>
   // ── Empty / skeleton states ────────────────────────────────────────────────
 
   Widget _buildSearchEmpty(bool isDark) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 56),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                  color: _surface2(isDark), shape: BoxShape.circle),
-              child: Icon(Icons.search_off_rounded,
-                  size: 28, color: _secondary(isDark).withOpacity(0.5))),
-          const SizedBox(height: 16),
-          Text('No results for "$_textSearch"',
-              style: TextStyle(
-                  color: _primary(isDark),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600)),
-          const SizedBox(height: 6),
-          Text('Try a different name or number',
-              style: TextStyle(color: _secondary(isDark), fontSize: 13.5)),
-        ]),
-      );
+    padding: const EdgeInsets.symmetric(vertical: 56),
+    child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Container(
+          width: 64,
+          height: 64,
+          decoration: BoxDecoration(
+              color: _surface2(isDark), shape: BoxShape.circle),
+          child: Icon(Icons.search_off_rounded,
+              size: 28,
+              color: _secondary(isDark).withOpacity(0.5))),
+      const SizedBox(height: 16),
+      Text('Không tìm thấy "$_textSearch"',
+          style: TextStyle(
+              color: _primary(isDark),
+              fontSize: 15,
+              fontWeight: FontWeight.w600)),
+      const SizedBox(height: 6),
+      Text('Thử tìm kiếm bằng tên hoặc số điện thoại khác',
+          style:
+          TextStyle(color: _secondary(isDark), fontSize: 13.5)),
+    ]),
+  );
 
   Widget _buildEmptyState(bool isDark) => Padding(
-        padding: const EdgeInsets.fromLTRB(32, 44, 32, 48),
-        child: Column(children: [
-          Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                      colors: [_kAccent, _kGreen],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                        color: _kAccent.withOpacity(0.28),
-                        blurRadius: 24,
-                        offset: const Offset(0, 8))
-                  ]),
-              child: const Icon(Icons.chat_bubble_outline_rounded,
-                  size: 36, color: Colors.white)),
-          const SizedBox(height: 20),
-          Text('No conversations yet',
-              style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.4,
-                  color: _primary(isDark))),
-          const SizedBox(height: 8),
-          Text('Scan a QR or search by name\nto start your first chat',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  color: _secondary(isDark), fontSize: 14, height: 1.5)),
-          const SizedBox(height: 24),
-          GestureDetector(
-            onTap: () {
-              HapticFeedback.lightImpact();
-              _scanQRCode();
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
-              decoration: BoxDecoration(
-                  color: _kAccent, borderRadius: BorderRadius.circular(14)),
-              child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.qr_code_scanner_rounded,
-                    color: Colors.white, size: 17),
-                SizedBox(width: 8),
-                Text('Scan QR Code',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14)),
+    padding: const EdgeInsets.fromLTRB(32, 44, 32, 48),
+    child: Column(children: [
+      Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                  colors: [_kAccent, _kGreen],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                    color: _kAccent.withOpacity(0.28),
+                    blurRadius: 24,
+                    offset: const Offset(0, 8))
               ]),
-            ),
-          ),
-        ]),
-      );
+          child: const Icon(Icons.chat_bubble_outline_rounded,
+              size: 36, color: Colors.white)),
+      const SizedBox(height: 20),
+      Text('Chưa có cuộc trò chuyện nào',
+          style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.4,
+              color: _primary(isDark))),
+      const SizedBox(height: 8),
+      Text('Quét QR hoặc tìm kiếm theo tên\nđể bắt đầu trò chuyện',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+              color: _secondary(isDark), fontSize: 14, height: 1.5)),
+      const SizedBox(height: 24),
+      GestureDetector(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          _scanQRCode();
+        },
+        child: Container(
+          padding:
+          const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
+          decoration: BoxDecoration(
+              color: _kAccent,
+              borderRadius: BorderRadius.circular(14)),
+          child: const Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.qr_code_scanner_rounded,
+                color: Colors.white, size: 17),
+            SizedBox(width: 8),
+            Text('Quét mã QR',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14)),
+          ]),
+        ),
+      ),
+    ]),
+  );
 
   Widget _buildSkeleton(bool isDark) => ListView.separated(
       shrinkWrap: true,
@@ -1416,7 +1607,8 @@ class _BubbleDock extends StatelessWidget {
                     curve: Curves.easeOutBack,
                     height: 58,
                     constraints: BoxConstraints(
-                        maxWidth: math.min(64.0 * bubbles.length + 96, 340)),
+                        maxWidth:
+                        math.min(64.0 * bubbles.length + 96, 340)),
                     margin: const EdgeInsets.symmetric(horizontal: 24),
                     decoration: BoxDecoration(
                       color: isDark
@@ -1460,80 +1652,19 @@ class _BubbleDock extends StatelessWidget {
                                         fontWeight: FontWeight.w800))),
                           ),
                           const SizedBox(width: 8),
-                          // Avatar list
-                          ...bubbles.map((b) => GestureDetector(
-                                onTap: () {
-                                  HapticFeedback.lightImpact();
-                                  onBubbleTap(b);
-                                },
-                                onLongPress: () {
-                                  HapticFeedback.mediumImpact();
-                                  onBubbleLongPress(b);
-                                },
-                                child: Container(
-                                  margin: const EdgeInsets.only(right: 6),
-                                  child:
-                                      Stack(clipBehavior: Clip.none, children: [
-                                    CircleAvatar(
-                                        radius: 19,
-                                        backgroundImage: b.avatarUrl.isNotEmpty
-                                            ? NetworkImage(b.avatarUrl)
-                                            : null,
-                                        backgroundColor:
-                                            _kAccent.withOpacity(0.2),
-                                        child: b.avatarUrl.isEmpty
-                                            ? Text(
-                                                b.userName.isNotEmpty
-                                                    ? b.userName[0]
-                                                        .toUpperCase()
-                                                    : '?',
-                                                style: const TextStyle(
-                                                    color: _kAccent,
-                                                    fontWeight: FontWeight.w800,
-                                                    fontSize: 13))
-                                            : null),
-                                    if (b.unreadCount > 0)
-                                      Positioned(
-                                          top: -4,
-                                          right: -4,
-                                          child: Container(
-                                            padding: const EdgeInsets.all(2),
-                                            constraints: const BoxConstraints(
-                                                minWidth: 15, minHeight: 15),
-                                            decoration: const BoxDecoration(
-                                                color: Colors.red,
-                                                shape: BoxShape.circle),
-                                            child: Text(
-                                                b.unreadCount > 9
-                                                    ? '9+'
-                                                    : '${b.unreadCount}',
-                                                textAlign: TextAlign.center,
-                                                style: const TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 8,
-                                                    fontWeight:
-                                                        FontWeight.w900)),
-                                          )),
-                                    Positioned(
-                                        bottom: -1,
-                                        right: -1,
-                                        child: Container(
-                                            width: 10,
-                                            height: 10,
-                                            decoration: BoxDecoration(
-                                              color: b.isOnline
-                                                  ? _kGreen
-                                                  : Colors.grey.shade400,
-                                              shape: BoxShape.circle,
-                                              border: Border.all(
-                                                  color: isDark
-                                                      ? const Color(0xFF000000)
-                                                      : Colors.white,
-                                                  width: 1.5),
-                                            ))),
-                                  ]),
-                                ),
-                              )),
+                          // Avatar list — mỗi bubble có entrance animation
+                          ...bubbles.map((b) => _BubbleAvatar(
+                            bubble: b,
+                            isDark: isDark,
+                            onTap: () {
+                              HapticFeedback.lightImpact();
+                              onBubbleTap(b);
+                            },
+                            onLongPress: () {
+                              HapticFeedback.mediumImpact();
+                              onBubbleLongPress(b);
+                            },
+                          )),
                           // Settings button
                           GestureDetector(
                             onTap: () {
@@ -1548,7 +1679,8 @@ class _BubbleDock extends StatelessWidget {
                                     color: isDark
                                         ? Colors.white.withOpacity(0.08)
                                         : Colors.grey.shade100,
-                                    borderRadius: BorderRadius.circular(9)),
+                                    borderRadius:
+                                    BorderRadius.circular(9)),
                                 child: Icon(Icons.settings_rounded,
                                     color: isDark
                                         ? Colors.white38
@@ -1566,6 +1698,112 @@ class _BubbleDock extends StatelessWidget {
           },
         );
       },
+    );
+  }
+}
+
+// ── Bubble avatar với entrance animation ───────────────────────────────────
+
+class _BubbleAvatar extends StatefulWidget {
+  final BubbleData bubble;
+  final bool isDark;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+
+  const _BubbleAvatar({
+    required this.bubble,
+    required this.isDark,
+    required this.onTap,
+    required this.onLongPress,
+  });
+
+  @override
+  State<_BubbleAvatar> createState() => _BubbleAvatarState();
+}
+
+class _BubbleAvatarState extends State<_BubbleAvatar>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 420))
+      ..forward();
+    _scale = CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final b = widget.bubble;
+    return ScaleTransition(
+      scale: _scale,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        onLongPress: widget.onLongPress,
+        child: Container(
+          margin: const EdgeInsets.only(right: 6),
+          child: Stack(clipBehavior: Clip.none, children: [
+            CircleAvatar(
+                radius: 19,
+                backgroundImage: b.avatarUrl.isNotEmpty
+                    ? NetworkImage(b.avatarUrl)
+                    : null,
+                backgroundColor: _kAccent.withOpacity(0.2),
+                child: b.avatarUrl.isEmpty
+                    ? Text(
+                    b.userName.isNotEmpty
+                        ? b.userName[0].toUpperCase()
+                        : '?',
+                    style: const TextStyle(
+                        color: _kAccent,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13))
+                    : null),
+            if (b.unreadCount > 0)
+              Positioned(
+                  top: -4,
+                  right: -4,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    constraints:
+                    const BoxConstraints(minWidth: 15, minHeight: 15),
+                    decoration: const BoxDecoration(
+                        color: Colors.red, shape: BoxShape.circle),
+                    child: Text(
+                        b.unreadCount > 9 ? '9+' : '${b.unreadCount}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 8,
+                            fontWeight: FontWeight.w900)),
+                  )),
+            Positioned(
+                bottom: -1,
+                right: -1,
+                child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: b.isOnline ? _kGreen : Colors.grey.shade400,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                          color: widget.isDark
+                              ? const Color(0xFF000000)
+                              : Colors.white,
+                          width: 1.5),
+                    ))),
+          ]),
+        ),
+      ),
     );
   }
 }
@@ -1630,21 +1868,22 @@ class _AvatarRing extends StatelessWidget {
       child: ClipOval(
         child: photoUrl.isNotEmpty
             ? Image.network(photoUrl,
-                fit: BoxFit.cover, errorBuilder: (_, __, ___) => _initials())
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _initials())
             : _initials(),
       ),
     );
   }
 
   Widget _initials() => Center(
-        child: Text(
-          name.isNotEmpty ? name[0].toUpperCase() : '?',
-          style: TextStyle(
-              color: ColorConstants.primaryColor,
-              fontWeight: FontWeight.w700,
-              fontSize: 15),
-        ),
-      );
+    child: Text(
+      name.isNotEmpty ? name[0].toUpperCase() : '?',
+      style: TextStyle(
+          color: ColorConstants.primaryColor,
+          fontWeight: FontWeight.w700,
+          fontSize: 15),
+    ),
+  );
 }
 
 // ── Nav button (app bar icons) ─────────────────────────────────────────────
@@ -1656,7 +1895,10 @@ class _NavBtn extends StatelessWidget {
   final String? tooltip;
 
   const _NavBtn(
-      {required this.icon, required this.isDark, this.onTap, this.tooltip});
+      {required this.icon,
+        required this.isDark,
+        this.onTap,
+        this.tooltip});
 
   @override
   Widget build(BuildContext context) {
@@ -1666,63 +1908,21 @@ class _NavBtn extends StatelessWidget {
       decoration: BoxDecoration(
           color: _surface2(isDark), borderRadius: BorderRadius.circular(12)),
       child: Icon(icon,
-          color:
-              isDark ? Colors.white.withOpacity(0.75) : const Color(0xFF3C3C43),
+          color: isDark
+              ? Colors.white.withOpacity(0.75)
+              : const Color(0xFF3C3C43),
           size: 19),
     );
-    if (onTap == null)
-      return tooltip != null ? Tooltip(message: tooltip!, child: child) : child;
+    if (onTap == null) {
+      return tooltip != null
+          ? Tooltip(message: tooltip!, child: child)
+          : child;
+    }
     return Tooltip(
       message: tooltip ?? '',
       child: GestureDetector(onTap: onTap, child: child),
     );
   }
-}
-
-// ── Unread badge (header title) ────────────────────────────────────────────
-
-class _UnreadBadge extends StatefulWidget {
-  final String userId;
-  final bool isDark;
-  const _UnreadBadge({required this.userId, required this.isDark});
-
-  @override
-  State<_UnreadBadge> createState() => _UnreadBadgeState();
-}
-
-class _UnreadBadgeState extends State<_UnreadBadge> {
-  late final Stream<QuerySnapshot> _stream;
-
-  @override
-  void initState() {
-    super.initState();
-    _stream = FirebaseFirestore.instance
-        .collection(FirestoreConstants.pathConversationCollection)
-        .where(FirestoreConstants.participants, arrayContains: widget.userId)
-        .where('unreadCount', isGreaterThan: 0)
-        .snapshots();
-  }
-
-  @override
-  Widget build(BuildContext context) => StreamBuilder<QuerySnapshot>(
-      stream: _stream,
-      builder: (_, snap) {
-        final count = snap.hasData ? snap.data!.docs.length : 0;
-        if (count == 0) return const SizedBox.shrink();
-        return AnimatedSwitcher(
-          duration: const Duration(milliseconds: 200),
-          child: Container(
-              key: ValueKey(count),
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-              decoration: BoxDecoration(
-                  color: _kAccent, borderRadius: BorderRadius.circular(10)),
-              child: Text(count > 99 ? '99+' : '$count',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700))),
-        );
-      });
 }
 
 // ── Animated notification badge ────────────────────────────────────────────
@@ -1765,7 +1965,8 @@ class _AnimatedBadgeState extends State<_AnimatedBadge>
           decoration: BoxDecoration(
               color: Colors.red.shade600,
               shape: BoxShape.circle,
-              border: Border.all(color: _surface(widget.isDark), width: 2)),
+              border:
+              Border.all(color: _surface(widget.isDark), width: 2)),
           child: Center(
               child: Text(widget.count > 9 ? '9+' : '${widget.count}',
                   style: const TextStyle(
@@ -1780,16 +1981,21 @@ class _MenuItemRow extends StatelessWidget {
   final MenuSetting menu;
   final bool isLogout, isDark;
   const _MenuItemRow(
-      {required this.menu, required this.isLogout, required this.isDark});
+      {required this.menu,
+        required this.isLogout,
+        required this.isDark});
 
   @override
   Widget build(BuildContext context) {
     final isBubble = menu.title == 'Bubble Chat';
+    final isArchive = menu.title == 'Archive';
     final color = isLogout
         ? Colors.red.shade500
         : isBubble
-            ? _kGreen
-            : _kAccent;
+        ? _kGreen
+        : isArchive
+        ? _kOrange
+        : _kAccent;
     return Row(children: [
       Container(
           width: 32,
@@ -1810,7 +2016,7 @@ class _MenuItemRow extends StatelessWidget {
 
 // ════════════════════════════════════════════════════════════════════════════
 // CONVERSATION TILE
-// Clean flat row — pin icon inline, mute icon inline, unread chip at right
+// Flat row — pin/mute inline, unread chip, read receipt cho 1-1 chat
 // ════════════════════════════════════════════════════════════════════════════
 
 class _ConversationTile extends StatelessWidget {
@@ -1819,23 +2025,29 @@ class _ConversationTile extends StatelessWidget {
   final bool isAi;
   final String? onlineUserId;
   final int unreadCount;
+  // Read receipt — chỉ dùng cho 1-1 chat (isGroup == false)
+  final bool isSentByMe;
+  final bool isRead;
   final VoidCallback onTap, onLongPress;
 
-  const _ConversationTile(
-      {required this.id,
-      required this.name,
-      required this.photoUrl,
-      required this.lastMessage,
-      required this.timeLabel,
-      required this.isPinned,
-      required this.isMuted,
-      required this.isGroup,
-      required this.isDark,
-      required this.onTap,
-      required this.onLongPress,
-      this.onlineUserId,
-      this.unreadCount = 0,
-      this.isAi = false});
+  const _ConversationTile({
+    required this.id,
+    required this.name,
+    required this.photoUrl,
+    required this.lastMessage,
+    required this.timeLabel,
+    required this.isPinned,
+    required this.isMuted,
+    required this.isGroup,
+    required this.isDark,
+    required this.onTap,
+    required this.onLongPress,
+    this.onlineUserId,
+    this.unreadCount = 0,
+    this.isAi = false,
+    this.isSentByMe = false,
+    this.isRead = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1850,7 +2062,8 @@ class _ConversationTile extends StatelessWidget {
         highlightColor: _kAccent.withOpacity(0.02),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-          color: isPinned ? _kAccent.withOpacity(isDark ? 0.05 : 0.04) : null,
+          color:
+          isPinned ? _kAccent.withOpacity(isDark ? 0.05 : 0.04) : null,
           child: Row(children: [
             // Avatar
             SizedBox(
@@ -1892,59 +2105,79 @@ class _ConversationTile extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                  // Name row
-                  Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-                    if (isPinned) ...[
-                      Icon(Icons.push_pin_rounded,
-                          size: 10, color: _kAccent.withOpacity(0.7)),
-                      const SizedBox(width: 3),
-                    ],
-                    Expanded(
-                        child: Text(name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                color: _primary(isDark),
-                                fontWeight: hasUnread
-                                    ? FontWeight.w700
-                                    : FontWeight.w600,
-                                fontSize: 15.5,
-                                letterSpacing: -0.2))),
-                    const SizedBox(width: 8),
-                    Text(timeLabel,
-                        style: TextStyle(
-                            color: hasUnread ? _kAccent : _secondary(isDark),
-                            fontSize: 11.5,
-                            fontWeight:
-                                hasUnread ? FontWeight.w600 : FontWeight.w400)),
-                  ]),
-                  const SizedBox(height: 3),
-                  // Preview row
-                  Row(children: [
-                    Expanded(
-                        child: Text(lastMessage,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                color: hasUnread
-                                    ? _primary(isDark).withOpacity(0.75)
-                                    : _secondary(isDark),
-                                fontSize: 13.5,
-                                fontWeight: hasUnread
-                                    ? FontWeight.w500
-                                    : FontWeight.w400))),
-                    if (hasUnread) ...[
-                      const SizedBox(width: 8),
-                      _UnreadChip(count: unreadCount),
-                    ],
-                    if (isMuted && !hasUnread)
-                      Padding(
-                          padding: const EdgeInsets.only(left: 6),
-                          child: Icon(Icons.volume_off_rounded,
-                              size: 13,
-                              color: _secondary(isDark).withOpacity(0.5))),
-                  ]),
-                ])),
+                      // Name row
+                      Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            if (isPinned) ...[
+                              Icon(Icons.push_pin_rounded,
+                                  size: 10,
+                                  color: _kAccent.withOpacity(0.7)),
+                              const SizedBox(width: 3),
+                            ],
+                            Expanded(
+                                child: Text(name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                        color: _primary(isDark),
+                                        fontWeight: hasUnread
+                                            ? FontWeight.w700
+                                            : FontWeight.w600,
+                                        fontSize: 15.5,
+                                        letterSpacing: -0.2))),
+                            const SizedBox(width: 8),
+                            Text(timeLabel,
+                                style: TextStyle(
+                                    color: hasUnread
+                                        ? _kAccent
+                                        : _secondary(isDark),
+                                    fontSize: 11.5,
+                                    fontWeight: hasUnread
+                                        ? FontWeight.w600
+                                        : FontWeight.w400)),
+                          ]),
+                      const SizedBox(height: 3),
+                      // Preview row với read receipt
+                      Row(children: [
+                        // Read receipt — chỉ 1-1 chat, tin nhắn do mình gửi
+                        if (!isGroup && isSentByMe && !hasUnread) ...[
+                          Icon(
+                            isRead
+                                ? Icons.done_all_rounded
+                                : Icons.done_rounded,
+                            size: 14,
+                            color: isRead
+                                ? _kAccent
+                                : _secondary(isDark).withOpacity(0.6),
+                          ),
+                          const SizedBox(width: 4),
+                        ],
+                        Expanded(
+                            child: Text(lastMessage,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    color: hasUnread
+                                        ? _primary(isDark).withOpacity(0.75)
+                                        : _secondary(isDark),
+                                    fontSize: 13.5,
+                                    fontWeight: hasUnread
+                                        ? FontWeight.w500
+                                        : FontWeight.w400))),
+                        if (hasUnread) ...[
+                          const SizedBox(width: 8),
+                          _UnreadChip(count: unreadCount),
+                        ],
+                        if (isMuted && !hasUnread)
+                          Padding(
+                              padding: const EdgeInsets.only(left: 6),
+                              child: Icon(Icons.volume_off_rounded,
+                                  size: 13,
+                                  color:
+                                  _secondary(isDark).withOpacity(0.5))),
+                      ]),
+                    ])),
           ]),
         ),
       ),
@@ -1965,7 +2198,9 @@ class _UnreadChip extends StatelessWidget {
           color: _kAccent, borderRadius: BorderRadius.circular(10)),
       child: Text(count > 99 ? '99+' : '$count',
           style: const TextStyle(
-              color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)));
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w700)));
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1979,11 +2214,11 @@ class _Avatar extends StatelessWidget {
 
   const _Avatar(
       {required this.photoUrl,
-      required this.name,
-      required this.size,
-      required this.isDark,
-      this.isGroup = false,
-      this.isAi = false});
+        required this.name,
+        required this.size,
+        required this.isDark,
+        this.isGroup = false,
+        this.isAi = false});
 
   @override
   Widget build(BuildContext context) {
@@ -2011,14 +2246,14 @@ class _Avatar extends StatelessWidget {
         decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: avatarColor.withOpacity(0.12),
-            border:
-                Border.all(color: avatarColor.withOpacity(0.18), width: 1.5)),
+            border: Border.all(
+                color: avatarColor.withOpacity(0.18), width: 1.5)),
         child: ClipOval(
             child: photoUrl.isNotEmpty
                 ? Image.network(photoUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) =>
-                        _fallback(initials, avatarColor))
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) =>
+                    _fallback(initials, avatarColor))
                 : _fallback(initials, avatarColor)));
   }
 
@@ -2026,7 +2261,8 @@ class _Avatar extends StatelessWidget {
     if (isGroup) {
       return Container(
           color: color.withOpacity(0.1),
-          child: Icon(Icons.group_rounded, color: color, size: size * 0.42));
+          child:
+          Icon(Icons.group_rounded, color: color, size: size * 0.42));
     }
     return Container(
         color: color.withOpacity(0.1),
@@ -2077,7 +2313,9 @@ class _SearchResultTile extends StatelessWidget {
   final VoidCallback onTap;
 
   const _SearchResultTile(
-      {required this.userChat, required this.isDark, required this.onTap});
+      {required this.userChat,
+        required this.isDark,
+        required this.onTap});
 
   @override
   Widget build(BuildContext context) => Material(
@@ -2086,7 +2324,8 @@ class _SearchResultTile extends StatelessWidget {
           onTap: onTap,
           splashColor: _kAccent.withOpacity(0.05),
           child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 12),
               child: Row(children: [
                 _Avatar(
                     photoUrl: userChat.photoUrl,
@@ -2098,35 +2337,36 @@ class _SearchResultTile extends StatelessWidget {
                     child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                      Text(userChat.nickname,
-                          style: TextStyle(
-                              color: _primary(isDark),
-                              fontWeight: FontWeight.w600,
-                              fontSize: 15)),
-                      if (userChat.phoneNumber.isNotEmpty)
-                        Padding(
-                            padding: const EdgeInsets.only(top: 2),
-                            child: Text('📱 ${userChat.phoneNumber}',
-                                style: TextStyle(
-                                    color: _secondary(isDark),
-                                    fontSize: 12.5))),
-                      if (userChat.aboutMe.isNotEmpty)
-                        Padding(
-                            padding: const EdgeInsets.only(top: 2),
-                            child: Text(userChat.aboutMe,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                    color: _secondary(isDark).withOpacity(0.7),
-                                    fontSize: 12.5))),
-                    ])),
+                          Text(userChat.nickname,
+                              style: TextStyle(
+                                  color: _primary(isDark),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 15)),
+                          if (userChat.phoneNumber.isNotEmpty)
+                            Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text('📱 ${userChat.phoneNumber}',
+                                    style: TextStyle(
+                                        color: _secondary(isDark),
+                                        fontSize: 12.5))),
+                          if (userChat.aboutMe.isNotEmpty)
+                            Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(userChat.aboutMe,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                        color: _secondary(isDark)
+                                            .withOpacity(0.7),
+                                        fontSize: 12.5))),
+                        ])),
                 Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 7),
                     decoration: BoxDecoration(
                         color: _kAccent,
                         borderRadius: BorderRadius.circular(20)),
-                    child: const Text('View',
+                    child: const Text('Xem',
                         style: TextStyle(
                             color: Colors.white,
                             fontSize: 12.5,
@@ -2162,7 +2402,7 @@ class _ScrollToTopButton extends StatelessWidget {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// SKELETON TILE — shimmer shimmer
+// SKELETON TILE — shimmer loading
 // ════════════════════════════════════════════════════════════════════════════
 
 class _SkeletonTile extends StatefulWidget {
@@ -2198,43 +2438,45 @@ class _SkeletonTileState extends State<_SkeletonTile>
       animation: _anim,
       builder: (_, __) {
         final base = widget.isDark
-            ? Color.lerp(
-                const Color(0xFF1C1C22), const Color(0xFF2C2C34), _anim.value)!
-            : Color.lerp(
-                const Color(0xFFF2F2F7), const Color(0xFFE5E5EA), _anim.value)!;
+            ? Color.lerp(const Color(0xFF1C1C22), const Color(0xFF2C2C34),
+            _anim.value)!
+            : Color.lerp(const Color(0xFFF2F2F7), const Color(0xFFE5E5EA),
+            _anim.value)!;
         return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+            padding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
             child: Row(children: [
               Container(
                   width: 52,
                   height: 52,
-                  decoration:
-                      BoxDecoration(color: base, shape: BoxShape.circle)),
+                  decoration: BoxDecoration(
+                      color: base, shape: BoxShape.circle)),
               const SizedBox(width: 12),
               Expanded(
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                    Container(
-                        height: 13,
-                        width: 110 + (_anim.value * 30),
-                        decoration: BoxDecoration(
-                            color: base,
-                            borderRadius: BorderRadius.circular(7))),
-                    const SizedBox(height: 8),
-                    Container(
-                        height: 11,
-                        width: 160 + (_anim.value * 20),
-                        decoration: BoxDecoration(
-                            color: base,
-                            borderRadius: BorderRadius.circular(6))),
-                  ])),
+                        Container(
+                            height: 13,
+                            width: 110 + (_anim.value * 30),
+                            decoration: BoxDecoration(
+                                color: base,
+                                borderRadius: BorderRadius.circular(7))),
+                        const SizedBox(height: 8),
+                        Container(
+                            height: 11,
+                            width: 160 + (_anim.value * 20),
+                            decoration: BoxDecoration(
+                                color: base,
+                                borderRadius: BorderRadius.circular(6))),
+                      ])),
               const SizedBox(width: 12),
               Container(
                   height: 10,
                   width: 26,
                   decoration: BoxDecoration(
-                      color: base, borderRadius: BorderRadius.circular(5))),
+                      color: base,
+                      borderRadius: BorderRadius.circular(5))),
             ]));
       });
 }

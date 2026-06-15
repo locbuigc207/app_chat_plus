@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
-
 import 'package:flutter_chat_demo/models/game_match.dart';
 import 'package:flutter_chat_demo/models/message_chat.dart';
 import 'package:flutter_chat_demo/pages/game_setup_page.dart';
 import 'package:flutter_chat_demo/pages/match_room_page.dart';
+import 'package:flutter_chat_demo/providers/auth_provider.dart'; // Bổ sung thư viện AuthProvider
 import 'package:flutter_chat_demo/providers/theme_provider.dart';
 import 'package:flutter_chat_demo/services/game_firebase_service.dart';
+import 'package:provider/provider.dart';
 
 // ─── Design tokens ────────────────────────────────────────────────────────
 abstract final class _C {
@@ -133,7 +133,8 @@ class GameCenterHubPage extends StatelessWidget {
                 color: primary.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(Icons.sports_esports_rounded, color: primary, size: 22),
+              child:
+                  Icon(Icons.sports_esports_rounded, color: primary, size: 22),
             ),
             const SizedBox(width: 12),
             const Expanded(
@@ -200,6 +201,25 @@ class GameCenterHubPage extends StatelessWidget {
   }
 
   void _openSetup(BuildContext context, GameType type) {
+    String validUserName = currentUserName;
+
+// KHẮC PHỤC LỖI 18: Tự chữa lỗi nếu thông tin tên hiển thị bị kẹt do xử lý bất đồng bộ
+    if (validUserName == 'Bạn' || validUserName.trim().isEmpty) {
+      try {
+        final authProvider = context.read<AuthProvider>();
+
+        // Sử dụng currentUserName (đã định nghĩa trong AuthProvider)
+        // hoặc lấy trực tiếp từ Firebase User làm phương án dự phòng
+        validUserName = authProvider.currentUserName ??
+            authProvider.firebaseAuth.currentUser?.displayName ??
+            authProvider.userFirebaseId ??
+            'Người dùng';
+      } catch (_) {
+        // Dự phòng lỗi unmounted/not found provider
+        validUserName = 'Người dùng';
+      }
+    }
+
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -207,7 +227,7 @@ class GameCenterHubPage extends StatelessWidget {
           groupId: groupId,
           groupName: groupName,
           currentUserId: currentUserId,
-          currentUserName: currentUserName,
+          currentUserName: validUserName, // Gán tên chính xác
           currentUserAvatar: currentUserAvatar,
           preSelectedGameType: type,
         ),
@@ -238,7 +258,8 @@ class GameCenterHubPage extends StatelessWidget {
                 ),
                 const Spacer(),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(20),
@@ -262,7 +283,8 @@ class GameCenterHubPage extends StatelessWidget {
                 return const Padding(
                   padding: EdgeInsets.all(32),
                   child: Center(
-                    child: CircularProgressIndicator(color: _C.live, strokeWidth: 2),
+                    child: CircularProgressIndicator(
+                        color: _C.live, strokeWidth: 2),
                   ),
                 );
               }
@@ -330,7 +352,8 @@ class _GameCard extends StatefulWidget {
   State<_GameCard> createState() => _GameCardState();
 }
 
-class _GameCardState extends State<_GameCard> with SingleTickerProviderStateMixin {
+class _GameCardState extends State<_GameCard>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _press;
 
   @override
@@ -433,7 +456,8 @@ class _LiveMatchCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isLive = match.isPlaying;
     final statusColor = isLive ? _C.live : _C.wait;
-    final isInvolved = match.player1Id == currentUserId || match.player2Id == currentUserId;
+    final isInvolved =
+        match.player1Id == currentUserId || match.player2Id == currentUserId;
 
     return GestureDetector(
       onTap: onTap,
@@ -455,7 +479,9 @@ class _LiveMatchCard extends StatelessWidget {
               height: 44,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: match.gameType == GameType.caro ? _C.caroGrad : _C.chessGrad,
+                  colors: match.gameType == GameType.caro
+                      ? _C.caroGrad
+                      : _C.chessGrad,
                 ),
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -552,7 +578,8 @@ class _LiveDot extends StatefulWidget {
   State<_LiveDot> createState() => _LiveDotState();
 }
 
-class _LiveDotState extends State<_LiveDot> with SingleTickerProviderStateMixin {
+class _LiveDotState extends State<_LiveDot>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _pulse;
 
   @override

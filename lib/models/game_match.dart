@@ -169,6 +169,9 @@ class GameMatch {
 
   final int boardSize;
 
+  /// FEN ban đầu của bàn cờ vua (nếu không có thì dùng FEN chuẩn).
+  final String? initialFen;
+
   final GameResult? result;
   final String? endReason;
 
@@ -198,6 +201,7 @@ class GameMatch {
     this.timeControlSeconds = 0,
     this.turnTimerSeconds = 0,
     this.boardSize = 0,
+    this.initialFen,
     this.result,
     this.endReason,
     required this.sourceGroupId,
@@ -249,6 +253,7 @@ class GameMatch {
         FirestoreConstants.timeControlSeconds: timeControlSeconds,
         FirestoreConstants.turnTimerSeconds: turnTimerSeconds,
         FirestoreConstants.boardSize: boardSize,
+        if (initialFen != null) FirestoreConstants.initialFen: initialFen,
         if (result != null) FirestoreConstants.gameResult: result!.value,
         if (endReason != null) FirestoreConstants.gameEndReason: endReason,
         FirestoreConstants.sourceGroupId: sourceGroupId,
@@ -287,6 +292,7 @@ class GameMatch {
         turnTimerSeconds:
             data[FirestoreConstants.turnTimerSeconds] as int? ?? 0,
         boardSize: data[FirestoreConstants.boardSize] as int? ?? 0,
+        initialFen: data[FirestoreConstants.initialFen] as String?,
         result: GameResult.fromString(
           data[FirestoreConstants.gameResult] as String?,
         ),
@@ -308,6 +314,7 @@ class GameMatch {
     String? player2Name,
     String? player2Avatar,
     ChessSide? player1Side,
+    String? initialFen,
     GameResult? result,
     String? endReason,
     String? inviteMessageId,
@@ -330,6 +337,7 @@ class GameMatch {
         timeControlSeconds: timeControlSeconds,
         turnTimerSeconds: turnTimerSeconds,
         boardSize: boardSize,
+        initialFen: initialFen ?? this.initialFen,
         result: result ?? this.result,
         endReason: endReason ?? this.endReason,
         sourceGroupId: sourceGroupId,

@@ -10,18 +10,23 @@ import 'package:hive_flutter/hive_flutter.dart';
 // LOCAL DB SERVICE  — Cross-platform Hive storage (Web & Mobile compatible)
 // ─────────────────────────────────────────────────────────────────────────────
 //
+// Key format cho messages box: "<conversationId>_<messageId>"
+// conversationId KHÔNG chứa '_' (format: "uid1-uid2" hoặc Firestore docId)
+// messageId là timestamp thuần số → không chứa '_'
+// Vì vậy lastIndexOf('_') luôn trả về đúng vị trí phân tách.
+//
 // Boxes:
 //   chat_messages_v2   — messages          key: "<convoId>_<msgId>"
 //   sync_queue_v2      — offline job queue key: auto-increment int
 //   conversations_v2   — convo metadata    key: conversationId
 //   drafts_v2          — unsent drafts     key: conversationId
-//   reactions_v2       — emoji reactions   key: "<convoId>_<msgId>"  (value: Map<userId, emoji>)
+//   reactions_v2       — emoji reactions   key: "<convoId>_<msgId>"
 //   pinned_v2          — pinned messages   key: "<convoId>_<msgId>"
 //
 // Design principles:
 //   • One singleton, initialise once before runApp.
 //   • Works smoothly on both Mobile (iOS/Android) and Web.
-//   • Robust Keystore error handling included.
+//   • Robust Keystore error handling + cipher regeneration after wipe.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class LocalDbService {
@@ -39,12 +44,11 @@ class LocalDbService {
   static const _kReactionsBox = 'reactions_v2';
   static const _kPinnedBox = 'pinned_v2';
 
-// ── Internal ───────────────────────────────────────────────────────────────
+  // ── Internal ───────────────────────────────────────────────────────────────
   final _secureStorage = const FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
     iOptions: IOSOptions(
         accessibility: KeychainAccessibility.first_unlock_this_device),
-    // Sửa wOptions thành webOptions
     webOptions: WebOptions(
       dbName: 'app_chat_secure_db',
       publicKey: 'app_chat_public_key',
@@ -74,36 +78,28 @@ class LocalDbService {
   Future<void> initialize() async {
     if (_initialized) return;
 
-    // Trên Web, Hive.initFlutter() sẽ tự động sử dụng IndexedDB
     await Hive.initFlutter();
 
-    // Khởi tạo key giải mã (Sẽ trả về null trên Web để tăng hiệu năng hoặc nếu lỗi Keystore)
     final cipher = await _resolveEncryptionCipher();
 
     try {
-      _messagesBox =
-          await Hive.openBox(_kMessagesBox, encryptionCipher: cipher);
-      _syncQueueBox = await Hive.openBox(_kSyncBox, encryptionCipher: cipher);
-      _conversationsBox =
-          await Hive.openBox(_kConvoBox, encryptionCipher: cipher);
-      _draftsBox = await Hive.openBox(_kDraftsBox, encryptionCipher: cipher);
-      _reactionsBox =
-          await Hive.openBox(_kReactionsBox, encryptionCipher: cipher);
-      _pinnedBox = await Hive.openBox(_kPinnedBox, encryptionCipher: cipher);
+      await _openAllBoxes(cipher);
     } catch (e) {
-      debugPrint(
-          '[LocalDbService] ❌ Lỗi mở Box (Có thể do sai Key mã hóa): $e');
-      // Xử lý fallback an toàn nếu Key bị hỏng: Xóa toàn bộ box cũ và tạo lại
+      debugPrint('[LocalDbService] ❌ Lỗi mở Box (key bị hỏng): $e');
+
+      // FIX LỖI 7: Sau khi wipe, xóa luôn secure key cũ và tạo cipher MỚI.
+      // Nếu dùng cipher cũ để mở box vừa wipe → bị lỗi lần nữa.
       await _wipeCorruptedBoxes();
-      _messagesBox =
-          await Hive.openBox(_kMessagesBox, encryptionCipher: cipher);
-      _syncQueueBox = await Hive.openBox(_kSyncBox, encryptionCipher: cipher);
-      _conversationsBox =
-          await Hive.openBox(_kConvoBox, encryptionCipher: cipher);
-      _draftsBox = await Hive.openBox(_kDraftsBox, encryptionCipher: cipher);
-      _reactionsBox =
-          await Hive.openBox(_kReactionsBox, encryptionCipher: cipher);
-      _pinnedBox = await Hive.openBox(_kPinnedBox, encryptionCipher: cipher);
+      await _secureStorage.delete(key: _kHiveKey);
+      final freshCipher = await _resolveEncryptionCipher();
+
+      try {
+        await _openAllBoxes(freshCipher);
+      } catch (e2) {
+        // Lần 2 vẫn lỗi: mở không mã hóa làm phương án cuối
+        debugPrint('[LocalDbService] ❌ Fallback không mã hóa: $e2');
+        await _openAllBoxes(null);
+      }
     }
 
     _initialized = true;
@@ -111,43 +107,73 @@ class LocalDbService {
         '[LocalDbService] ✅ Initialized — 6 boxes open (Web/Mobile ready)');
   }
 
+  Future<void> _openAllBoxes(HiveAesCipher? cipher) async {
+    _messagesBox = await Hive.openBox(_kMessagesBox, encryptionCipher: cipher);
+    _syncQueueBox = await Hive.openBox(_kSyncBox, encryptionCipher: cipher);
+    _conversationsBox =
+        await Hive.openBox(_kConvoBox, encryptionCipher: cipher);
+    _draftsBox = await Hive.openBox(_kDraftsBox, encryptionCipher: cipher);
+    _reactionsBox =
+        await Hive.openBox(_kReactionsBox, encryptionCipher: cipher);
+    _pinnedBox = await Hive.openBox(_kPinnedBox, encryptionCipher: cipher);
+  }
+
   Future<HiveAesCipher?> _resolveEncryptionCipher() async {
-    // 💡 Tối ưu hóa Web: Tắt mã hóa trên Web vì nó làm chậm app đáng kể
-    // và không tăng cường bảo mật (do key cũng lưu trên browser local storage).
+    // Web: tắt mã hóa để tối ưu tốc độ (key cũng lưu trên browser nên
+    // mã hóa không tăng bảo mật thực sự).
     if (kIsWeb) {
-      debugPrint(
-          '[LocalDbService] 🌐 Chạy trên Web -> Tắt AES Encryption để tối ưu tốc độ.');
+      debugPrint('[LocalDbService] 🌐 Web → tắt AES encryption.');
       return null;
     }
 
     try {
       String? keyStr = await _secureStorage.read(key: _kHiveKey);
       if (keyStr == null) {
-        final newKey = Hive.generateSecureKey();
-        keyStr = base64UrlEncode(newKey);
-        await _secureStorage.write(key: _kHiveKey, value: keyStr);
+        // Tạo key mới lần đầu
+        return await _generateAndSaveNewCipher();
       }
       return HiveAesCipher(base64Url.decode(keyStr));
     } catch (e) {
-      // ⚠️ Khắc phục lỗi kinh điển trên Android: Keystore bị hỏng
-      debugPrint(
-          '[LocalDbService] ⚠️ Lỗi đọc Secure Key: $e. Tạo lại Key mới...');
-      await _secureStorage.delete(key: _kHiveKey);
+      // FIX LỖI 8: Bọc toàn bộ trong try-catch kể cả bước write key mới.
+      debugPrint('[LocalDbService] ⚠️ Lỗi đọc Secure Key: $e → tạo lại.');
+      try {
+        await _secureStorage.delete(key: _kHiveKey);
+      } catch (_) {}
+      return await _generateAndSaveNewCipher();
+    }
+  }
+
+  /// Tạo key ngẫu nhiên, lưu vào secure storage, trả về cipher tương ứng.
+  Future<HiveAesCipher?> _generateAndSaveNewCipher() async {
+    try {
       final newKey = Hive.generateSecureKey();
       final keyStr = base64UrlEncode(newKey);
       await _secureStorage.write(key: _kHiveKey, value: keyStr);
       return HiveAesCipher(base64Url.decode(keyStr));
+    } catch (e) {
+      // Nếu secure storage vẫn lỗi → fallback không mã hóa
+      debugPrint(
+          '[LocalDbService] ⚠️ Không thể lưu cipher key: $e → không mã hóa.');
+      return null;
     }
   }
 
   Future<void> _wipeCorruptedBoxes() async {
     debugPrint('[LocalDbService] 🧹 Wiping corrupted boxes...');
-    await Hive.deleteBoxFromDisk(_kMessagesBox);
-    await Hive.deleteBoxFromDisk(_kSyncBox);
-    await Hive.deleteBoxFromDisk(_kConvoBox);
-    await Hive.deleteBoxFromDisk(_kDraftsBox);
-    await Hive.deleteBoxFromDisk(_kReactionsBox);
-    await Hive.deleteBoxFromDisk(_kPinnedBox);
+    for (final name in [
+      _kMessagesBox,
+      _kSyncBox,
+      _kConvoBox,
+      _kDraftsBox,
+      _kReactionsBox,
+      _kPinnedBox,
+    ]) {
+      try {
+        await Hive.deleteBoxFromDisk(name);
+      } catch (e) {
+        debugPrint('[LocalDbService] ⚠️ Wipe $name error: $e');
+      }
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -205,6 +231,7 @@ class LocalDbService {
   }
 
   int countMessages(String conversationId) {
+    _assertInit();
     final prefix = '${conversationId}_';
     return _messagesBox.keys
         .where((k) => k.toString().startsWith(prefix))
@@ -222,7 +249,7 @@ class LocalDbService {
         '[LocalDbService] 🗑 Cleared ${keys.length} messages for $conversationId');
   }
 
-  /// Updates the `status` field of a stored message (e.g. sent → delivered → read).
+  /// Updates the `status` field of a stored message.
   Future<void> updateMessageStatus(
     String conversationId,
     String messageId,
@@ -238,6 +265,7 @@ class LocalDbService {
   }
 
   /// Marks all unread messages in a conversation as read.
+  /// FIX LỖI 9: Cũng update unreadCount = 0 trong conversations box.
   Future<int> markAllAsRead(String conversationId, String currentUserId) async {
     _assertInit();
     final prefix = '${conversationId}_';
@@ -258,6 +286,19 @@ class LocalDbService {
     for (final e in updates.entries) {
       await _messagesBox.put(e.key, e.value);
     }
+
+    // Sync unreadCount về 0 trong conversations local cache
+    if (count > 0) {
+      final existing =
+          _conversationsBox.get(conversationId) as Map<dynamic, dynamic>?;
+      if (existing != null) {
+        await _conversationsBox.put(conversationId, {
+          ...Map<String, dynamic>.from(existing),
+          'unreadCount': 0,
+        });
+      }
+    }
+
     return count;
   }
 
@@ -283,14 +324,19 @@ class LocalDbService {
         'lastMessageType': lastMessageType,
       });
     } else {
-      final parts = conversationId.split('-');
+      // FIX LỖI 4: Không giả định format conversationId để parse participants.
+      // Tạo record tối thiểu, participants sẽ được sync khi Firestore trả về.
       await _conversationsBox.put(conversationId, <String, dynamic>{
         'conversationId': conversationId,
-        'participants': parts,
+        'participants': <String>[],
         'isGroup': false,
         'lastMessage': lastMessage,
         'lastMessageTime': lastMessageTime,
         'lastMessageType': lastMessageType,
+        'unreadCount': 0,
+        'isPinned': false,
+        'isMuted': false,
+        'archivedBy': <String>[],
       });
     }
   }
@@ -511,10 +557,17 @@ class LocalDbService {
       final content = msg['content']?.toString().toLowerCase() ?? '';
       if (!content.contains(lq)) continue;
 
+      // FIX LỖI 1 & 6: Dùng lastIndexOf thay vì indexOf.
+      // Key format = "<conversationId>_<messageId>"
+      // messageId = timestamp thuần số → không chứa '_'
+      // Nên lastIndexOf('_') luôn trỏ đúng vị trí phân tách.
       final keyStr = key.toString();
-      final underscoreIdx = keyStr.indexOf('_');
-      final conversationId =
-          underscoreIdx > 0 ? keyStr.substring(0, underscoreIdx) : keyStr;
+      final separatorIdx = keyStr.lastIndexOf('_');
+
+      // Nếu không tìm thấy '_' → key format không hợp lệ, bỏ qua
+      if (separatorIdx <= 0) continue;
+
+      final conversationId = keyStr.substring(0, separatorIdx);
 
       hits.add(_SearchHit(
         conversationId: conversationId,
@@ -597,6 +650,7 @@ class LocalDbService {
 
   int get syncQueueLength => _syncQueueBox.length;
 
+  /// FIX LỖI 5: Thêm try-catch cho từng job khi cast từ Hive dynamic map.
   List<MapEntry<dynamic, Map<String, dynamic>>> getReadySyncJobs({
     int batchSize = 20,
   }) {
@@ -606,9 +660,18 @@ class LocalDbService {
 
     for (final key in _syncQueueBox.keys) {
       if (result.length >= batchSize) break;
-      final raw = _syncQueueBox.get(key) as Map?;
-      if (raw == null) continue;
-      final job = Map<String, dynamic>.from(raw);
+
+      Map<String, dynamic> job;
+      try {
+        final raw = _syncQueueBox.get(key);
+        if (raw == null) continue;
+        // Hive có thể trả về Map<dynamic, dynamic> → cần convert an toàn
+        job = _toStringMap(raw);
+      } catch (e) {
+        debugPrint('[LocalDbService] ⚠️ Sync job $key parse error: $e');
+        continue;
+      }
+
       final nextRetryAt = job['nextRetryAt'] as int? ?? 0;
       if (nextRetryAt <= now) {
         result.add(MapEntry(key, job));
@@ -651,6 +714,8 @@ class LocalDbService {
     return toDelete.length;
   }
 
+  /// FIX LỖI 2: Dùng lastIndexOf để tách conversationId khỏi key,
+  /// nhất quán với searchGlobal() và đúng với key format.
   Future<int> pruneByCount({int keepCount = 200}) async {
     _assertInit();
     int totalPruned = 0;
@@ -658,8 +723,9 @@ class LocalDbService {
     final grouped = <String, List<String>>{};
     for (final key in _messagesBox.keys) {
       final ks = key.toString();
+      // FIX: dùng lastIndexOf thay vì lastIndexOf (đã đúng) — giữ nhất quán
       final idx = ks.lastIndexOf('_');
-      if (idx < 0) continue;
+      if (idx <= 0) continue;
       final convo = ks.substring(0, idx);
       grouped.putIfAbsent(convo, () => []).add(ks);
     }
@@ -718,10 +784,19 @@ class LocalDbService {
   }
 
   static int _ts(dynamic raw) => int.tryParse(raw?.toString() ?? '0') ?? 0;
+
+  /// Convert Map<dynamic, dynamic> từ Hive sang Map<String, dynamic> an toàn.
+  static Map<String, dynamic> _toStringMap(dynamic raw) {
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) {
+      return raw.map((k, v) => MapEntry(k.toString(), v));
+    }
+    return {};
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Search result model
+// Search result models
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _SearchHit {
