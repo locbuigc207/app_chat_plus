@@ -19,13 +19,13 @@ android {
     namespace "hust.appchat"
 
     // ĐÃ SỬA: Lên SDK 35 (Android 15) tối ưu cho Flutter 3.44
-    compileSdk 35
+    compileSdk 36
     ndkVersion = "28.2.13676358"
 
     defaultConfig {
         applicationId "hust.appchat"
         minSdkVersion 24
-        targetSdk 35 // ĐỒNG BỘ: Đi kèm với compileSdk 35
+        targetSdk 36 // ĐỒNG BỘ: Đi kèm với compileSdk 35
         versionCode 1
         versionName "1.0.0"
         multiDexEnabled true
@@ -146,7 +146,9 @@ dependencies {
 
 configurations.all {
     resolutionStrategy {
-
+        force 'org.jetbrains.kotlin:kotlin-stdlib:2.3.21'
+        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.3.21'
+        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.3.21'
         force 'androidx.activity:activity:1.9.3'
         force 'androidx.activity:activity-ktx:1.9.3'
     }

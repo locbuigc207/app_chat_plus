@@ -5,12 +5,8 @@ buildscript {
     }
 
     dependencies {
-        // AGP 8.9.1 tương thích tốt với SDK 35 và Java 17
         classpath 'com.android.tools.build:gradle:8.9.1'
-
-        // ĐÃ SỬA: Thay thế phiên bản lỗi 2.3.21 bằng 2.0.21 để đồng bộ với cấu hình app-level
-        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.20'
-
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.3.21'
         classpath 'com.google.gms:google-services:4.4.2'
         classpath 'com.google.firebase:firebase-crashlytics-gradle:3.0.2'
     }

@@ -83,7 +83,7 @@ class MainActivity : FlutterActivity() {
             // Khi user nhận notification và bubble mở lần đầu, engine đã sẵn sàng
             // → không có cold-start delay, không risk tạo 2 engine đồng thời.
             // warmUpSharedEngine() là idempotent: gọi nhiều lần không hại gì.
-            BubbleActivity.warmUpSharedEngine(this)
+            BubbleActivity.warmUpBubbleEngine(this)
             Log.d(TAG, "✅ Shared Flutter engine warm-up initiated")
 
             if (ShortcutHelper.isShortcutsSupported()) {

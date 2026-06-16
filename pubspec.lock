@@ -1177,7 +1177,7 @@ packages:
     source: hosted
     version: "2.17.1"
   google_maps_flutter_android:
-    dependency: "direct overridden"
+    dependency: transitive
     description:
       name: google_maps_flutter_android
       sha256: f1eb5ffa34ba41f8591e53ce439f78af179a506e8386a1297d0ecd202e05c734
