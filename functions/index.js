@@ -57,8 +57,9 @@ const cloudStorageSecret = defineSecret("CLOUD_STORAGE_SECRET");
 // ═════════════════════════════════════════════════════════════════════════════
 // ─── GLOBAL CONSTANTS ────────────────────────────────────────────────────────
 // ═════════════════════════════════════════════════════════════════════════════
-const MODEL_ID = "gemini-3.5-flash";
-const MODEL_FLASH_LITE = "gemini-3.1-flash-lite";
+// Đã cập nhật Model ID sang bản ổn định mới nhất (16/06/2026)
+const MODEL_ID = "gemini-2.5-flash";
+const MODEL_FLASH_LITE = "gemini-2.5-flash-lite";
 const MAX_INPUT_LENGTH = 4000;
 const MAX_HISTORY_MSGS = 20;
 const AGORA_TOKEN_TTL_SEC = 3600;
@@ -114,6 +115,10 @@ const TONE_PROMPTS = {
 
 const ACTIVE_CALL_STATUSES = ["calling", "ringing", "dialing", "connected", "accepted"];
 const RATE_LIMIT_AI_CALLS_PER_MIN = 20;
+
+// KHẮC PHỤC LỖI 4: Thêm constant cho Game Match (bàn caro vô hạn)
+const GAME_MATCH_TIMEOUT_SEC = 300; // 5 phút timeout cho game
+const GAME_MATCHES_COLLECTION = "game_matches";
 
 const GROUP_CALL_TIMEOUT_SEC = 60;
 const GROUP_CALLS_COLLECTION = "group_calls";
@@ -194,7 +199,11 @@ async function checkRateLimit(uid, action) {
     await db.runTransaction(async (tx) => {
       const doc = await tx.get(ref);
       if (!doc.exists) {
-        tx.set(ref, {calls: [{ts: now}], updatedAt: now});
+        tx.set(ref, {
+          calls: [{ts: now}],
+          updatedAt: now,
+          expireAt: new Date(now + 10 * 60 * 1000), // Added TTL expiration
+        });
         return;
       }
       const data = doc.data();
@@ -206,7 +215,11 @@ async function checkRateLimit(uid, action) {
         );
       }
       recent.push({ts: now});
-      tx.update(ref, {calls: recent, updatedAt: now});
+      tx.update(ref, {
+        calls: recent,
+        updatedAt: now,
+        expireAt: new Date(now + 10 * 60 * 1000), // Added TTL expiration
+      });
     });
   } catch (err) {
     if (err instanceof HttpsError) throw err;
@@ -334,7 +347,7 @@ async function getGroupMemberTokens(memberIds) {
       const doc = await db.collection("users").doc(uid).get();
       const token = doc.data()?.pushToken || doc.data()?.fcmToken;
       if (token) tokens.push({uid, token});
-    } catch (_e) {
+    } catch {
       // intentionally ignored
     }
   }
@@ -596,7 +609,7 @@ Dùng ngôn ngữ gần gũi, tích cực. Không lặp lại số liệu đã c
 
 // ─── 1. analyzeDecryptedMessage ──────────────────────────────────────────────
 exports.analyzeDecryptedMessage = onCall(
-  {secrets: [geminiApiKey], enforceAppCheck: false},
+  {secrets: [geminiApiKey], enforceAppCheck: true}, // Đã bật App Check
   async (request) => {
     requireAuth(request.auth);
     const {plainText, conversationId, messageId, idFrom, idTo} = request.data;
@@ -655,7 +668,7 @@ exports.analyzeDecryptedMessage = onCall(
 
 // ─── 2. analyzeScam ──────────────────────────────────────────────────────────
 exports.analyzeScam = onCall(
-  {secrets: [geminiApiKey], enforceAppCheck: false},
+  {secrets: [geminiApiKey], enforceAppCheck: true}, // Đã bật App Check
   async (request) => {
     requireAuth(request.auth);
     const {message} = request.data;
@@ -700,7 +713,7 @@ exports.analyzeScam = onCall(
 
 // ─── 3. analyzeDecryptedClientMessage ────────────────────────────────────────
 exports.analyzeDecryptedClientMessage = onCall(
-  {secrets: [geminiApiKey], enforceAppCheck: false},
+  {secrets: [geminiApiKey], enforceAppCheck: true}, // Đã bật App Check
   async (request) => {
     requireAuth(request.auth);
     const {plainTextContent, conversationId, messageId, idTo} = request.data;
@@ -736,11 +749,12 @@ exports.analyzeDecryptedClientMessage = onCall(
         const msgRef = db
           .collection("messages").doc(conversationId)
           .collection(conversationId).doc(messageId);
-        batch.update(msgRef, {
+        // Sửa lỗi NOT_FOUND bằng cách dùng batch.set với merge: true
+        batch.set(msgRef, {
           scamWarning: true,
           scamReason: analysis.scamReason ?? "",
           riskLevel: analysis.riskLevel ?? "MEDIUM",
-        });
+        }, {merge: true});
         logger.warn(`[analyzeDecryptedClientMessage] Scam in ${messageId}`);
       }
 
@@ -1006,9 +1020,10 @@ exports.generateSwipeReplies = onCall(
 
 // ─── 9. generateAutoPilotReply ───────────────────────────────────────────────
 exports.generateAutoPilotReply = onCall(
-  {secrets: [geminiApiKey], enforceAppCheck: false},
+  {secrets: [geminiApiKey], enforceAppCheck: true}, // Đã bật App Check
   async (request) => {
     requireAuth(request.auth);
+    // Bổ sung destructuring learnedPersona
     const {
       incomingMessage,
       myStyleContext,
@@ -1016,20 +1031,22 @@ exports.generateAutoPilotReply = onCall(
       tone = "friendly",
       conversationContext = [],
       senderName = "",
+      learnedPersona,
     } = request.data;
 
     if (!incomingMessage) {
       return {reply: awayMessage ?? "Mình đang bận, sẽ nhắn lại sau nha! 😊"};
     }
     const safeMsg = sanitize(incomingMessage, 500);
-    const safeCtx = sanitize(myStyleContext ?? "thân thiện, ngắn gọn", 600);
+    // Kết hợp learnedPersona để fix lỗi tone likeMe bị thiếu context
+    const safeCtx = sanitize(learnedPersona ?? myStyleContext ?? "thân thiện, ngắn gọn", 600);
     const tonePrompt = TONE_PROMPTS[tone] ?? TONE_PROMPTS.friendly;
     const ctxHistory = sanitizeMessages(conversationContext, 5);
 
     const systemPrompt =
       `Bạn đang ĐÓNG VAI là chủ tài khoản và trả lời thay họ khi họ vắng mặt.\n` +
       `${tonePrompt}\n` +
-      (tone === "likeMe" && myStyleContext ? `\nPhong cách đặc trưng đã học:\n${safeCtx}\n` : "") +
+      (tone === "likeMe" && safeCtx ? `\nPhong cách đặc trưng đã học:\n${safeCtx}\n` : "") +
       `\nQUY TẮC BẮT BUỘC:\n` +
       `- CHỈ trả về 1 câu trả lời ngắn (tối đa 25 từ), không giải thích, không tiêu đề.\n` +
       `- Phản hồi phải TỰ NHIÊN như người thật đang nhắn, không máy móc.\n` +
@@ -1737,9 +1754,10 @@ exports.getUserInsightsV2 = onCall(
     if (cleanMsgs.length === 0) {
       return {success: false, error: "Không có tin nhắn hợp lệ."};
     }
-    const msgObjects = cleanMsgs.map((c) => ({
+    // Sử dụng index để tạo timestamp spread cách nhau 5 phút
+    const msgObjects = cleanMsgs.map((c, i) => ({
       content: c,
-      timestamp: Date.now(),
+      timestamp: Date.now() - (cleanMsgs.length - i) * 5 * 60 * 1000,
       idFrom: uid,
     }));
     let stats = computeLocalStats(msgObjects, period);
@@ -1956,7 +1974,6 @@ exports.onGroupCallCreated = onDocumentCreated(
           callId,
           groupName,
           initiatorName,
-          // SỬA LỖI TẠI ĐÂY: Bổ sung senderId để Bubble nhận diện group call
           senderId: initiatorId,
           isVideo: String(isVideo),
           callType,
@@ -2157,6 +2174,35 @@ exports.autoMissExpiredGroupCalls = onSchedule(
   },
 );
 
+// KHẮC PHỤC LỖI 4: Thêm function dọn dẹp game match quá hạn
+// ─── 31c. autoAbortExpiredGameMatches — Hủy ván cờ quá hạn ───────────────────
+exports.autoAbortExpiredGameMatches = onSchedule(
+  {schedule: "every 1 minutes", timeZone: "Asia/Ho_Chi_Minh"},
+  async () => {
+    const cutoff = String(Date.now() - GAME_MATCH_TIMEOUT_SEC * 1000);
+    try {
+      const snap = await db
+        .collection(GAME_MATCHES_COLLECTION)
+        .where("gameStatus", "==", "waiting")
+        .where("createdAt", "<", cutoff)
+        .limit(50)
+        .get();
+      if (snap.empty) return;
+
+      await batchUpdate(snap.docs, (batch, doc) => {
+        batch.update(doc.ref, {
+          gameStatus: "aborted",
+          gameEndReason: "timeout",
+          endedAt: String(Date.now()),
+        });
+      });
+      logger.info(`[autoAbortExpiredGameMatches] Aborted ${snap.size} matches`);
+    } catch (err) {
+      logger.error("[autoAbortExpiredGameMatches]", err);
+    }
+  },
+);
+
 // ─── 32. cleanupExpiredAiContent ─────────────────────────────────────────────
 exports.cleanupExpiredAiContent = onSchedule(
   {schedule: "every 24 hours", timeZone: "Asia/Ho_Chi_Minh"},
@@ -2225,6 +2271,8 @@ exports.weeklyAiRecap = onSchedule(
         const chatHistory = msgsSnap.docs
           .map((d) => {
             const content = d.data().content ?? "";
+            // Đảm bảo tin nhắn của AI bot từ tuần trước không bị học lại
+            if (d.data().idFrom === "AI_BOT") return null;
             if (content.startsWith("{\"iv\":") || content.startsWith("eyJ")) return null;
             if (content.trim().length < 5) return null;
             return `${d.data().idFrom}: ${sanitize(content, 200)}`;
@@ -2365,6 +2413,8 @@ exports.generateWeeklyRecap = onCall(
       .map((d) => {
         const data = d.data();
         const content = data.content ?? "";
+        // Ngăn chặn học lại tin nhắn của bot
+        if (data.idFrom === "AI_BOT") return null;
         if (content.startsWith("{\"iv\":") || content.startsWith("eyJ")) return null;
         if (/^[A-Za-z0-9+/=]+=*:[A-Za-z0-9+/=]+=*$/.test(content)) return null;
         if (content.trim().length < 3) return null;
@@ -2433,7 +2483,7 @@ exports.generateWeeklyRecap = onCall(
 
 // ─── 35. smartReplyEnhanced — Multi-media smart reply với sticker + tone-aware
 exports.smartReplyEnhanced = onCall(
-  {secrets: [geminiApiKey], enforceAppCheck: false},
+  {secrets: [geminiApiKey], enforceAppCheck: true}, // Đã bật App Check
   async (request) => {
     requireAuth(request.auth);
     await checkRateLimit(request.auth.uid, "smart_reply_enhanced");
@@ -2558,9 +2608,10 @@ exports.dailyConversationDigest = onSchedule(
   async () => {
     logger.info("[dailyConversationDigest] Starting...");
     try {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000); // Đã chuyển sang Date object
       const usersSnap = await db
         .collection("users")
-        .where("lastSeen", ">=", (Date.now() - 7 * 86_400_000).toString())
+        .where("lastSeen", ">=", sevenDaysAgo)
         .limit(200)
         .get();
       let sent = 0;
@@ -2673,7 +2724,7 @@ exports.learnUserPersona = onCall(
 
 // ─── 38. getAutoPilotConfig ──────────────────────────────────────────────────
 exports.getAutoPilotConfig = onCall(
-  {enforceAppCheck: false},
+  {enforceAppCheck: true}, // Đã bật App Check
   async (request) => {
     requireAuth(request.auth);
     const uid = request.auth.uid;
@@ -2701,7 +2752,7 @@ exports.getAutoPilotConfig = onCall(
 
 // ─── 39. saveAutoPilotConfig ──────────────────────────────────────────────────
 exports.saveAutoPilotConfig = onCall(
-  {enforceAppCheck: false},
+  {enforceAppCheck: true}, // Đã bật App Check
   async (request) => {
     requireAuth(request.auth);
     const uid = request.auth.uid;
@@ -2791,18 +2842,21 @@ async function processUserInsights(uid, cutoff90) {
         .doc(convId)
         .collection(convId)
         .where("timestamp", ">=", String(cutoff90))
-        .where("idFrom", "==", uid)
+        // Lọc idFrom phía client để tránh yêu cầu Composite Index trên collection group
         .orderBy("timestamp", "desc")
         .limit(200)
         .get();
 
       if (msgSnap.empty) continue;
 
-      convMap[convId] = msgSnap.docs.map((d) => ({
-        content:   d.data().content || "",
-        timestamp: parseInt(d.data().timestamp) || Date.now(),
-        idFrom:    d.data().idFrom || uid,
-      }));
+      convMap[convId] = msgSnap.docs
+        .map((d) => d.data())
+        .filter((d) => d.idFrom === uid)
+        .map((d) => ({
+          content:   d.content || "",
+          timestamp: parseInt(d.timestamp) || Date.now(),
+          idFrom:    d.idFrom || uid,
+        }));
     } catch (e) {
       logger.warn(`[processUserInsights] conv ${convId}:`, e.message);
     }
@@ -2941,7 +2995,7 @@ exports.triggerInsightsRefresh = onCall(
 //     AI bóc tách tác vụ + ưu tiên (High/Medium/Low) + deadline từ tin nhắn
 // ─────────────────────────────────────────────────────────────────────────────
 exports.extractReminderWithPriority = onCall(
-  {secrets: [geminiApiKey], enforceAppCheck: false},
+  {secrets: [geminiApiKey], enforceAppCheck: true}, // Đã bật App Check
   async (request) => {
     requireAuth(request.auth);
     await checkRateLimit(request.auth.uid, "extract_reminder");
@@ -2979,12 +3033,14 @@ exports.extractReminderWithPriority = onCall(
           "và bóc tách TẤT CẢ tác vụ, lịch hẹn, deadline.",
           "Chỉ trả về JSON hợp lệ, không giải thích thêm.",
         ].join(" "),
-        {maxOutputTokens: 1024, temperature: 0.1},
+        {maxOutputTokens: 2048, temperature: 0.1}, // Tăng maxOutputTokens
         true,   // dùng flash-lite cho tốc độ
       );
 
+      // Thêm Timezone Việt Nam
       const today = new Date().toLocaleDateString("vi-VN", {
         weekday: "long", year: "numeric", month: "long", day: "numeric",
+        timeZone: "Asia/Ho_Chi_Minh",
       });
 
       const prompt = [
@@ -2997,7 +3053,7 @@ exports.extractReminderWithPriority = onCall(
         "- task: mô tả ngắn gọn (dưới 80 ký tự)",
         "- priority: 'high' (khẩn cấp/quan trọng/deadline < 24h), 'medium' (bình thường), 'low' (không gấp)",
         "- deadline: thời hạn cụ thể nếu có (VD: '15:00 25/06/2025' hoặc 'ngày mai 10h')",
-        "- reminderTime: khi nào cần nhắc (ISO 8601 hoặc mô tả, VD: '2025-06-24T09:00:00')",
+        "- reminderTime: thời điểm cần nhắc theo ISO 8601 chuẩn bắt buộc (VD: '2026-06-17T09:00:00+07:00'), múi giờ Asia/Ho_Chi_Minh (UTC+7). KHÔNG dùng dạng mô tả tự nhiên.",
         "- category: 'meeting'|'deadline'|'payment'|'personal'|'work'|'other'",
         "- context: thêm thông tin nếu cần",
         "",
@@ -3029,11 +3085,14 @@ exports.extractReminderWithPriority = onCall(
         }))
         .filter((r) => r.task.length > 0);
 
+      // Cập nhật hàm normalizeTime để tương thích ISO 8601
       const normalizeTime = (timeStr) => {
         if (!timeStr) return null;
         if (/^\d{13}$/.test(timeStr)) return timeStr;
-        const parsed = new Date(timeStr);
-        if (!isNaN(parsed.getTime())) return parsed.getTime().toString();
+        const parsedTime = new Date(timeStr);
+        if (!isNaN(parsedTime.getTime())) return parsedTime.getTime().toString();
+        // Cảnh báo nếu không parse được thay vì silent fail
+        logger.warn(`[normalizeTime] Unparseable time: "${timeStr}", using +24h default`);
         return (Date.now() + 24 * 3600 * 1000).toString();
       };
 
@@ -3101,7 +3160,8 @@ exports.batchExtractReminders = onCall(
         {maxOutputTokens: 2048, temperature: 0.1},
       );
 
-      const today     = new Date().toLocaleDateString("vi-VN");
+      // Thêm Timezone Việt Nam
+      const today     = new Date().toLocaleDateString("vi-VN", {timeZone: "Asia/Ho_Chi_Minh"});
       const formatted = batch.map((m, i) =>
         `[MSG_${i + 1}|ID:${m.id || "?"}] ${m.content}`,
       ).join("\n");
@@ -3144,7 +3204,7 @@ exports.batchExtractReminders = onCall(
 //     Gợi ý nhắc nhở thông minh mới dựa trên lịch sử + nhắc nhở đã có
 // ─────────────────────────────────────────────────────────────────────────────
 exports.generateReminderSuggestions = onCall(
-  {secrets: [geminiApiKey], enforceAppCheck: false},
+  {secrets: [geminiApiKey], enforceAppCheck: true}, // Đã bật App Check
   async (request) => {
     requireAuth(request.auth);
 
@@ -3288,16 +3348,15 @@ exports.cleanupExpiredReminders = onSchedule(
   async () => {
     logger.info("[cleanupExpiredReminders] Starting…");
     const now               = Date.now();
-    const thirtyDaysAgoStr  = (now - 30 * 86_400_000).toString();
     const sevenDaysAgoStr   = (now -  7 * 86_400_000).toString();
 
     let deleted = 0;
     try {
-      // 1) Completed và cũ > 30 ngày
+      // 1) Completed và cũ > 7 ngày (Dùng reminderTime thay cho completedAt vì không được set)
       const oldCompleted = await db
         .collection("reminders")
         .where("isCompleted", "==", true)
-        .where("completedAt", "<=", thirtyDaysAgoStr)
+        .where("reminderTime", "<=", sevenDaysAgoStr)
         .limit(500)
         .get();
 

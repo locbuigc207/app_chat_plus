@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import 'package:flutter_chat_demo/constants/constants.dart';
-import 'package:flutter_chat_demo/models/models.dart'; // Đảm bảo định nghĩa Story, StoryType, UserStories có trong này
+import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/pages/story_creator_page.dart';
 import 'package:flutter_chat_demo/pages/story_viewer_page.dart';
 import 'package:flutter_chat_demo/providers/story_provider.dart';
@@ -395,6 +395,25 @@ class _MyStoriesPageState extends State<MyStoriesPage> with SingleTickerProvider
           return _buildShimmer(p);
         }
 
+        // Bắt lỗi UI nếu Firestore từ chối stream Active
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.warning_amber_rounded, size: 48, color: Colors.red.shade400),
+                  const SizedBox(height: 16),
+                  Text('Lỗi tải dữ liệu', style: TextStyle(color: p.textPrimary, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Text(snapshot.error.toString(), textAlign: TextAlign.center, style: TextStyle(color: p.textSecondary, fontSize: 12)),
+                ],
+              ),
+            ),
+          );
+        }
+
         final stories = snapshot.data ?? [];
 
         if (stories.isEmpty) {
@@ -450,6 +469,30 @@ class _MyStoriesPageState extends State<MyStoriesPage> with SingleTickerProvider
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _buildShimmer(p);
+        }
+
+        // Khắc phục triệt để Lỗi che giấu Index trên Firestore
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.cloud_off_rounded, size: 48, color: Colors.orange.shade400),
+                  const SizedBox(height: 16),
+                  Text('Lỗi tải dữ liệu lưu trữ', style: TextStyle(color: p.textPrimary, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Text(
+                    // Hiển thị nguyên văn lỗi để dễ dàng copy link tạo index
+                      snapshot.error.toString(),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: p.textSecondary, fontSize: 12)
+                  ),
+                ],
+              ),
+            ),
+          );
         }
 
         final stories = snapshot.data ?? [];

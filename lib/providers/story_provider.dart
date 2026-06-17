@@ -14,7 +14,7 @@ class StoryProvider extends ChangeNotifier {
 
   static const String _col = 'stories';
   static const String _repliesCol = 'story_replies';
-  static const String _archiveCol = 'story_archive';
+  // Đã xóa hằng số _archiveCol không sử dụng
   static const Duration _ttl = Duration(hours: 24);
 
   StoryProvider({
@@ -100,7 +100,8 @@ class StoryProvider extends ChangeNotifier {
       }
     })
         .whereType<Story>()
-        .where((s) => !s.isExpired)
+    // Bổ sung lọc !s.isArchived để story đã lưu trữ biến mất khỏi tab Đang hoạt động
+        .where((s) => !s.isExpired && !s.isArchived)
         .toList());
   }
 
@@ -109,18 +110,24 @@ class StoryProvider extends ChangeNotifier {
         .collection(_col)
         .where('userId', isEqualTo: userId)
         .where('isArchived', isEqualTo: true)
-        .orderBy('createdAt', descending: true)
+    // Bỏ .orderBy('createdAt', descending: true) để tránh yêu cầu Composite Index trên Firestore
         .snapshots()
-        .map((snap) => snap.docs
-        .map((doc) {
-      try {
-        return Story.fromDocument(doc);
-      } catch (_) {
-        return null;
-      }
-    })
-        .whereType<Story>()
-        .toList());
+        .map((snap) {
+      final stories = snap.docs
+          .map((doc) {
+        try {
+          return Story.fromDocument(doc);
+        } catch (_) {
+          return null;
+        }
+      })
+          .whereType<Story>()
+          .toList();
+
+      // Sắp xếp client-side theo ngày tạo giảm dần (mới nhất lên đầu)
+      stories.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return stories;
+    });
   }
 
   // ── Create stories ───────────────────────────────────────────────────────────
@@ -466,7 +473,10 @@ class StoryProvider extends ChangeNotifier {
       for (final doc in snap.docs) {
         final data = doc.data();
         final expiresAtStr = data['expiresAt'] as String?;
-        if (expiresAtStr != null && expiresAtStr.compareTo(now) < 0) {
+        final isArchived = data['isArchived'] as bool? ?? false;
+
+        // Thêm điều kiện !isArchived để tránh xóa nhầm story đang lưu trữ
+        if (expiresAtStr != null && expiresAtStr.compareTo(now) < 0 && !isArchived) {
           batch.update(doc.reference, {'isDeleted': true});
           count++;
         }

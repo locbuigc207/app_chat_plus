@@ -103,8 +103,9 @@ class _ArchivedChatsPageState extends State<ArchivedChatsPage>
             ),
           ],
           body: StreamBuilder<List<QueryDocumentSnapshot>>(
+            // Đã sửa thành getArchivedConversations thay vì getConversationsWithPinned
             stream:
-                conversationProvider.getConversationsWithPinned(currentUserId),
+            conversationProvider.getArchivedConversations(currentUserId),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return _LoadingShimmer(palette: p);
@@ -114,11 +115,8 @@ class _ArchivedChatsPageState extends State<ArchivedChatsPage>
                 return _ErrorState(error: '${snapshot.error}', palette: p);
               }
 
-              final allDocs = snapshot.data ?? [];
-              final archived = allDocs.where((doc) {
-                final conv = Conversation.fromDocument(doc);
-                return conv.archivedBy.contains(currentUserId);
-              }).toList();
+              // Không cần lọc thủ công (client-side) vì provider đã truy vấn đúng trên Firestore
+              final archived = snapshot.data ?? [];
 
               if (archived.isEmpty) {
                 return _EmptyArchiveState(
@@ -132,7 +130,7 @@ class _ArchivedChatsPageState extends State<ArchivedChatsPage>
                   itemCount: archived.length,
                   itemBuilder: (context, index) {
                     final conversation =
-                        Conversation.fromDocument(archived[index]);
+                    Conversation.fromDocument(archived[index]);
 
                     if (conversation.isGroup) {
                       return _GroupArchiveTile(
@@ -203,7 +201,7 @@ class _DirectArchiveTile extends StatelessWidget {
           name: user.nickname,
           photoUrl: user.photoUrl,
           subtitle:
-              user.aboutMe.isNotEmpty ? user.aboutMe : 'Nhắn tin trực tiếp',
+          user.aboutMe.isNotEmpty ? user.aboutMe : 'Nhắn tin trực tiếp',
           palette: palette,
           primary: primary,
           index: index,
@@ -317,7 +315,7 @@ class _ArchiveTileCardState extends State<_ArchiveTileCard>
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
     _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
     Future.delayed(Duration(milliseconds: widget.index * 55),
-        () => mounted ? _ctrl.forward() : null);
+            () => mounted ? _ctrl.forward() : null);
   }
 
   @override
@@ -373,16 +371,16 @@ class _ArchiveTileCardState extends State<_ArchiveTileCard>
                       child: ClipOval(
                         child: widget.photoUrl.isNotEmpty
                             ? Image.network(widget.photoUrl,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) =>
-                                    _AvatarPlaceholder(
-                                        name: widget.name,
-                                        color: avatarColor,
-                                        isGroup: widget.isGroup))
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                _AvatarPlaceholder(
+                                    name: widget.name,
+                                    color: avatarColor,
+                                    isGroup: widget.isGroup))
                             : _AvatarPlaceholder(
-                                name: widget.name,
-                                color: avatarColor,
-                                isGroup: widget.isGroup),
+                            name: widget.name,
+                            color: avatarColor,
+                            isGroup: widget.isGroup),
                       ),
                     ),
                     const SizedBox(width: 14),
@@ -465,12 +463,12 @@ class _AvatarPlaceholder extends StatelessWidget {
       child: isGroup
           ? Icon(Icons.group_rounded, color: color, size: 26)
           : Center(
-              child: Text(
-                name.isNotEmpty ? name[0].toUpperCase() : '?',
-                style: TextStyle(
-                    color: color, fontWeight: FontWeight.w700, fontSize: 20),
-              ),
-            ),
+        child: Text(
+          name.isNotEmpty ? name[0].toUpperCase() : '?',
+          style: TextStyle(
+              color: color, fontWeight: FontWeight.w700, fontSize: 20),
+        ),
+      ),
     );
   }
 }
@@ -618,28 +616,28 @@ class _LoadingShimmerState extends State<_LoadingShimmer>
           child: Column(
             children: List.generate(
                 6,
-                (_) => Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                          color: c, borderRadius: BorderRadius.circular(16)),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                              radius: 26,
-                              backgroundColor: widget.palette.divider),
-                          const SizedBox(width: 14),
-                          Expanded(
-                              child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
+                    (_) => Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                      color: c, borderRadius: BorderRadius.circular(16)),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                          radius: 26,
+                          backgroundColor: widget.palette.divider),
+                      const SizedBox(width: 14),
+                      Expanded(
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
                                 Container(
                                     height: 13,
                                     width: 120,
                                     decoration: BoxDecoration(
                                         color: widget.palette.divider,
                                         borderRadius:
-                                            BorderRadius.circular(6))),
+                                        BorderRadius.circular(6))),
                                 const SizedBox(height: 8),
                                 Container(
                                     height: 10,
@@ -648,11 +646,11 @@ class _LoadingShimmerState extends State<_LoadingShimmer>
                                         color: widget.palette.divider
                                             .withValues(alpha: 0.6),
                                         borderRadius:
-                                            BorderRadius.circular(5))),
+                                        BorderRadius.circular(5))),
                               ])),
-                        ],
-                      ),
-                    )),
+                    ],
+                  ),
+                )),
           ),
         );
       },
@@ -721,11 +719,11 @@ class _ErrorState extends StatelessWidget {
 }
 
 PageRoute _slideRoute(Widget page) => PageRouteBuilder(
-      pageBuilder: (_, a, __) => page,
-      transitionsBuilder: (_, a, __, child) => SlideTransition(
-        position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
-            .animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
-        child: child,
-      ),
-      transitionDuration: const Duration(milliseconds: 280),
-    );
+  pageBuilder: (_, a, __) => page,
+  transitionsBuilder: (_, a, __, child) => SlideTransition(
+    position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+        .animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
+    child: child,
+  ),
+  transitionDuration: const Duration(milliseconds: 280),
+);

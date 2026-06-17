@@ -3,7 +3,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_chat_demo/models/models.dart';
+import 'package:flutter_chat_demo/models/message_chat.dart';
 import 'package:flutter_chat_demo/providers/game_state_provider.dart';
 
 // ─── Design tokens ────────────────────────────────────────────────────────
@@ -68,7 +68,7 @@ class _GameReplayControlsState extends State<GameReplayControls> {
     final remaining = _gs.replayTotal - (_gs.replayIndex + 1);
     _autoStopTimer = Timer(
       Duration(milliseconds: _speeds[_speedIndex] * remaining + 200),
-      () {
+          () {
         if (mounted && _isPlaying) setState(() => _isPlaying = false);
       },
     );
@@ -171,7 +171,7 @@ class _GameReplayControlsState extends State<GameReplayControls> {
         final current = _gs.replayIndex; // -1..total-1
         final displayNum = current + 1; // 0..total (0 = chưa đánh)
         final progress =
-            total > 0 ? ((current + 1) / total).clamp(0.0, 1.0) : 0.0;
+        total > 0 ? ((current + 1) / total).clamp(0.0, 1.0) : 0.0;
 
         // Thông tin nước đi hiện tại
         final moveInfo = _buildMoveInfo(current, total);
@@ -285,17 +285,22 @@ class _GameReplayControlsState extends State<GameReplayControls> {
     final match = _gs.match;
     if (match == null) return null;
 
-    // Lấy thông tin nước đi từ replayIndex (dùng current turn parity để suy ra symbol)
+    // KHẮC PHỤC LỖI 10: Tắt hiển thị badge X/O cho cờ vua
+    final isCaro = match.gameType == GameType.caro;
     final isPlayer1Move = current.isEven;
-    final symbol = isPlayer1Move ? 'X' : 'O';
+
+    // Chỉ gán symbol nếu là Caro, cờ vua để chuỗi rỗng
+    final symbol = isCaro ? (isPlayer1Move ? 'X' : 'O') : '';
     final playerName =
-        isPlayer1Move ? match.player1Name : (match.player2Name ?? '?');
-    final color = isPlayer1Move ? _C.xColor : _C.oColor;
+    isPlayer1Move ? match.player1Name : (match.player2Name ?? '?');
+
+    // Đối với Caro dùng màu X/O, với Cờ vua dùng màu text mặc định
+    final color = isCaro ? (isPlayer1Move ? _C.xColor : _C.oColor) : _C.text1;
 
     // Thông tin từ lastMove (đã được cập nhật sau replayForward)
     final lastMove = _gs.lastMove;
     String posText = '';
-    if (lastMove != null && match.gameType == GameType.caro) {
+    if (lastMove != null && isCaro) {
       posText = '(${lastMove.row}, ${lastMove.col})';
     }
 
@@ -386,27 +391,29 @@ class _MoveInfoPanel extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Symbol badge
-          Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              color: info.color.withOpacity(0.15),
-              shape: BoxShape.circle,
-              border: Border.all(color: info.color.withOpacity(0.4), width: 1),
-            ),
-            child: Center(
-              child: Text(
-                info.symbol,
-                style: TextStyle(
-                  color: info.color,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
+          // KHẮC PHỤC LỖI 10: Chỉ hiển thị Symbol badge nếu có symbol (áp dụng cho Caro)
+          if (info.symbol.isNotEmpty) ...[
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: info.color.withOpacity(0.15),
+                shape: BoxShape.circle,
+                border: Border.all(color: info.color.withOpacity(0.4), width: 1),
+              ),
+              child: Center(
+                child: Text(
+                  info.symbol,
+                  style: TextStyle(
+                    color: info.color,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 8),
+            const SizedBox(width: 8),
+          ],
 
           // Player name
           Expanded(
@@ -475,16 +482,16 @@ class _CtrlBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: enabled ? onTap : null,
-        child: Padding(
-          padding: const EdgeInsets.all(6),
-          child: Icon(
-            icon,
-            color: enabled ? _C.text1 : _C.text2.withOpacity(0.3),
-            size: size,
-          ),
-        ),
-      );
+    onTap: enabled ? onTap : null,
+    child: Padding(
+      padding: const EdgeInsets.all(6),
+      child: Icon(
+        icon,
+        color: enabled ? _C.text1 : _C.text2.withOpacity(0.3),
+        size: size,
+      ),
+    ),
+  );
 }
 
 class _PlayBtn extends StatelessWidget {
@@ -500,29 +507,29 @@ class _PlayBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: enabled ? onTap : null,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: enabled ? _C.accent.withOpacity(0.15) : _C.surface,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: enabled ? _C.accent.withOpacity(0.5) : _C.divider,
-            ),
-          ),
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 150),
-            child: Icon(
-              isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-              key: ValueKey(isPlaying),
-              color: enabled ? _C.accent : _C.text2,
-              size: 22,
-            ),
-          ),
+    onTap: enabled ? onTap : null,
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(
+        color: enabled ? _C.accent.withOpacity(0.15) : _C.surface,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: enabled ? _C.accent.withOpacity(0.5) : _C.divider,
         ),
-      );
+      ),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 150),
+        child: Icon(
+          isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+          key: ValueKey(isPlaying),
+          color: enabled ? _C.accent : _C.text2,
+          size: 22,
+        ),
+      ),
+    ),
+  );
 }
 
 class _SpeedChip extends StatelessWidget {
@@ -538,27 +545,27 @@ class _SpeedChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          width: 40,
-          padding: const EdgeInsets.symmetric(vertical: 5),
-          decoration: BoxDecoration(
-            color: isActive ? _C.active.withOpacity(0.12) : _C.surface,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: isActive ? _C.active.withOpacity(0.4) : _C.divider,
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: isActive ? _C.active : _C.text2,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-            ),
-            textAlign: TextAlign.center,
-          ),
+    onTap: onTap,
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      width: 40,
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      decoration: BoxDecoration(
+        color: isActive ? _C.active.withOpacity(0.12) : _C.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isActive ? _C.active.withOpacity(0.4) : _C.divider,
         ),
-      );
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: isActive ? _C.active : _C.text2,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+        textAlign: TextAlign.center,
+      ),
+    ),
+  );
 }

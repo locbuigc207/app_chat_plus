@@ -47,6 +47,7 @@
     <!-- ── Notifications ───────────────────────────────────────────────── -->
     <color name="notification_accent">#2196F3</color>
     <color name="notification_background">#FFFFFF</color>
+    <color name="notification_color">#2196F3</color>
 
     <!-- ── Background surfaces ─────────────────────────────────────────── -->
     <color name="bubble_bg">#F5F5F5</color>

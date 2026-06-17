@@ -43,11 +43,11 @@ class MatchRoomPage extends StatelessWidget {
 
   const MatchRoomPage(
       {super.key,
-      required this.matchId,
-      required this.currentUserId,
-      required this.currentUserName,
-      required this.currentUserAvatar,
-      required this.groupId});
+        required this.matchId,
+        required this.currentUserId,
+        required this.currentUserName,
+        required this.currentUserAvatar,
+        required this.groupId});
 
   @override
   Widget build(BuildContext context) {
@@ -74,10 +74,10 @@ class _MatchRoomBody extends StatefulWidget {
 
   const _MatchRoomBody(
       {required this.matchId,
-      required this.currentUserId,
-      required this.currentUserName,
-      required this.currentUserAvatar,
-      required this.groupId});
+        required this.currentUserId,
+        required this.currentUserName,
+        required this.currentUserAvatar,
+        required this.groupId});
 
   @override
   State<_MatchRoomBody> createState() => _MatchRoomBodyState();
@@ -117,7 +117,7 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
     await _gs.initialize(
         matchId: widget.matchId, currentUserId: widget.currentUserId);
 
-    // SỬA LỖI 7: Guard mounted sau quá trình await initialize
+    // Guard mounted sau quá trình await initialize
     if (!mounted) return;
 
     _gs.addListener(_onStateChanged);
@@ -167,7 +167,7 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
   }
 
   void _onStateChanged() {
-    // Sửa lỗi 11: Huỷ bộ đếm timeout nếu phòng đã được chấp nhận và chơi
+    // Huỷ bộ đếm timeout nếu phòng đã được chấp nhận và chơi
     if (_gs.match?.isPlaying == true) {
       _inviteTimeoutTimer?.cancel();
     }
@@ -182,7 +182,7 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
     final match = _gs.match;
     if (match == null) return;
 
-    // Sửa lỗi 9: Chỉ gửi tin nhắn Result khi bạn là người chiến thắng.
+    // Chỉ gửi tin nhắn Result khi bạn là người chiến thắng.
     // Trong trường hợp hoà, mặc định Player 1 đảm nhận việc gửi kết quả tránh Race Condition double send
     final shouldSend = _gs.finalResult == GameResult.draw
         ? widget.currentUserId == match.player1Id
@@ -191,8 +191,13 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
     if (!shouldSend) return;
 
     try {
-      // Đã lấy Provider lên đầu khối try để bảo đảm cache trước khi await (Sửa lỗi 8)
       final chatProvider = context.read<ChatProvider>();
+
+      // KHẮC PHỤC LỖI 7: Tự tính toán trực tiếp thời gian thi đấu trên local
+      final startedMs = int.tryParse(match.startedAt ?? '') ?? 0;
+      final durationSeconds = startedMs > 0
+          ? ((DateTime.now().millisecondsSinceEpoch - startedMs) / 1000).round()
+          : 0;
 
       final payload = GameResultPayload(
         matchId: match.matchId,
@@ -205,7 +210,8 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
         player2Name: match.player2Name ?? '',
         player2Avatar: match.player2Avatar ?? '',
         endReason: _gs.endReason?.label ?? 'unknown',
-        durationSeconds: match.durationSeconds ?? 0,
+        // Dùng duration vừa được tính ở trên thay cho đọc match.durationSeconds bị delay từ DB
+        durationSeconds: durationSeconds,
         totalMoves: _gs.totalMoveCount,
       );
 
@@ -214,7 +220,7 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
           currentUserId: widget.currentUserId,
           payload: payload);
 
-      // Cập nhật thẻ message hiện tại trên group chat sang finish status (Sửa lỗi 14)
+      // Cập nhật thẻ message hiện tại trên group chat sang finish status
       if (match.inviteMessageId != null) {
         await chatProvider.updateGameMessageStatus(
             groupChatId: widget.groupId,
@@ -259,7 +265,7 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
       Center(child: CircularProgressIndicator(color: _accent, strokeWidth: 2));
 
   Widget _buildError(String msg) => Center(
-          child: Padding(
+      child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Icon(Icons.error_outline_rounded, color: _C.danger, size: 48),
@@ -285,37 +291,37 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
       },
       child: SafeArea(
           child: Column(children: [
-        _buildHeader(gs, match),
+            _buildHeader(gs, match),
 
-        // Banners
-        if (gs.isGameOver) _buildBanner(gs, match, _BannerType.gameOver),
-        if (gs.disconnectedPlayerId != null)
-          _buildBanner(gs, match, _BannerType.disconnect),
-        if (gs.hasIncomingDrawRequest)
-          _buildBanner(gs, match, _BannerType.drawRequest),
-        if (match.isWaiting) _buildWaitingBanner(match),
+            // Banners
+            if (gs.isGameOver) _buildBanner(gs, match, _BannerType.gameOver),
+            if (gs.disconnectedPlayerId != null)
+              _buildBanner(gs, match, _BannerType.disconnect),
+            if (gs.hasIncomingDrawRequest)
+              _buildBanner(gs, match, _BannerType.drawRequest),
+            if (match.isWaiting) _buildWaitingBanner(match),
 
-        // Players
-        _buildPlayerRow(gs, match, isTop: true),
+            // Players
+            _buildPlayerRow(gs, match, isTop: true),
 
-        // Board
-        Expanded(child: _buildBoard(gs, match)),
+            // Board
+            Expanded(child: _buildBoard(gs, match)),
 
-        // Bottom controls
-        _buildPlayerRow(gs, match, isTop: false),
+            // Bottom controls
+            _buildPlayerRow(gs, match, isTop: false),
 
-        if (gs.isReplayMode)
-          GameReplayControls(gs: gs)
-        else if (gs.isPlayer && !gs.isGameOver && match.isPlaying)
-          _buildActionBar(gs),
+            if (gs.isReplayMode)
+              GameReplayControls(gs: gs)
+            else if (gs.isPlayer && !gs.isGameOver && match.isPlaying)
+              _buildActionBar(gs),
 
-        SpectatorPanel(
-            spectatorCount: match.spectatorCount,
-            matchId: match.matchId,
-            currentUserId: widget.currentUserId,
-            // Cờ đánh dấu spectator đã được fix logic update role bên trong GameStateProvider init
-            isSpectator: gs.isSpectator),
-      ])),
+            SpectatorPanel(
+                spectatorCount: match.spectatorCount,
+                matchId: match.matchId,
+                currentUserId: widget.currentUserId,
+                // Cờ đánh dấu spectator đã được fix logic update role bên trong GameStateProvider init
+                isSpectator: gs.isSpectator),
+          ])),
     );
   }
 
@@ -329,14 +335,14 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
             onPressed: _confirmLeave),
         Expanded(
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Text(match.gameType.emoji, style: const TextStyle(fontSize: 18)),
-          const SizedBox(width: 6),
-          Text(match.gameType.displayName,
-              style: const TextStyle(
-                  color: _C.text1, fontSize: 16, fontWeight: FontWeight.w700)),
-          const SizedBox(width: 8),
-          _StatusPill(gs: gs, match: match, accent: _accent),
-        ])),
+              Text(match.gameType.emoji, style: const TextStyle(fontSize: 18)),
+              const SizedBox(width: 6),
+              Text(match.gameType.displayName,
+                  style: const TextStyle(
+                      color: _C.text1, fontSize: 16, fontWeight: FontWeight.w700)),
+              const SizedBox(width: 8),
+              _StatusPill(gs: gs, match: match, accent: _accent),
+            ])),
 
         // Turn timer
         if (!gs.isGameOver && match.turnTimerSeconds != 0 && gs.isMyTurn)
@@ -356,26 +362,26 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
   }
 
   Widget _buildWaitingBanner(GameMatch match) => Container(
-        margin: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-            color: _C.warning.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _C.warning.withValues(alpha: 0.3))),
-        child: Row(children: [
-          const SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(
-                  strokeWidth: 1.5, color: _C.warning)),
-          const SizedBox(width: 10),
-          const Expanded(
-              child: Text('Đang chờ đối thủ chấp nhận...',
-                  style: TextStyle(color: _C.warning, fontSize: 12.5))),
-          Text('Hết hạn sau ${AppConstants.gameInviteTimeoutSeconds ~/ 60}p',
-              style: const TextStyle(color: _C.text2, fontSize: 10.5)),
-        ]),
-      );
+    margin: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    decoration: BoxDecoration(
+        color: _C.warning.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _C.warning.withValues(alpha: 0.3))),
+    child: Row(children: [
+      const SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(
+              strokeWidth: 1.5, color: _C.warning)),
+      const SizedBox(width: 10),
+      const Expanded(
+          child: Text('Đang chờ đối thủ chấp nhận...',
+              style: TextStyle(color: _C.warning, fontSize: 12.5))),
+      Text('Hết hạn sau ${AppConstants.gameInviteTimeoutSeconds ~/ 60}p',
+          style: const TextStyle(color: _C.text2, fontSize: 10.5)),
+    ]),
+  );
 
   Widget _buildPlayerRow(GameStateProvider gs, GameMatch match,
       {required bool isTop}) {
@@ -387,12 +393,12 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
 
     final name = isPlayer1 ? match.player1Name : (match.player2Name ?? '???');
     final avatar =
-        isPlayer1 ? match.player1Avatar : (match.player2Avatar ?? '');
+    isPlayer1 ? match.player1Avatar : (match.player2Avatar ?? '');
     final symbol = isPlayer1 ? 'X' : 'O';
     final color = isPlayer1 ? _C.p1 : _C.p2;
     final isTheirTurn = isPlayer1 ? gs.isPlayer1Turn : !gs.isPlayer1Turn;
     final remainingMs =
-        isPlayer1 ? gs.player1RemainingMs : gs.player2RemainingMs;
+    isPlayer1 ? gs.player1RemainingMs : gs.player2RemainingMs;
     final hasChessClock = match.timeControlSeconds > 0;
 
     return AnimatedContainer(
@@ -417,37 +423,37 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
             backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
             child: avatar.isEmpty
                 ? Text(name.isNotEmpty ? name[0].toUpperCase() : '?',
-                    style: TextStyle(color: color, fontWeight: FontWeight.w700))
+                style: TextStyle(color: color, fontWeight: FontWeight.w700))
                 : null),
         const SizedBox(width: 10),
         Expanded(
             child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Flexible(
-                child: Text(name,
-                    style: const TextStyle(
-                        color: _C.text1,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600),
-                    overflow: TextOverflow.ellipsis)),
-            if (isMyRow) ...[
-              const SizedBox(width: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                decoration: BoxDecoration(
-                    color: _accent.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(4)),
-                child: Text('Bạn',
-                    style: TextStyle(
-                        color: _accent,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700)),
-              )
-            ],
-          ]),
-          Text('Quân $symbol', style: TextStyle(color: color, fontSize: 10.5)),
-        ])),
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Flexible(
+                    child: Text(name,
+                        style: const TextStyle(
+                            color: _C.text1,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600),
+                        overflow: TextOverflow.ellipsis)),
+                if (isMyRow) ...[
+                  const SizedBox(width: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                        color: _accent.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(4)),
+                    child: Text('Bạn',
+                        style: TextStyle(
+                            color: _accent,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700)),
+                  )
+                ],
+              ]),
+              Text('Quân $symbol', style: TextStyle(color: color, fontSize: 10.5)),
+            ])),
         if (hasChessClock && !gs.isGameOver)
           _ClockDisplay(ms: remainingMs, isActive: isTheirTurn, color: color),
         if (!gs.isGameOver)
@@ -469,26 +475,25 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
     );
   }
 
-  // SỬA LỖI 2 & 9: Phân loại linh hoạt Cờ Vua và Caro
   Widget _buildBoard(GameStateProvider gs, GameMatch match) => Container(
-        margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-        decoration: BoxDecoration(
-            color: const Color(0xFF0A0C12),
-            borderRadius: BorderRadius.circular(16)),
-        clipBehavior: Clip.hardEdge,
-        child: match.gameType == GameType.chess
-            ? _buildChessBoard(gs, match)
-            : CaroInfiniteBoard(
-                board: gs.caroBoard,
-                lastMove: gs.lastMove,
-                winLine: gs.winLine,
-                isMyTurn: gs.isMyTurn,
-                isGameOver: gs.isGameOver,
-                boardSize: match.boardSize,
-                mySymbol: gs.role == PlayerRole.player1 ? 'X' : 'O',
-                onTap: (row, col) => gs.playCaroMove(row, col),
-              ),
-      );
+    margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+    decoration: BoxDecoration(
+        color: const Color(0xFF0A0C12),
+        borderRadius: BorderRadius.circular(16)),
+    clipBehavior: Clip.hardEdge,
+    child: match.gameType == GameType.chess
+        ? _buildChessBoard(gs, match)
+        : CaroInfiniteBoard(
+      board: gs.caroBoard,
+      lastMove: gs.lastMove,
+      winLine: gs.winLine,
+      isMyTurn: gs.isMyTurn,
+      isGameOver: gs.isGameOver,
+      boardSize: match.boardSize,
+      mySymbol: gs.role == PlayerRole.player1 ? 'X' : 'O',
+      onTap: (row, col) => gs.playCaroMove(row, col),
+    ),
+  );
 
   Widget _buildChessBoard(GameStateProvider gs, GameMatch match) {
     return ChessBoardWidget(
@@ -500,26 +505,26 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
   }
 
   Widget _buildActionBar(GameStateProvider gs) => Padding(
-        padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-        child: Row(children: [
-          Expanded(
-              child: _ActionBtn(
-                  icon: Icons.handshake_rounded,
-                  label: 'Xin hòa',
-                  color: _C.warning,
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    gs.requestDraw();
-                  })),
-          const SizedBox(width: 10),
-          Expanded(
-              child: _ActionBtn(
-                  icon: Icons.flag_rounded,
-                  label: 'Đầu hàng',
-                  color: _C.danger,
-                  onTap: () => _confirmResign(gs))),
-        ]),
-      );
+    padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+    child: Row(children: [
+      Expanded(
+          child: _ActionBtn(
+              icon: Icons.handshake_rounded,
+              label: 'Xin hòa',
+              color: _C.warning,
+              onTap: () {
+                HapticFeedback.lightImpact();
+                gs.requestDraw();
+              })),
+      const SizedBox(width: 10),
+      Expanded(
+          child: _ActionBtn(
+              icon: Icons.flag_rounded,
+              label: 'Đầu hàng',
+              color: _C.danger,
+              onTap: () => _confirmResign(gs))),
+    ]),
+  );
 
   // ─── Banners ───────────────────────────────────────────────────────────────
 
@@ -533,7 +538,7 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
             ? 'Hòa nhau!'
             : (isWinner ? 'Bạn đã thắng!' : 'Bạn đã thua!');
         final borderColor =
-            isDraw ? _C.warning : (isWinner ? _C.live : _C.danger);
+        isDraw ? _C.warning : (isWinner ? _C.live : _C.danger);
 
         return Container(
           margin: const EdgeInsets.fromLTRB(12, 0, 12, 4),
@@ -549,15 +554,15 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                  Text(msg,
-                      style: TextStyle(
-                          color: borderColor,
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w700)),
-                  if (gs.endReason?.displayText.isNotEmpty == true)
-                    Text(gs.endReason!.displayText,
-                        style: const TextStyle(color: _C.text2, fontSize: 11)),
-                ])),
+                      Text(msg,
+                          style: TextStyle(
+                              color: borderColor,
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w700)),
+                      if (gs.endReason?.displayText.isNotEmpty == true)
+                        Text(gs.endReason!.displayText,
+                            style: const TextStyle(color: _C.text2, fontSize: 11)),
+                    ])),
             TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: Text('Về nhóm',
@@ -631,27 +636,27 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
     final ok = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-              backgroundColor: _C.card,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20)),
-              title: const Text('Đầu hàng?',
-                  style:
-                      TextStyle(color: _C.text1, fontWeight: FontWeight.w700)),
-              content: const Text(
-                  'Bạn chắc chắn muốn đầu hàng? Đối thủ sẽ thắng.',
-                  style: TextStyle(color: _C.text2)),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    child:
-                        const Text('Hủy', style: TextStyle(color: _C.text2))),
-                TextButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text('Đầu hàng',
-                        style: TextStyle(
-                            color: _C.danger, fontWeight: FontWeight.w700))),
-              ],
-            ));
+          backgroundColor: _C.card,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20)),
+          title: const Text('Đầu hàng?',
+              style:
+              TextStyle(color: _C.text1, fontWeight: FontWeight.w700)),
+          content: const Text(
+              'Bạn chắc chắn muốn đầu hàng? Đối thủ sẽ thắng.',
+              style: TextStyle(color: _C.text2)),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child:
+                const Text('Hủy', style: TextStyle(color: _C.text2))),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Đầu hàng',
+                    style: TextStyle(
+                        color: _C.danger, fontWeight: FontWeight.w700))),
+          ],
+        ));
     if (ok == true) {
       HapticFeedback.heavyImpact();
       await gs.resign();
@@ -661,7 +666,7 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
   Future<void> _confirmLeave() async {
     final gs = context.read<GameStateProvider>();
 
-    // SỬA LỖI 6: Xử lý giải phóng Spectator dứt điểm trước khi Navigator.pop thay vì gọi async trong dispose()
+    // Xử lý giải phóng Spectator dứt điểm trước khi Navigator.pop thay vì gọi async trong dispose()
     if (gs.isSpectator && gs.match != null) {
       await gs.leaveAsSpectator();
     }
@@ -670,27 +675,27 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
       final ok = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-                backgroundColor: _C.card,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20)),
-                title: const Text('Rời phòng?',
-                    style: TextStyle(
-                        color: _C.text1, fontWeight: FontWeight.w700)),
-                content: const Text(
-                    'Rời phòng khi đang thi đấu sẽ tính là thua cuộc.',
-                    style: TextStyle(color: _C.text2)),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      child: const Text('Ở lại',
-                          style: TextStyle(color: _C.text2))),
-                  TextButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      child: const Text('Rời phòng',
-                          style: TextStyle(
-                              color: _C.danger, fontWeight: FontWeight.w700))),
-                ],
-              ));
+            backgroundColor: _C.card,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20)),
+            title: const Text('Rời phòng?',
+                style: TextStyle(
+                    color: _C.text1, fontWeight: FontWeight.w700)),
+            content: const Text(
+                'Rời phòng khi đang thi đấu sẽ tính là thua cuộc.',
+                style: TextStyle(color: _C.text2)),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Ở lại',
+                      style: TextStyle(color: _C.text2))),
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Rời phòng',
+                      style: TextStyle(
+                          color: _C.danger, fontWeight: FontWeight.w700))),
+            ],
+          ));
       if (ok != true) return;
       await gs.resign();
     }
@@ -812,26 +817,26 @@ class _ActionBtn extends StatelessWidget {
 
   const _ActionBtn(
       {required this.icon,
-      required this.label,
-      required this.color,
-      required this.onTap});
+        required this.label,
+        required this.color,
+        required this.onTap});
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          height: 40,
-          decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: color.withValues(alpha: 0.3))),
-          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(icon, color: color, size: 16),
-            const SizedBox(width: 6),
-            Text(label,
-                style: TextStyle(
-                    color: color, fontSize: 12.5, fontWeight: FontWeight.w600)),
-          ]),
-        ),
-      );
+    onTap: onTap,
+    child: Container(
+      height: 40,
+      decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.3))),
+      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(icon, color: color, size: 16),
+        const SizedBox(width: 6),
+        Text(label,
+            style: TextStyle(
+                color: color, fontSize: 12.5, fontWeight: FontWeight.w600)),
+      ]),
+    ),
+  );
 }

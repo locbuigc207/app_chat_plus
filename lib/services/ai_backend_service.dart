@@ -77,9 +77,9 @@ class LearnPersonaResult {
       );
 
   factory LearnPersonaResult.fail(String reason) => LearnPersonaResult._(
-        success: false,
-        errorMessage: reason,
-      );
+    success: false,
+    errorMessage: reason,
+  );
 }
 
 enum AIBackendErrorType {
@@ -230,10 +230,10 @@ class AIBackendService {
 
   /// Phân tích ngữ cảnh chat — extract_tasks, summarize, analyze_mood, v.v.
   Future<String?> analyzeChatContext(
-    List<String> messages,
-    String contextType,
-    String action,
-  ) async {
+      List<String> messages,
+      String contextType,
+      String action,
+      ) async {
     if (messages.isEmpty) return null;
 
     try {
@@ -349,8 +349,8 @@ class AIBackendService {
 
   /// Phân tích cảm xúc tổng thể cuộc trò chuyện.
   Future<Map<String, dynamic>?> analyzeSentiment(
-    List<String> messages,
-  ) async {
+      List<String> messages,
+      ) async {
     if (messages.isEmpty) return null;
 
     try {
@@ -491,11 +491,11 @@ class AIBackendService {
       return texts
           .where((t) => t.trim().isNotEmpty)
           .map((text) => SmartReply(
-                text: text,
-                confidence: 0.92,
-                isAiGenerated: true,
-                category: replyIntent,
-              ))
+        text: text,
+        confidence: 0.92,
+        isAiGenerated: true,
+        category: replyIntent,
+      ))
           .toList();
     } catch (e, st) {
       _logError('smartReplyWithContextTyped', e, st);
@@ -601,16 +601,16 @@ class AIBackendService {
   }
 
   Future<List<ToxicityResult>> analyzeToxicityBatch(
-    List<ToxicityInput> messages,
-  ) async {
+      List<ToxicityInput> messages,
+      ) async {
     if (messages.isEmpty) return [];
     try {
       final safeMessages = messages
           .map((m) => {
-                'id': m.id,
-                'text': DataMaskingUtils.maskText(m.text,
-                    config: _kAiMaskingConfig),
-              })
+        'id': m.id,
+        'text': DataMaskingUtils.maskText(m.text,
+            config: _kAiMaskingConfig),
+      })
           .toList();
 
       final result = await _call(
@@ -680,13 +680,13 @@ class AIBackendService {
       final recentMessages = LocalDbService()
           .getMessages(conversationId)
           .where((m) {
-            final ts = int.tryParse(m['timestamp']?.toString() ?? '0') ?? 0;
-            return ts >= cutoff;
-          })
+        final ts = int.tryParse(m['timestamp']?.toString() ?? '0') ?? 0;
+        return ts >= cutoff;
+      })
           .take(messageLimit)
           .map((m) => m['content']?.toString() ?? '')
           .where((c) =>
-              c.isNotEmpty && !c.startsWith('{"iv":') && !c.startsWith('eyJ'))
+      c.isNotEmpty && !c.startsWith('{"iv":') && !c.startsWith('eyJ'))
           .toList();
 
       if (recentMessages.length < 5) {
@@ -751,10 +751,10 @@ class AIBackendService {
           .take(messageLimit)
           .map((m) => m['content']?.toString() ?? '')
           .where((c) =>
-              c.isNotEmpty &&
-              !c.startsWith('{"iv":') &&
-              !c.startsWith('{') &&
-              c.length > 3)
+      c.isNotEmpty &&
+          !c.startsWith('{"iv":') &&
+          !c.startsWith('{') &&
+          c.length > 3)
           .toList()
           .reversed
           .toList();
@@ -837,9 +837,9 @@ class AIBackendService {
     // Lọc E2EE, giới hạn 100
     final cleanMsgs = messages
         .where((m) =>
-            !m.startsWith('{"iv":') &&
-            !m.startsWith('eyJ') &&
-            m.trim().length > 3)
+    !m.startsWith('{"iv":') &&
+        !m.startsWith('eyJ') &&
+        m.trim().length > 3)
         .take(100)
         .toList();
 
@@ -875,11 +875,11 @@ class AIBackendService {
         final emoji = persona['emojiUsage'] as String? ?? '';
         final len = persona['sentenceLength'] as String? ?? '';
         final chars = (persona['characteristicWords'] as List?)
-                ?.cast<String>()
-                .join(', ') ??
+            ?.cast<String>()
+            .join(', ') ??
             '';
         personaStr =
-            'Tông: $style. Emoji: $emoji. Câu: $len. Từ đặc trưng: $chars. $summary';
+        'Tông: $style. Emoji: $emoji. Câu: $len. Từ đặc trưng: $chars. $summary';
       } else if (persona is String) {
         personaStr = persona;
       }
@@ -912,7 +912,7 @@ class AIBackendService {
 
     try {
       final safe =
-          DataMaskingUtils.maskText(incomingMessage, config: _kAiMaskingConfig);
+      DataMaskingUtils.maskText(incomingMessage, config: _kAiMaskingConfig);
 
       final result = await _call(
         functionName: 'generateAutoPilotReply',
@@ -951,7 +951,7 @@ class AIBackendService {
     if (incomingMessage.trim().isEmpty) return fallback;
     try {
       final safe =
-          DataMaskingUtils.maskText(incomingMessage, config: _kAiMaskingConfig);
+      DataMaskingUtils.maskText(incomingMessage, config: _kAiMaskingConfig);
       final result = await _call(
         functionName: 'generateSwipeReplies',
         params: {
@@ -974,20 +974,20 @@ class AIBackendService {
 
   /// Swipe replies nâng cao: text cards + sticker cards.
   Future<({List<String> replies, List<String> stickerCards})>
-      generateSwipeRepliesEnhanced({
+  generateSwipeRepliesEnhanced({
     required String incomingMessage,
     String contextMessages = '',
     String replyStyle = 'genz',
     bool includeStickerCards = true,
   }) async {
     const fallback = (
-      replies: ['Ok nha', 'Thế à?', 'Chịu luôn 😂', 'Đỉnh!'],
-      stickerCards: <String>[]
+    replies: ['Ok nha', 'Thế à?', 'Chịu luôn 😂', 'Đỉnh!'],
+    stickerCards: <String>[]
     );
     if (incomingMessage.trim().isEmpty) return fallback;
     try {
       final safe =
-          DataMaskingUtils.maskText(incomingMessage, config: _kAiMaskingConfig);
+      DataMaskingUtils.maskText(incomingMessage, config: _kAiMaskingConfig);
       final result = await _call(
         functionName: 'generateSwipeReplies',
         params: {
@@ -1001,12 +1001,12 @@ class AIBackendService {
       final replies = result?['replies'];
       final stickers = result?['stickerCards'];
       return (
-        replies: replies is List
-            ? replies.cast<String>().take(4).toList()
-            : fallback.replies,
-        stickerCards: stickers is List
-            ? stickers.cast<String>().take(2).toList()
-            : <String>[],
+      replies: replies is List
+          ? replies.cast<String>().take(4).toList()
+          : fallback.replies,
+      stickerCards: stickers is List
+          ? stickers.cast<String>().take(2).toList()
+          : <String>[],
       );
     } catch (e, st) {
       _logError('generateSwipeRepliesEnhanced', e, st);
@@ -1023,7 +1023,7 @@ class AIBackendService {
     if (callTranscript.trim().isEmpty) return null;
     try {
       final safe =
-          DataMaskingUtils.maskText(callTranscript, config: _kAiMaskingConfig);
+      DataMaskingUtils.maskText(callTranscript, config: _kAiMaskingConfig);
       final result = await _call(
         functionName: 'analyzeCallSecurity',
         params: {
@@ -1046,7 +1046,7 @@ class AIBackendService {
       {String? id}) async {
     if (message.trim().isEmpty) return ToxicityResult.safe(id: id);
     final results =
-        await analyzeToxicityBatch([ToxicityInput(id: id, text: message)]);
+    await analyzeToxicityBatch([ToxicityInput(id: id, text: message)]);
     return results.isNotEmpty ? results.first : ToxicityResult.safe(id: id);
   }
 
@@ -1062,12 +1062,13 @@ class AIBackendService {
 
     try {
       if (checkToxicity) {
+        // Cập nhật để tránh lỗi index out of bounds khi map messageIds
         final inputs = messages
             .asMap()
             .entries
             .map((e) => ToxicityInput(
-                id: messageIds.length > e.key ? messageIds[e.key] : null,
-                text: e.value))
+            id: (e.key < messageIds.length) ? messageIds[e.key] : null,
+            text: e.value))
             .toList();
         final toxicityResults = await analyzeToxicityBatch(inputs);
         results['toxicity'] = toxicityResults;
@@ -1091,7 +1092,7 @@ class AIBackendService {
     if (message.trim().isEmpty) return ReminderExtractionResult.empty();
     try {
       final safeMsg =
-          DataMaskingUtils.maskText(message, config: _kAiMaskingConfig);
+      DataMaskingUtils.maskText(message, config: _kAiMaskingConfig);
       final safeCtx = DataMaskingUtils.maskText(conversationContext,
           config: _kAiMaskingConfig);
 
@@ -1126,12 +1127,15 @@ class AIBackendService {
     try {
       final safeMsgs = messages
           .map((m) => {
-                ...m,
-                'content': DataMaskingUtils.maskText(
-                  m['content']?.toString() ?? '',
-                  config: _kAiMaskingConfig,
-                ),
-              })
+        ...m,
+        'content': DataMaskingUtils.maskText(
+          m['content']?.toString() ?? '',
+          config: _kAiMaskingConfig,
+        ),
+        // Fix lỗi 3.2: Đảm bảo timestamp được ép kiểu String trước khi serialize qua Cloud Functions
+        'timestamp': m['timestamp']?.toString() ??
+            DateTime.now().millisecondsSinceEpoch.toString(),
+      })
           .toList();
 
       final result = await _call(
@@ -1147,7 +1151,7 @@ class AIBackendService {
       final list = result['reminders'] as List? ?? [];
       return list
           .map((r) =>
-              ExtractedReminder.fromMap(Map<String, dynamic>.from(r as Map)))
+          ExtractedReminder.fromMap(Map<String, dynamic>.from(r as Map)))
           .where((r) => r.task.isNotEmpty)
           .toList();
     } catch (e, st) {
@@ -1188,7 +1192,7 @@ class AIBackendService {
       final list = result['suggestions'] as List? ?? [];
       return list
           .map((s) =>
-              ReminderSuggestion.fromMap(Map<String, dynamic>.from(s as Map)))
+          ReminderSuggestion.fromMap(Map<String, dynamic>.from(s as Map)))
           .where((s) => s.task.isNotEmpty)
           .toList();
     } catch (e, st) {

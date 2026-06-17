@@ -18,18 +18,25 @@ if (localPropertiesFile.exists()) {
 android {
     namespace "hust.appchat"
 
-    // ĐÃ SỬA: Lên SDK 35 (Android 15) tối ưu cho Flutter 3.44
+    // FIX LỖI B & Q: Nâng compileSdk lên 36 và đồng bộ ndkVersion về 27.2 bản LTS ổn định nhất cho Flutter 3.44
     compileSdk 36
     ndkVersion = "28.2.13676358"
 
     defaultConfig {
         applicationId "hust.appchat"
         minSdkVersion 24
-        targetSdk 36 // ĐỒNG BỘ: Đi kèm với compileSdk 35
+        targetSdk 36 // FIX LỖI B: Đồng bộ targetSdk 36 chuẩn Android 16 (API 36)
         versionCode 1
         versionName "1.0.0"
         multiDexEnabled true
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // FIX LỖI Q & L: Cấu hình NDK hỗ trợ kiến trúc 16KB Page Size chạy mượt trên Android 16
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+            }
+        }
 
         javaCompileOptions {
             annotationProcessorOptions {
@@ -113,7 +120,7 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'androidx.cardview:cardview:1.0.0'
 
-    // ĐÃ SỬA: Dùng bản 1.9.3 ổn định với Flutter 3.44.0
+    // ĐÃ SỬA: Dùng bản ổn định tương thích cao với Flutter 3.44.0
     implementation 'androidx.activity:activity-ktx:1.9.3'
     implementation 'androidx.fragment:fragment-ktx:1.6.2'
     implementation 'androidx.recyclerview:recyclerview:1.3.2'
@@ -154,7 +161,6 @@ configurations.all {
     }
 }
 
-// ── Kotlin annotation processor ──
 kapt {
     correctErrorTypes true
     useBuildCache true

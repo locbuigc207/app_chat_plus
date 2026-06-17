@@ -127,6 +127,9 @@ class GameInvitePayload {
   final String matchId;
   final GameType gameType;
   final MatchStatus matchStatus;
+
+  // KHẮC PHỤC LỖI 8: Thêm trường challengerId để định danh chính xác người tạo thách đấu
+  final String challengerId;
   final String challengerName;
   final String challengerAvatar;
 
@@ -147,6 +150,7 @@ class GameInvitePayload {
     required this.matchId,
     required this.gameType,
     required this.matchStatus,
+    required this.challengerId,
     required this.challengerName,
     required this.challengerAvatar,
     this.targetUserId,
@@ -157,17 +161,18 @@ class GameInvitePayload {
   });
 
   Map<String, dynamic> toJson() => {
-        'matchId': matchId,
-        'gameType': gameType.name,
-        'matchStatus': matchStatus.name,
-        'challengerName': challengerName,
-        'challengerAvatar': challengerAvatar,
-        if (targetUserId != null) 'targetUserId': targetUserId,
-        if (targetUserName != null) 'targetUserName': targetUserName,
-        'timeControlSeconds': timeControlSeconds,
-        'boardSize': boardSize,
-        'spectatorCount': spectatorCount,
-      };
+    'matchId': matchId,
+    'gameType': gameType.name,
+    'matchStatus': matchStatus.name,
+    'challengerId': challengerId,
+    'challengerName': challengerName,
+    'challengerAvatar': challengerAvatar,
+    if (targetUserId != null) 'targetUserId': targetUserId,
+    if (targetUserName != null) 'targetUserName': targetUserName,
+    'timeControlSeconds': timeControlSeconds,
+    'boardSize': boardSize,
+    'spectatorCount': spectatorCount,
+  };
 
   factory GameInvitePayload.fromJson(Map<String, dynamic> json) =>
       GameInvitePayload(
@@ -176,6 +181,7 @@ class GameInvitePayload {
         matchStatus: MatchStatus.fromString(
           json['matchStatus'] as String? ?? 'waiting',
         ),
+        challengerId: json['challengerId'] as String? ?? '',
         challengerName: json['challengerName'] as String? ?? '',
         challengerAvatar: json['challengerAvatar'] as String? ?? '',
         targetUserId: json['targetUserId'] as String?,
@@ -189,19 +195,19 @@ class GameInvitePayload {
     MatchStatus? matchStatus,
     int? spectatorCount,
     String? opponentName,
-  }) =>
-      GameInvitePayload(
-        matchId: matchId,
-        gameType: gameType,
-        matchStatus: matchStatus ?? this.matchStatus,
-        challengerName: challengerName,
-        challengerAvatar: challengerAvatar,
-        targetUserId: targetUserId,
-        targetUserName: targetUserName,
-        timeControlSeconds: timeControlSeconds,
-        boardSize: boardSize,
-        spectatorCount: spectatorCount ?? this.spectatorCount,
-      );
+  }) => GameInvitePayload(
+    matchId: matchId,
+    gameType: gameType,
+    matchStatus: matchStatus ?? this.matchStatus,
+    challengerId: challengerId,
+    challengerName: challengerName,
+    challengerAvatar: challengerAvatar,
+    targetUserId: targetUserId,
+    targetUserName: targetUserName,
+    timeControlSeconds: timeControlSeconds,
+    boardSize: boardSize,
+    spectatorCount: spectatorCount ?? this.spectatorCount,
+  );
 }
 
 /// Payload cho TypeMessage.gameResult.
@@ -245,19 +251,19 @@ class GameResultPayload {
   });
 
   Map<String, dynamic> toJson() => {
-        'matchId': matchId,
-        'gameType': gameType.name,
-        'result': result,
-        'player1Id': player1Id,
-        'player1Name': player1Name,
-        'player1Avatar': player1Avatar,
-        'player2Id': player2Id,
-        'player2Name': player2Name,
-        'player2Avatar': player2Avatar,
-        'endReason': endReason,
-        'durationSeconds': durationSeconds,
-        'totalMoves': totalMoves,
-      };
+    'matchId': matchId,
+    'gameType': gameType.name,
+    'result': result,
+    'player1Id': player1Id,
+    'player1Name': player1Name,
+    'player1Avatar': player1Avatar,
+    'player2Id': player2Id,
+    'player2Name': player2Name,
+    'player2Avatar': player2Avatar,
+    'endReason': endReason,
+    'durationSeconds': durationSeconds,
+    'totalMoves': totalMoves,
+  };
 
   factory GameResultPayload.fromJson(Map<String, dynamic> json) =>
       GameResultPayload(

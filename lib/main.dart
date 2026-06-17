@@ -23,12 +23,12 @@ import 'package:flutter_chat_demo/utils/utils.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Globals
 // ─────────────────────────────────────────────────────────────────────────────
@@ -36,6 +36,11 @@ import 'package:timezone/timezone.dart' as tz;
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
+/// Navigator key dùng cho toàn app. Vì BubbleManager (và mọi widget cần
+/// Overlay) giờ được lồng BÊN TRONG MaterialApp.builder's `child` (tức là
+/// BÊN TRONG Navigator do MaterialApp tạo ra), globalNavigatorKey vẫn được
+/// giữ lại làm fallback an toàn cho các trường hợp gọi từ context không
+/// chắc chắn (ví dụ callback bất đồng bộ chạy sau khi 1 màn hình đã dispose).
 final GlobalKey<NavigatorState> globalNavigatorKey =
     GlobalKey<NavigatorState>();
 
@@ -90,6 +95,7 @@ Future<void> main() async {
 
   tz.initializeTimeZones();
   tz.setLocalLocation(tz.getLocation('Asia/Ho_Chi_Minh'));
+  await initializeDateFormatting('vi');
 
   final prefs = await SharedPreferences.getInstance();
 
@@ -489,6 +495,13 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MiniChatOverlayManager
+//
+// GHI CHÚ KIẾN TRÚC (Flutter 3.44 / LookupBoundary):
+// Widget này gọi Overlay.of(context) ở _showOverlay(). Để lệnh gọi này
+// luôn tìm thấy Overlay hợp lệ, MiniChatOverlayManager BẮT BUỘC phải nằm
+// ở vị trí là CON (descendant) của Navigator/Overlay do MaterialApp tạo ra.
+// Việc đặt đúng vị trí được xử lý tại ChatApp.build() -> builder, xem phần
+// "FIX KIẾN TRÚC OVERLAY" ở dưới.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class MiniChatOverlayManager extends StatefulWidget {
@@ -556,9 +569,15 @@ class _MiniChatOverlayManagerState extends State<MiniChatOverlayManager> {
       ),
     );
 
-    // FIX lỗi 7: bọc insert trong try/catch, chỉ set flag khi insert thành công
+    // FIX lỗi 7: bọc insert trong try/catch, chỉ set flag khi insert thành công.
+    // Ưu tiên Overlay.of(context) trực tiếp (đúng nếu vị trí widget tree đã
+    // chuẩn). Nếu vì lý do nào đó context tạm thời không có Overlay ancestor
+    // (ví dụ đang giữa quá trình rebuild), fallback sang globalNavigatorKey.
     try {
-      Overlay.of(context).insert(_overlay!);
+      final overlayState =
+          Overlay.maybeOf(context) ??
+          Overlay.of(globalNavigatorKey.currentState!.context);
+      overlayState.insert(_overlay!);
       _overlayInserted = true;
     } catch (e) {
       debugPrint('❌ MiniChatOverlayManager: insert failed: $e');
@@ -1107,47 +1126,58 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
       ),
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, _) {
-          return BubbleSystemWrapper(
-            child: MaterialApp(
-              title: AppConstants.appTitle,
-              debugShowCheckedModeBanner: false,
-              navigatorKey: AppRouter.navigatorKey,
-              themeMode: themeProvider.flutterThemeMode ?? ThemeMode.system,
-              theme:
-                  themeProvider.lightTheme ??
-                  _buildFallbackTheme(Brightness.light),
-              darkTheme:
-                  themeProvider.darkTheme ??
-                  _buildFallbackTheme(Brightness.dark),
-              initialRoute: AppRouter.splash,
-              onGenerateRoute: AppRouter.onGenerateRoute,
-              builder: (context, child) {
-                // FIX LỖI NAVIGATOR Ở ĐÂY:
-                // Khối AppInitializer vẫn xử lý child trực tiếp, nhưng các Manager (Listener)
-                // giờ được lồng ghép chính xác bên trong Builder của MaterialApp.
+          return MaterialApp(
+            title: AppConstants.appTitle,
+            debugShowCheckedModeBanner: false,
+            navigatorKey: AppRouter.navigatorKey,
+            themeMode: themeProvider.flutterThemeMode ?? ThemeMode.system,
+            theme:
+                themeProvider.lightTheme ??
+                _buildFallbackTheme(Brightness.light),
+            darkTheme:
+                themeProvider.darkTheme ?? _buildFallbackTheme(Brightness.dark),
+            initialRoute: AppRouter.splash,
+            onGenerateRoute: AppRouter.onGenerateRoute,
+            // ═══════════════════════════════════════════════════════════
+            // FIX KIẾN TRÚC OVERLAY (Flutter 3.44 LookupBoundary)
+            // ═══════════════════════════════════════════════════════════
+            // `builder` ở đây nhận `child` = cây Navigator đã được
+            // MaterialApp dựng sẵn (cây này TỰ CHỨA một Overlay hợp lệ).
+            //
+            // TRƯỚC: BubbleSystemWrapper/BubbleManager bọc NGOÀI
+            // MaterialApp -> context của BubbleManager là CHA của
+            // Navigator's Overlay -> Overlay.of(context) luôn thất bại
+            // ("no Overlay in context"), đặc biệt từ Flutter 3.38+ khi
+            // LookupBoundary được enforce nghiêm ngặt hơn.
+            //
+            // SAU: mọi Manager cần Overlay (BubbleManager,
+            // MiniChatOverlayManager...) được lồng NGAY TẠI ĐÂY, tức là
+            // chúng trở thành CON (descendant) của Navigator/Overlay.
+            // Overlay.of(context) từ các widget này giờ luôn tìm thấy
+            // đúng Overlay gần nhất một cách hợp lệ và ổn định.
+            // ═══════════════════════════════════════════════════════════
+            builder: (context, child) {
+              Widget content = AppInitializer(
+                notificationService: widget.notificationService,
+                child: _AppBuilder(child: child!),
+              );
 
-                Widget content = AppInitializer(
-                  notificationService: widget.notificationService,
-                  child: _AppBuilder(child: child!),
-                );
-
-                if (!kIsWeb) {
-                  content = GroupCallMiniManager(
-                    child: BubbleChatChannelManager(
-                      child: GroupCallListener(
-                        child: CallListener(
-                          child: BubbleManager(
-                            child: MiniChatOverlayManager(child: content),
-                          ),
+              if (!kIsWeb) {
+                content = GroupCallMiniManager(
+                  child: BubbleChatChannelManager(
+                    child: GroupCallListener(
+                      child: CallListener(
+                        child: BubbleManager(
+                          child: MiniChatOverlayManager(child: content),
                         ),
                       ),
                     ),
-                  );
-                }
+                  ),
+                );
+              }
 
-                return content;
-              },
-            ),
+              return content;
+            },
           );
         },
       ),
@@ -1275,6 +1305,13 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
       Provider<LocationProvider>(create: (_) => LocationProvider()),
       Provider<TranslationProvider>(create: (_) => TranslationProvider()),
       Provider<ChatBubbleService>(create: (_) => widget.chatBubbleService),
+      // UnifiedBubbleService dùng Provider thường (không phải
+      // ChangeNotifierProvider) — UI của nó cập nhật qua các Stream riêng
+      // (activeBubblesStream, bubbleClickStream...) chứ không qua
+      // notifyListeners(). Provider/InheritedWidget không bị ảnh hưởng bởi
+      // LookupBoundary giống Overlay, nên giữ nguyên ở MultiProvider cấp
+      // cao bên ngoài MaterialApp là đúng và đủ — không cần di chuyển
+      // xuống bên trong `builder` như BubbleManager/MiniChatOverlayManager.
       Provider<UnifiedBubbleService>(
         create: (_) => widget.unifiedBubbleService,
         dispose: (_, s) => s.dispose(),

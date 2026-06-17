@@ -10,6 +10,8 @@ import android.util.Log
 import androidx.annotation.NonNull
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.embedding.engine.FlutterEngineCache
+import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import hust.appchat.bubble.BubbleManager
@@ -56,6 +58,9 @@ class MainActivity : FlutterActivity() {
         private const val ACTION_BUBBLE_DISMISS = "CHAT_BUBBLE_DISMISS"
 
         private const val OVERLAY_REQUEST = 1001
+
+        // Thêm ID cho Mini Chat Engine khớp với Service/Activity
+        const val MINI_ENGINE_ID = "mini_chat_overlay_engine"
     }
 
     // ── State ─────────────────────────────────────────────────────────────
@@ -79,12 +84,12 @@ class MainActivity : FlutterActivity() {
             BubbleNotificationService.init(this)
             Log.d(TAG, "✅ BubbleNotificationService initialized")
 
-            // FIX #2: Warm up shared Flutter engine sớm trong MainActivity.
-            // Khi user nhận notification và bubble mở lần đầu, engine đã sẵn sàng
-            // → không có cold-start delay, không risk tạo 2 engine đồng thời.
-            // warmUpSharedEngine() là idempotent: gọi nhiều lần không hại gì.
+            // FIX C: Warm up shared Flutter engine cho BubbleActivity
             BubbleActivity.warmUpBubbleEngine(this)
             Log.d(TAG, "✅ Shared Flutter engine warm-up initiated")
+
+            // FIX G: Warm up thêm engine cho MiniChat để loại bỏ cold-start 2-4s
+            warmUpMiniChatEngine()
 
             if (ShortcutHelper.isShortcutsSupported()) {
                 Log.d(TAG, "✅ Shortcuts supported")
@@ -94,6 +99,24 @@ class MainActivity : FlutterActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "❌ Boot failed: $e")
         }
+    }
+
+    private fun warmUpMiniChatEngine() {
+        val cache = FlutterEngineCache.getInstance()
+        if (cache.get(MINI_ENGINE_ID)?.dartExecutor?.isExecutingDart == true) {
+            Log.d(TAG, "♻️ Mini Chat Engine already warm")
+            return
+        }
+
+        Log.d(TAG, "🔥 Warming mini chat engine…")
+        val eng = FlutterEngine(this.applicationContext)
+        eng.dartExecutor.executeDartEntrypoint(
+            DartExecutor.DartEntrypoint.createDefault()
+        )
+        // FIX G: Đưa engine vào trạng thái standby, không render cho đến khi cần
+        eng.lifecycleChannel.appIsDetached()
+        cache.put(MINI_ENGINE_ID, eng)
+        Log.d(TAG, "✅ Mini chat engine warm and standby")
     }
 
     override fun configureFlutterEngine(@NonNull engine: FlutterEngine) {
@@ -459,10 +482,17 @@ class MainActivity : FlutterActivity() {
                 putExtra("userName",  uname)
                 putExtra("avatarUrl", av)
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                startForegroundService(intent)
-            else
+            // FIX N: Tránh crash ngầm Foreground Service trên Android 15
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                try {
+                    startForegroundService(intent)
+                } catch (e: Exception) {
+                    Log.e(TAG, "⚠️ ForegroundServiceStart blocked by Android 15, fallback to normal start", e)
+                    startService(intent)
+                }
+            } else {
                 startService(intent)
+            }
             true
         } catch (e: Exception) {
             Log.e(TAG, "❌ startMiniChatService: $e"); false

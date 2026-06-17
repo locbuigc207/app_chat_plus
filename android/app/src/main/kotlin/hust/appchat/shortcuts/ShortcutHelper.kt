@@ -1,6 +1,7 @@
 // android/app/src/main/kotlin/hust/appchat/shortcuts/ShortcutHelper.kt
 package hust.appchat.shortcuts
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ShortcutInfo
@@ -106,7 +107,12 @@ object ShortcutHelper {
         if (!shortcutExists(context, userId)) {
             Log.d(TAG, "🔗 Creating missing shortcut: $userName")
             createShortcutSuspend(context, userId, userName, avatarUrl)
-            delay(350) // Give ShortcutManager time to commit
+
+            // LỖI D FIX: Polling thay vì hard delay để theo dõi chính xác trạng thái
+            repeat(20) {
+                if (shortcutExists(context, userId)) return
+                delay(100)
+            }
         }
     }
 
@@ -186,7 +192,6 @@ object ShortcutHelper {
     }
 
     fun cleanup() {
-        // ĐÃ SỬA: Dùng cancelChildren thay vì cancel() để không phá hủy scope vĩnh viễn
         scope.coroutineContext.cancelChildren()
         Log.d(TAG, "✅ ShortcutHelper cleanup complete")
     }
@@ -297,8 +302,16 @@ object ShortcutHelper {
     private fun buildBubbleIntent(
         context: Context, userId: String, userName: String, avatarUrl: String
     ): Intent {
-        // ĐÃ SỬA: Sửa Intent để tuân thủ luật Explicit Intent của Android 16. Bỏ Action ngầm, bỏ FLAG_ACTIVITY_CLEAR_TOP.
         return Intent(context, BubbleActivity::class.java).apply {
+            // FIX CHO ANDROID 16: Thiết lập component đích tường minh
+            component = ComponentName(context, BubbleActivity::class.java)
+
+            // ĐÃ SỬA: Thêm action hợp lệ cho Shortcut từ Android 11+
+            action = Intent.ACTION_VIEW
+
+            // KHUYẾN NGHỊ: Thêm data URI để định danh duy nhất conversation, tránh lẫn task
+            data = android.net.Uri.parse("bubble://chat/$userId")
+
             putExtra("userId", userId)
             putExtra("userName", userName)
             putExtra("avatarUrl", avatarUrl)

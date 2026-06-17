@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ — kiểm soát backup. Không backup dữ liệu nhạy cảm E2EE -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="FlutterSecureStorage" />
+        <exclude domain="sharedpref" path="hive_secure_key_v2" />
+        <exclude domain="database" />
+        <exclude domain="file" path="hive" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="FlutterSecureStorage" />
+        <exclude domain="sharedpref" path="hive_secure_key_v2" />
+        <exclude domain="database" />
+        <exclude domain="file" path="hive" />
+    </device-transfer>
+</data-extraction-rules>

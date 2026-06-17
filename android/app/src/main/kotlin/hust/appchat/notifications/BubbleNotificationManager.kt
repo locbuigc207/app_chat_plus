@@ -1,3 +1,4 @@
+// android/app/src/main/kotlin/hust/appchat/notifications/BubbleNotificationManager.kt
 package hust.appchat.notifications
 
 import android.app.Notification
@@ -13,6 +14,7 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import hust.appchat.BubbleActivity
 import hust.appchat.shortcuts.AvatarLoader
+import hust.appchat.shortcuts.ShortcutHelper
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -21,8 +23,10 @@ object BubbleNotificationManager {
 
     private const val TAG              = "BubbleNotifManager"
     private const val MAX_HISTORY      = 12
-    private const val BASE_ID          = 2_000
     private const val CHANNEL_MESSAGES = "chat_messages"
+
+    // LỖI I FIX: Tăng base ID và dải chia dư để dứt điểm vụ trùng lặp Notification ID
+    private const val BASE_ID          = 10_000
 
     private val history      = ConcurrentHashMap<String, CopyOnWriteArrayList<Message>>()
     private val expandedUsers = ConcurrentHashMap.newKeySet<String>()
@@ -122,23 +126,27 @@ object BubbleNotificationManager {
             val style      = buildStyle(person, userName, messages)
             val bubbleMeta = buildBubble(context, userId, userName, avatarUrl, avatarIcon)
 
-            val notif = Notification.Builder(context, CHANNEL_MESSAGES)
+            val builder = Notification.Builder(context, CHANNEL_MESSAGES)
                 .setSmallIcon(notifIconRes(context))
                 .setLargeIcon(iconToBitmap(context, avatarIcon))
                 .setStyle(style)
-                .setBubbleMetadata(bubbleMeta)
                 .setShortcutId(userId)
                 .setCategory(Notification.CATEGORY_MESSAGE)
                 .setPriority(Notification.PRIORITY_HIGH)
                 .setShowWhen(true)
                 .setAutoCancel(false)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
-                .build()
+
+            // LỖI E & S FIX: Nếu buildBubble trả về null do thiếu shortcut,
+            // bỏ qua setBubbleMetadata để system vẫn post Notification dạng thường.
+            bubbleMeta?.let { builder.setBubbleMetadata(it) }
+
+            val notif = builder.build()
 
             context.getSystemService(NotificationManager::class.java)
                 ?.notify(notifId, notif)
 
-            Log.d(TAG, "✅ Notification posted id=$notifId user=$userName msgs=${messages.size}")
+            Log.d(TAG, "✅ Notification posted id=$notifId user=$userName msgs=${messages.size} (isBubble: ${bubbleMeta != null})")
         } catch (e: Exception) {
             Log.e(TAG, "❌ postNotification: $e")
         }
@@ -174,14 +182,18 @@ object BubbleNotificationManager {
         userName : String,
         avatarUrl: String,
         icon     : Icon,
-    ): Notification.BubbleMetadata {
-        val intent = BubbleActivity.createIntent(context, userId, userName, avatarUrl)
+    ): Notification.BubbleMetadata? {
 
-        // ĐÃ SỬA: Dùng toán tử bitwise AND để tránh ngoại lệ Math.abs(Int.MIN_VALUE) gây tràn số âm
+        // LỖI E & S FIX: Kiểm tra kỹ shortcut trước khi build BubbleMetadata framework API.
+        // Trên Android 15/16, shortcut bắt buộc phải được publish trước.
+        if (!ShortcutHelper.shortcutExists(context, userId)) {
+            Log.w(TAG, "⚠️ Shortcut missing for $userId — deferring bubble metadata")
+            return null
+        }
+
+        val intent = BubbleActivity.createIntent(context, userId, userName, avatarUrl)
         val reqCode = (userId.hashCode() and 0x7FFFFFFF)
 
-        // FIX: bubble PendingIntent BẮT BUỘC phải MUTABLE
-        // FLAG_IMMUTABLE khiến Android reject toàn bộ bubble notification
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
                     PendingIntent.FLAG_MUTABLE
@@ -189,13 +201,16 @@ object BubbleNotificationManager {
 
         val pi = PendingIntent.getActivity(context, reqCode, intent, flags)
 
-        // FIX: dùng adaptive bitmap icon thay vì raw bitmap
-        // Bubble API hoạt động tốt nhất với TYPE_URI hoặc TYPE_URI_ADAPTIVE_BITMAP
-        // Fallback: wrap bitmap thành adaptive bitmap
         val bubbleIcon = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val bmp = iconToBitmap(context, icon)
             if (bmp != null) Icon.createWithAdaptiveBitmap(bmp) else icon
         } else icon
+
+        // Safety check trước khi build để ngăn crash ngầm nếu Icon fallback thất bại
+        if (bubbleIcon == null) {
+            Log.e(TAG, "❌ Bubble icon null — abort bubble metadata")
+            return null
+        }
 
         return Notification.BubbleMetadata.Builder(pi, bubbleIcon)
             .setDesiredHeight(640)
@@ -254,7 +269,7 @@ object BubbleNotificationManager {
         }
     }
 
-    // ĐÃ SỬA: Đồng bộ cách tính notifId bằng bitwise AND để không bị lệch ID khi gọi NotificationHelper.cancelNotification()
+    // LỖI I FIX: Công thức tính notifId mới với range rộng hơn [10000, 60000]
     private fun notifId(userId: String) =
-        BASE_ID + ((userId.hashCode() and 0x7FFFFFFF) % 1_000)
+        BASE_ID + ((userId.hashCode() and 0x7FFFFFFF) % 50_000)
 }

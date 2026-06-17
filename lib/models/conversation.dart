@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 
 class Conversation {
@@ -64,7 +65,18 @@ class Conversation {
     final data = doc.data() as Map<String, dynamic>?;
 
     if (data == null) {
-      throw Exception('Conversation document data is null');
+      // Cảnh báo thay vì throw Exception để tránh làm crash toàn bộ StreamBuilder
+      debugPrint(
+        '⚠️ Warning: Conversation document data is null for ID: ${doc.id}',
+      );
+      return Conversation(
+        id: doc.id,
+        isGroup: false,
+        participants: const [],
+        lastMessage: '',
+        lastMessageTime: '0',
+        lastMessageType: 0,
+      );
     }
 
     String getStringValue(dynamic value, {String defaultValue = '0'}) {
@@ -126,11 +138,15 @@ class Conversation {
         unreadCount: data['unreadCount'] ?? 0,
         isArchived: data['isArchived'] ?? false,
       );
-    } catch (e) {
+    } catch (e, stackTrace) {
+      // Đã thêm log chi tiết để bắt chính xác lỗi parse type từ Firestore
+      debugPrint('❌ Error parsing Conversation ${doc.id}: $e');
+      debugPrint('Stacktrace: $stackTrace');
+
       return Conversation(
         id: doc.id,
         isGroup: false,
-        participants: [],
+        participants: const [],
         lastMessage: '',
         lastMessageTime: '0',
         lastMessageType: 0,

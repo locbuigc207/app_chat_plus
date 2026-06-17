@@ -32,7 +32,8 @@ object NotificationHelper {
     const val CHANNEL_MESSAGES = "chat_messages"
     const val CHANNEL_SERVICE  = "chat_bubbles"
 
-    private const val BASE_NOTIF_ID = 2_000
+    // LỖI I FIX: Đồng bộ BASE_ID với BubbleNotificationManager
+    private const val BASE_NOTIF_ID = 10_000
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var channelsCreated = false
@@ -113,9 +114,9 @@ object NotificationHelper {
         }
     }
 
-    // ĐÃ SỬA: Đồng bộ cách tính ID với BubbleNotificationManager để hủy thông báo chính xác
+    // LỖI I FIX: Đồng bộ modulo 50_000 với BubbleNotificationManager để hủy chính xác
     fun getNotificationId(userId: String): Int {
-        return BASE_NOTIF_ID + ((userId.hashCode() and 0x7FFFFFFF) % 1_000)
+        return BASE_NOTIF_ID + ((userId.hashCode() and 0x7FFFFFFF) % 50_000)
     }
 
     // ========================================
@@ -174,19 +175,13 @@ object NotificationHelper {
 
         return try {
             val nm = context.getSystemService(NotificationManager::class.java) ?: return false
+            val channel = nm.getNotificationChannel(CHANNEL_MESSAGES) ?: return false
 
-            // ĐÃ SỬA: Bổ sung kiểm tra canBubble() cho Channel từ API 30+ (Android 11+)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                val channel = nm.getNotificationChannel(CHANNEL_MESSAGES)
-                nm.areBubblesAllowed() && (channel?.canBubble() ?: false)
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                nm.areBubblesAllowed()
-            } else {
-                val channel = nm.getNotificationChannel(CHANNEL_MESSAGES) ?: return false
-                channel.importance >= NotificationManager.IMPORTANCE_DEFAULT
-            }
+            // LỖI A FIX: Bỏ hoàn toàn check areBubblesAllowed() do bị deprecated và lỗi ngầm trên OEM.
+            // Chỉ kiểm tra tầm quan trọng của channel và trạng thái thông báo tổng thể.
+            channel.importance >= NotificationManager.IMPORTANCE_DEFAULT && nm.areNotificationsEnabled()
         } catch (e: Exception) {
-            false
+            true // Mặc định trả về true để hệ thống tự quyết định việc hiển thị
         }
     }
 

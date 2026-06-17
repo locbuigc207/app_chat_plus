@@ -66,7 +66,7 @@ class _CaroInfiniteBoardState extends State<CaroInfiniteBoard>
   late final AnimationController _winAnim;
   late Animation<double> _winProgress;
 
-  // KHẮC PHỤC LỖI 16: Flag kiểm tra bàn cờ vô hạn đã định vị vị trí xong chưa
+  // Flag kiểm tra bàn cờ vô hạn đã định vị vị trí xong chưa
   bool _boardReady = false;
 
   // Kích thước grid (ô) hiển thị cho bàn vô hạn
@@ -128,7 +128,7 @@ class _CaroInfiniteBoardState extends State<CaroInfiniteBoard>
 
   // ── Coordinate helpers ────────────────────────────────────────────────────
 
-  /// KHẮC PHỤC LỖI 17: Tính toán tọa độ độc lập không ma trận cho bàn 3x3 tĩnh
+  /// Tính toán tọa độ độc lập không ma trận cho bàn 3x3 tĩnh
   (int row, int col)? _tapToCell3x3(Offset local) {
     final gridCol = (local.dx / _kCellSize).floor();
     final gridRow = (local.dy / _kCellSize).floor();
@@ -141,12 +141,9 @@ class _CaroInfiniteBoardState extends State<CaroInfiniteBoard>
 
   /// Chuyển tap position → (row, col) trong hệ tọa độ game Caro Vô hạn.
   (int row, int col)? _tapToCell(Offset local) {
-    final m = _transform.value;
-    final inv = Matrix4.inverted(m);
-    final transformed = MatrixUtils.transformPoint(inv, local);
-
-    final gridCol = (transformed.dx / _kCellSize).floor();
-    final gridRow = (transformed.dy / _kCellSize).floor();
+    // Bỏ tính ma trận nghịch đảo, sử dụng trực tiếp localPosition từ GestureDetector
+    final gridCol = (local.dx / _kCellSize).floor();
+    final gridRow = (local.dy / _kCellSize).floor();
 
     // Vô hạn: chuyển về game coordinates
     final gameRow = gridRow - _origin;
@@ -170,7 +167,6 @@ class _CaroInfiniteBoardState extends State<CaroInfiniteBoard>
     const size = 3 * _kCellSize;
     return Center(
       child: GestureDetector(
-        // Sửa thành onTapUp theo thiết kế chuẩn để bắt vị trí chính xác hơn
         onTapUp: (d) {
           if (!widget.isMyTurn || widget.isGameOver) return;
           final cell = _tapToCell3x3(d.localPosition);
@@ -211,7 +207,6 @@ class _CaroInfiniteBoardState extends State<CaroInfiniteBoard>
         maxScale: 2.5,
         constrained: false,
         child: GestureDetector(
-          // Sửa thành onTapUp, và thêm cờ kiểm tra Ready bảo vệ vị trí chạm
           onTapUp: (d) {
             if (!_boardReady || !widget.isMyTurn || widget.isGameOver) return;
             final cell = _tapToCell(d.localPosition);
@@ -411,7 +406,9 @@ class _BoardPainter extends CustomPainter {
 
     Offset cellCenter(CaroCell c) => boardSize == 3
         ? Offset(
-            c.col * cellSize + cellSize / 2, c.row * cellSize + cellSize / 2)
+            c.col * cellSize + cellSize / 2,
+            c.row * cellSize + cellSize / 2,
+          )
         : Offset(
             (c.col + origin) * cellSize + cellSize / 2,
             (c.row + origin) * cellSize + cellSize / 2,

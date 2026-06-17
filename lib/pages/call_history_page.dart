@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 
 import '../models/call_model.dart';
@@ -44,6 +45,7 @@ class _CallHistoryPageState extends State<CallHistoryPage>
   @override
   void initState() {
     super.initState();
+    initializeDateFormatting('vi');
     _tabCtrl = TabController(length: _tabs.length, vsync: this);
     _tabCtrl.addListener(() => setState(() {}));
   }
@@ -101,7 +103,8 @@ class _CallHistoryPageState extends State<CallHistoryPage>
             ],
             body: filtered.isEmpty
                 ? _EmptyState(
-                    isLoading: snap.connectionState == ConnectionState.waiting)
+                    isLoading: snap.connectionState == ConnectionState.waiting,
+                  )
                 : _CallListView(
                     calls: filtered,
                     currentUserId: widget.currentUserId,
@@ -113,7 +116,11 @@ class _CallHistoryPageState extends State<CallHistoryPage>
   }
 
   Widget _buildSliverAppBar(
-      BuildContext ctx, bool inner, _CallStats stats, int count) {
+    BuildContext ctx,
+    bool inner,
+    _CallStats stats,
+    int count,
+  ) {
     return SliverAppBar(
       expandedHeight: _searching ? 130 : 260,
       floating: false,
@@ -140,14 +147,19 @@ class _CallHistoryPageState extends State<CallHistoryPage>
         titlePadding: EdgeInsets.zero,
       ),
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new_rounded,
-            color: Colors.white70, size: 20),
+        icon: const Icon(
+          Icons.arrow_back_ios_new_rounded,
+          color: Colors.white70,
+          size: 20,
+        ),
         onPressed: () => Navigator.pop(ctx),
       ),
       actions: [
         IconButton(
-          icon: Icon(_searching ? Icons.close_rounded : Icons.search_rounded,
-              color: Colors.white70),
+          icon: Icon(
+            _searching ? Icons.close_rounded : Icons.search_rounded,
+            color: Colors.white70,
+          ),
           onPressed: () {
             setState(() {
               _searching = !_searching;
@@ -178,8 +190,10 @@ class _CallHistoryPageState extends State<CallHistoryPage>
         labelColor: Colors.white,
         unselectedLabelColor: Colors.white38,
         labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-        unselectedLabelStyle:
-            const TextStyle(fontWeight: FontWeight.w400, fontSize: 13),
+        unselectedLabelStyle: const TextStyle(
+          fontWeight: FontWeight.w400,
+          fontSize: 13,
+        ),
         tabs: _tabs.map((t) => Tab(text: t)).toList(),
       ),
     );
@@ -233,31 +247,33 @@ class _HeaderContent extends StatelessWidget {
                 ),
                 const SizedBox(height: 20),
                 // Stats row
-                Row(children: [
-                  _StatCard(
+                Row(
+                  children: [
+                    _StatCard(
                       label: 'Tổng',
                       value: '${stats.total}',
                       icon: Icons.phone_rounded,
-                      color: _kBlue),
-                  const SizedBox(width: 12),
-                  _StatCard(
+                      color: _kBlue,
+                    ),
+                    const SizedBox(width: 12),
+                    _StatCard(
                       label: 'Nhỡ',
                       value: '${stats.missed}',
                       icon: Icons.phone_missed_rounded,
-                      color: _kRed),
-                  const SizedBox(width: 12),
-                  _StatCard(
+                      color: _kRed,
+                    ),
+                    const SizedBox(width: 12),
+                    _StatCard(
                       label: 'Hôm nay',
                       value: stats.todayDuration,
                       icon: Icons.access_time_rounded,
-                      color: _kGreen),
-                ]),
+                      color: _kGreen,
+                    ),
+                  ],
+                ),
               ] else ...[
                 const SizedBox(height: 8),
-                _SearchBar(
-                  controller: searchCtrl,
-                  onChanged: onQueryChanged,
-                ),
+                _SearchBar(controller: searchCtrl, onChanged: onQueryChanged),
               ],
             ],
           ),
@@ -294,15 +310,23 @@ class _StatCard extends StatelessWidget {
           children: [
             Icon(icon, color: color, size: 20),
             const SizedBox(height: 8),
-            Text(value,
-                style: TextStyle(
-                    color: color, fontSize: 20, fontWeight: FontWeight.w800)),
+            Text(
+              value,
+              style: TextStyle(
+                color: color,
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
             const SizedBox(height: 2),
-            Text(label,
-                style: const TextStyle(
-                    color: Colors.white38,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500)),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white38,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
         ),
       ),
@@ -333,8 +357,11 @@ class _SearchBar extends StatelessWidget {
         decoration: const InputDecoration(
           hintText: 'Tìm theo tên…',
           hintStyle: TextStyle(color: Colors.white38),
-          prefixIcon:
-              Icon(Icons.search_rounded, color: Colors.white38, size: 20),
+          prefixIcon: Icon(
+            Icons.search_rounded,
+            color: Colors.white38,
+            size: 20,
+          ),
           border: InputBorder.none,
           contentPadding: EdgeInsets.symmetric(vertical: 13),
         ),
@@ -370,10 +397,9 @@ class _CallListView extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _DateHeader(label: entry.key),
-            ...entry.value.map((c) => _CallTile(
-                  call: c,
-                  currentUserId: currentUserId,
-                )),
+            ...entry.value.map(
+              (c) => _CallTile(call: c, currentUserId: currentUserId),
+            ),
           ],
         );
       },
@@ -400,17 +426,17 @@ class _DateHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 28, 20, 10),
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white30,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.4,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.fromLTRB(20, 28, 20, 10),
+    child: Text(
+      label,
+      style: const TextStyle(
+        color: Colors.white30,
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 1.4,
+      ),
+    ),
+  );
 }
 
 // ══════════════════════════════════════════════════════
@@ -439,8 +465,10 @@ class _CallTileState extends State<_CallTile>
       duration: const Duration(milliseconds: 80),
       reverseDuration: const Duration(milliseconds: 200),
     );
-    _scale = Tween<double>(begin: 1, end: 0.97)
-        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
+    _scale = Tween<double>(
+      begin: 1,
+      end: 0.97,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
   }
 
   @override
@@ -464,21 +492,39 @@ class _CallTileState extends State<_CallTile>
       case CallStatus.ended:
         return _isOutgoing
             ? const _StatusInfo(
-                Icons.call_made_rounded, Color(0xFF4FC3F7), 'Đã gọi đi')
+                Icons.call_made_rounded,
+                Color(0xFF4FC3F7),
+                'Đã gọi đi',
+              )
             : const _StatusInfo(
-                Icons.call_received_rounded, Color(0xFF81C784), 'Cuộc gọi đến');
+                Icons.call_received_rounded,
+                Color(0xFF81C784),
+                'Cuộc gọi đến',
+              );
       case CallStatus.missed:
         return const _StatusInfo(
-            Icons.call_missed_rounded, _kRed, 'Cuộc gọi nhỡ');
+          Icons.call_missed_rounded,
+          _kRed,
+          'Cuộc gọi nhỡ',
+        );
       case CallStatus.declined:
         return const _StatusInfo(
-            Icons.call_missed_outgoing_rounded, _kOrange, 'Đã bị từ chối');
+          Icons.call_missed_outgoing_rounded,
+          _kOrange,
+          'Đã bị từ chối',
+        );
       case CallStatus.rejected:
         return const _StatusInfo(
-            Icons.do_not_disturb_on_rounded, _kOrange, 'Đã từ chối');
+          Icons.do_not_disturb_on_rounded,
+          _kOrange,
+          'Đã từ chối',
+        );
       case CallStatus.failed:
         return const _StatusInfo(
-            Icons.error_outline_rounded, Colors.white30, 'Thất bại');
+          Icons.error_outline_rounded,
+          Colors.white30,
+          'Thất bại',
+        );
       default:
         return const _StatusInfo(Icons.phone_rounded, Colors.white30, '');
     }
@@ -517,104 +563,123 @@ class _CallTileState extends State<_CallTile>
               color: isMissed ? _kRed.withOpacity(0.2) : _kBorder,
             ),
           ),
-          child: Row(children: [
-            // Avatar
-            _PeerAvatar(
-              url: _peerAvatar,
-              name: _peerName,
-              size: 52,
-              isMissed: isMissed,
-            ),
-            const SizedBox(width: 14),
-
-            // Info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _peerName,
-                    style: TextStyle(
-                      color: isMissed ? _kRed : Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 5),
-                  Row(children: [
-                    Icon(info.icon, size: 13, color: info.color),
-                    const SizedBox(width: 5),
-                    Text(
-                      info.label,
-                      style: TextStyle(
-                          color: info.color,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500),
-                    ),
-                    if (widget.call.durationSeconds != null &&
-                        widget.call.durationSeconds! > 0) ...[
-                      const Text('  ·  ',
-                          style:
-                              TextStyle(color: Colors.white24, fontSize: 12)),
-                      Text(widget.call.formattedDuration,
-                          style: const TextStyle(
-                              color: Colors.white38, fontSize: 12)),
-                    ],
-                  ]),
-                ],
+          child: Row(
+            children: [
+              // Avatar
+              _PeerAvatar(
+                url: _peerAvatar,
+                name: _peerName,
+                size: 52,
+                isMissed: isMissed,
               ),
-            ),
+              const SizedBox(width: 14),
 
-            // Right side: time + type
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(_timeLabel(),
-                    style:
-                        const TextStyle(color: Colors.white30, fontSize: 11)),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
+              // Info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Type badge
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.06),
-                        borderRadius: BorderRadius.circular(10),
+                    Text(
+                      _peerName,
+                      style: TextStyle(
+                        color: isMissed ? _kRed : Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
                       ),
-                      child: Icon(
-                        widget.call.isVideoCall
-                            ? Icons.videocam_rounded
-                            : Icons.phone_rounded,
-                        size: 13,
-                        color: Colors.white38,
-                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(width: 6),
-                    // Callback button
-                    GestureDetector(
-                      onTap: () => _callback(context),
-                      child: Container(
-                        width: 34,
-                        height: 34,
-                        decoration: BoxDecoration(
-                          color: _kBlue.withOpacity(0.15),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: _kBlue.withOpacity(0.3)),
+                    const SizedBox(height: 5),
+                    Row(
+                      children: [
+                        Icon(info.icon, size: 13, color: info.color),
+                        const SizedBox(width: 5),
+                        Text(
+                          info.label,
+                          style: TextStyle(
+                            color: info.color,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
-                        child: const Icon(Icons.phone_rounded,
-                            size: 15, color: _kBlue),
-                      ),
+                        if (widget.call.durationSeconds != null &&
+                            widget.call.durationSeconds! > 0) ...[
+                          const Text(
+                            '  ·  ',
+                            style: TextStyle(
+                              color: Colors.white24,
+                              fontSize: 12,
+                            ),
+                          ),
+                          Text(
+                            widget.call.formattedDuration,
+                            style: const TextStyle(
+                              color: Colors.white38,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
-          ]),
+              ),
+
+              // Right side: time + type
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    _timeLabel(),
+                    style: const TextStyle(color: Colors.white30, fontSize: 11),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Type badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.06),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          widget.call.isVideoCall
+                              ? Icons.videocam_rounded
+                              : Icons.phone_rounded,
+                          size: 13,
+                          color: Colors.white38,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      // Callback button
+                      GestureDetector(
+                        onTap: () => _callback(context),
+                        child: Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: _kBlue.withOpacity(0.15),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: _kBlue.withOpacity(0.3)),
+                          ),
+                          child: const Icon(
+                            Icons.phone_rounded,
+                            size: 15,
+                            color: _kBlue,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -644,9 +709,9 @@ class _CallTileState extends State<_CallTile>
       callType: widget.call.callType,
     );
     if (call != null && ctx.mounted) {
-      Navigator.of(ctx).push(MaterialPageRoute(
-        builder: (_) => OutgoingCallPage(call: call),
-      ));
+      Navigator.of(
+        ctx,
+      ).push(MaterialPageRoute(builder: (_) => OutgoingCallPage(call: call)));
     }
   }
 }
@@ -696,50 +761,62 @@ class _CallbackSheet extends StatelessWidget {
                   const SizedBox(height: 24),
 
                   // Peer info
-                  Row(children: [
-                    _PeerAvatar(
+                  Row(
+                    children: [
+                      _PeerAvatar(
                         url: peerAvatar,
                         name: peerName,
                         size: 60,
-                        isMissed: false),
-                    const SizedBox(width: 16),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(peerName,
+                        isMissed: false,
+                      ),
+                      const SizedBox(width: 16),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            peerName,
                             style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 19,
-                                fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 2),
-                        const Text('Gọi lại',
-                            style:
-                                TextStyle(color: Colors.white54, fontSize: 13)),
-                      ],
-                    ),
-                  ]),
+                              color: Colors.white,
+                              fontSize: 19,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          const Text(
+                            'Gọi lại',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 28),
 
                   // Buttons
-                  Row(children: [
-                    Expanded(
-                      child: _SheetCallBtn(
-                        icon: Icons.phone_rounded,
-                        label: 'Thoại',
-                        color: _kGreen,
-                        onTap: () => _call(context, CallType.voice),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _SheetCallBtn(
+                          icon: Icons.phone_rounded,
+                          label: 'Thoại',
+                          color: _kGreen,
+                          onTap: () => _call(context, CallType.voice),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _SheetCallBtn(
-                        icon: Icons.videocam_rounded,
-                        label: 'Video',
-                        color: _kBlue,
-                        onTap: () => _call(context, CallType.video),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _SheetCallBtn(
+                          icon: Icons.videocam_rounded,
+                          label: 'Video',
+                          color: _kBlue,
+                          onTap: () => _call(context, CallType.video),
+                        ),
                       ),
-                    ),
-                  ]),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -758,9 +835,9 @@ class _CallbackSheet extends StatelessWidget {
       callType: type,
     );
     if (call != null && ctx.mounted) {
-      Navigator.of(ctx).push(MaterialPageRoute(
-        builder: (_) => OutgoingCallPage(call: call),
-      ));
+      Navigator.of(
+        ctx,
+      ).push(MaterialPageRoute(builder: (_) => OutgoingCallPage(call: call)));
     }
   }
 }
@@ -780,26 +857,31 @@ class _SheetCallBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 18),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: color.withOpacity(0.3)),
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 18),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 28),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: color, size: 28),
-              const SizedBox(height: 8),
-              Text(label,
-                  style: TextStyle(
-                      color: color, fontSize: 14, fontWeight: FontWeight.w600)),
-            ],
-          ),
-        ),
-      );
+        ],
+      ),
+    ),
+  );
 }
 
 // ══════════════════════════════════════════════════════
@@ -819,29 +901,31 @@ class _PeerAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: isMissed
-              ? null
-              : const LinearGradient(
-                  colors: [Color(0xFF3949AB), Color(0xFF1E88E5)]),
-          color: isMissed ? _kRed.withOpacity(0.15) : null,
-          border: Border.all(
-            color: isMissed ? _kRed.withOpacity(0.4) : Colors.white12,
-            width: 1.5,
-          ),
-        ),
-        child: ClipOval(
-          child: url.isNotEmpty
-              ? Image.network(url,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) =>
-                      _Initials(name: name, size: size))
-              : _Initials(name: name, size: size),
-        ),
-      );
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      gradient: isMissed
+          ? null
+          : const LinearGradient(
+              colors: [Color(0xFF3949AB), Color(0xFF1E88E5)],
+            ),
+      color: isMissed ? _kRed.withOpacity(0.15) : null,
+      border: Border.all(
+        color: isMissed ? _kRed.withOpacity(0.4) : Colors.white12,
+        width: 1.5,
+      ),
+    ),
+    child: ClipOval(
+      child: url.isNotEmpty
+          ? Image.network(
+              url,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _Initials(name: name, size: size),
+            )
+          : _Initials(name: name, size: size),
+    ),
+  );
 }
 
 class _Initials extends StatelessWidget {
@@ -852,14 +936,15 @@ class _Initials extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Text(
-          name.isNotEmpty ? name[0].toUpperCase() : '?',
-          style: TextStyle(
-              color: Colors.white,
-              fontSize: size * 0.38,
-              fontWeight: FontWeight.w700),
-        ),
-      );
+    child: Text(
+      name.isNotEmpty ? name[0].toUpperCase() : '?',
+      style: TextStyle(
+        color: Colors.white,
+        fontSize: size * 0.38,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
 }
 
 // ══════════════════════════════════════════════════════
@@ -871,34 +956,42 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: isLoading
-            ? const CircularProgressIndicator(color: _kBlue, strokeWidth: 2)
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 90,
-                    height: 90,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white12),
-                    ),
-                    child: const Icon(Icons.phone_missed_rounded,
-                        size: 40, color: Colors.white24),
-                  ),
-                  const SizedBox(height: 20),
-                  const Text('Chưa có cuộc gọi nào',
-                      style: TextStyle(
-                          color: Colors.white54,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
-                  const Text('Lịch sử gọi sẽ hiển thị ở đây',
-                      style: TextStyle(color: Colors.white24, fontSize: 13)),
-                ],
+    child: isLoading
+        ? const CircularProgressIndicator(color: _kBlue, strokeWidth: 2)
+        : Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 90,
+                height: 90,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.05),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: const Icon(
+                  Icons.phone_missed_rounded,
+                  size: 40,
+                  color: Colors.white24,
+                ),
               ),
-      );
+              const SizedBox(height: 20),
+              const Text(
+                'Chưa có cuộc gọi nào',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Lịch sử gọi sẽ hiển thị ở đây',
+                style: TextStyle(color: Colors.white24, fontSize: 13),
+              ),
+            ],
+          ),
+  );
 }
 
 // ══════════════════════════════════════════════════════
@@ -941,10 +1034,13 @@ class _CallStats {
     final todayStr = h > 0
         ? '${h}g ${m}ph'
         : m > 0
-            ? '${m}ph'
-            : '0ph';
+        ? '${m}ph'
+        : '0ph';
 
     return _CallStats(
-        total: calls.length, missed: missedCount, todayDuration: todayStr);
+      total: calls.length,
+      missed: missedCount,
+      todayDuration: todayStr,
+    );
   }
 }

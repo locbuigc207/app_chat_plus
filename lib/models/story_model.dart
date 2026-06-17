@@ -39,18 +39,18 @@ class StoryView {
   });
 
   factory StoryView.fromJson(Map<String, dynamic> json) => StoryView(
-        userId: json['userId']?.toString() ?? '',
-        userName: json['userName']?.toString() ?? '',
-        photoUrl: json['photoUrl']?.toString() ?? '',
-        viewedAt: _parseDate(json['viewedAt']),
-      );
+    userId: json['userId']?.toString() ?? '',
+    userName: json['userName']?.toString() ?? '',
+    photoUrl: json['photoUrl']?.toString() ?? '',
+    viewedAt: _parseDate(json['viewedAt']),
+  );
 
   Map<String, dynamic> toJson() => {
-        'userId': userId,
-        'userName': userName,
-        'photoUrl': photoUrl,
-        'viewedAt': viewedAt.millisecondsSinceEpoch.toString(),
-      };
+    'userId': userId,
+    'userName': userName,
+    'photoUrl': photoUrl,
+    'viewedAt': viewedAt.millisecondsSinceEpoch.toString(),
+  };
 }
 
 // ─── StoryReaction ────────────────────────────────────────────────────────────
@@ -71,27 +71,27 @@ class StoryReaction {
   });
 
   factory StoryReaction.fromJson(Map<String, dynamic> json) => StoryReaction(
-        userId: json['userId']?.toString() ?? '',
-        userName: json['userName']?.toString() ?? '',
-        photoUrl: json['photoUrl']?.toString() ?? '',
-        emoji: json['emoji']?.toString() ?? '❤️',
-        reactedAt: _parseDate(json['reactedAt']),
-      );
+    userId: json['userId']?.toString() ?? '',
+    userName: json['userName']?.toString() ?? '',
+    photoUrl: json['photoUrl']?.toString() ?? '',
+    emoji: json['emoji']?.toString() ?? '❤️',
+    reactedAt: _parseDate(json['reactedAt']),
+  );
 
   Map<String, dynamic> toJson() => {
-        'userId': userId,
-        'userName': userName,
-        'photoUrl': photoUrl,
-        'emoji': emoji,
-        'reactedAt': reactedAt.millisecondsSinceEpoch.toString(),
-      };
+    'userId': userId,
+    'userName': userName,
+    'photoUrl': photoUrl,
+    'emoji': emoji,
+    'reactedAt': reactedAt.millisecondsSinceEpoch.toString(),
+  };
 }
 
 // ─── StorySticker ─────────────────────────────────────────────────────────────
 
 class StorySticker {
   final String
-      type; // 'emoji', 'location', 'mention', 'hashtag', 'poll', 'countdown', 'music'
+  type; // 'emoji', 'location', 'mention', 'hashtag', 'poll', 'countdown', 'music'
   final String content;
   final double x; // 0.0–1.0 relative position
   final double y;
@@ -110,27 +110,27 @@ class StorySticker {
   });
 
   factory StorySticker.fromJson(Map<String, dynamic> json) => StorySticker(
-        type: json['type']?.toString() ?? 'emoji',
-        content: json['content']?.toString() ?? '',
-        x: (json['x'] as num?)?.toDouble() ?? 0.5,
-        y: (json['y'] as num?)?.toDouble() ?? 0.5,
-        scale: (json['scale'] as num?)?.toDouble() ?? 1.0,
-        rotation: (json['rotation'] as num?)?.toDouble() ?? 0.0,
-        extra: (json['extra'] as Map<String, dynamic>?) ?? {},
-      );
+    type: json['type']?.toString() ?? 'emoji',
+    content: json['content']?.toString() ?? '',
+    x: (json['x'] as num?)?.toDouble() ?? 0.5,
+    y: (json['y'] as num?)?.toDouble() ?? 0.5,
+    scale: (json['scale'] as num?)?.toDouble() ?? 1.0,
+    rotation: (json['rotation'] as num?)?.toDouble() ?? 0.0,
+    extra: (json['extra'] as Map<String, dynamic>?) ?? {},
+  );
 
   Map<String, dynamic> toJson() => {
-        'type': type,
-        'content': content,
-        'x': x,
-        'y': y,
-        'scale': scale,
-        'rotation': rotation,
-        'extra': extra,
-      };
+    'type': type,
+    'content': content,
+    'x': x,
+    'y': y,
+    'scale': scale,
+    'rotation': rotation,
+    'extra': extra,
+  };
 
   StorySticker copyWith(
-          {double? x, double? y, double? scale, double? rotation}) =>
+      {double? x, double? y, double? scale, double? rotation}) =>
       StorySticker(
         type: type,
         content: content,
@@ -201,18 +201,18 @@ class StoryTextLayer {
   }
 
   Map<String, dynamic> toJson() => {
-        'text': text,
-        'color': color.toARGB32(),
-        'backgroundColor': backgroundColor?.toARGB32(),
-        'fontFamily': fontFamily,
-        'fontSize': fontSize,
-        'x': x,
-        'y': y,
-        'rotation': rotation,
-        'effect': effect.index,
-        'isBold': isBold,
-        'hasBackground': hasBackground,
-      };
+    'text': text,
+    'color': color.value,
+    'backgroundColor': backgroundColor?.value,
+    'fontFamily': fontFamily,
+    'fontSize': fontSize,
+    'x': x,
+    'y': y,
+    'rotation': rotation,
+    'effect': effect.index,
+    'isBold': isBold,
+    'hasBackground': hasBackground,
+  };
 }
 
 // ─── StoryMusicInfo ───────────────────────────────────────────────────────────
@@ -233,20 +233,20 @@ class StoryMusicInfo {
   });
 
   factory StoryMusicInfo.fromJson(Map<String, dynamic> json) => StoryMusicInfo(
-        title: json['title']?.toString() ?? '',
-        artist: json['artist']?.toString() ?? '',
-        artworkUrl: json['artworkUrl']?.toString(),
-        previewUrl: json['previewUrl']?.toString(),
-        startSeconds: (json['startSeconds'] as num?)?.toDouble() ?? 0.0,
-      );
+    title: json['title']?.toString() ?? '',
+    artist: json['artist']?.toString() ?? '',
+    artworkUrl: json['artworkUrl']?.toString(),
+    previewUrl: json['previewUrl']?.toString(),
+    startSeconds: (json['startSeconds'] as num?)?.toDouble() ?? 0.0,
+  );
 
   Map<String, dynamic> toJson() => {
-        'title': title,
-        'artist': artist,
-        'artworkUrl': artworkUrl,
-        'previewUrl': previewUrl,
-        'startSeconds': startSeconds,
-      };
+    'title': title,
+    'artist': artist,
+    'artworkUrl': artworkUrl,
+    'previewUrl': previewUrl,
+    'startSeconds': startSeconds,
+  };
 }
 
 // ─── Story ────────────────────────────────────────────────────────────────────
@@ -276,7 +276,7 @@ class Story {
   final StoryFilter filter;
   final List<Color>? gradientColors; // for gradient backgrounds
   final String?
-      backgroundPattern; // 'none', 'dots', 'lines', 'grid', 'sparkles'
+  backgroundPattern; // 'none', 'dots', 'lines', 'grid', 'sparkles'
 
   // Music
   final StoryMusicInfo? music;
@@ -367,38 +367,38 @@ class Story {
   }
 
   Map<String, dynamic> toJson() => {
-        'userId': userId,
-        'userName': userName,
-        'userPhotoUrl': userPhotoUrl,
-        'type': type.index,
-        'mediaUrl': mediaUrl,
-        'thumbnailUrl': thumbnailUrl,
-        'textContent': textContent,
-        'caption': caption,
-        'backgroundColor': backgroundColor?.toARGB32(),
-        'textColor': textColor?.toARGB32(),
-        'fontFamily': fontFamily,
-        'fontSize': fontSize,
-        'textLayers': textLayers.map((l) => l.toJson()).toList(),
-        'stickers': stickers.map((s) => s.toJson()).toList(),
-        'filter': filter.index,
-        'gradientColors': gradientColors?.map((c) => c.toARGB32()).toList(),
-        'backgroundPattern': backgroundPattern,
-        'music': music?.toJson(),
-        'audioMixUrl': audioMixUrl,
-        'createdAt': createdAt.millisecondsSinceEpoch.toString(),
-        'expiresAt': expiresAt.millisecondsSinceEpoch.toString(),
-        'views': views.map((v) => v.toJson()).toList(),
-        'reactions': reactions.map((r) => r.toJson()).toList(),
-        'privacy': privacy.index,
-        'isDeleted': isDeleted,
-        'isArchived': isArchived,
-        if (videoDuration != null)
-          'videoDurationMs': videoDuration!.inMilliseconds,
-        'allowReplies': allowReplies,
-        'allowReactions': allowReactions,
-        'showViewCount': showViewCount,
-      };
+    'userId': userId,
+    'userName': userName,
+    'userPhotoUrl': userPhotoUrl,
+    'type': type.index,
+    'mediaUrl': mediaUrl,
+    'thumbnailUrl': thumbnailUrl,
+    'textContent': textContent,
+    'caption': caption,
+    'backgroundColor': backgroundColor?.value,
+    'textColor': textColor?.value,
+    'fontFamily': fontFamily,
+    'fontSize': fontSize,
+    'textLayers': textLayers.map((l) => l.toJson()).toList(),
+    'stickers': stickers.map((s) => s.toJson()).toList(),
+    'filter': filter.index,
+    'gradientColors': gradientColors?.map((c) => c.value).toList(),
+    'backgroundPattern': backgroundPattern,
+    'music': music?.toJson(),
+    'audioMixUrl': audioMixUrl,
+    'createdAt': createdAt.millisecondsSinceEpoch.toString(),
+    'expiresAt': expiresAt.millisecondsSinceEpoch.toString(),
+    'views': views.map((v) => v.toJson()).toList(),
+    'reactions': reactions.map((r) => r.toJson()).toList(),
+    'privacy': privacy.index,
+    'isDeleted': isDeleted,
+    'isArchived': isArchived,
+    if (videoDuration != null)
+      'videoDurationMs': videoDuration!.inMilliseconds,
+    'allowReplies': allowReplies,
+    'allowReactions': allowReactions,
+    'showViewCount': showViewCount,
+  };
 
   factory Story.fromDocument(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
@@ -493,7 +493,7 @@ class Story {
       userName: data['userName']?.toString() ?? '',
       userPhotoUrl: data['userPhotoUrl']?.toString() ?? '',
       type:
-          StoryType.values[safeIdx(data['type'], StoryType.values.length - 1)],
+      StoryType.values[safeIdx(data['type'], StoryType.values.length - 1)],
       mediaUrl: data['mediaUrl']?.toString(),
       thumbnailUrl: data['thumbnailUrl']?.toString(),
       textContent: data['textContent']?.toString(),
@@ -517,6 +517,7 @@ class Story {
       privacy: StoryPrivacy
           .values[safeIdx(data['privacy'], StoryPrivacy.values.length - 1)],
       isDeleted: data['isDeleted'] == true,
+      // Đảm bảo parse chính xác giá trị isArchived (tránh lỗi ngầm định là false khi không có)
       isArchived: data['isArchived'] == true,
       videoDuration: data['videoDurationMs'] != null
           ? Duration(milliseconds: data['videoDurationMs'] as int)

@@ -12,7 +12,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class FcmService : FirebaseMessagingService() {
 
@@ -88,11 +87,9 @@ class FcmService : FirebaseMessagingService() {
 
         scope.launch {
             try {
-                // ĐÃ SỬA: Chuyển các tác vụ khởi tạo về Main Thread để tránh Deadlock khi app bị kill
-                withContext(Dispatchers.Main) {
-                    // 1. Init services if needed (process may have been cold-started)
-                    BubbleNotificationService.init(applicationContext)
-                }
+                // TỐI ƯU HÓA: Không cần ép về Main Thread cho hàm init()
+                // 1. Init services if needed (process may have been cold-started)
+                BubbleNotificationService.init(applicationContext)
 
                 // 2. Ensure shortcut for Bubble API
                 if (ShortcutHelper.isShortcutsSupported()) {
@@ -100,8 +97,19 @@ class FcmService : FirebaseMessagingService() {
                         applicationContext, senderId, senderName, avatarUrl)
                 }
 
-                withContext(Dispatchers.Main) {
-                    // 3. Show bubble notification
+                // 3. Show bubble notification
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                    // LỖI N FIX: Android 15+ gọi từ background -> Chỉ đẩy Notification Bubble API
+                    // Không gọi luồng có khả năng kích hoạt Foreground Service
+                    BubbleNotificationService.showBubbleNotificationOnly(
+                        context   = applicationContext,
+                        userId    = senderId,
+                        userName  = senderName,
+                        message   = preview,
+                        avatarUrl = avatarUrl,
+                    )
+                } else {
+                    // Các bản Android cũ hơn vẫn đi luồng cũ bình thường
                     BubbleNotificationService.showBubbleNotification(
                         context   = applicationContext,
                         userId    = senderId,
@@ -111,7 +119,7 @@ class FcmService : FirebaseMessagingService() {
                     )
                 }
 
-                Log.d(TAG, "✅ Bubble notification created for $senderName")
+                Log.d(TAG, "✅ Bubble notification request dispatched for $senderName")
 
             } catch (e: Exception) {
                 Log.e(TAG, "❌ handleDataMessage: $e")

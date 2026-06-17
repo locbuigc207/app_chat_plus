@@ -1,7 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart'; // Thêm import Firestore để kiểm tra validation
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_chat_demo/constants/constants.dart'; // Đã cập nhật import hằng số Firestore
+import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/game_match.dart';
 import 'package:flutter_chat_demo/models/message_chat.dart';
 import 'package:flutter_chat_demo/pages/match_room_page.dart';
@@ -119,222 +119,220 @@ class _GameSetupPageState extends State<GameSetupPage> {
   }
 
   PreferredSizeWidget _buildAppBar(Color accent) => AppBar(
-        backgroundColor: _C.bg,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: accent),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Thiết lập trận ${_gameType.displayName}',
-          style: const TextStyle(
-            color: _C.text1,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      );
+    backgroundColor: _C.bg,
+    surfaceTintColor: Colors.transparent,
+    elevation: 0,
+    leading: IconButton(
+      icon: Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: accent),
+      onPressed: () => Navigator.pop(context),
+    ),
+    title: Text(
+      'Thiết lập trận ${_gameType.displayName}',
+      style: const TextStyle(
+        color: _C.text1,
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
 
   Widget _buildSection(String title, Widget child) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              color: _C.text2,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.8,
-            ),
-          ),
-          const SizedBox(height: 10),
-          child,
-        ],
-      );
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        title,
+        style: const TextStyle(
+          color: _C.text2,
+          fontSize: 11.5,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.8,
+        ),
+      ),
+      const SizedBox(height: 10),
+      child,
+    ],
+  );
 
   // ── Cấu hình ──────────────────────────────────────────────────────────────
 
   Widget _buildGameTypeSelector(Color accent) => _buildSection(
-        'CHỌN GAME',
-        Row(
-          children: [
-            Expanded(
-              child: _TypeChip(
-                label: '⭕  Caro',
-                selected: _gameType == GameType.caro,
-                gradient: _C.caroGrad,
-                onTap: () {
-                  HapticFeedback.selectionClick();
-                  setState(() => _gameType = GameType.caro);
-                },
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _TypeChip(
-                label: '♟️  Cờ Vua',
-                selected: _gameType == GameType.chess,
-                gradient: _C.chessGrad,
-                onTap: () {
-                  HapticFeedback.selectionClick();
-                  setState(() => _gameType = GameType.chess);
-                },
-              ),
-            ),
-          ],
+    'CHỌN GAME',
+    Row(
+      children: [
+        Expanded(
+          child: _TypeChip(
+            label: '⭕  Caro',
+            selected: _gameType == GameType.caro,
+            gradient: _C.caroGrad,
+            onTap: () {
+              HapticFeedback.selectionClick();
+              setState(() => _gameType = GameType.caro);
+            },
+          ),
         ),
-      );
+        const SizedBox(width: 10),
+        Expanded(
+          child: _TypeChip(
+            label: '♟️  Cờ Vua',
+            selected: _gameType == GameType.chess,
+            gradient: _C.chessGrad,
+            onTap: () {
+              HapticFeedback.selectionClick();
+              setState(() => _gameType = GameType.chess);
+            },
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _buildTimeControl(Color accent) => _buildSection(
-        'THỜI GIAN',
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: List.generate(
-            AppConstants.chessTimeControlLabels.length,
-            (i) => _OptionChip(
-              label: AppConstants.chessTimeControlLabels[i],
-              selected: _timeControlIndex == i,
-              accent: accent,
-              onTap: () => setState(() => _timeControlIndex = i),
-            ),
-          ),
+    'THỜI GIAN',
+    Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: List.generate(
+        AppConstants.chessTimeControlLabels.length,
+        (i) => _OptionChip(
+          label: AppConstants.chessTimeControlLabels[i],
+          selected: _timeControlIndex == i,
+          accent: accent,
+          onTap: () => setState(() => _timeControlIndex = i),
         ),
-      );
+      ),
+    ),
+  );
 
   Widget _buildSideSelector(Color accent) => _buildSection(
-        'PHE CHƠI',
-        Row(
-          children: [
-            Expanded(
-              child: _SideChip(
-                label: '⬜ Trắng',
-                selected: _side == ChessSide.white,
-                accent: accent,
-                onTap: () => setState(() => _side = ChessSide.white),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _SideChip(
-                label: '🎲 Ngẫu nhiên',
-                selected: _side == ChessSide.random,
-                accent: accent,
-                onTap: () => setState(() => _side = ChessSide.random),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _SideChip(
-                label: '⬛ Đen',
-                selected: _side == ChessSide.black,
-                accent: accent,
-                onTap: () => setState(() => _side = ChessSide.black),
-              ),
-            ),
-          ],
-        ),
-      );
-
-  Widget _buildCaroBoardMode(Color accent) => _buildSection(
-        'LOẠI BÀN CỜ',
-        Row(
-          children: [
-            Expanded(
-              child: _OptionChip(
-                label: '∞ Vô hạn (Gomoku)',
-                selected: _boardMode == 0,
-                accent: accent,
-                onTap: () => setState(() => _boardMode = 0),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _OptionChip(
-                label: '3×3 Classic',
-                selected: _boardMode == 1,
-                accent: accent,
-                onTap: () => setState(() => _boardMode = 1),
-              ),
-            ),
-          ],
-        ),
-      );
-
-  Widget _buildCaroTurnTimer(Color accent) => _buildSection(
-        'THỜI GIAN MỖI NƯỚC',
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: List.generate(
-            AppConstants.caroTurnTimerLabels.length,
-            (i) => _OptionChip(
-              label: AppConstants.caroTurnTimerLabels[i],
-              selected: _turnTimerIndex == i,
-              accent: accent,
-              onTap: () => setState(() => _turnTimerIndex = i),
-            ),
+    'PHE CHƠI',
+    Row(
+      children: [
+        Expanded(
+          child: _SideChip(
+            label: '⬜ Trắng',
+            selected: _side == ChessSide.white,
+            accent: accent,
+            onTap: () => setState(() => _side = ChessSide.white),
           ),
         ),
-      );
+        const SizedBox(width: 8),
+        Expanded(
+          child: _SideChip(
+            label: '🎲 Ngẫu nhiên',
+            selected: _side == ChessSide.random,
+            accent: accent,
+            onTap: () => setState(() => _side = ChessSide.random),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _SideChip(
+            label: '⬛ Đen',
+            selected: _side == ChessSide.black,
+            accent: accent,
+            onTap: () => setState(() => _side = ChessSide.black),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _buildCaroBoardMode(Color accent) => _buildSection(
+    'LOẠI BÀN CỜ',
+    Row(
+      children: [
+        Expanded(
+          child: _OptionChip(
+            label: '∞ Vô hạn (Gomoku)',
+            selected: _boardMode == 0,
+            accent: accent,
+            onTap: () => setState(() => _boardMode = 0),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _OptionChip(
+            label: '3×3 Classic',
+            selected: _boardMode == 1,
+            accent: accent,
+            onTap: () => setState(() => _boardMode = 1),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _buildCaroTurnTimer(Color accent) => _buildSection(
+    'THỜI GIAN MỖI NƯỚC',
+    Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: List.generate(
+        AppConstants.caroTurnTimerLabels.length,
+        (i) => _OptionChip(
+          label: AppConstants.caroTurnTimerLabels[i],
+          selected: _turnTimerIndex == i,
+          accent: accent,
+          onTap: () => setState(() => _turnTimerIndex = i),
+        ),
+      ),
+    ),
+  );
 
   Widget _buildChallengeType(Color accent) => _buildSection(
-        'KIỂU THÁCH ĐẤU',
-        Column(
-          children: [
-            _ChallengeRow(
-              icon: Icons.public_rounded,
-              title: 'Thách đấu mở',
-              subtitle: 'Ai bấm vào đầu tiên sẽ là đối thủ',
-              selected: _isOpenChallenge,
-              accent: accent,
-              onTap: () => setState(() => _isOpenChallenge = true),
-            ),
-            const SizedBox(height: 8),
-            _ChallengeRow(
-              icon: Icons.person_pin_rounded,
-              title: widget.targetUserName != null
-                  ? 'Thách đấu @${widget.targetUserName}'
-                  : 'Thách đấu đích danh',
-              subtitle: widget.targetUserId != null
-                  ? 'Đã chọn: ${widget.targetUserName}'
-                  : 'Chọn thành viên trong nhóm',
-              selected: !_isOpenChallenge,
-              accent: accent,
-              onTap: () => setState(() => _isOpenChallenge = false),
-            ),
-          ],
+    'KIỂU THÁCH ĐẤU',
+    Column(
+      children: [
+        _ChallengeRow(
+          icon: Icons.public_rounded,
+          title: 'Thách đấu mở',
+          subtitle: 'Ai bấm vào đầu tiên sẽ là đối thủ',
+          selected: _isOpenChallenge,
+          accent: accent,
+          onTap: () => setState(() => _isOpenChallenge = true),
         ),
-      );
+        const SizedBox(height: 8),
+        _ChallengeRow(
+          icon: Icons.person_pin_rounded,
+          title: widget.targetUserName != null
+              ? 'Thách đấu @${widget.targetUserName}'
+              : 'Thách đấu đích danh',
+          subtitle: widget.targetUserId != null
+              ? 'Đã chọn: ${widget.targetUserName}'
+              : 'Chọn thành viên trong nhóm',
+          selected: !_isOpenChallenge,
+          accent: accent,
+          onTap: () => setState(() => _isOpenChallenge = false),
+        ),
+      ],
+    ),
+  );
 
   Widget _buildCTA(Color accent) => SizedBox(
-        width: double.infinity,
-        height: 52,
-        child: _isLoading
-            ? Center(
-                child: CircularProgressIndicator(color: accent, strokeWidth: 2))
-            : ElevatedButton(
-                onPressed: _onCreate,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: accent,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-                child: Text(
-                  _isOpenChallenge
-                      ? 'Gửi thách đấu mở 🎮'
-                      : 'Thách đấu ${widget.targetUserName ?? "đích danh"} 🎯',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+    width: double.infinity,
+    height: 52,
+    child: _isLoading
+        ? Center(
+            child: CircularProgressIndicator(color: accent, strokeWidth: 2),
+          )
+        : ElevatedButton(
+            onPressed: _onCreate,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: accent,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
               ),
-      );
+            ),
+            child: Text(
+              _isOpenChallenge
+                  ? 'Gửi thách đấu mở 🎮'
+                  : 'Thách đấu ${widget.targetUserName ?? "đích danh"} 🎯',
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            ),
+          ),
+  );
 
   // ── Create match logic ────────────────────────────────────────────────────
 
@@ -343,7 +341,6 @@ class _GameSetupPageState extends State<GameSetupPage> {
     setState(() => _isLoading = true);
 
     try {
-      // KHẮC PHỤC LỖI 10: Cache Provider trước khi gọi await để bảo vệ context
       final chatProvider = context.read<ChatProvider>();
 
       if (!_isOpenChallenge && widget.targetUserId != null) {
@@ -355,14 +352,16 @@ class _GameSetupPageState extends State<GameSetupPage> {
 
           // SỬA TẠI ĐÂY: Thay 'members' bằng 'memberIds' để map đúng với hằng số đã định nghĩa
           final members = List<String>.from(
-              groupDoc.data()?[FirestoreConstants.memberIds] ?? []);
+            groupDoc.data()?[FirestoreConstants.memberIds] ?? [],
+          );
 
           if (!members.contains(widget.targetUserId)) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text(
-                      'Người chơi mục tiêu đã rời nhóm, không thể thách đấu!'),
+                    'Người chơi mục tiêu đã rời nhóm, không thể thách đấu!',
+                  ),
                   backgroundColor: _C.danger,
                 ),
               );
@@ -376,8 +375,9 @@ class _GameSetupPageState extends State<GameSetupPage> {
       }
 
       final matchId = const Uuid().v4();
-      final boardSize =
-          _gameType == GameType.caro ? (_boardMode == 1 ? 3 : 0) : 0;
+      final boardSize = _gameType == GameType.caro
+          ? (_boardMode == 1 ? 3 : 0)
+          : 0;
       final turnTimer = _gameType == GameType.caro
           ? AppConstants.caroTurnTimers[_turnTimerIndex]
           : 0;
@@ -407,13 +407,15 @@ class _GameSetupPageState extends State<GameSetupPage> {
       final timeControlLabel = _gameType == GameType.chess
           ? AppConstants.chessTimeControlLabels[_timeControlIndex]
           : (turnTimer > 0
-              ? AppConstants.caroTurnTimerLabels[_turnTimerIndex]
-              : '');
+                ? AppConstants.caroTurnTimerLabels[_turnTimerIndex]
+                : '');
 
+      // KHẮC PHỤC LỖI 8: Truyền challengerId để lưu vào Payload
       final payload = GameInvitePayload(
         matchId: matchId,
         gameType: _gameType,
         matchStatus: MatchStatus.waiting,
+        challengerId: widget.currentUserId, // <-- Thêm vào
         challengerName: widget.currentUserName,
         challengerAvatar: widget.currentUserAvatar,
         targetUserId: _isOpenChallenge ? null : widget.targetUserId,
@@ -502,16 +504,14 @@ class _TypeChip extends StatelessWidget {
           gradient: selected ? LinearGradient(colors: gradient) : null,
           color: selected ? null : _C.card,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: selected ? Colors.transparent : _C.divider,
-          ),
+          border: Border.all(color: selected ? Colors.transparent : _C.divider),
           boxShadow: selected
               ? [
                   BoxShadow(
                     color: gradient.first.withValues(alpha: 0.3),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
-                  )
+                  ),
                 ]
               : null,
         ),
@@ -665,10 +665,7 @@ class _ChallengeRow extends StatelessWidget {
                   ),
                   Text(
                     subtitle,
-                    style: const TextStyle(
-                      color: _C.text2,
-                      fontSize: 11.5,
-                    ),
+                    style: const TextStyle(color: _C.text2, fontSize: 11.5),
                   ),
                 ],
               ),

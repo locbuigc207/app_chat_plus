@@ -76,7 +76,8 @@ class _GameInviteCardBubbleState extends State<GameInviteCardBubble> {
   GameInvitePayload? get _payload {
     try {
       return GameInvitePayload.fromJson(
-          jsonDecode(widget.message.content) as Map<String, dynamic>);
+        jsonDecode(widget.message.content) as Map<String, dynamic>,
+      );
     } catch (_) {
       return null;
     }
@@ -92,11 +93,11 @@ class _GameInviteCardBubbleState extends State<GameInviteCardBubble> {
   Future<void> _joinMatch(String matchId, MatchStatus currentStatus) async {
     if (_isJoining) return;
 
-    // Rào chắn (Guard) ngăn người không nằm trong thư mời đích danh bấm "Vào bàn"
+    // KHẮC PHỤC LỖI 8: Kiểm tra challengerId (người dùng gốc bằng UUID) thay vì challengerName (tên dễ trùng)
     final payload = _payload;
     if (payload?.targetUserId != null &&
         payload!.targetUserId != widget.currentUserId &&
-        payload.challengerName != widget.currentUserName) {
+        payload.challengerId != widget.currentUserId) {
       // Đối với người ngoài, họ sẽ tham gia dưới dạng khán giả (Spectator)
       if (!mounted) return;
       Navigator.push(
@@ -190,7 +191,6 @@ class _GameInviteCardBubbleState extends State<GameInviteCardBubble> {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
-        // KHẮC PHỤC LỖI 12: Bao bọc bằng StreamBuilder để đồng bộ UI Realtime hoàn toàn
         child: StreamBuilder<DocumentSnapshot>(
           stream: _matchStream,
           builder: (context, snap) {
@@ -268,11 +268,14 @@ class _GameInviteCardBubbleState extends State<GameInviteCardBubble> {
                             backgroundColor: _C.accent.withOpacity(0.2),
                             backgroundImage:
                                 payload?.challengerAvatar.isNotEmpty == true
-                                    ? NetworkImage(payload!.challengerAvatar)
-                                    : null,
+                                ? NetworkImage(payload!.challengerAvatar)
+                                : null,
                             child: payload?.challengerAvatar.isEmpty != false
-                                ? const Icon(Icons.person_rounded,
-                                    size: 14, color: _C.accent)
+                                ? const Icon(
+                                    Icons.person_rounded,
+                                    size: 14,
+                                    color: _C.accent,
+                                  )
                                 : null,
                           ),
                           const SizedBox(width: 8),
@@ -313,13 +316,18 @@ class _GameInviteCardBubbleState extends State<GameInviteCardBubble> {
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Icon(Icons.remove_red_eye_rounded,
-                                    size: 12, color: _C.live),
+                                const Icon(
+                                  Icons.remove_red_eye_rounded,
+                                  size: 12,
+                                  color: _C.live,
+                                ),
                                 const SizedBox(width: 3),
                                 Text(
                                   '$spectatorCount',
                                   style: const TextStyle(
-                                      color: _C.live, fontSize: 11),
+                                    color: _C.live,
+                                    fontSize: 11,
+                                  ),
                                 ),
                               ],
                             ),
@@ -344,8 +352,8 @@ class _GameInviteCardBubbleState extends State<GameInviteCardBubble> {
   Widget _buildCTA(String matchId, MatchStatus liveStatus) {
     switch (liveStatus) {
       case MatchStatus.waiting:
-        // Không hiện nút cho chính người tạo thách đấu
-        final isChallenger = _payload?.challengerName == widget.currentUserName;
+        // KHẮC PHỤC LỖI 8: So sánh quyền challenger bằng ID thay vì hiển thị
+        final isChallenger = _payload?.challengerId == widget.currentUserId;
         if (isChallenger) {
           return const _WaitingChip();
         }
@@ -400,7 +408,8 @@ class GameResultCardBubble extends StatelessWidget {
   GameResultPayload? get _payload {
     try {
       return GameResultPayload.fromJson(
-          jsonDecode(message.content) as Map<String, dynamic>);
+        jsonDecode(message.content) as Map<String, dynamic>,
+      );
     } catch (_) {
       return null;
     }
@@ -417,8 +426,8 @@ class GameResultCardBubble extends StatelessWidget {
     final winnerName = isDraw
         ? null
         : (payload.winnerId == payload.player1Id
-            ? payload.player1Name
-            : payload.player2Name);
+              ? payload.player1Name
+              : payload.player2Name);
 
     final emoji = isDraw ? '🤝' : (isWinner ? '🏆' : '⚔️');
     final headline = isDraw ? 'Hòa nhau!' : '$winnerName đã thắng!';
@@ -489,13 +498,15 @@ class GameResultCardBubble extends StatelessWidget {
                   ),
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 8),
-                    child: Text('VS',
-                        style: TextStyle(
-                          color: _C.text2,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.5,
-                        )),
+                    child: Text(
+                      'VS',
+                      style: TextStyle(
+                        color: _C.text2,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
                   ),
                   Expanded(
                     child: _PlayerResultChip(
@@ -519,16 +530,20 @@ class GameResultCardBubble extends StatelessWidget {
                     style: const TextStyle(color: _C.text2, fontSize: 10.5),
                   ),
                   if (duration.isNotEmpty) ...[
-                    const Text(' · ',
-                        style: TextStyle(color: _C.text2, fontSize: 10)),
+                    const Text(
+                      ' · ',
+                      style: TextStyle(color: _C.text2, fontSize: 10),
+                    ),
                     Text(
                       duration,
                       style: const TextStyle(color: _C.text2, fontSize: 10.5),
                     ),
                   ],
                   if (payload.totalMoves > 0) ...[
-                    const Text(' · ',
-                        style: TextStyle(color: _C.text2, fontSize: 10)),
+                    const Text(
+                      ' · ',
+                      style: TextStyle(color: _C.text2, fontSize: 10),
+                    ),
                     Text(
                       '${payload.totalMoves} nước',
                       style: const TextStyle(color: _C.text2, fontSize: 10.5),
@@ -649,36 +664,30 @@ class _CTAButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SizedBox(
-        width: double.infinity,
-        height: 36,
-        child: ElevatedButton.icon(
-          onPressed: isLoading ? null : onTap,
-          icon: isLoading
-              ? SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: color,
-                  ),
-                )
-              : Icon(icon, size: 16),
-          label: Text(label),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: color.withOpacity(0.15),
-            foregroundColor: color,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-              side: BorderSide(color: color.withOpacity(0.4)),
-            ),
-            textStyle: const TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+    width: double.infinity,
+    height: 36,
+    child: ElevatedButton.icon(
+      onPressed: isLoading ? null : onTap,
+      icon: isLoading
+          ? SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2, color: color),
+            )
+          : Icon(icon, size: 16),
+      label: Text(label),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color.withOpacity(0.15),
+        foregroundColor: color,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(color: color.withOpacity(0.4)),
         ),
-      );
+        textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+      ),
+    ),
+  );
 }
 
 class _WaitingChip extends StatelessWidget {
@@ -686,36 +695,33 @@ class _WaitingChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        width: double.infinity,
-        height: 36,
-        decoration: BoxDecoration(
-          color: _C.waiting.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: _C.waiting.withOpacity(0.3)),
+    width: double.infinity,
+    height: 36,
+    decoration: BoxDecoration(
+      color: _C.waiting.withOpacity(0.08),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: _C.waiting.withOpacity(0.3)),
+    ),
+    child: const Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        SizedBox(
+          width: 12,
+          height: 12,
+          child: CircularProgressIndicator(strokeWidth: 1.5, color: _C.waiting),
         ),
-        child: const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: 12,
-              height: 12,
-              child: CircularProgressIndicator(
-                strokeWidth: 1.5,
-                color: _C.waiting,
-              ),
-            ),
-            SizedBox(width: 7),
-            Text(
-              'Chờ đối thủ chấp nhận...',
-              style: TextStyle(
-                color: _C.waiting,
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
+        SizedBox(width: 7),
+        Text(
+          'Chờ đối thủ chấp nhận...',
+          style: TextStyle(
+            color: _C.waiting,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+          ),
         ),
-      );
+      ],
+    ),
+  );
 }
 
 class _EndedChip extends StatelessWidget {
@@ -725,23 +731,23 @@ class _EndedChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        width: double.infinity,
-        height: 30,
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.07),
-          borderRadius: BorderRadius.circular(8),
+    width: double.infinity,
+    height: 30,
+    decoration: BoxDecoration(
+      color: color.withOpacity(0.07),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Center(
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 11.5,
+          fontWeight: FontWeight.w600,
         ),
-        child: Center(
-          child: Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      );
+      ),
+    ),
+  );
 }
 
 class _PlayerResultChip extends StatelessWidget {
@@ -795,10 +801,7 @@ class _PlayerResultChip extends StatelessWidget {
             ),
           ),
           if (!isDraw)
-            Text(
-              isWinner ? '🏆' : '💀',
-              style: const TextStyle(fontSize: 12),
-            ),
+            Text(isWinner ? '🏆' : '💀', style: const TextStyle(fontSize: 12)),
         ],
       ),
     );

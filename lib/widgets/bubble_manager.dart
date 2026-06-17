@@ -87,7 +87,7 @@ class _BubbleManagerState extends State<BubbleManager>
 
     _subs.add(
       _service.activeBubblesStream.listen(
-        (bubbles) => debugPrint('🫧 Active bubbles: ${bubbles.length}'),
+            (bubbles) => debugPrint('🫧 Active bubbles: ${bubbles.length}'),
         cancelOnError: false,
       ),
     );
@@ -214,9 +214,16 @@ class _BubbleManagerState extends State<BubbleManager>
     await Future.delayed(const Duration(milliseconds: 100));
     if (!mounted) return;
 
+    // ĐÃ SỬA: Lấy Overlay từ navigator context thay vì context của _BubbleManagerState
+    final navState = globalNavigatorKey.currentState;
+    if (navState == null) {
+      debugPrint('❌ BubbleManager: navigator not ready');
+      return;
+    }
+
     late final OverlayState overlayState;
     try {
-      overlayState = Overlay.of(context);
+      overlayState = Overlay.of(navState.context);
     } catch (_) {
       debugPrint('❌ BubbleManager: no Overlay in context');
       return;
@@ -273,11 +280,11 @@ class _BubbleManagerState extends State<BubbleManager>
   // ─── Helpers ──────────────────────────────────────────────────────────
 
   Route<T> _fadeRoute<T>(Widget page) => PageRouteBuilder(
-        pageBuilder: (_, __, ___) => page,
-        transitionsBuilder: (_, anim, __, child) =>
-            FadeTransition(opacity: anim, child: child),
-        transitionDuration: const Duration(milliseconds: 250),
-      );
+    pageBuilder: (_, __, ___) => page,
+    transitionsBuilder: (_, anim, __, child) =>
+        FadeTransition(opacity: anim, child: child),
+    transitionDuration: const Duration(milliseconds: 250),
+  );
 
   // ─── Build ────────────────────────────────────────────────────────────
 
@@ -309,9 +316,9 @@ class _BubbleManagerState extends State<BubbleManager>
 class BubbleManagerController {
   final UnifiedBubbleService _service;
   final Future<void> Function({
-    required String userId,
-    required String userName,
-    required String avatarUrl,
+  required String userId,
+  required String userName,
+  required String avatarUrl,
   }) showMiniChat;
   final void Function() hideMiniChat;
 
@@ -341,7 +348,7 @@ class BubbleManagerController {
   Future<void> hideAll() => _service.hideAllBubbles();
 
   Future<void> updateMessage(
-          {required String userId, required String message}) =>
+      {required String userId, required String message}) =>
       _service.updateBubbleMessage(userId: userId, message: message);
 
   Future<void> clearUnread(String userId) => _service.clearUnread(userId);
@@ -510,12 +517,12 @@ class _AvatarChip extends StatelessWidget {
       backgroundImage: url.isNotEmpty ? NetworkImage(url) : null,
       child: url.isEmpty
           ? Text(
-              name.isNotEmpty ? name[0].toUpperCase() : '?',
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            )
+        name.isNotEmpty ? name[0].toUpperCase() : '?',
+        style: TextStyle(
+          fontWeight: FontWeight.w700,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+      )
           : null,
     );
   }
@@ -761,10 +768,10 @@ class ActiveBubblesPanel extends StatelessWidget {
               ),
             ),
             ...bubbles.values.map((b) => _BubbleTile(
-                  data: b,
-                  onHide: () => service.hideChatBubble(b.userId),
-                  onClearUnread: () => service.clearUnread(b.userId),
-                )),
+              data: b,
+              onHide: () => service.hideChatBubble(b.userId),
+              onClearUnread: () => service.clearUnread(b.userId),
+            )),
           ],
         );
       },
@@ -790,7 +797,7 @@ class _BubbleTile extends StatelessWidget {
         children: [
           CircleAvatar(
             backgroundImage:
-                data.avatarUrl.isNotEmpty ? NetworkImage(data.avatarUrl) : null,
+            data.avatarUrl.isNotEmpty ? NetworkImage(data.avatarUrl) : null,
             child: data.avatarUrl.isEmpty
                 ? Text(data.userName[0].toUpperCase())
                 : null,

@@ -103,7 +103,41 @@ object BubbleNotificationService {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Failed to create bubble notification: $e")
+                // Gọi từ UI Foreground, an toàn để start Overlay Service
                 fallbackToOverlay(context, userId, userName, avatarUrl, message)
+            }
+        }
+    }
+
+    // LỖI N FIX: Hàm dành riêng cho Background FCM, tuyệt đối không kích hoạt Overlay Service
+    fun showBubbleNotificationOnly(
+        context: Context,
+        userId: String,
+        userName: String,
+        message: String,
+        avatarUrl: String
+    ) {
+        if (!isInitialized) init(context)
+
+        scope.launch {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    showModernBubble(context, userId, userName, message, avatarUrl)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ showBubbleNotificationOnly failed: $e")
+                // Nếu lỗi tạo bubble, fallback về Notification truyền thống để không hụt tin nhắn
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    BubbleNotificationManager.addMessage(
+                        context = context,
+                        userId = userId,
+                        userName = userName,
+                        message = message,
+                        avatarUrl = avatarUrl,
+                        fromUser = false,
+                        type = BubbleNotificationManager.MessageType.TEXT
+                    )
+                }
             }
         }
     }
@@ -116,7 +150,6 @@ object BubbleNotificationService {
         message: String,
         avatarUrl: String
     ) {
-        // ĐÃ SỬA: Bao bọc try-catch và timeout để tránh văng app ngầm nếu quá tải mạng khi tải ảnh
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {
                 withTimeout(3000L) {
@@ -130,7 +163,7 @@ object BubbleNotificationService {
         // 2. Ensure shortcut exists (required for Bubble API)
         ensureShortcut(context, userId, userName, avatarUrl)
 
-        // 3. Push notification with bubble metadata
+        // 3. Push notification with bubble metadata (luôn push bất chấp check OEM)
         BubbleNotificationManager.addMessage(
             context = context,
             userId = userId,
@@ -285,12 +318,14 @@ object BubbleNotificationService {
         }
 
         Log.d(TAG, "🔗 Shortcut missing, creating for: $userName")
-        ShortcutHelper.createShortcut(context, userId, userName, avatarUrl)
 
-        // ĐÃ SỬA: Chờ tối đa 2 giây bằng Polling thay vì hard-delay 400ms dễ gây lỗi crash
+        // LỖI D FIX: Dùng hàm Suspend để await tiến trình tạo shortcut
+        ShortcutHelper.createShortcutSuspend(context, userId, userName, avatarUrl)
+
+        // LỖI D FIX: Polling chu kỳ dài hơn để đảm bảo ShortcutManager cập nhật xong (tối đa 2s)
         var attempts = 0
-        while (!ShortcutHelper.shortcutExists(context, userId) && attempts < 40) {
-            delay(50)
+        while (!ShortcutHelper.shortcutExists(context, userId) && attempts < 20) {
+            delay(100) // Tăng từ 50ms -> 100ms
             attempts++
         }
 
@@ -465,7 +500,6 @@ object BubbleNotificationService {
 
                 syncShortcuts(context)
 
-                // ĐÃ SỬA: Restore (vẽ lại) bong bóng chat bằng Bubble API cho thiết bị Android 11+
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     managerBubbles.forEach { (uid, bubbleData) ->
                         val lastMsg = BubbleNotificationManager.getLastMessage(uid)?.text ?: ""

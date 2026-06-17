@@ -13,6 +13,7 @@ import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
+import android.window.OnBackInvokedDispatcher
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
@@ -46,7 +47,7 @@ class FlutterMiniChatActivity : FlutterActivity() {
     companion object {
         private const val TAG          = "MiniChatActivity"
         const val MINI_ENGINE_ID       = "mini_chat_overlay_engine"
-        private const val CHANNEL      = "mini_chat_channel" // Có thể thay bằng "mini_chat_overlay" tùy code Dart
+        private const val CHANNEL      = "mini_chat_channel"
 
         private const val EXTRA_UID    = "userId"
         private const val EXTRA_NAME   = "userName"
@@ -98,7 +99,6 @@ class FlutterMiniChatActivity : FlutterActivity() {
             eng.dartExecutor.executeDartEntrypoint(
                 DartExecutor.DartEntrypoint.createDefault()
             )
-            eng.lifecycleChannel.appIsResumed()
             cache.put(MINI_ENGINE_ID, eng)
         }
         return eng
@@ -119,12 +119,27 @@ class FlutterMiniChatActivity : FlutterActivity() {
             Log.e(TAG, "❌ No userId"); finish(); return
         }
 
+        // LỖI O FIX: Đăng ký OnBackInvokedCallback chuẩn Android 16 cho API 33+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT
+            ) {
+                Log.d(TAG, "🔙 System Back gesture — minimizing mini chat")
+                hideKeyboard()
+                moveTaskToBack(true)
+            }
+        }
+
         applyFloatingWindowStyle()
         Log.d(TAG, "✅ onCreate — $userName")
     }
 
     override fun configureFlutterEngine(engine: FlutterEngine) {
         super.configureFlutterEngine(engine)
+
+        // LỖI C FIX: Đánh thức engine từ standby mode sang active khi Activity attach thành công
+        engine.lifecycleChannel.appIsResumed()
+
         setupChannel(engine)
         scheduleNavigation()
     }
@@ -159,14 +174,7 @@ class FlutterMiniChatActivity : FlutterActivity() {
             val w  = (dm.widthPixels  * 0.88).toInt()
             val h  = (dm.heightPixels * 0.70).toInt()
 
-            @Suppress("DEPRECATION")
-            val typeFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            } else {
-                WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
-            }
-
-            window.setType(typeFlag)
+            // LỖI E FIX: XÓA HOÀN TOÀN window.setType() vì gây BadTokenException trên Activity context.
             window.setLayout(w, h)
             window.setGravity(Gravity.CENTER)
 
@@ -193,6 +201,10 @@ class FlutterMiniChatActivity : FlutterActivity() {
     // ═════════════════════════════════════════════════════════════════════
 
     private fun setupChannel(engine: FlutterEngine) {
+        // LỖI J FIX: Unregister handler cũ để tránh xung đột Isolate khi tái sử dụng Engine
+        channel?.setMethodCallHandler(null)
+        channel = null
+
         channel = MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL)
         channel!!.setMethodCallHandler { call, result ->
             when (call.method) {

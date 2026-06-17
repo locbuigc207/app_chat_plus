@@ -26,16 +26,19 @@ class GameFirebaseService {
       _matchesRef.doc(matchId);
 
   CollectionReference<Map<String, dynamic>> _movesRef(String matchId) =>
-      _matchDoc(matchId)
-          .collection(FirestoreConstants.pathGameMovesSubCollection);
+      _matchDoc(
+        matchId,
+      ).collection(FirestoreConstants.pathGameMovesSubCollection);
 
   CollectionReference<Map<String, dynamic>> _chatRef(String matchId) =>
-      _matchDoc(matchId)
-          .collection(FirestoreConstants.pathSpectatorChatSubCollection);
+      _matchDoc(
+        matchId,
+      ).collection(FirestoreConstants.pathSpectatorChatSubCollection);
 
   CollectionReference<Map<String, dynamic>> _reactionsRef(String matchId) =>
-      _matchDoc(matchId)
-          .collection(FirestoreConstants.pathGameReactionsSubCollection);
+      _matchDoc(
+        matchId,
+      ).collection(FirestoreConstants.pathGameReactionsSubCollection);
 
   // =========================================================
   // 1. CREATE / UPDATE MATCH
@@ -52,12 +55,9 @@ class GameFirebaseService {
     }
   }
 
-  // SỬA LỖI 15: Sử dụng update() thay vì set(merge:true) để bảo vệ tính toàn vẹn dữ liệu
+  // Sử dụng update() thay vì set(merge:true) để bảo vệ tính toàn vẹn dữ liệu
   // update() sẽ thất bại (an toàn) nếu document không tồn tại
-  Future<void> updateMatch(
-    String matchId,
-    Map<String, dynamic> data,
-  ) async {
+  Future<void> updateMatch(String matchId, Map<String, dynamic> data) async {
     try {
       await _matchDoc(matchId).update(data);
       _log('📝 Match updated: $matchId → ${data.keys.join(', ')}');
@@ -67,7 +67,7 @@ class GameFirebaseService {
     }
   }
 
-  // SỬA LỖI 13: Sử dụng Transaction ngăn chặn Double-Accept
+  // Sử dụng Transaction ngăn chặn Double-Accept
   Future<void> acceptMatch({
     required String matchId,
     required String player2Id,
@@ -84,6 +84,13 @@ class GameFirebaseService {
       }
 
       final data = snapshot.data();
+
+      // KHẮC PHỤC LỖI 4: Guard chặn race condition khi Cloud Function vừa abort match
+      final status = data?[FirestoreConstants.gameStatus] as String?;
+      if (status != GameMatchStatus.waiting.name) {
+        throw Exception('Trận đấu đã hết hạn hoặc không còn ở trạng thái chờ!');
+      }
+
       if (data?[FirestoreConstants.player2Id] != null) {
         throw Exception('Trận đấu đã có người tham gia!');
       }
@@ -143,7 +150,7 @@ class GameFirebaseService {
     });
   }
 
-  // SỬA LỖI 14 (Lưu ý): Truy vấn này yêu cầu tạo Compound Index trên Firebase Console:
+  // Truy vấn này yêu cầu tạo Compound Index trên Firebase Console:
   // Collection: GameMatch
   // Fields: sourceGroupId (Ascending) + gameStatus (Arrays/In) + createdAt (Descending)
   Stream<List<GameMatch>> watchLiveMatchesInGroup(String groupId) {
@@ -151,10 +158,7 @@ class GameFirebaseService {
         .where(FirestoreConstants.sourceGroupId, isEqualTo: groupId)
         .where(
           FirestoreConstants.gameStatus,
-          whereIn: [
-            GameMatchStatus.waiting.name,
-            GameMatchStatus.playing.name,
-          ],
+          whereIn: [GameMatchStatus.waiting.name, GameMatchStatus.playing.name],
         )
         .orderBy(FirestoreConstants.createdAt, descending: true)
         .limit(20)
@@ -170,12 +174,14 @@ class GameFirebaseService {
           }
           return matches;
         })
-        .transform(StreamTransformer.fromHandlers(
-          handleError: (error, stackTrace, sink) {
-            _log('⚠️ watchLiveMatchesInGroup index error: $error');
-            sink.add(const <GameMatch>[]);
-          },
-        ));
+        .transform(
+          StreamTransformer.fromHandlers(
+            handleError: (error, stackTrace, sink) {
+              _log('⚠️ watchLiveMatchesInGroup index error: $error');
+              sink.add(const <GameMatch>[]);
+            },
+          ),
+        );
   }
 
   // =========================================================
@@ -184,9 +190,9 @@ class GameFirebaseService {
 
   Future<void> addMove(String matchId, GameMove move) async {
     try {
-      await _movesRef(matchId)
-          .doc(move.moveIndex.toString())
-          .set(move.toJson());
+      await _movesRef(
+        matchId,
+      ).doc(move.moveIndex.toString()).set(move.toJson());
       _log('♟️ Move ${move.moveIndex} added to $matchId');
     } catch (e) {
       _log('❌ addMove error: $e');
@@ -200,20 +206,21 @@ class GameFirebaseService {
         .limit(1)
         .snapshots()
         .map((snap) {
-      if (snap.docs.isEmpty) return null;
-      try {
-        return GameMove.fromDocument(snap.docs.first);
-      } catch (e) {
-        _log('❌ watchLatestMove parse error: $e');
-        return null;
-      }
-    });
+          if (snap.docs.isEmpty) return null;
+          try {
+            return GameMove.fromDocument(snap.docs.first);
+          } catch (e) {
+            _log('❌ watchLatestMove parse error: $e');
+            return null;
+          }
+        });
   }
 
   Future<List<GameMove>> fetchAllMoves(String matchId) async {
     try {
-      final snapshot =
-          await _movesRef(matchId).orderBy(FirestoreConstants.moveIndex).get();
+      final snapshot = await _movesRef(
+        matchId,
+      ).orderBy(FirestoreConstants.moveIndex).get();
       final moves = snapshot.docs.map(GameMove.fromDocument).toList();
       _log('📜 Loaded ${moves.length} moves for $matchId');
       return moves;
@@ -287,14 +294,16 @@ class GameFirebaseService {
         .orderBy(FirestoreConstants.spectatorSentAt, descending: true)
         .limit(50)
         .snapshots()
-        .map((snap) => snap.docs.map((doc) {
-              final d = doc.data();
-              return SpectatorChatMessage(
-                userId: d[FirestoreConstants.spectatorUserId] as String? ?? '',
-                text: d[FirestoreConstants.spectatorText] as String? ?? '',
-                sentAt: d[FirestoreConstants.spectatorSentAt] as String? ?? '',
-              );
-            }).toList());
+        .map(
+          (snap) => snap.docs.map((doc) {
+            final d = doc.data();
+            return SpectatorChatMessage(
+              userId: d[FirestoreConstants.spectatorUserId] as String? ?? '',
+              text: d[FirestoreConstants.spectatorText] as String? ?? '',
+              sentAt: d[FirestoreConstants.spectatorSentAt] as String? ?? '',
+            );
+          }).toList(),
+        );
   }
 
   // =========================================================
@@ -323,14 +332,16 @@ class GameFirebaseService {
         .orderBy(FirestoreConstants.reactionSentAt, descending: true)
         .limit(10)
         .snapshots()
-        .map((snap) => snap.docs.map((doc) {
-              final d = doc.data();
-              return GameReaction(
-                userId: d[FirestoreConstants.reactionUserId] as String? ?? '',
-                emoji: d[FirestoreConstants.reactionEmoji] as String? ?? '',
-                sentAt: d[FirestoreConstants.reactionSentAt] as String? ?? '',
-              );
-            }).toList());
+        .map(
+          (snap) => snap.docs.map((doc) {
+            final d = doc.data();
+            return GameReaction(
+              userId: d[FirestoreConstants.reactionUserId] as String? ?? '',
+              emoji: d[FirestoreConstants.reactionEmoji] as String? ?? '',
+              sentAt: d[FirestoreConstants.reactionSentAt] as String? ?? '',
+            );
+          }).toList(),
+        );
   }
 
   // =========================================================
@@ -343,7 +354,6 @@ class GameFirebaseService {
   }) async {
     final now = DateTime.now().millisecondsSinceEpoch.toString();
     try {
-      // Đã cập nhật thành update() tương tự lỗi 15
       await _matchDoc(matchId).update({
         FirestoreConstants.drawRequest: {
           'requesterId': requesterId,
@@ -357,9 +367,9 @@ class GameFirebaseService {
 
   Future<void> clearDrawRequest(String matchId) async {
     try {
-      await _matchDoc(matchId).update({
-        FirestoreConstants.drawRequest: FieldValue.delete(),
-      });
+      await _matchDoc(
+        matchId,
+      ).update({FirestoreConstants.drawRequest: FieldValue.delete()});
     } catch (e) {
       _log('⚠️ clearDrawRequest error: $e');
     }
@@ -383,18 +393,13 @@ class GameFirebaseService {
   // 8. DISCONNECT
   // =========================================================
 
-  Future<void> markPlayerDisconnected(
-    String matchId,
-    String userId,
-  ) async {
+  Future<void> markPlayerDisconnected(String matchId, String userId) async {
     final now = DateTime.now().millisecondsSinceEpoch.toString();
     try {
-      await _matchDoc(matchId).update(
-        {
-          FirestoreConstants.disconnectedPlayerId: userId,
-          FirestoreConstants.disconnectedAt: now,
-        },
-      );
+      await _matchDoc(matchId).update({
+        FirestoreConstants.disconnectedPlayerId: userId,
+        FirestoreConstants.disconnectedAt: now,
+      });
       _log('⚡ Player disconnected: $userId in $matchId');
     } catch (e) {
       _log('❌ markPlayerDisconnected error: $e');
@@ -421,16 +426,13 @@ class GameFirebaseService {
 
       final disconnectedId =
           data[FirestoreConstants.disconnectedPlayerId] as String? ??
-              data['disconnectedPlayerId'] as String?;
+          data['disconnectedPlayerId'] as String?;
       final disconnectedAt =
           data[FirestoreConstants.disconnectedAt] as String? ??
-              data['disconnectedAt'] as String?;
+          data['disconnectedAt'] as String?;
 
       if (disconnectedId == null) return null;
-      return DisconnectInfo(
-        userId: disconnectedId,
-        at: disconnectedAt ?? '',
-      );
+      return DisconnectInfo(userId: disconnectedId, at: disconnectedAt ?? '');
     }).distinct();
   }
 
@@ -438,10 +440,7 @@ class GameFirebaseService {
   // 9. MISC & CLEANUP
   // =========================================================
 
-  Future<void> linkInviteMessage(
-    String matchId,
-    String inviteMessageId,
-  ) async {
+  Future<void> linkInviteMessage(String matchId, String inviteMessageId) async {
     await updateMatch(matchId, {
       FirestoreConstants.inviteMessageId: inviteMessageId,
     });
@@ -524,10 +523,7 @@ class DrawRequestInfo {
   final String requesterId;
   final String sentAt;
 
-  const DrawRequestInfo({
-    required this.requesterId,
-    required this.sentAt,
-  });
+  const DrawRequestInfo({required this.requesterId, required this.sentAt});
 }
 
 class DisconnectInfo {

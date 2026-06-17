@@ -3,6 +3,7 @@ package hust.appchat
 
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -10,6 +11,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
+import android.window.OnBackInvokedDispatcher
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
@@ -22,7 +24,6 @@ class BubbleActivity : FlutterActivity() {
     companion object {
         private const val TAG = "BubbleActivity"
 
-        // ĐÃ SỬA: Đổi sang Engine dành riêng cho Bubble để tránh xung đột với MainActivity
         const val BUBBLE_ENGINE_ID = "bubble_flutter_engine"
 
         private const val CHANNEL        = "bubble_chat_channel"
@@ -32,8 +33,6 @@ class BubbleActivity : FlutterActivity() {
 
         private const val RETRY_INTERVAL_MS    = 60L
         private const val MAX_RETRIES          = 60          // ~3.6 s
-
-        // ĐÃ SỬA: Tăng thời gian chờ Fallback lên 1500ms
         private const val FALLBACK_READY_MS    = 1500L
         private const val KEYBOARD_DELAY_MS    = 350L
         private const val MAX_NAV_CACHE        = 50
@@ -55,9 +54,10 @@ class BubbleActivity : FlutterActivity() {
             eng.dartExecutor.executeDartEntrypoint(
                 DartExecutor.DartEntrypoint.createDefault()
             )
-            // Không gọi lifecycleChannel.appIsResumed() ở đây vì Bubble chưa thực sự hiện lên
+            // LỖI C FIX: Đặt engine ở trạng thái detached standby — KHÔNG gọi appIsResumed() ở đây
+            eng.lifecycleChannel.appIsDetached()
             cache.put(BUBBLE_ENGINE_ID, eng)
-            Log.d(TAG, "✅ Bubble engine warm")
+            Log.d(TAG, "✅ Bubble engine warm and standby")
         }
 
         fun createIntent(
@@ -66,6 +66,8 @@ class BubbleActivity : FlutterActivity() {
             userName: String,
             avatarUrl: String
         ): Intent = Intent(ctx, BubbleActivity::class.java).apply {
+            action = Intent.ACTION_VIEW   // ĐÃ SỬA: Bắt buộc để tránh NullPointerException ở Native Bubble Renderer
+            data = android.net.Uri.parse("bubble://chat/$userId") // ĐÃ SỬA: Định danh conversation tránh lẫn task
             putExtra(EXTRA_UID,    userId)
             putExtra(EXTRA_NAME,   userName)
             putExtra(EXTRA_AVATAR, avatarUrl)
@@ -98,8 +100,16 @@ class BubbleActivity : FlutterActivity() {
             Log.w(TAG, "⚠️ Bubble API requires Android 11+"); finish(); return
         }
 
-        // ĐÃ SỬA: Xóa hoàn toàn (this as ComponentActivity) và OnBackPressedCallback
-        // Lý do: Android Bubble tự động xử lý back system để thu nhỏ bubble.
+        // LỖI O FIX: Xử lý back gesture đúng chuẩn Android 16 (Tiramisu trở lên)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT
+            ) {
+                Log.d(TAG, "🔙 System Back gesture — minimizing bubble")
+                // Bubble mode: back = thu nhỏ về icon, không finish()
+                moveTaskToBack(true)
+            }
+        }
 
         if (savedInstanceState == null) readExtras(intent)
         if (!validateUser()) { Log.e(TAG, "❌ Missing user info"); finish(); return }
@@ -131,10 +141,26 @@ class BubbleActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(engine: FlutterEngine) {
         super.configureFlutterEngine(engine)
+        // LỖI C FIX: Engine giờ mới thực sự được "wake up" khi Activity attach
+        engine.lifecycleChannel.appIsResumed()
+
         configureWindow()
         setupChannel(engine)
         setPending()
         scheduleNav(0)
+    }
+
+    // LỖI P FIX: Handle bubble resize/re-embed trên Android 16
+    override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: Configuration) {
+        super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
+        Log.d(TAG, "🪟 Multi-window mode changed: $isInMultiWindowMode")
+        // Khi bubble bị resize, engine không cần restart, chỉ re-notify Flutter
+        if (isFlutterReady) {
+            channel?.invokeMethod("onWindowSizeChanged", mapOf(
+                "width" to newConfig.screenWidthDp,
+                "height" to newConfig.screenHeightDp
+            ))
+        }
     }
 
     override fun onResume() {
@@ -148,11 +174,11 @@ class BubbleActivity : FlutterActivity() {
         hideKeyboard()
     }
 
-    // ĐÃ SỬA: Thêm bắt sự kiện khi người dùng nhấn nút Home
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        Log.d(TAG, "🏠 User pressed Home — closing bubble view")
-        finish() // Thu nhỏ bong bóng về biểu tượng nổi thay vì vứt bỏ task
+        Log.d(TAG, "🏠 User pressed Home — minimizing bubble")
+        // Vẫn giữ lại cho các thiết bị cũ, hoặc hành vi bấm phím home cứng
+        moveTaskToBack(true)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -160,7 +186,6 @@ class BubbleActivity : FlutterActivity() {
         val newUid  = intent.getStringExtra(EXTRA_UID)  ?: return
         val newName = intent.getStringExtra(EXTRA_NAME) ?: return
 
-        // ĐÃ SỬA: Xóa return nếu newUid == currentUid. Xóa khỏi danh sách nav để tái kích hoạt sự kiện Navigate
         navigatedUsers.remove(newUid)
 
         Log.d(TAG, "🔄 New intent → $newName")
@@ -187,7 +212,6 @@ class BubbleActivity : FlutterActivity() {
         saved.getStringArrayList("navDone")?.let { navigatedUsers.addAll(it) }
         setPending()
 
-        // ĐÃ SỬA: Kiểm tra channel an toàn trước khi scheduleNav
         if (isFlutterReady && channel != null) scheduleNav(0)
     }
 
@@ -215,6 +239,10 @@ class BubbleActivity : FlutterActivity() {
     }
 
     private fun setupChannel(engine: FlutterEngine) {
+        // LỖI J FIX: Unregister handler cũ nếu engine được reuse từ cache
+        channel?.setMethodCallHandler(null)
+        channel = null
+
         channel = MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL)
         channel!!.setMethodCallHandler { call, result ->
             when (call.method) {
@@ -224,9 +252,8 @@ class BubbleActivity : FlutterActivity() {
                     scheduleNav(0)
                     result.success(true)
                 }
-                // ĐÃ SỬA: Không dùng moveTaskToBack cho API 35+, dùng finish() để gập bubble
-                "minimize"     -> { finish(); result.success(true) }
-                "close"        -> { finish(); result.success(true) }
+                "minimize"     -> { moveTaskToBack(true); result.success(true) }
+                "close"        -> { moveTaskToBack(true); result.success(true) }
                 "getUserInfo"  -> result.success(mapOf(
                     "userId"    to currentUid,
                     "userName"  to currentName,
@@ -241,7 +268,6 @@ class BubbleActivity : FlutterActivity() {
             }
         }
 
-        // Fallback an toàn
         mainHandler.postDelayed({
             if (!isFlutterReady && !isFinishing) {
                 Log.d(TAG, "⏰ Flutter ready (fallback)")
@@ -274,7 +300,6 @@ class BubbleActivity : FlutterActivity() {
             return
         }
 
-        // ĐÃ SỬA: Xác nhận lại channel không rỗng để tránh Null Pointer exception ngầm
         if (channel == null) return
         doNavigate(uid, name, av)
     }

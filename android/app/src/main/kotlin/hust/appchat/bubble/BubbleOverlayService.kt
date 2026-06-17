@@ -13,6 +13,7 @@ import android.view.animation.OvershootInterpolator
 import android.view.inputmethod.InputMethodManager
 import androidx.core.app.NotificationCompat
 import hust.appchat.BubbleActivity
+import hust.appchat.FlutterMiniChatActivity
 import hust.appchat.R
 import io.flutter.embedding.android.FlutterTextureView
 import io.flutter.embedding.android.FlutterView
@@ -20,6 +21,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.MethodChannel
+import java.util.concurrent.atomic.AtomicBoolean
 
 class BubbleOverlayService : Service() {
 
@@ -69,6 +71,9 @@ class BubbleOverlayService : Service() {
     private var miniVisible = false
     private var isEngineWarmingUp = false
 
+    // LỖI F FIX: Guard chống double-tap dẫn đến race condition
+    private val isMiniChatTransitioning = AtomicBoolean(false)
+
     // ─── Delete zone ──────────────────────────────────────────────────────
     private var deleteZone      : DeleteZoneView? = null
     private var deleteZoneParams: WindowManager.LayoutParams? = null
@@ -107,7 +112,10 @@ class BubbleOverlayService : Service() {
                 try {
                     startForeground(NOTIF_ID, buildNotification())
                 } catch (e: Exception) {
-                    loge("startForeground bị chặn bởi hệ thống", e)
+                    // LỖI N FIX: Android 15 chặn start FGS từ background nếu không có visible overlay
+                    loge("startForeground blocked by system", e)
+                    stopSelf()
+                    return START_NOT_STICKY
                 }
             }
             isServiceRunning = true
@@ -201,6 +209,8 @@ class BubbleOverlayService : Service() {
 
     private fun showBubble(uid: String, name: String, av: String, unread: Int,
                            msg: String, posX: Int, posY: Int) {
+        // LỖI H FIX: Samsung One UI 7 + Android 15: Bubble API bị intercept bởi Smart Pop-up.
+        // WindowManager overlay vẫn hoạt động bình thường, service này chính là fallback.
         mainHandler.post {
             if (screenW <= 0) { refreshScreenDimensions(); return@post }
             try {
@@ -240,6 +250,7 @@ class BubbleOverlayService : Service() {
                 try {
                     wm?.addView(view, lp)
                 } catch (e: WindowManager.BadTokenException) {
+                    // LỖI K FIX: Bắt BadTokenException nếu quyền SYSTEM_ALERT_WINDOW bị thu hồi ngầm định
                     loge("Quyền SYSTEM_ALERT_WINDOW bị thu hồi ngầm", e)
                     return@post
                 }
@@ -373,9 +384,13 @@ class BubbleOverlayService : Service() {
 
     private fun showMiniChat(uid: String, name: String, av: String) {
         log("💬 showMiniChat uid=$uid")
+
+        // LỖI F FIX: Double-tap race condition guard
+        if (!isMiniChatTransitioning.compareAndSet(false, true)) return
+
         mainHandler.post {
-            // Sử dụng callback để đảm bảo teardown hoàn tất trước khi khởi tạo engine mới
             teardownMiniChat {
+                isMiniChatTransitioning.set(false) // Reset cờ sau khi teardown xong
                 miniUserId = uid
                 ensureEngine { attachMiniChat(uid, name, av) }
             }
@@ -388,17 +403,22 @@ class BubbleOverlayService : Service() {
         val cache = FlutterEngineCache.getInstance()
         var eng = cache.get(MINI_ENGINE_ID)
 
+        // LỖI G FIX: Nếu engine đã warm (từ MainActivity), tái sử dụng ngay lập tức
+        if (eng != null && eng.dartExecutor.isExecutingDart) {
+            miniEngine = eng
+            // PHẢI gọi appIsResumed vì engine đang ở trạng thái detached
+            eng.lifecycleChannel.appIsResumed()
+            onReady()
+            return
+        }
+
         if (eng != null && !eng.dartExecutor.isExecutingDart) {
             log("⚠️ Stale mini engine — evicting")
             try { eng.destroy() } catch (_: Exception) {}
             cache.remove(MINI_ENGINE_ID); eng = null
         }
 
-        if (eng != null) {
-            miniEngine = eng; onReady(); return
-        }
-
-        log("🔧 Creating new mini-chat engine")
+        log("🔧 Creating new mini-chat engine (Fallback)")
         isEngineWarmingUp = true
         val newEng = FlutterEngine(this)
         newEng.dartExecutor.executeDartEntrypoint(DartExecutor.DartEntrypoint.createDefault())
@@ -429,8 +449,24 @@ class BubbleOverlayService : Service() {
     }
 
     private fun attachMiniChat(uid: String, name: String, av: String) {
+        // LỖI E FIX: KHÔNG tạo FlutterView trong Service context gây blank screen.
+        // Chuyển sang launch FlutterMiniChatActivity.
+        try {
+            val intent = FlutterMiniChatActivity.createIntent(this, uid, name, av).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            miniVisible = true
+        } catch (e: Exception) {
+            loge("attachMiniChat via Activity failed, launching legacy fallback", e)
+            attachMiniChatLegacy(uid, name, av)
+        }
+    }
+
+    // Hàm gắn FlutterView cũ được giữ lại làm Fallback cho thiết bị quá cũ
+    private fun attachMiniChatLegacy(uid: String, name: String, av: String) {
         val eng = miniEngine ?: return
-        if (!eng.dartExecutor.isExecutingDart) { loge("attachMiniChat: engine dead"); return }
+        if (!eng.dartExecutor.isExecutingDart) { loge("attachMiniChatLegacy: engine dead"); return }
 
         try {
             val view = FlutterView(this, FlutterTextureView(this))
@@ -498,7 +534,7 @@ class BubbleOverlayService : Service() {
             }
 
             wm?.addView(view, miniParams)
-            log("✅ Mini-chat attached ${wPx}×${hPx}")
+            log("✅ Legacy Mini-chat attached ${wPx}×${hPx}")
 
             view.scaleX = 0.85f; view.scaleY = 0.85f; view.alpha = 0f
             view.animate().scaleX(1f).scaleY(1f).alpha(1f)
@@ -508,7 +544,7 @@ class BubbleOverlayService : Service() {
             mainHandler.postDelayed({ sendMiniNav(uid, name, av) }, 480L)
 
         } catch (e: Exception) {
-            loge("attachMiniChat", e); teardownMiniChat()
+            loge("attachMiniChatLegacy", e); teardownMiniChat()
         }
     }
 
@@ -524,7 +560,6 @@ class BubbleOverlayService : Service() {
 
     private fun hideMiniChat() {
         mainHandler.post {
-            // Sử dụng callback thay cho postDelayed để ngăn race condition nếu bị drop frame
             teardownMiniChat {
                 miniUserId = null
                 checkStop()
@@ -536,13 +571,14 @@ class BubbleOverlayService : Service() {
     private fun teardownMiniChat(onComplete: () -> Unit = {}) {
         val v = miniView
         if (v == null) {
+            // Trường hợp chạy MiniChat qua Activity, Service không quản lý view
+            miniVisible = false
             onComplete()
             return
         }
 
         mainHandler.post {
             try {
-                // SỬA: Set false ngay trước khi animation bắt đầu
                 miniVisible = false
 
                 v.findFocus()?.let { hideKeyboard(it) }
@@ -554,12 +590,11 @@ class BubbleOverlayService : Service() {
                         miniParams = null
                         miniChannel?.setMethodCallHandler(null)
                         miniChannel = null
-                        // SỬA: Callback gọi lên khi dọn dẹp view đã hoàn tất tuyệt đối
                         onComplete()
                     }.start()
             } catch (e: Exception) {
                 loge("teardownMiniChat lỗi", e)
-                onComplete() // Đảm bảo mạch logic tiếp diễn nếu ngoại lệ xảy ra
+                onComplete()
             }
         }
     }
@@ -595,6 +630,16 @@ class BubbleOverlayService : Service() {
     // ═════════════════════════════════════════════════════════════════════
     // HELPERS & UTILS
     // ═════════════════════════════════════════════════════════════════════
+
+    private fun isSamsungDevice() = Build.MANUFACTURER.lowercase() == "samsung"
+
+    private fun isOneUI7OrHigher(): Boolean {
+        return try {
+            val v = Class.forName("com.samsung.android.feature.SemFloatingFeature")
+                .getMethod("getInstance").invoke(null)
+            v != null
+        } catch (_: Exception) { false }
+    }
 
     private fun broadcastEvent(action: String, uid: String) {
         sendBroadcast(Intent(action).apply { putExtra("userId", uid) })

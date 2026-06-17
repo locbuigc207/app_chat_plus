@@ -4,51 +4,6 @@ import 'package:flutter_chat_demo/constants/constants.dart';
 
 enum ConversationFilter { all, unread, archived, pinned }
 
-class ConversationSummary {
-  final String id;
-  final bool isPinned;
-  final bool isMuted;
-  final bool isLocked;
-  final int unreadCount;
-  final int lastMessageTime;
-  final String lastMessage;
-  final List<String> participants;
-  final bool isGroup;
-  final List<String> archivedBy;
-
-  const ConversationSummary({
-    required this.id,
-    required this.isPinned,
-    required this.isMuted,
-    required this.isLocked,
-    required this.unreadCount,
-    required this.lastMessageTime,
-    required this.lastMessage,
-    required this.participants,
-    required this.isGroup,
-    required this.archivedBy,
-  });
-
-  factory ConversationSummary.fromDoc(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>? ?? {};
-    return ConversationSummary(
-      id: doc.id,
-      isPinned: data['isPinned'] as bool? ?? false,
-      isMuted: data['isMuted'] as bool? ?? false,
-      isLocked: data['isLocked'] as bool? ?? false,
-      unreadCount: data['unreadCount'] as int? ?? 0,
-      lastMessageTime:
-          int.tryParse(data['lastMessageTime']?.toString() ?? '0') ?? 0,
-      lastMessage: data['lastMessage'] as String? ?? '',
-      participants: List<String>.from(data['participants'] as List? ?? []),
-      isGroup: data['isGroup'] as bool? ?? false,
-      archivedBy: List<String>.from(data['archivedBy'] as List? ?? []),
-    );
-  }
-
-  bool isArchivedBy(String userId) => archivedBy.contains(userId);
-}
-
 class ConversationProvider {
   final FirebaseFirestore firebaseFirestore;
 
@@ -59,63 +14,66 @@ class ConversationProvider {
   // ── Streams ───────────────────────────────────────────────────────────────
 
   Stream<List<QueryDocumentSnapshot>> getConversationsWithPinned(
-      String userId) {
+    String userId,
+  ) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathConversationCollection)
         .where(FirestoreConstants.participants, arrayContains: userId)
         .snapshots()
         .map((snapshot) {
-      final docs = snapshot.docs.where((doc) {
-        final archivedBy =
-            List<String>.from(doc.data()['archivedBy'] as List? ?? []);
-        return !archivedBy.contains(userId);
-      }).toList();
+          final docs = snapshot.docs.where((doc) {
+            final archivedBy = List<String>.from(
+              doc.data()['archivedBy'] as List? ?? [],
+            );
+            return !archivedBy.contains(userId);
+          }).toList();
 
-      docs.sort((a, b) {
-        final aData = a.data();
-        final bData = b.data();
-        final aPinned = aData['isPinned'] as bool? ?? false;
-        final bPinned = bData['isPinned'] as bool? ?? false;
+          docs.sort((a, b) {
+            final aData = a.data();
+            final bData = b.data();
+            final aPinned = aData['isPinned'] as bool? ?? false;
+            final bPinned = bData['isPinned'] as bool? ?? false;
 
-        // Ưu tiên hội thoại được ghim lên đầu
-        if (aPinned != bPinned) return aPinned ? -1 : 1;
+            // Ưu tiên hội thoại được ghim lên đầu
+            if (aPinned != bPinned) return aPinned ? -1 : 1;
 
-        // Sắp xếp theo thời gian tin nhắn mới nhất
-        final aTime =
-            int.tryParse(aData['lastMessageTime']?.toString() ?? '0') ?? 0;
-        final bTime =
-            int.tryParse(bData['lastMessageTime']?.toString() ?? '0') ?? 0;
-        return bTime.compareTo(aTime);
-      });
+            // Sắp xếp theo thời gian tin nhắn mới nhất
+            final aTime =
+                int.tryParse(aData['lastMessageTime']?.toString() ?? '0') ?? 0;
+            final bTime =
+                int.tryParse(bData['lastMessageTime']?.toString() ?? '0') ?? 0;
+            return bTime.compareTo(aTime);
+          });
 
-      return docs;
-    });
+          return docs;
+        });
   }
 
   Stream<List<QueryDocumentSnapshot>> getArchivedConversations(String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathConversationCollection)
-        .where(FirestoreConstants.participants, arrayContains: userId)
+        // Đã xóa .where(participants, arrayContains: userId) để fix lỗi double arrayContains
         .where('archivedBy', arrayContains: userId)
         .snapshots()
         .map((snapshot) {
-      final docs = snapshot.docs;
+          // Dùng .toList() để tạo bản sao có thể thay đổi (mutable), tránh lỗi khi gọi .sort()
+          final docs = snapshot.docs.toList();
 
-      // Bổ sung sắp xếp cho danh sách lưu trữ
-      docs.sort((a, b) {
-        final aData = a.data() as Map<String, dynamic>? ?? {};
-        final bData = b.data() as Map<String, dynamic>? ?? {};
+          // Bổ sung sắp xếp cho danh sách lưu trữ
+          docs.sort((a, b) {
+            final aData = a.data() as Map<String, dynamic>? ?? {};
+            final bData = b.data() as Map<String, dynamic>? ?? {};
 
-        final aTime =
-            int.tryParse(aData['lastMessageTime']?.toString() ?? '0') ?? 0;
-        final bTime =
-            int.tryParse(bData['lastMessageTime']?.toString() ?? '0') ?? 0;
+            final aTime =
+                int.tryParse(aData['lastMessageTime']?.toString() ?? '0') ?? 0;
+            final bTime =
+                int.tryParse(bData['lastMessageTime']?.toString() ?? '0') ?? 0;
 
-        return bTime.compareTo(aTime);
-      });
+            return bTime.compareTo(aTime);
+          });
 
-      return docs;
-    });
+          return docs;
+        });
   }
 
   Stream<List<QueryDocumentSnapshot>> getUnreadConversations(String userId) {
@@ -125,23 +83,24 @@ class ConversationProvider {
         .where('unreadCount', isGreaterThan: 0)
         .snapshots()
         .map((snapshot) {
-      final docs = snapshot.docs;
+          // Dùng .toList() để tránh lỗi danh sách unmodifiable khi sort
+          final docs = snapshot.docs.toList();
 
-      // Bổ sung sắp xếp cho danh sách chưa đọc (Fix lỗi 4 trong phân tích)
-      docs.sort((a, b) {
-        final aData = a.data() as Map<String, dynamic>? ?? {};
-        final bData = b.data() as Map<String, dynamic>? ?? {};
+          // Bổ sung sắp xếp cho danh sách chưa đọc
+          docs.sort((a, b) {
+            final aData = a.data() as Map<String, dynamic>? ?? {};
+            final bData = b.data() as Map<String, dynamic>? ?? {};
 
-        final aTime =
-            int.tryParse(aData['lastMessageTime']?.toString() ?? '0') ?? 0;
-        final bTime =
-            int.tryParse(bData['lastMessageTime']?.toString() ?? '0') ?? 0;
+            final aTime =
+                int.tryParse(aData['lastMessageTime']?.toString() ?? '0') ?? 0;
+            final bTime =
+                int.tryParse(bData['lastMessageTime']?.toString() ?? '0') ?? 0;
 
-        return bTime.compareTo(aTime);
-      });
+            return bTime.compareTo(aTime);
+          });
 
-      return docs;
-    });
+          return docs;
+        });
   }
 
   Stream<DocumentSnapshot> watchConversation(String conversationId) {
@@ -154,18 +113,20 @@ class ConversationProvider {
   // ── Mutations ─────────────────────────────────────────────────────────────
 
   Future<bool> togglePinConversation(
-      String conversationId, bool currentStatus) async {
+    String conversationId,
+    bool currentStatus,
+  ) async {
     try {
       final newPinned = !currentStatus;
       await firebaseFirestore
           .collection(FirestoreConstants.pathConversationCollection)
           .doc(conversationId)
           .update({
-        'isPinned': newPinned,
-        'pinnedAt': newPinned
-            ? DateTime.now().millisecondsSinceEpoch.toString()
-            : FieldValue.delete(),
-      });
+            'isPinned': newPinned,
+            'pinnedAt': newPinned
+                ? DateTime.now().millisecondsSinceEpoch.toString()
+                : FieldValue.delete(),
+          });
       return true;
     } catch (e) {
       debugPrint('❌ Error toggling pin: $e');
@@ -174,7 +135,9 @@ class ConversationProvider {
   }
 
   Future<bool> toggleMuteConversation(
-      String conversationId, bool currentStatus) async {
+    String conversationId,
+    bool currentStatus,
+  ) async {
     try {
       await firebaseFirestore
           .collection(FirestoreConstants.pathConversationCollection)
@@ -217,10 +180,10 @@ class ConversationProvider {
           .collection(FirestoreConstants.pathConversationCollection)
           .doc(conversationId)
           .update({
-        'archivedBy': isArchiving
-            ? FieldValue.arrayUnion([currentUserId])
-            : FieldValue.arrayRemove([currentUserId]),
-      });
+            'archivedBy': isArchiving
+                ? FieldValue.arrayUnion([currentUserId])
+                : FieldValue.arrayRemove([currentUserId]),
+          });
       return true;
     } catch (e) {
       debugPrint('❌ Error archiving conversation: $e');
@@ -234,9 +197,10 @@ class ConversationProvider {
           .collection(FirestoreConstants.pathConversationCollection)
           .doc(conversationId)
           .update({
-        'unreadCount': 0,
-        'lastReadBy.$userId': DateTime.now().millisecondsSinceEpoch.toString(),
-      });
+            'unreadCount': 0,
+            'lastReadBy.$userId': DateTime.now().millisecondsSinceEpoch
+                .toString(),
+          });
       return true;
     } catch (e) {
       debugPrint('❌ Error marking as read: $e');
@@ -245,7 +209,9 @@ class ConversationProvider {
   }
 
   Future<bool> incrementUnreadCount(
-      String conversationId, List<String> excludeUserIds) async {
+    String conversationId,
+    List<String> excludeUserIds,
+  ) async {
     try {
       await firebaseFirestore
           .collection(FirestoreConstants.pathConversationCollection)
@@ -286,12 +252,12 @@ class ConversationProvider {
           .collection(FirestoreConstants.pathConversationCollection)
           .doc(conversationId)
           .update({
-        FirestoreConstants.lastMessage: '',
-        FirestoreConstants.lastMessageTime: '0',
-        FirestoreConstants.lastMessageType: 0,
-        'unreadCount': 0,
-        'clearedAt': DateTime.now().millisecondsSinceEpoch.toString(),
-      });
+            FirestoreConstants.lastMessage: '',
+            FirestoreConstants.lastMessageTime: '0',
+            FirestoreConstants.lastMessageType: 0,
+            'unreadCount': 0,
+            'clearedAt': DateTime.now().millisecondsSinceEpoch.toString(),
+          });
 
       return true;
     } catch (e) {
@@ -301,14 +267,16 @@ class ConversationProvider {
   }
 
   Future<bool> deleteConversationForUser(
-      String conversationId, String userId) async {
+    String conversationId,
+    String userId,
+  ) async {
     try {
       await firebaseFirestore
           .collection(FirestoreConstants.pathConversationCollection)
           .doc(conversationId)
           .update({
-        'deletedBy': FieldValue.arrayUnion([userId])
-      });
+            'deletedBy': FieldValue.arrayUnion([userId]),
+          });
       return true;
     } catch (e) {
       debugPrint('❌ Error deleting conversation for user: $e');
@@ -328,10 +296,10 @@ class ConversationProvider {
           .collection(FirestoreConstants.pathConversationCollection)
           .doc(conversationId)
           .update({
-        'typingUsers.$userId': isTyping
-            ? DateTime.now().millisecondsSinceEpoch.toString()
-            : FieldValue.delete(),
-      });
+            'typingUsers.$userId': isTyping
+                ? DateTime.now().millisecondsSinceEpoch.toString()
+                : FieldValue.delete(),
+          });
     } catch (e) {
       debugPrint('❌ Error setting typing status: $e');
     }
@@ -343,18 +311,19 @@ class ConversationProvider {
         .doc(conversationId)
         .snapshots()
         .map((snap) {
-      final data = snap.data();
-      if (data == null) return {};
+          final data = snap.data();
+          if (data == null) return {};
 
-      final typingUsers = data['typingUsers'] as Map<String, dynamic>? ?? {};
-      final now = DateTime.now().millisecondsSinceEpoch;
+          final typingUsers =
+              data['typingUsers'] as Map<String, dynamic>? ?? {};
+          final now = DateTime.now().millisecondsSinceEpoch;
 
-      return Map.fromEntries(
-        typingUsers.entries.where((e) {
-          final ts = int.tryParse(e.value.toString()) ?? 0;
-          return now - ts < 10000;
-        }),
-      );
-    });
+          return Map.fromEntries(
+            typingUsers.entries.where((e) {
+              final ts = int.tryParse(e.value.toString()) ?? 0;
+              return now - ts < 10000;
+            }),
+          );
+        });
   }
 }

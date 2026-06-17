@@ -16,6 +16,7 @@ import 'package:uuid/uuid.dart';
 enum PlayerRole { player1, player2, spectator }
 
 enum EndReason {
+  threeInRow, // KHẮC PHỤC LỖI 2: Thêm lý do thắng 3 quân liên tiếp
   fiveInRow,
   checkmate,
   timeout,
@@ -28,6 +29,8 @@ enum EndReason {
 
   String get label {
     switch (this) {
+      case EndReason.threeInRow:
+        return 'three_in_row';
       case EndReason.fiveInRow:
         return 'five_in_row';
       case EndReason.checkmate:
@@ -51,6 +54,8 @@ enum EndReason {
 
   String get displayText {
     switch (this) {
+      case EndReason.threeInRow:
+        return '3 quân liên tiếp';
       case EndReason.fiveInRow:
         return '5 quân liên tiếp';
       case EndReason.checkmate:
@@ -209,7 +214,8 @@ class GameStateProvider extends ChangeNotifier {
   bool get isReplayMode => _isReplayMode;
   int get replayIndex => _replayIndex;
   int get replayTotal => _replayMoves.length;
-  bool get canReplayBack => _replayIndex > 0;
+  // KHẮC PHỤC LỖI 5: Cho phép lùi về index -1 (bàn trống)
+  bool get canReplayBack => _replayIndex > -1;
   bool get canReplayForward => _replayIndex < _replayMoves.length - 1;
   List<GameMove> get replayMoves => List.unmodifiable(_replayMoves);
   int get totalMoveCount => _nextMoveIndex;
@@ -410,8 +416,9 @@ class GameStateProvider extends ChangeNotifier {
           _pendingDrawRequest = DrawRequest(
             requesterId: info.requesterId,
             sentAt: DateTime.fromMillisecondsSinceEpoch(
-                int.tryParse(info.sentAt) ??
-                    DateTime.now().millisecondsSinceEpoch),
+              int.tryParse(info.sentAt) ??
+                  DateTime.now().millisecondsSinceEpoch,
+            ),
           );
           notifyListeners();
         }
@@ -477,20 +484,21 @@ class GameStateProvider extends ChangeNotifier {
 
   String get _myCaroSymbol => _currentUserId == _match?.player1Id ? 'X' : 'O';
 
-  // FIX Thuật toán đếm 5 liên tiếp 2 hướng chính xác
+  // KHẮC PHỤC LỖI 2: Thuật toán đếm thắng tham số hóa theo boardSize
   List<CaroCell>? _checkCaroWin(int row, int col, String symbol) {
+    final winLength = _match?.boardSize == 3 ? 3 : 5; // Tuỳ chỉnh độ dài thắng
     const dirs = [
       [0, 1],
       [1, 0],
       [1, 1],
-      [1, -1]
+      [1, -1],
     ];
     for (final dir in dirs) {
       final dr = dir[0], dc = dir[1];
       final line = <CaroCell>[CaroCell(row, col, symbol)];
 
       // Quét chiều âm
-      for (int i = 1; i <= 4; i++) {
+      for (int i = 1; i < winLength; i++) {
         final r = row - dr * i, c = col - dc * i;
         if (_caroBoard['$r,$c'] == symbol) {
           line.insert(0, CaroCell(r, c, symbol));
@@ -499,7 +507,7 @@ class GameStateProvider extends ChangeNotifier {
         }
       }
       // Quét chiều dương
-      for (int i = 1; i <= 4; i++) {
+      for (int i = 1; i < winLength; i++) {
         final r = row + dr * i, c = col + dc * i;
         if (_caroBoard['$r,$c'] == symbol) {
           line.add(CaroCell(r, c, symbol));
@@ -508,7 +516,7 @@ class GameStateProvider extends ChangeNotifier {
         }
       }
 
-      if (line.length >= 5) return line.take(5).toList();
+      if (line.length >= winLength) return line.take(winLength).toList();
     }
     return null;
   }
@@ -531,7 +539,10 @@ class GameStateProvider extends ChangeNotifier {
     _finalResult = (_currentUserId == _match!.player1Id)
         ? GameResult.player1Win
         : GameResult.player2Win;
-    _endReason = EndReason.fiveInRow;
+    // KHẮC PHỤC LỖI 2: Lưu đúng EndReason dựa vào boardSize
+    _endReason = (_match?.boardSize == 3)
+        ? EndReason.threeInRow
+        : EndReason.fiveInRow;
     _stopAllTimers();
   }
 
@@ -893,7 +904,10 @@ class GameStateProvider extends ChangeNotifier {
           _finalResult = (move.movedBy == match.player1Id)
               ? GameResult.player1Win
               : GameResult.player2Win;
-          _endReason = EndReason.fiveInRow;
+          // KHẮC PHỤC LỖI 2: Lý do thắng dựa trên boardSize cho người đồng bộ nước đi
+          _endReason = (match.boardSize == 3)
+              ? EndReason.threeInRow
+              : EndReason.fiveInRow;
           _stopAllTimers();
         }
       }
@@ -904,6 +918,26 @@ class GameStateProvider extends ChangeNotifier {
       if (from != null && to != null) {
         _chessInstance.move({'from': from, 'to': to});
         _chessFen = _chessInstance.fen;
+
+        // KHẮC PHỤC LỖI 6: Đồng bộ hóa cờ vua ngay lập tức khi đối thủ đánh nước chiếu hết/hoà
+        if (_chessInstance.in_checkmate) {
+          _isGameOver = true;
+          _winnerUserId = move.movedBy;
+          _finalResult = (move.movedBy == match.player1Id)
+              ? GameResult.player1Win
+              : GameResult.player2Win;
+          _endReason = EndReason.checkmate;
+          _stopAllTimers();
+        } else if (_chessInstance.in_draw ||
+            _chessInstance.in_stalemate ||
+            _chessInstance.in_threefold_repetition ||
+            _chessInstance.insufficient_material) {
+          _isGameOver = true;
+          _endReason = EndReason.stalemate;
+          _finalResult = GameResult.draw;
+          _winnerUserId = null;
+          _stopAllTimers();
+        }
       }
     }
 
@@ -1102,8 +1136,9 @@ class GameStateProvider extends ChangeNotifier {
   }) {
     ChessSide resolvedSide = player1Side;
     if (player1Side == ChessSide.random) {
-      resolvedSide =
-          math.Random().nextBool() ? ChessSide.white : ChessSide.black;
+      resolvedSide = math.Random().nextBool()
+          ? ChessSide.white
+          : ChessSide.black;
     }
     return GameMatch(
       matchId: matchId,

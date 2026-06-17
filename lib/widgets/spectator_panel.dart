@@ -64,6 +64,10 @@ class SpectatorPanelState extends State<SpectatorPanel>
   final ScrollController _chatScroll = ScrollController();
   StreamSubscription<QuerySnapshot>? _chatSub;
 
+  // ── Stream cache ──────────────────────────────────────────────────────────
+  // KHẮC PHỤC LỖI 9: Di chuyển Stream khởi tạo một lần tại đây để tối ưu Firestore quota
+  Stream<DocumentSnapshot>? _matchDocStream;
+
   // ── Animation ─────────────────────────────────────────────────────────────
   late final AnimationController _chatAnim;
   late final Animation<double> _chatHeight;
@@ -79,6 +83,12 @@ class SpectatorPanelState extends State<SpectatorPanel>
 
     if (widget.matchId.isNotEmpty) {
       _subscribeChatMessages();
+
+      // KHẮC PHỤC LỖI 9: Cấu hình stream Firebase duy nhất
+      _matchDocStream = FirebaseFirestore.instance
+          .collection(FirestoreConstants.pathGameMatchCollection)
+          .doc(widget.matchId)
+          .snapshots();
     }
   }
 
@@ -265,10 +275,11 @@ class SpectatorPanelState extends State<SpectatorPanel>
                 child: Row(
                   children: [
                     const SizedBox(width: 12),
-                    // Viewer count
+                    // Viewer count (Đã cập nhật để dùng chung một Stream truyền vào)
                     _ViewerCount(
                       matchId: widget.matchId,
                       fallbackCount: widget.spectatorCount,
+                      matchDocStream: _matchDocStream,
                     ),
                     const Spacer(),
                     // Chat button (chỉ hiện cho spectator)
@@ -442,23 +453,24 @@ class _SpectatorChat extends StatelessWidget {
 class _ViewerCount extends StatelessWidget {
   final String matchId;
   final int fallbackCount;
+  // KHẮC PHỤC LỖI 9: Nhận Stream Firebase duy nhất được truyền từ cha
+  final Stream<DocumentSnapshot>? matchDocStream;
 
   const _ViewerCount({
     required this.matchId,
     required this.fallbackCount,
+    this.matchDocStream,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (matchId.isEmpty) {
+    if (matchId.isEmpty || matchDocStream == null) {
       return _buildChip(fallbackCount);
     }
 
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection(FirestoreConstants.pathGameMatchCollection)
-          .doc(matchId)
-          .snapshots(),
+      // KHẮC PHỤC LỖI 9: Tái sử dụng Stream khởi tạo sẵn
+      stream: matchDocStream,
       builder: (context, snap) {
         int count = fallbackCount;
         if (snap.hasData && snap.data!.exists) {

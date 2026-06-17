@@ -35,11 +35,11 @@ class ToneRewriterResult {
       );
 
   Map<String, dynamic> toMap() => {
-        'original': original,
-        'rewritten': rewritten,
-        'toTone': toTone,
-        'fromTone': fromTone,
-      };
+    'original': original,
+    'rewritten': rewritten,
+    'toTone': toTone,
+    'fromTone': fromTone,
+  };
 
   @override
   String toString() =>
@@ -66,20 +66,20 @@ class SentimentResult {
   });
 
   factory SentimentResult.fromMap(Map<String, dynamic> map) => SentimentResult(
-        sentiment: map['sentiment'] as String? ?? 'neutral',
-        score: (map['score'] as num?)?.toDouble() ?? 0.5,
-        emoji: map['emoji'] as String? ?? '😐',
-        mood: map['mood'] as String? ?? 'Trung tính',
-        trend: map['trend'] as String? ?? 'stable',
-      );
+    sentiment: map['sentiment'] as String? ?? 'neutral',
+    score: (map['score'] as num?)?.toDouble() ?? 0.5,
+    emoji: map['emoji'] as String? ?? '😐',
+    mood: map['mood'] as String? ?? 'Trung tính',
+    trend: map['trend'] as String? ?? 'stable',
+  );
 
   Map<String, dynamic> toMap() => {
-        'sentiment': sentiment,
-        'score': score,
-        'emoji': emoji,
-        'mood': mood,
-        'trend': trend,
-      };
+    'sentiment': sentiment,
+    'score': score,
+    'emoji': emoji,
+    'mood': mood,
+    'trend': trend,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -93,23 +93,19 @@ class KeyMoment {
   final String content;
   final String? timestamp;
 
-  const KeyMoment({
-    required this.type,
-    required this.content,
-    this.timestamp,
-  });
+  const KeyMoment({required this.type, required this.content, this.timestamp});
 
   factory KeyMoment.fromMap(Map<dynamic, dynamic> map) => KeyMoment(
-        type: map['type'] as String? ?? 'important',
-        content: map['content'] as String? ?? '',
-        timestamp: map['timestamp'] as String?,
-      );
+    type: map['type'] as String? ?? 'important',
+    content: map['content'] as String? ?? '',
+    timestamp: map['timestamp'] as String?,
+  );
 
   Map<String, dynamic> toMap() => {
-        'type': type,
-        'content': content,
-        if (timestamp != null) 'timestamp': timestamp,
-      };
+    'type': type,
+    'content': content,
+    if (timestamp != null) 'timestamp': timestamp,
+  };
 
   String get emoji {
     switch (type) {
@@ -143,11 +139,8 @@ class KeyMomentsResult {
     this.overallVibes,
   });
 
-  factory KeyMomentsResult.empty() => const KeyMomentsResult(
-        moments: [],
-        highlights: [],
-        overallVibes: '',
-      );
+  factory KeyMomentsResult.empty() =>
+      const KeyMomentsResult(moments: [], highlights: [], overallVibes: '');
 
   factory KeyMomentsResult.fromMap(Map<dynamic, dynamic> map) {
     final rawMoments = map['moments'] as List? ?? [];
@@ -162,10 +155,10 @@ class KeyMomentsResult {
   }
 
   Map<String, dynamic> toMap() => {
-        'moments': moments.map((m) => m.toMap()).toList(),
-        'highlights': highlights,
-        if (overallVibes != null) 'overallVibes': overallVibes,
-      };
+    'moments': moments.map((m) => m.toMap()).toList(),
+    'highlights': highlights,
+    if (overallVibes != null) 'overallVibes': overallVibes,
+  };
 
   bool get isEmpty => moments.isEmpty && highlights.isEmpty;
 
@@ -204,20 +197,21 @@ class UserInsightsResult {
   });
 
   factory UserInsightsResult.empty() => const UserInsightsResult(
-        communicationStyle: 'unknown',
-        topTopics: [],
-        activityPattern: '',
-        personalityTraits: [],
-        insightSummary: 'Chưa đủ dữ liệu để phân tích.',
-        emojiUsageLevel: 'medium',
-        avgMessageLength: 'medium',
-      );
+    communicationStyle: 'unknown',
+    topTopics: [],
+    activityPattern: '',
+    personalityTraits: [],
+    insightSummary: 'Chưa đủ dữ liệu để phân tích.',
+    emojiUsageLevel: 'medium',
+    avgMessageLength: 'medium',
+  );
 
   factory UserInsightsResult.fromMap(Map<dynamic, dynamic> map) =>
       UserInsightsResult(
         communicationStyle: map['communicationStyle'] as String? ?? 'mixed',
-        topTopics:
-            (map['topTopics'] as List? ?? []).map((e) => e.toString()).toList(),
+        topTopics: (map['topTopics'] as List? ?? [])
+            .map((e) => e.toString())
+            .toList(),
         activityPattern: map['activityPattern'] as String? ?? '',
         personalityTraits: (map['personalityTraits'] as List? ?? [])
             .map((e) => e.toString())
@@ -228,14 +222,14 @@ class UserInsightsResult {
       );
 
   Map<String, dynamic> toMap() => {
-        'communicationStyle': communicationStyle,
-        'topTopics': topTopics,
-        'activityPattern': activityPattern,
-        'personalityTraits': personalityTraits,
-        'insightSummary': insightSummary,
-        'emojiUsageLevel': emojiUsageLevel,
-        'avgMessageLength': avgMessageLength,
-      };
+    'communicationStyle': communicationStyle,
+    'topTopics': topTopics,
+    'activityPattern': activityPattern,
+    'personalityTraits': personalityTraits,
+    'insightSummary': insightSummary,
+    'emojiUsageLevel': emojiUsageLevel,
+    'avgMessageLength': avgMessageLength,
+  };
 
   bool get hasData => insightSummary.isNotEmpty && topTopics.isNotEmpty;
 
@@ -290,17 +284,20 @@ class WeeklyRecapResult {
     } else if (raw is int) {
       parsedAt = DateTime.fromMillisecondsSinceEpoch(raw);
     } else if (raw is String) {
-      parsedAt = DateTime.tryParse(raw) ??
+      parsedAt =
+          DateTime.tryParse(raw) ??
           DateTime.fromMillisecondsSinceEpoch(
-              int.tryParse(raw) ?? DateTime.now().millisecondsSinceEpoch);
+            int.tryParse(raw) ?? DateTime.now().millisecondsSinceEpoch,
+          );
     } else {
       parsedAt = DateTime.now();
     }
 
     return WeeklyRecapResult(
       summary: map['summary'] as String? ?? '',
-      highlights:
-          (map['highlights'] as List? ?? []).map((e) => e.toString()).toList(),
+      highlights: (map['highlights'] as List? ?? [])
+          .map((e) => e.toString())
+          .toList(),
       sentiment: map['sentiment'] as String? ?? 'neutral',
       generatedAt: parsedAt,
       weekStart: map['weekStart'] as String? ?? '',
@@ -309,13 +306,13 @@ class WeeklyRecapResult {
   }
 
   Map<String, dynamic> toMap() => {
-        'summary': summary,
-        'highlights': highlights,
-        'sentiment': sentiment,
-        'generatedAt': generatedAt.millisecondsSinceEpoch,
-        'weekStart': weekStart,
-        if (extras != null) 'extras': extras,
-      };
+    'summary': summary,
+    'highlights': highlights,
+    'sentiment': sentiment,
+    'generatedAt': generatedAt.millisecondsSinceEpoch,
+    'weekStart': weekStart,
+    if (extras != null) 'extras': extras,
+  };
 
   String get sentimentEmoji {
     switch (sentiment) {
@@ -339,7 +336,7 @@ class WeeklyRecapResult {
 
 class RelationshipMemory {
   final String?
-      relationshipType; // friend | family | colleague | romantic | unknown
+  relationshipType; // friend | family | colleague | romantic | unknown
   final List<String> sharedTopics;
   final List<String> importantDates;
   final List<Map<String, dynamic>> memories;
@@ -379,26 +376,26 @@ class RelationshipMemory {
         closenessLevel: map['closenessLevel'] as int?,
         healthScore: map['healthScore'] as int?,
         summary: map['summary'] as String?,
-        redFlags:
-            (map['redFlags'] as List? ?? []).map((e) => e.toString()).toList(),
+        redFlags: (map['redFlags'] as List? ?? [])
+            .map((e) => e.toString())
+            .toList(),
         positiveSignals: (map['positiveSignals'] as List? ?? [])
             .map((e) => e.toString())
             .toList(),
       );
 
   Map<String, dynamic> toMap() => {
-        if (relationshipType != null) 'relationshipType': relationshipType,
-        'sharedTopics': sharedTopics,
-        'importantDates': importantDates,
-        'memories': memories,
-        if (communicationStyle != null)
-          'communicationStyle': communicationStyle,
-        if (closenessLevel != null) 'closenessLevel': closenessLevel,
-        if (healthScore != null) 'healthScore': healthScore,
-        if (summary != null) 'summary': summary,
-        'redFlags': redFlags,
-        'positiveSignals': positiveSignals,
-      };
+    if (relationshipType != null) 'relationshipType': relationshipType,
+    'sharedTopics': sharedTopics,
+    'importantDates': importantDates,
+    'memories': memories,
+    if (communicationStyle != null) 'communicationStyle': communicationStyle,
+    if (closenessLevel != null) 'closenessLevel': closenessLevel,
+    if (healthScore != null) 'healthScore': healthScore,
+    if (summary != null) 'summary': summary,
+    'redFlags': redFlags,
+    'positiveSignals': positiveSignals,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -412,10 +409,7 @@ class ToxicityInput {
 
   const ToxicityInput({this.id, required this.text});
 
-  Map<String, dynamic> toMap() => {
-        if (id != null) 'id': id,
-        'text': text,
-      };
+  Map<String, dynamic> toMap() => {if (id != null) 'id': id, 'text': text};
 
   @override
   String toString() => 'ToxicityInput(id: $id, text: ${text.length} chars)';
@@ -442,28 +436,28 @@ class ToxicityResult {
   bool get isSafe => !isToxic && category == 'safe';
 
   factory ToxicityResult.safe({String? id, int index = 0}) => ToxicityResult(
-        id: id,
-        index: index,
-        isToxic: false,
-        category: 'safe',
-        confidence: 1.0,
-      );
+    id: id,
+    index: index,
+    isToxic: false,
+    category: 'safe',
+    confidence: 1.0,
+  );
 
   factory ToxicityResult.fromMap(Map<String, dynamic> map) => ToxicityResult(
-        id: map['id'] as String?,
-        isToxic: map['isToxic'] as bool? ?? false,
-        category: map['category'] as String? ?? 'safe',
-        confidence: (map['confidence'] as num?)?.toDouble() ?? 0.0,
-        index: map['index'] as int? ?? 0,
-      );
+    id: map['id'] as String?,
+    isToxic: map['isToxic'] as bool? ?? false,
+    category: map['category'] as String? ?? 'safe',
+    confidence: (map['confidence'] as num?)?.toDouble() ?? 0.0,
+    index: map['index'] as int? ?? 0,
+  );
 
   Map<String, dynamic> toMap() => {
-        if (id != null) 'id': id,
-        'isToxic': isToxic,
-        'category': category,
-        'confidence': confidence,
-        'index': index,
-      };
+    if (id != null) 'id': id,
+    'isToxic': isToxic,
+    'category': category,
+    'confidence': confidence,
+    'index': index,
+  };
 
   @override
   String toString() =>
@@ -487,17 +481,17 @@ class HateSpeechResult {
   });
 
   factory HateSpeechResult.safe() => const HateSpeechResult(
-        isHateful: false,
-        category: 'safe',
-        confidence: 1.0,
-      );
+    isHateful: false,
+    category: 'safe',
+    confidence: 1.0,
+  );
 
   factory HateSpeechResult.fromMap(Map<dynamic, dynamic> m) => HateSpeechResult(
-        isHateful: m['isHateful'] as bool? ?? false,
-        category: m['category'] as String? ?? 'safe',
-        confidence: (m['confidence'] as num?)?.toDouble() ?? 0,
-        reason: m['reason'] as String?,
-      );
+    isHateful: m['isHateful'] as bool? ?? false,
+    category: m['category'] as String? ?? 'safe',
+    confidence: (m['confidence'] as num?)?.toDouble() ?? 0,
+    reason: m['reason'] as String?,
+  );
 
   @override
   String toString() =>
@@ -537,12 +531,12 @@ class ClientMessageAnalysis {
   });
 
   factory ClientMessageAnalysis.safe() => const ClientMessageAnalysis(
-        isScam: false,
-        hasReminder: false,
-        riskLevel: 'LOW',
-        sentiment: 'neutral',
-        intentCategory: 'unknown',
-      );
+    isScam: false,
+    hasReminder: false,
+    riskLevel: 'LOW',
+    sentiment: 'neutral',
+    intentCategory: 'unknown',
+  );
 
   factory ClientMessageAnalysis.fromMap(Map<dynamic, dynamic> m) =>
       ClientMessageAnalysis(
@@ -593,8 +587,11 @@ class MessageReminder {
     } else if (raw is int) {
       parsedTime = DateTime.fromMillisecondsSinceEpoch(raw);
     } else if (raw is String) {
-      parsedTime = DateTime.tryParse(raw) ??
-          DateTime.now().add(const Duration(hours: 1));
+      parsedTime =
+          DateTime.tryParse(raw) ??
+          DateTime.fromMillisecondsSinceEpoch(
+            int.tryParse(raw) ?? DateTime.now().millisecondsSinceEpoch,
+          );
     } else {
       parsedTime = DateTime.now().add(const Duration(hours: 1));
     }
@@ -611,15 +608,18 @@ class MessageReminder {
     );
   }
 
+  // ĐÃ SỬA LỖI 2.1: Ép kiểu reminderTime về định dạng String (MillisecondsSinceEpoch)
+  // để khớp hoàn toàn với Backend Node.js và Firestore string queries.
   Map<String, dynamic> toMap() => {
-        'userId': userId,
-        if (conversationId != null) 'conversationId': conversationId,
-        if (messageId != null) 'messageId': messageId,
-        'task': message,
-        'reminderTime': reminderTime.millisecondsSinceEpoch,
-        'isCompleted': isCompleted,
-        'isAutoGenerated': isAutoGenerated,
-      };
+    'userId': userId,
+    if (conversationId != null) 'conversationId': conversationId,
+    if (messageId != null) 'messageId': messageId,
+    'task': message,
+    'reminderTime': reminderTime.millisecondsSinceEpoch
+        .toString(), // <-- Sửa tại đây
+    'isCompleted': isCompleted,
+    'isAutoGenerated': isAutoGenerated,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -660,16 +660,16 @@ class IcebreakerResult {
   });
 
   factory IcebreakerResult.empty() => const IcebreakerResult(
-        icebreakers: [],
-        style: 'casual',
-        relationshipType: 'friend',
-      );
+    icebreakers: [],
+    style: 'casual',
+    relationshipType: 'friend',
+  );
 
   factory IcebreakerResult.fromMap(Map<dynamic, dynamic> m) => IcebreakerResult(
-        icebreakers: (m['icebreakers'] as List? ?? []).cast<String>(),
-        style: m['style'] as String? ?? 'casual',
-        relationshipType: m['relationshipType'] as String? ?? 'friend',
-      );
+    icebreakers: (m['icebreakers'] as List? ?? []).cast<String>(),
+    style: m['style'] as String? ?? 'casual',
+    relationshipType: m['relationshipType'] as String? ?? 'friend',
+  );
 
   bool get isEmpty => icebreakers.isEmpty;
 
@@ -686,16 +686,16 @@ enum ScamLevel { safe, warning, scam }
 
 extension ScamLevelX on ScamLevel {
   String get name => switch (this) {
-        ScamLevel.safe => 'SAFE',
-        ScamLevel.warning => 'WARNING',
-        ScamLevel.scam => 'SCAM',
-      };
+    ScamLevel.safe => 'SAFE',
+    ScamLevel.warning => 'WARNING',
+    ScamLevel.scam => 'SCAM',
+  };
 
   static ScamLevel fromString(String? value) => switch (value?.toUpperCase()) {
-        'WARNING' => ScamLevel.warning,
-        'SCAM' => ScamLevel.scam,
-        _ => ScamLevel.safe,
-      };
+    'WARNING' => ScamLevel.warning,
+    'SCAM' => ScamLevel.scam,
+    _ => ScamLevel.safe,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -709,9 +709,9 @@ class TypingInfo {
   const TypingInfo({required this.isTyping, this.lastUpdated});
 
   factory TypingInfo.fromMap(Map<String, dynamic> map) => TypingInfo(
-        isTyping: map['isTyping'] as bool? ?? false,
-        lastUpdated: map['timestamp'] != null
-            ? (map['timestamp'] as Timestamp).toDate()
-            : null,
-      );
+    isTyping: map['isTyping'] as bool? ?? false,
+    lastUpdated: map['timestamp'] != null
+        ? (map['timestamp'] as Timestamp).toDate()
+        : null,
+  );
 }

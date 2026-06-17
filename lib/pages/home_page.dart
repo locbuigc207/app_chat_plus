@@ -138,10 +138,9 @@ class _HomePageState extends State<HomePage>
     }
     _currentUserId = _authProvider.userFirebaseId!;
 
-    _friendProvider =
-        FriendProvider(firebaseFirestore: _homeProvider.firebaseFirestore);
-    _conversationProvider = ConversationProvider(
-        firebaseFirestore: _homeProvider.firebaseFirestore);
+    // Đã chuyển sang dùng instance có sẵn của context (Global) thay vì tạo mới
+    _friendProvider = context.read<FriendProvider>();
+    _conversationProvider = context.read<ConversationProvider>();
 
     // Menu — Archive đã chuyển vào đây thay vì AppBar icon riêng lẻ
     _menus = [

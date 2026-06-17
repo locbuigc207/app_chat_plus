@@ -9,6 +9,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.Icon
 import android.os.Build
+import android.os.Looper
 import android.util.Log
 import android.util.LruCache
 import androidx.annotation.RequiresApi
@@ -64,6 +65,11 @@ object AvatarLoader {
      */
     @JvmStatic
     fun loadAvatarIcon(context: Context, avatarUrl: String, userName: String): Icon {
+        // LỖI R FIX: Bắt buộc không được chạy trên Main Thread để tránh ANR vì Glide block
+        check(Looper.myLooper() != Looper.getMainLooper()) {
+            "🚨 loadAvatarIcon() must NOT be called on the Main thread. Use loadAvatarIconAsync() instead."
+        }
+
         val key = cacheKey(avatarUrl, userName)
         cache.get(key)?.let {
             Log.d(TAG, "📦 Using cached avatar: $userName")
@@ -94,6 +100,7 @@ object AvatarLoader {
     /** Preload avatar into cache safely */
     fun preloadAvatar(context: Context, avatarUrl: String, userName: String) {
         try {
+            // Nên được bọc trong IO context nếu gọi từ bên ngoài
             loadAvatarIcon(context, avatarUrl, userName)
         } catch (e: Exception) {
             Log.e(TAG, "❌ preload failed for $userName: $e")
