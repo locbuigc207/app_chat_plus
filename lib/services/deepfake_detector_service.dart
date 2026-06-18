@@ -26,7 +26,7 @@ class DeepfakeDetectorService {
   AudioFeatures? _lastFeatures;
   AudioFeatures? get lastFeatures => _lastFeatures;
 
-  // FIX LỖI D-2: Bổ sung biến lưu kết quả phân tích cuối cùng để tầng API gửi lên Cloud Function phân tích thực tế, thay vì hardcode 0.6
+  // Lưu kết quả phân tích cuối cùng để tầng API gửi lên Cloud Function phân tích thực tế, thay vì hardcode
   DeepfakeAnalysisResult? _lastResult;
   DeepfakeAnalysisResult? get lastResult => _lastResult;
 
@@ -95,7 +95,7 @@ class DeepfakeDetectorService {
 
   DeepfakeAnalysisResult _runLocalHeuristics(AudioFeatures features) {
     final signals = <DeepfakeSignal>[];
-    // FIX LỖI D-6: Loại bỏ hoàn toàn mảng `weights` (Map cấp phát vùng nhớ không cần thiết)
+    // Loại bỏ hoàn toàn mảng `weights` (Map cấp phát vùng nhớ không cần thiết)
     double score = 0.0;
 
     if (features.pitchMean > 0 && features.pitchVariance < 6.0) {

@@ -2,6 +2,7 @@
 // lib/services/ai_backend_service.dart
 
 import 'dart:async';
+import 'dart:convert'; // Bổ sung để hỗ trợ decode JSON an toàn trong các filter
 
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
@@ -36,7 +37,8 @@ class ScamAnalysisResult {
     final keywords = data['warningKeywords'];
     return ScamAnalysisResult(
       level: ScamLevelX.fromString(
-          data['status'] as String? ?? data['level'] as String?),
+        data['status'] as String? ?? data['level'] as String?,
+      ),
       reason: data['reason'] as String?,
       confidence: (data['confidence'] as num?)?.toDouble(),
       warningKeywords: keywords is List ? keywords.cast<String>() : const [],
@@ -69,17 +71,14 @@ class LearnPersonaResult {
   factory LearnPersonaResult.success({
     required String personaText,
     int messageCount = 0,
-  }) =>
-      LearnPersonaResult._(
-        success: true,
-        personaText: personaText,
-        messageCount: messageCount,
-      );
-
-  factory LearnPersonaResult.fail(String reason) => LearnPersonaResult._(
-    success: false,
-    errorMessage: reason,
+  }) => LearnPersonaResult._(
+    success: true,
+    personaText: personaText,
+    messageCount: messageCount,
   );
+
+  factory LearnPersonaResult.fail(String reason) =>
+      LearnPersonaResult._(success: false, errorMessage: reason);
 }
 
 enum AIBackendErrorType {
@@ -99,7 +98,8 @@ class AIBackendException implements Exception {
   const AIBackendException(this.type, this.message, {this.cause});
 
   @override
-  String toString() => 'AIBackendException(${type.name}): $message'
+  String toString() =>
+      'AIBackendException(${type.name}): $message'
       '${cause != null ? ' — $cause' : ''}';
 }
 
@@ -230,10 +230,10 @@ class AIBackendService {
 
   /// Phân tích ngữ cảnh chat — extract_tasks, summarize, analyze_mood, v.v.
   Future<String?> analyzeChatContext(
-      List<String> messages,
-      String contextType,
-      String action,
-      ) async {
+    List<String> messages,
+    String contextType,
+    String action,
+  ) async {
     if (messages.isEmpty) return null;
 
     try {
@@ -348,9 +348,7 @@ class AIBackendService {
   }
 
   /// Phân tích cảm xúc tổng thể cuộc trò chuyện.
-  Future<Map<String, dynamic>?> analyzeSentiment(
-      List<String> messages,
-      ) async {
+  Future<Map<String, dynamic>?> analyzeSentiment(List<String> messages) async {
     if (messages.isEmpty) return null;
 
     try {
@@ -390,7 +388,8 @@ class AIBackendService {
     if (plainTextContent.trim().isEmpty) return null;
     // Bỏ qua nếu content là encrypted blob
     if (plainTextContent.startsWith('{"iv":') ||
-        plainTextContent.startsWith('eyJ')) return null;
+        plainTextContent.startsWith('eyJ'))
+      return null;
 
     try {
       final safeText = DataMaskingUtils.maskText(
@@ -490,12 +489,14 @@ class AIBackendService {
 
       return texts
           .where((t) => t.trim().isNotEmpty)
-          .map((text) => SmartReply(
-        text: text,
-        confidence: 0.92,
-        isAiGenerated: true,
-        category: replyIntent,
-      ))
+          .map(
+            (text) => SmartReply(
+              text: text,
+              confidence: 0.92,
+              isAiGenerated: true,
+              category: replyIntent,
+            ),
+          )
           .toList();
     } catch (e, st) {
       _logError('smartReplyWithContextTyped', e, st);
@@ -585,8 +586,42 @@ class AIBackendService {
       if (result == null) return null;
 
       final rawRewritten = result['rewritten'] as String? ?? '';
+
       // Restore PII vào kết quả AI
       final restored = session.restore(rawRewritten);
+
+      // [FIX 10] Cải thiện PII Fallback: Kiểm tra những placeholder không thể restore (bị xoá/sửa bởi AI)
+      final hasUnrestoredPlaceholders = RegExp(
+        r'\[[A-Z]+_\d+\]',
+      ).hasMatch(restored);
+      if (hasUnrestoredPlaceholders && session.hasSensitiveData) {
+        final restoredCount = session.tokens
+            .where((t) => restored.contains(t.placeholder))
+            .length;
+
+        // Nếu AI làm mất trên 50% lượng placeholder bí mật -> Chủ động huỷ bỏ mask gọi lại raw bằng nguyên bản tin nhắn
+        if (restoredCount > session.tokens.length / 2) {
+          _log(
+            'generateMessageTone: Quá nhiều placeholder bị AI thay đổi, gọi lại API với raw string.',
+          );
+          final rawResult = await _call(
+            functionName: 'generateMessageTone',
+            params: {
+              'message': message, // Sử dụng nguyên tin nhắn gốc chưa che giấu
+              'fromTone': fromTone,
+              'toTone': toTone,
+              'keepEmoji': keepEmoji,
+            },
+            timeout: _kAnalysisTimeout,
+          );
+          return ToneRewriterResult(
+            original: message,
+            rewritten: rawResult?['rewritten'] as String? ?? rawRewritten,
+            toTone: toTone,
+            fromTone: fromTone,
+          );
+        }
+      }
 
       return ToneRewriterResult(
         original: message,
@@ -601,16 +636,31 @@ class AIBackendService {
   }
 
   Future<List<ToxicityResult>> analyzeToxicityBatch(
-      List<ToxicityInput> messages,
-      ) async {
+    List<ToxicityInput> messages,
+  ) async {
     if (messages.isEmpty) return [];
+
+    // [FIX 17] Cài đặt giới hạn 20 message client-side trước khi truyền tải bảo vệ chống rớt payload
+    const clientLimit = 20;
+    if (messages.length > clientLimit) {
+      _log(
+        'analyzeToxicityBatch: Hệ thống đang điều chỉnh số lượng truyền tải từ ${messages.length} xuống $clientLimit.',
+      );
+    }
+
+    final limitedMessages = messages.take(clientLimit).toList();
+
     try {
-      final safeMessages = messages
-          .map((m) => {
-        'id': m.id,
-        'text': DataMaskingUtils.maskText(m.text,
-            config: _kAiMaskingConfig),
-      })
+      final safeMessages = limitedMessages
+          .map(
+            (m) => {
+              'id': m.id,
+              'text': DataMaskingUtils.maskText(
+                m.text,
+                config: _kAiMaskingConfig,
+              ),
+            },
+          )
           .toList();
 
       final result = await _call(
@@ -625,7 +675,7 @@ class AIBackendService {
       return results.asMap().entries.map((entry) {
         final map = entry.value as Map<dynamic, dynamic>;
         return ToxicityResult(
-          id: map['id']?.toString() ?? messages[entry.key].id,
+          id: map['id']?.toString() ?? limitedMessages[entry.key].id,
           index: (map['index'] as num?)?.toInt() ?? entry.key,
           isToxic: map['isToxic'] as bool? ?? false,
           category: map['category'] as String? ?? 'safe',
@@ -680,13 +730,15 @@ class AIBackendService {
       final recentMessages = LocalDbService()
           .getMessages(conversationId)
           .where((m) {
-        final ts = int.tryParse(m['timestamp']?.toString() ?? '0') ?? 0;
-        return ts >= cutoff;
-      })
+            final ts = int.tryParse(m['timestamp']?.toString() ?? '0') ?? 0;
+            return ts >= cutoff;
+          })
           .take(messageLimit)
           .map((m) => m['content']?.toString() ?? '')
-          .where((c) =>
-      c.isNotEmpty && !c.startsWith('{"iv":') && !c.startsWith('eyJ'))
+          .where(
+            (c) =>
+                c.isNotEmpty && !c.startsWith('{"iv":') && !c.startsWith('eyJ'),
+          )
           .toList();
 
       if (recentMessages.length < 5) {
@@ -726,10 +778,7 @@ class AIBackendService {
     try {
       final result = await _call(
         functionName: 'triggerInsightsRefresh',
-        params: {
-          'conversationId': conversationId,
-          'userId': userId,
-        },
+        params: {'conversationId': conversationId, 'userId': userId},
         timeout: _kAnalysisTimeout,
       );
       if (result == null) return null;
@@ -746,26 +795,55 @@ class AIBackendService {
     int messageLimit = 100,
   }) async {
     try {
-      final messages = LocalDbService()
+      // [FIX 5 & 16] Cải thiện filter giữ lại các chuỗi dạng JSON hợp lệ do Client parse lỗi. Sắp xếp list lấy tin nhắn gần nhất nhưng theo thứ tự dòng thời gian
+      final recentMessages = LocalDbService()
           .getMessages(conversationId)
           .take(messageLimit)
+          .toList();
+
+      final messages = recentMessages
+          .reversed // Chronological order
           .map((m) => m['content']?.toString() ?? '')
-          .where((c) =>
-      c.isNotEmpty &&
-          !c.startsWith('{"iv":') &&
-          !c.startsWith('{') &&
-          c.length > 3)
-          .toList()
-          .reversed
+          .where((c) {
+            if (c.isEmpty || c.length <= 3) return false;
+            // E2EE payloads bypass
+            if (c.startsWith('{"iv":') && c.contains('"data":')) return false;
+            if (c.startsWith('eyJ')) return false;
+            if (RegExp(r'^[A-Za-z0-9+/=]+=*:[A-Za-z0-9+/=]+=*$').hasMatch(c))
+              return false;
+
+            // Bỏ các chuỗi hệ thống (Poll, Game, Location) để tránh làm nhiễu Relationship AI
+            try {
+              final decoded = jsonDecode(c);
+              if (decoded is Map) {
+                if (decoded.containsKey('question') &&
+                    decoded.containsKey('options'))
+                  return false;
+                if (decoded.containsKey('matchId') &&
+                    decoded.containsKey('gameType'))
+                  return false;
+                if (decoded.containsKey('lat') && decoded.containsKey('lng'))
+                  return false;
+                if (decoded.containsKey('iv') && decoded.containsKey('data'))
+                  return false;
+              }
+            } catch (_) {
+              // Bỏ qua lỗi bắt JSON vì nó là Plain Text chat bình thường của User, do đó bắt buộc return True
+            }
+            return true;
+          })
           .toList();
 
       if (messages.length < 10) {
         _log(
-            'extractRelationshipMemoryFromLocal: not enough messages (${messages.length})');
+          'extractRelationshipMemoryFromLocal: not enough valid messages (${messages.length})',
+        );
         return null;
       }
       return extractRelationshipMemory(
-          messages: messages, conversationId: conversationId);
+        messages: messages,
+        conversationId: conversationId,
+      );
     } catch (e, st) {
       _logError('extractRelationshipMemoryFromLocal', e, st);
       return null;
@@ -784,10 +862,7 @@ class AIBackendService {
     try {
       final result = await _call(
         functionName: 'getAutoPilotConfig',
-        params: {
-          'conversationId': conversationId,
-          'userId': userId,
-        },
+        params: {'conversationId': conversationId, 'userId': userId},
         timeout: _kDefaultTimeout,
       );
       if (result?['success'] == true && result?['config'] != null) {
@@ -831,15 +906,18 @@ class AIBackendService {
   }) async {
     if (messages.length < 10) {
       return LearnPersonaResult.fail(
-          'Cần ít nhất 10 tin nhắn để AI học phong cách.');
+        'Cần ít nhất 10 tin nhắn để AI học phong cách.',
+      );
     }
 
     // Lọc E2EE, giới hạn 100
     final cleanMsgs = messages
-        .where((m) =>
-    !m.startsWith('{"iv":') &&
-        !m.startsWith('eyJ') &&
-        m.trim().length > 3)
+        .where(
+          (m) =>
+              !m.startsWith('{"iv":') &&
+              !m.startsWith('eyJ') &&
+              m.trim().length > 3,
+        )
         .take(100)
         .toList();
 
@@ -864,7 +942,8 @@ class AIBackendService {
       final success = result['success'] as bool? ?? false;
       if (!success) {
         return LearnPersonaResult.fail(
-            result['reason'] as String? ?? 'Lỗi không xác định từ AI.');
+          result['reason'] as String? ?? 'Lỗi không xác định từ AI.',
+        );
       }
 
       final persona = result['persona'];
@@ -874,12 +953,13 @@ class AIBackendService {
         final style = persona['tone'] as String? ?? '';
         final emoji = persona['emojiUsage'] as String? ?? '';
         final len = persona['sentenceLength'] as String? ?? '';
-        final chars = (persona['characteristicWords'] as List?)
-            ?.cast<String>()
-            .join(', ') ??
+        final chars =
+            (persona['characteristicWords'] as List?)?.cast<String>().join(
+              ', ',
+            ) ??
             '';
         personaStr =
-        'Tông: $style. Emoji: $emoji. Câu: $len. Từ đặc trưng: $chars. $summary';
+            'Tông: $style. Emoji: $emoji. Câu: $len. Từ đặc trưng: $chars. $summary';
       } else if (persona is String) {
         personaStr = persona;
       }
@@ -908,11 +988,31 @@ class AIBackendService {
     if (incomingMessage.trim().isEmpty) return awayMessage;
     // Guard E2EE
     if (incomingMessage.startsWith('{"iv":') ||
-        incomingMessage.startsWith('eyJ')) return awayMessage;
+        incomingMessage.startsWith('eyJ'))
+      return awayMessage;
+
+    // [FIX 18] Chủ động load Config khi Autopilot tone likeMe nhưng thiết bị Client mất learnedPersona State
+    String? effectivePersona = learnedPersona;
+    if (tone == 'likeMe' &&
+        effectivePersona == null &&
+        conversationId != null) {
+      try {
+        final config = await getAutoPilotConfig(
+          conversationId: conversationId,
+          userId:
+              '', // Không yêu cầu userID thực do Function tự đối chiếu theo Request.Auth
+        );
+        effectivePersona = config?['learnedPersona'] as String?;
+      } catch (_) {
+        // Fallback bỏ qua lỗi
+      }
+    }
 
     try {
-      final safe =
-      DataMaskingUtils.maskText(incomingMessage, config: _kAiMaskingConfig);
+      final safe = DataMaskingUtils.maskText(
+        incomingMessage,
+        config: _kAiMaskingConfig,
+      );
 
       final result = await _call(
         functionName: 'generateAutoPilotReply',
@@ -921,10 +1021,11 @@ class AIBackendService {
           'myStyleContext': myStyleContext,
           if (awayMessage != null) 'awayMessage': awayMessage,
           'tone': tone,
-          if (learnedPersona != null) 'learnedPersona': learnedPersona,
+          if (effectivePersona != null) 'learnedPersona': effectivePersona,
           'contextMessages': DataMaskingUtils.maskList(
-              contextMessages.take(6).toList(),
-              config: _kAiMaskingConfig),
+            contextMessages.take(6).toList(),
+            config: _kAiMaskingConfig,
+          ),
           if (conversationId != null) 'conversationId': conversationId,
           'isPreview': isPreview,
         },
@@ -950,8 +1051,10 @@ class AIBackendService {
     const fallback = ['Ok nha', 'Thế à?', 'Chịu luôn 😂', 'Đỉnh!'];
     if (incomingMessage.trim().isEmpty) return fallback;
     try {
-      final safe =
-      DataMaskingUtils.maskText(incomingMessage, config: _kAiMaskingConfig);
+      final safe = DataMaskingUtils.maskText(
+        incomingMessage,
+        config: _kAiMaskingConfig,
+      );
       final result = await _call(
         functionName: 'generateSwipeReplies',
         params: {
@@ -981,13 +1084,15 @@ class AIBackendService {
     bool includeStickerCards = true,
   }) async {
     const fallback = (
-    replies: ['Ok nha', 'Thế à?', 'Chịu luôn 😂', 'Đỉnh!'],
-    stickerCards: <String>[]
+      replies: ['Ok nha', 'Thế à?', 'Chịu luôn 😂', 'Đỉnh!'],
+      stickerCards: <String>[],
     );
     if (incomingMessage.trim().isEmpty) return fallback;
     try {
-      final safe =
-      DataMaskingUtils.maskText(incomingMessage, config: _kAiMaskingConfig);
+      final safe = DataMaskingUtils.maskText(
+        incomingMessage,
+        config: _kAiMaskingConfig,
+      );
       final result = await _call(
         functionName: 'generateSwipeReplies',
         params: {
@@ -1001,12 +1106,12 @@ class AIBackendService {
       final replies = result?['replies'];
       final stickers = result?['stickerCards'];
       return (
-      replies: replies is List
-          ? replies.cast<String>().take(4).toList()
-          : fallback.replies,
-      stickerCards: stickers is List
-          ? stickers.cast<String>().take(2).toList()
-          : <String>[],
+        replies: replies is List
+            ? replies.cast<String>().take(4).toList()
+            : fallback.replies,
+        stickerCards: stickers is List
+            ? stickers.cast<String>().take(2).toList()
+            : <String>[],
       );
     } catch (e, st) {
       _logError('generateSwipeRepliesEnhanced', e, st);
@@ -1022,8 +1127,10 @@ class AIBackendService {
   }) async {
     if (callTranscript.trim().isEmpty) return null;
     try {
-      final safe =
-      DataMaskingUtils.maskText(callTranscript, config: _kAiMaskingConfig);
+      final safe = DataMaskingUtils.maskText(
+        callTranscript,
+        config: _kAiMaskingConfig,
+      );
       final result = await _call(
         functionName: 'analyzeCallSecurity',
         params: {
@@ -1042,11 +1149,14 @@ class AIBackendService {
   }
 
   /// Phân tích toxicity cho một tin nhắn đơn.
-  Future<ToxicityResult> analyzeSingleToxicity(String message,
-      {String? id}) async {
+  Future<ToxicityResult> analyzeSingleToxicity(
+    String message, {
+    String? id,
+  }) async {
     if (message.trim().isEmpty) return ToxicityResult.safe(id: id);
-    final results =
-    await analyzeToxicityBatch([ToxicityInput(id: id, text: message)]);
+    final results = await analyzeToxicityBatch([
+      ToxicityInput(id: id, text: message),
+    ]);
     return results.isNotEmpty ? results.first : ToxicityResult.safe(id: id);
   }
 
@@ -1066,9 +1176,12 @@ class AIBackendService {
         final inputs = messages
             .asMap()
             .entries
-            .map((e) => ToxicityInput(
-            id: (e.key < messageIds.length) ? messageIds[e.key] : null,
-            text: e.value))
+            .map(
+              (e) => ToxicityInput(
+                id: (e.key < messageIds.length) ? messageIds[e.key] : null,
+                text: e.value,
+              ),
+            )
             .toList();
         final toxicityResults = await analyzeToxicityBatch(inputs);
         results['toxicity'] = toxicityResults;
@@ -1091,23 +1204,25 @@ class AIBackendService {
   }) async {
     if (message.trim().isEmpty) return ReminderExtractionResult.empty();
     try {
-      final safeMsg =
-      DataMaskingUtils.maskText(message, config: _kAiMaskingConfig);
-      final safeCtx = DataMaskingUtils.maskText(conversationContext,
-          config: _kAiMaskingConfig);
+      final safeMsg = DataMaskingUtils.maskText(
+        message,
+        config: _kAiMaskingConfig,
+      );
+      final safeCtx = DataMaskingUtils.maskText(
+        conversationContext,
+        config: _kAiMaskingConfig,
+      );
 
       final result = await _call(
         functionName: 'extractReminderWithPriority',
-        params: {
-          'message': safeMsg,
-          'conversationContext': safeCtx,
-        },
+        params: {'message': safeMsg, 'conversationContext': safeCtx},
         timeout: _kAnalysisTimeout,
       );
 
       if (result == null) return ReminderExtractionResult.empty();
       return ReminderExtractionResult.fromMap(
-          Map<String, dynamic>.from(result));
+        Map<String, dynamic>.from(result),
+      );
     } catch (e, st) {
       _logError('extractReminderWithPriority', e, st);
       return ReminderExtractionResult.empty();
@@ -1126,32 +1241,33 @@ class AIBackendService {
     if (messages.isEmpty) return [];
     try {
       final safeMsgs = messages
-          .map((m) => {
-        ...m,
-        'content': DataMaskingUtils.maskText(
-          m['content']?.toString() ?? '',
-          config: _kAiMaskingConfig,
-        ),
-        // Fix lỗi 3.2: Đảm bảo timestamp được ép kiểu String trước khi serialize qua Cloud Functions
-        'timestamp': m['timestamp']?.toString() ??
-            DateTime.now().millisecondsSinceEpoch.toString(),
-      })
+          .map(
+            (m) => {
+              ...m,
+              'content': DataMaskingUtils.maskText(
+                m['content']?.toString() ?? '',
+                config: _kAiMaskingConfig,
+              ),
+              'timestamp':
+                  m['timestamp']?.toString() ??
+                  DateTime.now().millisecondsSinceEpoch.toString(),
+            },
+          )
           .toList();
 
       final result = await _call(
         functionName: 'batchExtractReminders',
-        params: {
-          'messages': safeMsgs,
-          'lookbackHours': lookbackHours,
-        },
+        params: {'messages': safeMsgs, 'lookbackHours': lookbackHours},
         timeout: _kBatchTimeout,
       );
 
       if (result == null) return [];
       final list = result['reminders'] as List? ?? [];
       return list
-          .map((r) =>
-          ExtractedReminder.fromMap(Map<String, dynamic>.from(r as Map)))
+          .map(
+            (r) =>
+                ExtractedReminder.fromMap(Map<String, dynamic>.from(r as Map)),
+          )
           .where((r) => r.task.isNotEmpty)
           .toList();
     } catch (e, st) {
@@ -1191,8 +1307,10 @@ class AIBackendService {
       if (result == null) return [];
       final list = result['suggestions'] as List? ?? [];
       return list
-          .map((s) =>
-          ReminderSuggestion.fromMap(Map<String, dynamic>.from(s as Map)))
+          .map(
+            (s) =>
+                ReminderSuggestion.fromMap(Map<String, dynamic>.from(s as Map)),
+          )
           .where((s) => s.task.isNotEmpty)
           .toList();
     } catch (e, st) {

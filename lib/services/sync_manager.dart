@@ -75,8 +75,8 @@ class _SyncResult {
 //   • Đảm bảo thứ tự ưu tiên xử lý tác vụ: high > normal > low trong mỗi batch.
 //   • Cung cấp `statusStream` để UI có thể hiển thị trạng thái đồng bộ ("Syncing…").
 //   • Chu kỳ Heartbeat định kỳ (30s) để quét các tác vụ bị sót khi ứng dụng nhàn rỗi.
-//   • An toàn trong môi trường đồng thời: Sử dụng mutex `_isSyncing` để chặn chồng chéo tác vụ.
-//   • AI Content Bridge: Đẩy dữ liệu plain text đã xóa PII lên để AI xử lý ngầm (fire-and-forget).
+//   • An safe trong môi trường đồng thời: Sử dụng mutex `_isSyncing` để chặn chồng chéo tác vụ.
+//   • AI Content Bridge: Đẩy dữ liệu plain text đã xóa PII lên để AI xử lý ngầm (có tích hợp retry).
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SyncManager {
@@ -94,7 +94,7 @@ class SyncManager {
   SyncStatus _status = SyncStatus.idle;
   SyncStatus get currentStatus => _status;
 
-  // ── Lifecycle ──────────────────────────────────────────────────────────────
+  // ── Lifecycle ────────────────────────────────────────────────
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   Timer? _heartbeatTimer;
   bool _isSyncing = false;
@@ -391,7 +391,7 @@ class SyncManager {
           'status': MessageStatus.sent,
         });
 
-    // 3. Cập nhật dữ liệu hội thoại (metadata preview) - Đã Sửa Lỗi ID & participants
+    // 3. Cập nhật dữ liệu hội thoại (metadata preview)
     try {
       final convoSnap = await FirebaseFirestore.instance
           .collection('conversations')
@@ -427,10 +427,9 @@ class SyncManager {
       MessageStatus.sent,
     );
 
-    // ── AI Content Bridge (Fire-and-Forget) ───────────────────────────────
-    // Đẩy plain text đã được mask sạch PII lên ai_content collection phục vụ hệ thống
-    // báo cáo phân tích tuần weeklyAiRecap và quét độc hại analyzeDecryptedClientMessage.
-    // Chỉ áp dụng với tin nhắn văn bản (text), không block luồng đồng bộ chính.
+    // ── AI Content Bridge (Resilient Retry Path) ──────────────────────────
+    // Đẩy plain text đã được mask sạch PII phục vụ hệ thống báo cáo phân tích tuần
+    // Chỉ áp dụng với tin nhắn văn bản (text), gọi bất đồng bộ với retry an toàn.
     if (messageType == TypeMessage.text && plainContent.isNotEmpty) {
       _pushAiContent(
         conversationId: conversationId,
@@ -439,7 +438,6 @@ class SyncManager {
         idFrom: idFrom,
       );
     }
-    // ── END AI Content Bridge ─────────────────────────────────────────────
 
     debugPrint('[SyncManager] 📤 Sent message $messageId');
     return true;
@@ -500,7 +498,7 @@ class SyncManager {
           'status': MessageStatus.sent,
         });
 
-    // Cập nhật lại khung tin nhắn cuối cùng hiển thị ngoài màn hình danh sách chat - Đã Sửa Lỗi ID & participants
+    // Cập nhật lại khung tin nhắn cuối cùng hiển thị ngoài màn hình danh sách chat
     await FirebaseFirestore.instance
         .collection('conversations')
         .doc(conversationId)
@@ -525,7 +523,8 @@ class SyncManager {
   // ═════════════════════════════════════════════════════════════════════════
 
   /// Đẩy ngầm plain text (đã che thông tin nhạy cảm) lên bộ nhớ xử lý `ai_content`.
-  /// Không dùng `await`, mọi lỗi phát sinh sẽ chỉ ghi nhận log để không gây nghẽn tiến trình gửi/nhận tin chính.
+  /// [FIX 21]: Gọi phương thức pushAiContentWithRetry có cơ chế exponential backoff
+  /// thay vì gọi fire-and-forget thô, bảo vệ tuyệt đối tính vẹn toàn dữ liệu.
   void _pushAiContent({
     required String conversationId,
     required String messageId,
@@ -538,25 +537,35 @@ class SyncManager {
         .get()
         .then((doc) {
           final isGroup = doc.data()?['isGroup'] as bool? ?? false;
-          _aiContent.pushAiContent(
-            conversationId: conversationId,
-            messageId: messageId,
-            plainText: plainContent,
-            idFrom: idFrom,
-            messageType: TypeMessage.text,
-            groupId: isGroup ? conversationId : null,
-          );
+          _aiContent
+              .pushAiContentWithRetry(
+                conversationId: conversationId,
+                messageId: messageId,
+                plainText: plainContent,
+                idFrom: idFrom,
+                messageType: TypeMessage.text,
+                groupId: isGroup ? conversationId : null,
+              )
+              .catchError((e) {
+                debugPrint('[SyncManager] AiContent retry push failed: $e');
+              });
         })
         .catchError((e) {
-          // Dự phòng khi không thể lấy metadata hội thoại, vẫn thực hiện push không chứa thông tin nhóm (groupId = null)
-          _aiContent.pushAiContent(
-            conversationId: conversationId,
-            messageId: messageId,
-            plainText: plainContent,
-            idFrom: idFrom,
-            messageType: TypeMessage.text,
-            groupId: null,
-          );
+          // Dự phòng khi không thể lấy metadata hội thoại do rớt mạng, vẫn push với groupId = null
+          _aiContent
+              .pushAiContentWithRetry(
+                conversationId: conversationId,
+                messageId: messageId,
+                plainText: plainContent,
+                idFrom: idFrom,
+                messageType: TypeMessage.text,
+                groupId: null,
+              )
+              .catchError((err) {
+                debugPrint(
+                  '[SyncManager] AiContent fallback retry push failed: $err',
+                );
+              });
           debugPrint(
             '[SyncManager] AiContent conv fetch error (non-critical): $e',
           );

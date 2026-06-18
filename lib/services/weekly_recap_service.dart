@@ -4,6 +4,7 @@
 
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart'; // Bổ sung import để đọc cache từ DB
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 
@@ -137,9 +138,13 @@ class WeeklyRecapData {
 
   factory WeeklyRecapData.fromMap(Map<dynamic, dynamic> map, RecapStyle style) {
     final ts = map['generatedAt'];
-    final DateTime dt;
+    DateTime dt;
     if (ts is int) {
       dt = DateTime.fromMillisecondsSinceEpoch(ts);
+    } else if (ts is Timestamp) {
+      dt = ts.toDate();
+    } else if (ts is String) {
+      dt = DateTime.tryParse(ts) ?? DateTime.now();
     } else {
       dt = DateTime.now();
     }
@@ -231,6 +236,54 @@ class WeeklyRecapService {
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
+  /// Đọc dữ liệu Weekly Recap do hệ thống CronJob tự động tạo ra và lưu
+  /// sẵn trên Firestore để giảm thiểu số lượt gọi Cloud Function sinh phí.
+  Future<WeeklyRecapData?> getStoredRecap(String conversationId) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('conversations')
+          .doc(conversationId)
+          .get();
+
+      final recapData = doc.data()?['weeklyRecap'] as Map<String, dynamic>?;
+      if (recapData == null) return null;
+
+      final generatedAt = recapData['generatedAt'];
+      DateTime? genTime;
+      if (generatedAt is Timestamp) {
+        genTime = generatedAt.toDate();
+      } else if (generatedAt is int) {
+        genTime = DateTime.fromMillisecondsSinceEpoch(generatedAt);
+      } else if (generatedAt is String) {
+        genTime = DateTime.tryParse(generatedAt);
+      }
+
+      // Vứt bỏ Recap lưu trong DB nếu đã vượt quá 7 ngày do dữ liệu đã cũ
+      if (genTime != null && DateTime.now().difference(genTime).inDays > 7) {
+        return null;
+      }
+
+      return WeeklyRecapData(
+        success: true,
+        style: RecapStyle.humorous, // Scheduled Cloud Function dùng humorous mặc định
+        styleLabel: RecapStyle.humorous.label,
+        styleEmoji: RecapStyle.humorous.decorIcon,
+        fullText: recapData['fullText'] as String? ?? '',
+        summary: recapData['summary'] as String? ?? '',
+        highlights: List<String>.from(recapData['highlights'] as List? ?? []),
+        sentiment: recapData['sentiment'] as String? ?? 'neutral',
+        topKeywords: List<String>.from(recapData['topKeywords'] as List? ?? []),
+        messageCount: recapData['messageCount'] as int? ?? 0,
+        generatedAt: genTime ?? DateTime.now(),
+        conversationType: RecapConversationType.group,
+        lookbackDays: 7,
+      );
+    } catch (e) {
+      debugPrint('[WeeklyRecap] Lỗi đọc Cached Firestore: $e');
+      return null;
+    }
+  }
+
   /// Tạo tổng kết tuần với style và khoảng thời gian chỉ định.
   ///
   /// Dữ liệu được đọc từ `ai_content` collection (plain text đã mask PII),
@@ -244,12 +297,25 @@ class WeeklyRecapService {
   }) async {
     final cacheKey = '${conversationId}_${style.key}_$lookbackDays';
 
-    // Trả về cache nếu còn hạn và không yêu cầu làm mới
-    if (!forceRefresh && _cache.containsKey(cacheKey)) {
-      final cached = _cache[cacheKey]!;
-      if (DateTime.now().difference(cached.generatedAt) < _cacheMaxAge) {
-        debugPrint('[WeeklyRecap] ✅ Cache hit: $cacheKey');
-        return cached;
+    if (!forceRefresh) {
+      // 1. Kiểm tra RAM Cache (In-Memory) trước tiên
+      if (_cache.containsKey(cacheKey)) {
+        final cached = _cache[cacheKey]!;
+        if (DateTime.now().difference(cached.generatedAt) < _cacheMaxAge) {
+          debugPrint('[WeeklyRecap] ✅ Trả về từ In-Memory Cache: $cacheKey');
+          return cached;
+        }
+      }
+
+      // 2. [FIX 20] Đọc từ Persistent Cache Firestore (Áp dụng cho cấu hình mặc định)
+      // Scheduled jobs tự động chạy cấu hình humorous với 7 ngày
+      if (style == RecapStyle.humorous && lookbackDays == 7) {
+        final stored = await getStoredRecap(conversationId);
+        if (stored != null) {
+          _cache[cacheKey] = stored; // Đưa vào RAM cache để lần sau lấy nhanh hơn
+          debugPrint('[WeeklyRecap] ✅ Trả về từ Persistent Firestore Cache cho $conversationId');
+          return stored;
+        }
       }
     }
 

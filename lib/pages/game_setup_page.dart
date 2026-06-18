@@ -340,9 +340,10 @@ class _GameSetupPageState extends State<GameSetupPage> {
     HapticFeedback.mediumImpact();
     setState(() => _isLoading = true);
 
-    try {
-      final chatProvider = context.read<ChatProvider>();
+    // CACHE ChatProvider TẠI ĐÂY (trước khi vào khối try có chứa các thao tác await)
+    final chatProvider = context.read<ChatProvider>();
 
+    try {
       if (!_isOpenChallenge && widget.targetUserId != null) {
         try {
           final groupDoc = await FirebaseFirestore.instance
@@ -350,7 +351,7 @@ class _GameSetupPageState extends State<GameSetupPage> {
               .doc(widget.groupId)
               .get();
 
-          // SỬA TẠI ĐÂY: Thay 'members' bằng 'memberIds' để map đúng với hằng số đã định nghĩa
+          // Thay 'members' bằng 'memberIds' để map đúng với hằng số đã định nghĩa
           final members = List<String>.from(
             groupDoc.data()?[FirestoreConstants.memberIds] ?? [],
           );
@@ -410,12 +411,12 @@ class _GameSetupPageState extends State<GameSetupPage> {
                 ? AppConstants.caroTurnTimerLabels[_turnTimerIndex]
                 : '');
 
-      // KHẮC PHỤC LỖI 8: Truyền challengerId để lưu vào Payload
+      // Truyền challengerId để lưu vào Payload
       final payload = GameInvitePayload(
         matchId: matchId,
         gameType: _gameType,
         matchStatus: MatchStatus.waiting,
-        challengerId: widget.currentUserId, // <-- Thêm vào
+        challengerId: widget.currentUserId,
         challengerName: widget.currentUserName,
         challengerAvatar: widget.currentUserAvatar,
         targetUserId: _isOpenChallenge ? null : widget.targetUserId,

@@ -5,7 +5,7 @@
 // KHÔNG có getRecentMaskedMessages() — client đọc từ LocalDbService thay thế.
 //
 // Architecture:
-//  - Fire-and-forget pattern: không block main flow, lỗi chỉ log
+//  - Tích hợp Retry Mechanism (Exponential Backoff) bảo vệ mất mát dữ liệu
 //  - TTL tự động: 95 ngày (đủ qua 1 cycle 90 ngày cho Cloud Functions)
 //  - Guard: reject ciphertext lọt vào
 //  - Cleanup: hỗ trợ xoá expired docs theo batch
@@ -32,15 +32,74 @@ class AiContentService {
 
   // ── Push ──────────────────────────────────────────────────────────────────
 
-  /// Push plain text (đã mask PII) lên Firestore để Cloud Functions đọc.
-  ///
-  /// Được gọi từ SyncManager sau bước Firestore write thành công.
-  /// Non-blocking: dùng fire-and-forget, lỗi chỉ log không throw.
-  ///
-  /// Guards:
-  ///  - messageType != 0 → skip (chỉ text)
-  ///  - Empty content → skip
-  ///  - Ciphertext detected → skip với warning log
+  /// [FIX 18] Push plain text (đã mask PII) lên Firestore với cơ chế Retry
+  /// (Exponential Backoff) để giảm thiểu tối đa rủi ro mất dữ liệu AI do lỗi mạng.
+  Future<void> pushAiContentWithRetry({
+    required String conversationId,
+    required String messageId,
+    required String plainText,
+    required String idFrom,
+    required int messageType,
+    String? groupId,
+    int maxRetries = 3,
+  }) async {
+    // Chỉ xử lý text messages (type 0)
+    if (messageType != 0 || plainText.trim().isEmpty) return;
+
+    // Guard: không push ciphertext lên ai_content
+    if (_isCiphertext(plainText)) {
+      debugPrint(
+        '[AiContent] ⚠️ Ciphertext detected — skip push for $messageId',
+      );
+      return;
+    }
+
+    // Guard: quá ngắn để có giá trị phân tích
+    if (plainText.trim().length < 3) return;
+
+    final masked = MaskingSession.maskOnly(plainText);
+    final expireAt = DateTime.now().add(const Duration(days: _ttlDays));
+
+    for (int attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        await _ref(conversationId).doc(messageId).set({
+          'idFrom': idFrom,
+          'userId': idFrom,
+          'conversationId': conversationId,
+          'content': masked,
+          // Lưu timestamp kiểu Number chuẩn xác cho logic của Cloud Functions Node.js
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          if (groupId != null) 'groupId': groupId,
+          'expireAt': Timestamp.fromDate(expireAt),
+          'pushedAt': FieldValue.serverTimestamp(),
+        });
+
+        debugPrint(
+          '[AiContent] ✅ Pushed $messageId (masked ${plainText.length} → ${masked.length} chars)',
+        );
+        return; // Thành công thì thoát vòng lặp retry
+      } catch (e, st) {
+        if (attempt < maxRetries - 1) {
+          // Exponential backoff delay: 2s, 4s, 6s...
+          final delaySeconds = (attempt + 1) * 2;
+          debugPrint(
+            '[AiContent] 🔄 Retry push $messageId after ${delaySeconds}s (Error: $e)',
+          );
+          await Future.delayed(Duration(seconds: delaySeconds));
+        } else {
+          // Báo lỗi critical khi đã kiệt sức retry
+          ErrorLogger.logError(
+            e,
+            st,
+            context: 'AiContentService.pushAiContentWithRetry.exhausted',
+          );
+        }
+      }
+    }
+  }
+
+  /// Hàm push cũ (fire-and-forget không có retry) giữ lại để tương thích ngược
+  /// với những phần code chưa migrate sang `pushAiContentWithRetry`
   Future<void> pushAiContent({
     required String conversationId,
     required String messageId,
@@ -49,18 +108,8 @@ class AiContentService {
     required int messageType,
     String? groupId,
   }) async {
-    // Chỉ xử lý text messages (type 0)
     if (messageType != 0 || plainText.trim().isEmpty) return;
-
-    // Guard: không push ciphertext lên ai_content
-    // JSON E2EE payload bắt đầu bằng {"iv": hoặc base64 JWT
-    if (_isCiphertext(plainText)) {
-      debugPrint(
-          '[AiContent] ⚠️ Ciphertext detected — skip push for $messageId');
-      return;
-    }
-
-    // Guard: quá ngắn để có giá trị phân tích
+    if (_isCiphertext(plainText)) return;
     if (plainText.trim().length < 3) return;
 
     try {
@@ -77,11 +126,7 @@ class AiContentService {
         'expireAt': Timestamp.fromDate(expireAt),
         'pushedAt': FieldValue.serverTimestamp(),
       });
-
-      debugPrint(
-          '[AiContent] ✅ Pushed $messageId (masked ${plainText.length} → ${masked.length} chars)');
     } catch (e, st) {
-      // Non-critical: không throw, chỉ log
       ErrorLogger.logError(e, st, context: 'AiContentService.pushAiContent');
     }
   }
@@ -99,7 +144,8 @@ class AiContentService {
 
     if (_isCiphertext(content)) {
       debugPrint(
-          '[AiContent] ⚠️ Ciphertext detected in pushContent — skip push');
+        '[AiContent] ⚠️ Ciphertext detected in pushContent — skip push',
+      );
       return;
     }
 
@@ -122,7 +168,8 @@ class AiContentService {
       });
 
       debugPrint(
-          '[AiContent] ✅ Pushed content explicitly via pushContent: $docId');
+        '[AiContent] ✅ Pushed content explicitly via pushContent: $docId',
+      );
     } catch (e, st) {
       ErrorLogger.logError(e, st, context: 'AiContentService.pushContent');
     }
@@ -176,11 +223,15 @@ class AiContentService {
       if (count > 0) {
         await batch.commit();
         debugPrint(
-            '[AiContent] ✅ Batch pushed $count messages for $conversationId');
+          '[AiContent] ✅ Batch pushed $count messages for $conversationId',
+        );
       }
     } catch (e, st) {
-      ErrorLogger.logError(e, st,
-          context: 'AiContentService.pushAiContentBatch');
+      ErrorLogger.logError(
+        e,
+        st,
+        context: 'AiContentService.pushAiContentBatch',
+      );
     }
   }
 
@@ -205,7 +256,8 @@ class AiContentService {
       await batch.commit();
 
       debugPrint(
-          '[AiContent] 🗑 Cleaned ${expired.docs.length} expired docs from $conversationId');
+        '[AiContent] 🗑 Cleaned ${expired.docs.length} expired docs from $conversationId',
+      );
       return expired.docs.length;
     } catch (e) {
       debugPrint('[AiContent] cleanupExpired error: $e');

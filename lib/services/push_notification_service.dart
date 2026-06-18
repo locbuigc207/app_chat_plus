@@ -3,11 +3,11 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_chat_demo/firebase_options.dart'; // [FIX 26] Import DefaultFirebaseOptions
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'e2ee_service.dart';
@@ -21,7 +21,9 @@ const _kIcon = '@mipmap/ic_launcher';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
+  // [FIX 26] Bổ sung cấu hình DefaultFirebaseOptions.currentPlatform cho Background Isolate
+  // Isolate của Background chạy độc lập với Main Thread nên cần khởi tạo lại với đủ thông số
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   debugPrint('[PushNotif] 📲 Background message: ${message.messageId}');
 
@@ -127,23 +129,25 @@ class _NotificationData {
     );
   }
 
-  String toPayloadString() => jsonEncode({
-        'conversationId': conversationId,
-        'senderId': senderId,
-      });
+  String toPayloadString() =>
+      jsonEncode({'conversationId': conversationId, 'senderId': senderId});
 }
 
 class PushNotificationService {
   PushNotificationService._();
 
-  static final FlutterLocalNotificationsPlugin _localPlugin = FlutterLocalNotificationsPlugin();
+  static final FlutterLocalNotificationsPlugin _localPlugin =
+      FlutterLocalNotificationsPlugin();
 
-  static final StreamController<Map<String, dynamic>> _notificationTapController =
+  static final StreamController<Map<String, dynamic>>
+  _notificationTapController =
       StreamController<Map<String, dynamic>>.broadcast();
 
-  static Stream<Map<String, dynamic>> get onNotificationTapped => _notificationTapController.stream;
+  static Stream<Map<String, dynamic>> get onNotificationTapped =>
+      _notificationTapController.stream;
 
-  static final StreamController<String> _fcmTokenController = StreamController<String>.broadcast();
+  static final StreamController<String> _fcmTokenController =
+      StreamController<String>.broadcast();
 
   static Stream<String> get onFcmTokenRefreshed => _fcmTokenController.stream;
 
@@ -175,11 +179,12 @@ class PushNotificationService {
       _fcmTokenController.add(token);
     });
 
-    await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
-      alert: false,
-      badge: true,
-      sound: false,
-    );
+    await FirebaseMessaging.instance
+        .setForegroundNotificationPresentationOptions(
+          alert: false,
+          badge: true,
+          sound: false,
+        );
 
     debugPrint('[PushNotif] ✅ Khởi tạo Push Notification Service hoàn tất');
   }
@@ -201,7 +206,8 @@ class PushNotificationService {
       onDidReceiveNotificationResponse: (NotificationResponse response) {
         if (response.payload != null) {
           try {
-            final payload = jsonDecode(response.payload!) as Map<String, dynamic>;
+            final payload =
+                jsonDecode(response.payload!) as Map<String, dynamic>;
             _notificationTapController.add(payload);
             debugPrint('[PushNotif] 👆 Notification tapped: $payload');
           } catch (e) {
@@ -209,15 +215,20 @@ class PushNotificationService {
           }
         }
       },
-      onDidReceiveBackgroundNotificationResponse: _backgroundNotificationResponseHandler,
+      onDidReceiveBackgroundNotificationResponse:
+          _backgroundNotificationResponseHandler,
     );
 
     await _createNotificationChannel();
   }
 
   @pragma('vm:entry-point')
-  static void _backgroundNotificationResponseHandler(NotificationResponse response) {
-    debugPrint('[PushNotif] 📲 Background notification tap: ${response.payload}');
+  static void _backgroundNotificationResponseHandler(
+    NotificationResponse response,
+  ) {
+    debugPrint(
+      '[PushNotif] 📲 Background notification tap: ${response.payload}',
+    );
   }
 
   static Future<void> _createNotificationChannel() async {
@@ -232,7 +243,9 @@ class PushNotificationService {
     );
 
     await _localPlugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.createNotificationChannel(channel);
   }
 
@@ -244,7 +257,9 @@ class PushNotificationService {
       provisional: false,
       criticalAlert: false,
     );
-    debugPrint('[PushNotif] 🔔 Permission: ${settings.authorizationStatus.name}');
+    debugPrint(
+      '[PushNotif] 🔔 Permission: ${settings.authorizationStatus.name}',
+    );
     return settings;
   }
 
@@ -301,15 +316,28 @@ class PushNotificationService {
   static String _buildNotificationBody(String text, String? messageType) {
     switch (messageType) {
       case 'image':
+      case '1':
         return '📷 Hình ảnh';
       case 'video':
+      case '2':
         return '🎥 Video';
       case 'file':
+      case '4':
+      case '5':
         return '📎 Tệp đính kèm';
+      case 'voice':
       case 'audio':
+      case '3':
         return '🎵 Tin nhắn thoại';
       case 'sticker':
+      case '10':
         return '😊 Sticker';
+      case 'poll':
+      case '6':
+        return '📊 Bình chọn';
+      case 'location':
+      case '11':
+        return '📍 Vị trí';
       default:
         return text.length > 120 ? '${text.substring(0, 120)}…' : text;
     }
@@ -364,7 +392,9 @@ class PushNotificationService {
 
   static Future<void> cancelAllNotifications() => _localPlugin.cancelAll();
 
-  static Future<void> cancelConversationNotification(String conversationId) async {
+  static Future<void> cancelConversationNotification(
+    String conversationId,
+  ) async {
     final id = conversationId.hashCode.abs() % 100000;
     await _localPlugin.cancel(id);
   }

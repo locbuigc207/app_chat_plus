@@ -5,8 +5,8 @@ import 'dart:typed_data';
 import 'package:audio_session/audio_session.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
-
-import 'deepfake_detector_service.dart';
+import 'package:flutter_chat_demo/models/models.dart';
+import 'package:flutter_chat_demo/services/services.dart';
 
 // ══════════════════════════════════════════════════════
 // ENUMS & MODELS
@@ -41,10 +41,8 @@ class SecurityEvent {
     this.detectedKeywords = const [],
   });
 
-  factory SecurityEvent.safe() => SecurityEvent(
-    status: SecurityStatus.safe,
-    timestamp: DateTime.now(),
-  );
+  factory SecurityEvent.safe() =>
+      SecurityEvent(status: SecurityStatus.safe, timestamp: DateTime.now());
 
   factory SecurityEvent.scanning() => SecurityEvent(
     status: SecurityStatus.scanning,
@@ -64,8 +62,12 @@ class _Pattern {
   final double weight; // 0.0 – 1.0
   final bool exact; // exact word vs. contains
 
-  const _Pattern(this.keyword, this.category, this.weight,
-      {this.exact = false});
+  const _Pattern(
+    this.keyword,
+    this.category,
+    this.weight, {
+    this.exact = false,
+  });
 }
 
 // ══════════════════════════════════════════════════════
@@ -91,7 +93,7 @@ class RealtimeAIService {
   String _accumulated = '';
   int _analysisCount = 0;
 
-  // Buffer lưu trữ âm thanh dùng cho Live Caption (STT) - FIX LỖI C-1
+  // Buffer lưu trữ âm thanh dùng cho Live Caption (STT)
   final List<int> _speechBuffer = [];
 
   /// Rolling confidence: tracks avg risk over last N analyses
@@ -100,7 +102,6 @@ class RealtimeAIService {
 
   Timer? _aiTimer;
   Timer? _resetTimer;
-  // FIX LỖI D-3: Đã xóa _deepfakeTimer và các hàm random báo động giả
 
   // ── Streams ────────────────────────────────────────
   final _secCtrl = StreamController<SecurityEvent>.broadcast();
@@ -178,17 +179,18 @@ class RealtimeAIService {
     try {
       if (!kIsWeb) {
         final session = await AudioSession.instance;
-        await session.configure(AudioSessionConfiguration(
-          avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
-          avAudioSessionCategoryOptions:
-          AVAudioSessionCategoryOptions.allowBluetooth |
-          AVAudioSessionCategoryOptions.mixWithOthers |
-          AVAudioSessionCategoryOptions.defaultToSpeaker,
-          avAudioSessionMode: AVAudioSessionMode.videoChat,
-        ));
+        await session.configure(
+          AudioSessionConfiguration(
+            avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
+            avAudioSessionCategoryOptions:
+                AVAudioSessionCategoryOptions.allowBluetooth |
+                AVAudioSessionCategoryOptions.mixWithOthers |
+                AVAudioSessionCategoryOptions.defaultToSpeaker,
+            avAudioSessionMode: AVAudioSessionMode.videoChat,
+          ),
+        );
       }
 
-      // FIX LỖI C-1: Loại bỏ init SpeechToText độc lập gây xung đột microphone với Agora
       _initialized = true;
       return true;
     } catch (e) {
@@ -208,8 +210,6 @@ class RealtimeAIService {
     _riskHistory.clear();
     _emit(SecurityEvent.safe());
 
-    // FIX LỖI C-1 & C-2: Loại bỏ hoàn toàn _startListening() từ STT plugin độc lập
-
     // Cloud AI analysis every 15 seconds
     _aiTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
       if (_accumulated.trim().length > 20) {
@@ -217,27 +217,28 @@ class RealtimeAIService {
       }
     });
 
-    // FIX LỖI D-3: Đã xóa _deepfakeTimer tạo 5% false alarm
-
     // Khởi động Deepfake Detector
-    _deepfakeDetector
-        .startAnalysis('${peerId}_${DateTime.now().millisecondsSinceEpoch}');
+    _deepfakeDetector.startAnalysis(
+      '${peerId}_${DateTime.now().millisecondsSinceEpoch}',
+    );
 
     _deepfakeSub = _deepfakeDetector.resultStream.listen((result) {
       if (result.isLikelyDeepfake) {
         final status = result.isHighConfidence
             ? SecurityStatus.danger
             : SecurityStatus.warning;
-        _emit(SecurityEvent(
-          status: status,
-          category: ThreatCategory.deepfake,
-          message: result.isHighConfidence
-              ? '⚠️ CẢNH BÁO: Giọng nói giả mạo được phát hiện\n${result.explanation}'
-              : '🔍 Nghi ngờ: Giọng nói có dấu hiệu bất thường\n${result.explanation}',
-          riskScore: result.confidenceScore,
-          timestamp: DateTime.now(),
-          detectedKeywords: result.signals.map((s) => s.name).toList(),
-        ));
+        _emit(
+          SecurityEvent(
+            status: status,
+            category: ThreatCategory.deepfake,
+            message: result.isHighConfidence
+                ? '⚠️ CẢNH BÁO: Giọng nói giả mạo được phát hiện\n${result.explanation}'
+                : '🔍 Nghi ngờ: Giọng nói có dấu hiệu bất thường\n${result.explanation}',
+            riskScore: result.confidenceScore,
+            timestamp: DateTime.now(),
+            detectedKeywords: result.signals.map((s) => s.name).toList(),
+          ),
+        );
       }
     });
   }
@@ -245,9 +246,10 @@ class RealtimeAIService {
   Future<void> stopProtection() async {
     _isListening = false;
 
-    // FIX LỖI C-3 & D-5: Gán Timer = null sau khi cancel để giải phóng vùng nhớ
-    _aiTimer?.cancel(); _aiTimer = null;
-    _resetTimer?.cancel(); _resetTimer = null;
+    _aiTimer?.cancel();
+    _aiTimer = null;
+    _resetTimer?.cancel();
+    _resetTimer = null;
 
     _transcript = '';
     _accumulated = '';
@@ -268,7 +270,6 @@ class RealtimeAIService {
   }
 
   // ── Nhận dữ liệu âm thanh từ Agora ─────────────────
-  // FIX LỖI C-1: Dùng chung PCM Audio Data từ Agora cho cả Deepfake và STT
   Future<void> feedAudioBuffer(Int16List buffer) async {
     if (!_isListening) return;
 
@@ -277,7 +278,8 @@ class RealtimeAIService {
 
     // 2. Tích lũy buffer để gửi STT (Live Caption)
     _speechBuffer.addAll(buffer);
-    if (_speechBuffer.length >= 32000) {  // ~2 giây audio ở 16kHz
+    if (_speechBuffer.length >= 32000) {
+      // ~2 giây audio ở 16kHz
       final chunk = Int16List.fromList(_speechBuffer);
       _speechBuffer.clear();
       _sendToCloudSTT(chunk);
@@ -286,8 +288,7 @@ class RealtimeAIService {
 
   // ── Speech-to-Text qua Cloud (Thay thế Plugin Local) ──
   void _sendToCloudSTT(Int16List pcm) async {
-    // TODO: Gửi raw PCM data (`pcm`) lên Google Cloud STT API hoặc backend STT của bạn.
-    // Dưới đây là code mô phỏng luồng hoạt động sau khi nhận text từ API:
+    // TODO: Gửi raw PCM data (`pcm`) lên Google Cloud STT API hoặc backend STT
     /*
     try {
       final transcript = await _sttApiClient.transcribe(
@@ -343,28 +344,31 @@ class RealtimeAIService {
     // Compound risk: multiple keywords → boost score
     final compound = math.min(1.0, topWeight + (hits.length - 1) * 0.05);
 
-    final status =
-    compound >= 0.75 ? SecurityStatus.danger : SecurityStatus.warning;
+    final status = compound >= 0.75
+        ? SecurityStatus.danger
+        : SecurityStatus.warning;
 
     _riskHistory.add(compound);
     if (_riskHistory.length > _riskWindow) _riskHistory.removeAt(0);
     final avgRisk = _riskHistory.reduce((a, b) => a + b) / _riskHistory.length;
 
-    _emit(SecurityEvent(
-      status: status,
-      category: topCat,
-      message: compound >= 0.75
-          ? '⚠️ CẢNH BÁO: ${_catLabel(topCat)}\nPhát hiện: "${hits.first}"'
-          : '🔍 Chú ý: ${_catLabel(topCat)}\nTừ khóa: "${hits.first}"',
-      riskScore: avgRisk,
-      timestamp: DateTime.now(),
-      detectedKeywords: hits,
-    ));
+    _emit(
+      SecurityEvent(
+        status: status,
+        category: topCat,
+        message: compound >= 0.75
+            ? '⚠️ CẢNH BÁO: ${_catLabel(topCat)}\nPhát hiện: "${hits.first}"'
+            : '🔍 Chú ý: ${_catLabel(topCat)}\nTừ khóa: "${hits.first}"',
+        riskScore: avgRisk,
+        timestamp: DateTime.now(),
+        detectedKeywords: hits,
+      ),
+    );
 
     _resetTimer?.cancel();
     _resetTimer = Timer(
       Duration(seconds: status == SecurityStatus.danger ? 12 : 8),
-          () {
+      () {
         if (_isListening) _emit(SecurityEvent.safe());
       },
     );
@@ -380,6 +384,13 @@ class RealtimeAIService {
     _emit(SecurityEvent.scanning());
     _analysisCount++;
 
+    // [FIX 16]: Kiểm tra Guard - Không gửi rác Deepfake score nếu hệ thống vẫn chưa hoàn thành việc enrolled (chưa đủ 4 frame)
+    final isEnrolled =
+        _deepfakeDetector.currentEnrollmentStatus == EnrollmentStatus.enrolled;
+    final deepfakeScore = isEnrolled
+        ? (_deepfakeDetector.lastResult?.confidenceScore ?? 0.0)
+        : 0.0;
+
     try {
       final callable = _functions.httpsCallable(
         'analyzeCallSecurity',
@@ -394,11 +405,10 @@ class RealtimeAIService {
         'localRiskScore': _riskHistory.isEmpty
             ? 0.0
             : _riskHistory.reduce((a, b) => a + b) / _riskHistory.length,
-        'audioFeatures': _deepfakeDetector.lastFeatures?.toMap(),
-
-        // FIX LỖI D-2: Sử dụng điểm số thực tế lấy từ DeepfakeDetectorService thay vì hardcode 0.6
-        'localDeepfakeScore': _deepfakeDetector.lastResult?.confidenceScore ?? 0.0,
-
+        'audioFeatures': isEnrolled
+            ? _deepfakeDetector.lastFeatures?.toMap()
+            : null,
+        'localDeepfakeScore': deepfakeScore,
         'enrollmentStatus': _deepfakeDetector.currentEnrollmentStatus.name,
       });
 
@@ -422,16 +432,19 @@ class RealtimeAIService {
 
     if (!isSafe || riskLevel == 'HIGH' || riskLevel == 'MEDIUM') {
       final cat = _parseCat(rawCat);
-      _emit(SecurityEvent(
-        status: riskLevel == 'HIGH'
-            ? SecurityStatus.danger
-            : SecurityStatus.warning,
-        category: cat,
-        message:
-        warning.isNotEmpty ? warning : '⚠️ AI phát hiện: ${_catLabel(cat)}',
-        riskScore: score,
-        timestamp: DateTime.now(),
-      ));
+      _emit(
+        SecurityEvent(
+          status: riskLevel == 'HIGH'
+              ? SecurityStatus.danger
+              : SecurityStatus.warning,
+          category: cat,
+          message: warning.isNotEmpty
+              ? warning
+              : '⚠️ AI phát hiện: ${_catLabel(cat)}',
+          riskScore: score,
+          timestamp: DateTime.now(),
+        ),
+      );
     } else {
       _emit(SecurityEvent.safe());
     }

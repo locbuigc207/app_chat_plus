@@ -1,10 +1,9 @@
 import 'dart:async';
 
-import 'package:flutter/widgets.dart';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -31,7 +30,8 @@ class NotificationService {
   final ChatBubbleService _bubbleService = ChatBubbleService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
-  final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _localNotifications =
+      FlutterLocalNotificationsPlugin();
 
   StreamSubscription<QuerySnapshot>? _messageSubscription;
   bool _isListening = false;
@@ -40,6 +40,9 @@ class NotificationService {
   static const int _maxProcessedIds = 200;
 
   final Set<String> _mutedConversations = {};
+
+  // Cache lưu trữ mốc thời gian tin nhắn cuối cùng để check biến động
+  final Map<String, String> _lastMessageTimes = {};
 
   void Function(NotificationPayload)? onNotificationTapped;
   void Function(NotificationPayload)? onInAppNotification;
@@ -51,7 +54,9 @@ class NotificationService {
   }
 
   Future<void> _initLocalNotifications() async {
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -79,7 +84,9 @@ class NotificationService {
     );
 
     final androidPlugin = _localNotifications
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
 
     await androidPlugin?.createNotificationChannel(channel);
   }
@@ -129,14 +136,16 @@ class NotificationService {
     final data = message.data;
     if (data.isEmpty) return;
 
-    onNotificationTapped?.call(NotificationPayload(
-      senderId: data['senderId'] ?? '',
-      senderName: data['senderName'] ?? '',
-      avatarUrl: data['avatarUrl'] ?? '',
-      content: data['content'] ?? '',
-      conversationId: data['conversationId'] ?? '',
-      timestamp: int.tryParse(data['timestamp'] ?? '0') ?? 0,
-    ));
+    onNotificationTapped?.call(
+      NotificationPayload(
+        senderId: data['senderId'] ?? '',
+        senderName: data['senderName'] ?? '',
+        avatarUrl: data['avatarUrl'] ?? '',
+        content: data['content'] ?? '',
+        conversationId: data['conversationId'] ?? '',
+        timestamp: int.tryParse(data['timestamp'] ?? '0') ?? 0,
+      ),
+    );
   }
 
   void _onLocalNotificationTapped(String? payload) {
@@ -144,6 +153,9 @@ class NotificationService {
     debugPrint('🔔 Notification tapped, conversationId: $payload');
   }
 
+  /// [FIX 3] Bỏ collectionGroup do subcollection name là động ({convId}).
+  /// Lắng nghe collection 'conversations' nơi user tham gia,
+  /// mỗi khi có lastMessageTime mới, sẽ tự động fetch tin nhắn mới về tạo notify.
   void listenForNewMessages(String currentUserId) {
     if (_isListening) return;
 
@@ -151,31 +163,68 @@ class NotificationService {
     _isListening = true;
 
     _messageSubscription = _firestore
-        .collectionGroup(FirestoreConstants.pathMessageCollection)
-        .where(FirestoreConstants.idTo, isEqualTo: currentUserId)
-        .where('isRead', isEqualTo: false)
+        .collection('conversations')
+        .where('participants', arrayContains: currentUserId)
         .snapshots()
         .listen(
-      (snapshot) async {
-        final newDocs = snapshot.docChanges
-            .where((c) => c.type == DocumentChangeType.added)
-            .map((c) => c.doc)
-            .toList();
+          (snapshot) async {
+            for (final change in snapshot.docChanges) {
+              final doc = change.doc;
+              final data = doc.data() as Map<String, dynamic>?;
+              if (data == null) continue;
 
-        for (final doc in newDocs) {
-          await _handleNewMessage(doc, currentUserId);
-        }
-      },
-      onError: (Object error) {
-        debugPrint('❌ Message listener error: $error');
-        _isListening = false;
+              final convId = doc.id;
+              final newTime = data['lastMessageTime']?.toString();
+              final oldTime = _lastMessageTimes[convId];
 
-        _retryListen(currentUserId);
-      },
-      cancelOnError: true,
+              // Nếu có cập nhật tin nhắn mới
+              if (newTime != null && newTime != oldTime) {
+                _lastMessageTimes[convId] = newTime;
+
+                // Bỏ qua tin nhắn cũ khi app vừa khởi động
+                if (change.type == DocumentChangeType.added &&
+                    oldTime == null) {
+                  final msgTs = int.tryParse(newTime) ?? 0;
+                  final now = DateTime.now().millisecondsSinceEpoch;
+                  if (now - msgTs > 15000) {
+                    // Tin nhắn đã hơn 15 giây tuổi -> bỏ qua notification
+                    continue;
+                  }
+                }
+
+                try {
+                  // Fetch dữ liệu tin nhắn thực tế để hiển thị lên UI/Notification
+                  final latestMsgSnap = await _firestore
+                      .collection(FirestoreConstants.pathMessageCollection)
+                      .doc(convId)
+                      .collection(convId)
+                      .orderBy(FirestoreConstants.timestamp, descending: true)
+                      .limit(1)
+                      .get();
+
+                  if (latestMsgSnap.docs.isNotEmpty) {
+                    await _handleNewMessage(
+                      latestMsgSnap.docs.first,
+                      currentUserId,
+                    );
+                  }
+                } catch (e) {
+                  debugPrint('❌ Lỗi khi tải tin nhắn mới nhất: $e');
+                }
+              }
+            }
+          },
+          onError: (Object error) {
+            debugPrint('❌ Message listener error: $error');
+            _isListening = false;
+            _retryListen(currentUserId);
+          },
+          cancelOnError: true,
+        );
+
+    debugPrint(
+      '👂 Message listener (conversations) active for: $currentUserId',
     );
-
-    debugPrint('👂 Message listener active for: $currentUserId');
   }
 
   int _retryCount = 0;
@@ -184,7 +233,9 @@ class NotificationService {
   void _retryListen(String userId) {
     _retryCount++;
     final delay = Duration(seconds: (2 << _retryCount.clamp(0, 5)));
-    debugPrint('🔄 Retrying listener in ${delay.inSeconds}s (attempt $_retryCount)');
+    debugPrint(
+      '🔄 Retrying listener in ${delay.inSeconds}s (attempt $_retryCount)',
+    );
     _retryTimer?.cancel();
     _retryTimer = Timer(delay, () {
       if (!_isListening) listenForNewMessages(userId);
@@ -203,6 +254,7 @@ class NotificationService {
       if (data == null) return;
 
       final senderId = data[FirestoreConstants.idFrom] as String?;
+      // Không thông báo nếu tin nhắn do chính mình gửi
       if (senderId == null || senderId == currentUserId) return;
 
       final payload = await _buildPayload(data, senderId, doc);
@@ -210,7 +262,8 @@ class NotificationService {
 
       if (_mutedConversations.contains(payload.conversationId)) return;
 
-      final isResumed = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+      final isResumed =
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
 
       if (isResumed) {
         onInAppNotification?.call(payload);
@@ -246,9 +299,11 @@ class NotificationService {
       lastMessage: payload.content,
     );
 
-    debugPrint(success
-        ? '✅ Bubble created: ${payload.senderName}'
-        : '❌ Bubble failed: ${payload.senderName}');
+    debugPrint(
+      success
+          ? '✅ Bubble created: ${payload.senderName}'
+          : '❌ Bubble failed: ${payload.senderName}',
+    );
   }
 
   void _updateExistingBubble(String senderId, String content) {
@@ -369,11 +424,17 @@ class NotificationService {
       final token = await getFCMToken();
       if (token == null) return;
 
-      await _firestore.collection(FirestoreConstants.pathUserCollection).doc(userId).update({
-        'fcmToken': token,
-        'fcmTokenUpdatedAt': DateTime.now().millisecondsSinceEpoch.toString(),
-      });
-      debugPrint('✅ FCM token saved');
+      // [FIX 24] Cập nhật song song pushToken cho Node.js Cloud Functions
+      await _firestore
+          .collection(FirestoreConstants.pathUserCollection)
+          .doc(userId)
+          .update({
+            'fcmToken': token,
+            'pushToken': token,
+            'fcmTokenUpdatedAt': DateTime.now().millisecondsSinceEpoch
+                .toString(),
+          });
+      debugPrint('✅ FCM & Push token saved');
     } catch (e) {
       debugPrint('❌ Error saving FCM token: $e');
     }
@@ -389,15 +450,18 @@ class NotificationService {
     _mutedConversations.remove(conversationId);
   }
 
-  bool isConversationMuted(String conversationId) => _mutedConversations.contains(conversationId);
+  bool isConversationMuted(String conversationId) =>
+      _mutedConversations.contains(conversationId);
 
   Future<NotificationPayload?> _buildPayload(
     Map<String, dynamic> data,
     String senderId,
     DocumentSnapshot doc,
   ) async {
-    final senderDoc =
-        await _firestore.collection(FirestoreConstants.pathUserCollection).doc(senderId).get();
+    final senderDoc = await _firestore
+        .collection(FirestoreConstants.pathUserCollection)
+        .doc(senderId)
+        .get();
 
     if (!senderDoc.exists) return null;
 
@@ -405,7 +469,9 @@ class NotificationService {
     final content = data[FirestoreConstants.content] as String? ?? '';
 
     final pathSegments = doc.reference.path.split('/');
-    final conversationId = pathSegments.length >= 2 ? pathSegments[1] : senderId;
+    final conversationId = pathSegments.length >= 2
+        ? pathSegments[1]
+        : senderId;
 
     return NotificationPayload(
       senderId: senderId,
@@ -413,7 +479,9 @@ class NotificationService {
       avatarUrl: senderData[FirestoreConstants.photoUrl] as String? ?? '',
       content: content,
       conversationId: conversationId,
-      timestamp: int.tryParse(data[FirestoreConstants.timestamp]?.toString() ?? '0') ?? 0,
+      timestamp:
+          int.tryParse(data[FirestoreConstants.timestamp]?.toString() ?? '0') ??
+          0,
     );
   }
 
@@ -439,6 +507,7 @@ class NotificationService {
     _retryTimer?.cancel();
     _isListening = false;
     _processedIds.clear();
+    _lastMessageTimes.clear(); // Xóa cache
     debugPrint('🛑 Message listener stopped');
   }
 

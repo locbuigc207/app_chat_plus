@@ -74,38 +74,35 @@ class GameFirebaseService {
     required String player2Name,
     required String player2Avatar,
   }) async {
-    final docRef = _matchDoc(matchId);
+    final now = DateTime.now().millisecondsSinceEpoch.toString();
+    try {
+      await _db.runTransaction((tx) async {
+        final doc = await tx.get(_matchDoc(matchId));
+        if (!doc.exists) throw Exception('Match not found: $matchId');
 
-    await _db.runTransaction((transaction) async {
-      final snapshot = await transaction.get(docRef);
+        final data = doc.data()!;
+        final existingP2 = data[FirestoreConstants.player2Id] as String?;
+        if (existingP2 != null && existingP2.isNotEmpty) {
+          throw Exception('Match already accepted');
+        }
 
-      if (!snapshot.exists) {
-        throw Exception('Trận đấu không tồn tại!');
-      }
-
-      final data = snapshot.data();
-
-      // KHẮC PHỤC LỖI 4: Guard chặn race condition khi Cloud Function vừa abort match
-      final status = data?[FirestoreConstants.gameStatus] as String?;
-      if (status != GameMatchStatus.waiting.name) {
-        throw Exception('Trận đấu đã hết hạn hoặc không còn ở trạng thái chờ!');
-      }
-
-      if (data?[FirestoreConstants.player2Id] != null) {
-        throw Exception('Trận đấu đã có người tham gia!');
-      }
-
-      final now = DateTime.now().millisecondsSinceEpoch.toString();
-      transaction.update(docRef, {
-        FirestoreConstants.player2Id: player2Id,
-        FirestoreConstants.player2Name: player2Name,
-        FirestoreConstants.player2Avatar: player2Avatar,
-        FirestoreConstants.gameStatus: GameMatchStatus.playing.name,
-        FirestoreConstants.startedAt: now,
+        tx.update(_matchDoc(matchId), {
+          FirestoreConstants.player2Id: player2Id,
+          FirestoreConstants.player2Name: player2Name,
+          FirestoreConstants.player2Avatar: player2Avatar,
+          FirestoreConstants.gameStatus: GameMatchStatus.playing.name,
+          FirestoreConstants.startedAt: now,
+        });
       });
-    });
-
-    _log('🎮 Match accepted by $player2Name: $matchId');
+      _log('🎮 Match accepted by $player2Name: $matchId');
+    } catch (e) {
+      if (e.toString().contains('already accepted')) {
+        _log('⚠️ Match $matchId already accepted, joining as spectator');
+        // Không throw — cho phép join vào xem
+      } else {
+        rethrow;
+      }
+    }
   }
 
   Future<void> finishMatch({
@@ -157,31 +154,31 @@ class GameFirebaseService {
     return _matchesRef
         .where(FirestoreConstants.sourceGroupId, isEqualTo: groupId)
         .where(
-          FirestoreConstants.gameStatus,
-          whereIn: [GameMatchStatus.waiting.name, GameMatchStatus.playing.name],
-        )
+      FirestoreConstants.gameStatus,
+      whereIn: [GameMatchStatus.waiting.name, GameMatchStatus.playing.name],
+    )
         .orderBy(FirestoreConstants.createdAt, descending: true)
         .limit(20)
         .snapshots()
         .map((snapshot) {
-          final matches = <GameMatch>[];
-          for (final doc in snapshot.docs) {
-            try {
-              matches.add(GameMatch.fromDocument(doc));
-            } catch (e) {
-              _log('❌ watchLiveMatchesInGroup parse error: $e');
-            }
-          }
-          return matches;
-        })
+      final matches = <GameMatch>[];
+      for (final doc in snapshot.docs) {
+        try {
+          matches.add(GameMatch.fromDocument(doc));
+        } catch (e) {
+          _log('❌ watchLiveMatchesInGroup parse error: $e');
+        }
+      }
+      return matches;
+    })
         .transform(
-          StreamTransformer.fromHandlers(
-            handleError: (error, stackTrace, sink) {
-              _log('⚠️ watchLiveMatchesInGroup index error: $error');
-              sink.add(const <GameMatch>[]);
-            },
-          ),
-        );
+      StreamTransformer.fromHandlers(
+        handleError: (error, stackTrace, sink) {
+          _log('⚠️ watchLiveMatchesInGroup index error: $error');
+          sink.add(const <GameMatch>[]);
+        },
+      ),
+    );
   }
 
   // =========================================================
@@ -206,14 +203,14 @@ class GameFirebaseService {
         .limit(1)
         .snapshots()
         .map((snap) {
-          if (snap.docs.isEmpty) return null;
-          try {
-            return GameMove.fromDocument(snap.docs.first);
-          } catch (e) {
-            _log('❌ watchLatestMove parse error: $e');
-            return null;
-          }
-        });
+      if (snap.docs.isEmpty) return null;
+      try {
+        return GameMove.fromDocument(snap.docs.first);
+      } catch (e) {
+        _log('❌ watchLatestMove parse error: $e');
+        return null;
+      }
+    });
   }
 
   Future<List<GameMove>> fetchAllMoves(String matchId) async {
@@ -296,14 +293,14 @@ class GameFirebaseService {
         .snapshots()
         .map(
           (snap) => snap.docs.map((doc) {
-            final d = doc.data();
-            return SpectatorChatMessage(
-              userId: d[FirestoreConstants.spectatorUserId] as String? ?? '',
-              text: d[FirestoreConstants.spectatorText] as String? ?? '',
-              sentAt: d[FirestoreConstants.spectatorSentAt] as String? ?? '',
-            );
-          }).toList(),
+        final d = doc.data();
+        return SpectatorChatMessage(
+          userId: d[FirestoreConstants.spectatorUserId] as String? ?? '',
+          text: d[FirestoreConstants.spectatorText] as String? ?? '',
+          sentAt: d[FirestoreConstants.spectatorSentAt] as String? ?? '',
         );
+      }).toList(),
+    );
   }
 
   // =========================================================
@@ -334,14 +331,14 @@ class GameFirebaseService {
         .snapshots()
         .map(
           (snap) => snap.docs.map((doc) {
-            final d = doc.data();
-            return GameReaction(
-              userId: d[FirestoreConstants.reactionUserId] as String? ?? '',
-              emoji: d[FirestoreConstants.reactionEmoji] as String? ?? '',
-              sentAt: d[FirestoreConstants.reactionSentAt] as String? ?? '',
-            );
-          }).toList(),
+        final d = doc.data();
+        return GameReaction(
+          userId: d[FirestoreConstants.reactionUserId] as String? ?? '',
+          emoji: d[FirestoreConstants.reactionEmoji] as String? ?? '',
+          sentAt: d[FirestoreConstants.reactionSentAt] as String? ?? '',
         );
+      }).toList(),
+    );
   }
 
   // =========================================================
@@ -380,7 +377,7 @@ class GameFirebaseService {
       if (!doc.exists) return null;
       final data = doc.data();
       final req =
-          data?[FirestoreConstants.drawRequest] as Map<String, dynamic>?;
+      data?[FirestoreConstants.drawRequest] as Map<String, dynamic>?;
       if (req == null) return null;
       return DrawRequestInfo(
         requesterId: req['requesterId'] as String? ?? '',
@@ -426,10 +423,10 @@ class GameFirebaseService {
 
       final disconnectedId =
           data[FirestoreConstants.disconnectedPlayerId] as String? ??
-          data['disconnectedPlayerId'] as String?;
+              data['disconnectedPlayerId'] as String?;
       final disconnectedAt =
           data[FirestoreConstants.disconnectedAt] as String? ??
-          data['disconnectedAt'] as String?;
+              data['disconnectedAt'] as String?;
 
       if (disconnectedId == null) return null;
       return DisconnectInfo(userId: disconnectedId, at: disconnectedAt ?? '');
@@ -471,8 +468,8 @@ class GameFirebaseService {
   }
 
   Future<void> _deleteCollection(
-    CollectionReference<Map<String, dynamic>> ref,
-  ) async {
+      CollectionReference<Map<String, dynamic>> ref,
+      ) async {
     const batchSize = 100;
     while (true) {
       final snap = await ref.limit(batchSize).get();

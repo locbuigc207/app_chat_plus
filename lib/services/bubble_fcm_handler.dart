@@ -20,18 +20,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TOP-LEVEL BACKGROUND MESSAGE HANDLER
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Must be top-level (not a class method) — called when app is in background
-/// or terminated and a data message arrives.
-@pragma('vm:entry-point')
-Future<void> _onBackgroundMessage(RemoteMessage msg) async {
-  debugPrint('🔔 [Background FCM] ${msg.messageId}');
-  await BubbleFcmHandler.processMessage(msg, fromBackground: true);
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // BUBBLE FCM HANDLER
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -54,8 +42,10 @@ class BubbleFcmHandler {
   static Future<void> initialize() async {
     if (kIsWeb || !Platform.isAndroid) return;
 
-    // Register background handler
-    FirebaseMessaging.onBackgroundMessage(_onBackgroundMessage);
+    // [FIX 25]: ĐÃ XÓA dòng FirebaseMessaging.onBackgroundMessage(_onBackgroundMessage);
+    // Firebase Cloud Messaging chỉ cho phép MỘT background handler duy nhất.
+    // Handler đó đã được đặt chuẩn xác tại main.dart để gánh chung routing cho Group Call.
+    // main.dart sẽ chủ động gọi BubbleFcmHandler.processMessage(..., fromBackground: true).
 
     // Request notification permission
     final settings = await FirebaseMessaging.instance.requestPermission(
@@ -75,16 +65,22 @@ class BubbleFcmHandler {
     // App opened from notification tap
     FirebaseMessaging.onMessageOpenedApp.listen((msg) {
       debugPrint('🔔 [FCM tap] ${msg.messageId}');
-      BubbleFcmHandler.processMessage(msg,
-          fromBackground: false, userTapped: true);
+      BubbleFcmHandler.processMessage(
+        msg,
+        fromBackground: false,
+        userTapped: true,
+      );
     });
 
     // Check for initial message (app launched from terminated state via notif)
     final initial = await FirebaseMessaging.instance.getInitialMessage();
     if (initial != null) {
       debugPrint('🔔 [FCM initial] ${initial.messageId}');
-      BubbleFcmHandler.processMessage(initial,
-          fromBackground: false, userTapped: true);
+      BubbleFcmHandler.processMessage(
+        initial,
+        fromBackground: false,
+        userTapped: true,
+      );
     }
 
     debugPrint('✅ BubbleFcmHandler initialized');
@@ -132,7 +128,9 @@ class BubbleFcmHandler {
       // Foreground: update or show bubble
       if (_svc.isBubbleActive(userId)) {
         await _svc.updateBubbleMessage(
-            userId: userId, message: _preview(message, msgType));
+          userId: userId,
+          message: _preview(message, msgType),
+        );
       } else {
         await _svc.showChatBubble(
           userId: userId,
@@ -148,8 +146,10 @@ class BubbleFcmHandler {
 
     _messageCtrl.add(msg);
 
-    debugPrint('✅ FCM processed → bubble: $userName '
-        '(bg=$fromBackground, tap=$userTapped)');
+    debugPrint(
+      '✅ FCM processed → bubble: $userName '
+      '(bg=$fromBackground, tap=$userTapped)',
+    );
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────────
@@ -157,15 +157,27 @@ class BubbleFcmHandler {
   static String _preview(String message, String type) {
     switch (type.toLowerCase()) {
       case 'image':
+      case '1':
         return '📷 Hình ảnh';
+      case 'video':
+      case '2':
+        return '🎬 Video';
       case 'voice':
+      case '3':
         return '🎤 Tin nhắn thoại';
-      case 'location':
-        return '📍 Vị trí';
       case 'file':
+      case '4':
+      case '5':
         return '📎 Tệp đính kèm';
+      case 'poll':
+      case '6':
+        return '📊 Bình chọn';
       case 'sticker':
+      case '10':
         return '😊 Nhãn dán';
+      case 'location':
+      case '11':
+        return '📍 Vị trí';
       default:
         return message.length > 60 ? '${message.substring(0, 60)}…' : message;
     }
