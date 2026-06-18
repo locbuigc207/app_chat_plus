@@ -57,7 +57,6 @@ const cloudStorageSecret = defineSecret("CLOUD_STORAGE_SECRET");
 // ═════════════════════════════════════════════════════════════════════════════
 // ─── GLOBAL CONSTANTS ────────────────────────────────────────────────────────
 // ═════════════════════════════════════════════════════════════════════════════
-// Đã cập nhật Model ID sang bản ổn định mới nhất (16/06/2026)
 const MODEL_ID = "gemini-2.5-flash";
 const MODEL_FLASH_LITE = "gemini-2.5-flash-lite";
 const MAX_INPUT_LENGTH = 4000;
@@ -116,7 +115,6 @@ const TONE_PROMPTS = {
 const ACTIVE_CALL_STATUSES = ["calling", "ringing", "dialing", "connected", "accepted"];
 const RATE_LIMIT_AI_CALLS_PER_MIN = 20;
 
-// KHẮC PHỤC LỖI 4: Thêm constant cho Game Match (bàn caro vô hạn)
 const GAME_MATCH_TIMEOUT_SEC = 300; // 5 phút timeout cho game
 const GAME_MATCHES_COLLECTION = "game_matches";
 
@@ -202,7 +200,7 @@ async function checkRateLimit(uid, action) {
         tx.set(ref, {
           calls: [{ts: now}],
           updatedAt: now,
-          expireAt: new Date(now + 10 * 60 * 1000), // Added TTL expiration
+          expireAt: new Date(now + 10 * 60 * 1000), 
         });
         return;
       }
@@ -218,7 +216,7 @@ async function checkRateLimit(uid, action) {
       tx.update(ref, {
         calls: recent,
         updatedAt: now,
-        expireAt: new Date(now + 10 * 60 * 1000), // Added TTL expiration
+        expireAt: new Date(now + 10 * 60 * 1000),
       });
     });
   } catch (err) {
@@ -668,7 +666,7 @@ exports.analyzeDecryptedMessage = onCall(
 
 // ─── 2. analyzeScam ──────────────────────────────────────────────────────────
 exports.analyzeScam = onCall(
-  {secrets: [geminiApiKey], enforceAppCheck: true}, // Đã bật App Check
+  {secrets: [geminiApiKey], enforceAppCheck: true},
   async (request) => {
     requireAuth(request.auth);
     const {message} = request.data;
@@ -713,7 +711,7 @@ exports.analyzeScam = onCall(
 
 // ─── 3. analyzeDecryptedClientMessage ────────────────────────────────────────
 exports.analyzeDecryptedClientMessage = onCall(
-  {secrets: [geminiApiKey], enforceAppCheck: true}, // Đã bật App Check
+  {secrets: [geminiApiKey], enforceAppCheck: true},
   async (request) => {
     requireAuth(request.auth);
     const {plainTextContent, conversationId, messageId, idTo} = request.data;
@@ -749,7 +747,6 @@ exports.analyzeDecryptedClientMessage = onCall(
         const msgRef = db
           .collection("messages").doc(conversationId)
           .collection(conversationId).doc(messageId);
-        // Sửa lỗi NOT_FOUND bằng cách dùng batch.set với merge: true
         batch.set(msgRef, {
           scamWarning: true,
           scamReason: analysis.scamReason ?? "",
@@ -966,7 +963,7 @@ exports.suggestReplies = onCall(
   },
 );
 
-// ─── 8. generateSwipeReplies (Cập nhật phiên bản mới) ────────────────────────
+// ─── 8. generateSwipeReplies ─────────────────────────────────────────────────
 exports.generateSwipeReplies = onCall(
   {secrets: [geminiApiKey]},
   async (request) => {
@@ -1020,10 +1017,9 @@ exports.generateSwipeReplies = onCall(
 
 // ─── 9. generateAutoPilotReply ───────────────────────────────────────────────
 exports.generateAutoPilotReply = onCall(
-  {secrets: [geminiApiKey], enforceAppCheck: true}, // Đã bật App Check
+  {secrets: [geminiApiKey], enforceAppCheck: true},
   async (request) => {
     requireAuth(request.auth);
-    // Bổ sung destructuring learnedPersona
     const {
       incomingMessage,
       myStyleContext,
@@ -1038,7 +1034,6 @@ exports.generateAutoPilotReply = onCall(
       return {reply: awayMessage ?? "Mình đang bận, sẽ nhắn lại sau nha! 😊"};
     }
     const safeMsg = sanitize(incomingMessage, 500);
-    // Kết hợp learnedPersona để fix lỗi tone likeMe bị thiếu context
     const safeCtx = sanitize(learnedPersona ?? myStyleContext ?? "thân thiện, ngắn gọn", 600);
     const tonePrompt = TONE_PROMPTS[tone] ?? TONE_PROMPTS.friendly;
     const ctxHistory = sanitizeMessages(conversationContext, 5);
@@ -1213,13 +1208,13 @@ Transcript cuộc gọi:
 "${callTranscript ? callTranscript.substring(0, 2000) : "(Không có transcript)"}"
 Trả về định dạng JSON nghiêm ngặt:
 {
- "isSafe": boolean,
- "riskLevel": "LOW"|"MEDIUM"|"HIGH",
- "isDeepfakeVoice": boolean,
- "deepfakeConfidence": 0-100,
- "isScam": boolean,
- "warningMessage": "Thông báo ngắn gọn cho user",
- "confidenceScore": 0-100
+"isSafe": boolean,
+"riskLevel": "LOW"|"MEDIUM"|"HIGH",
+"isDeepfakeVoice": boolean,
+"deepfakeConfidence": 0-100,
+"isScam": boolean,
+"warningMessage": "Thông báo ngắn gọn cho user",
+"confidenceScore": 0-100
 }`;
 
     try {
@@ -1275,7 +1270,7 @@ exports.requestCallToken = onCall(
   },
 );
 
-// ─── 14b. startGroupCallRecording — Agora Cloud Recording Start ──────────────
+// ─── 14b. startGroupCallRecording ────────────────────────────────────────────
 exports.startGroupCallRecording = onCall(
   {
     secrets: [agoraAppId, agoraCustomerKey, agoraCustomerSecret, cloudStorageBucket, cloudStorageKey, cloudStorageSecret],
@@ -1382,7 +1377,7 @@ exports.startGroupCallRecording = onCall(
   },
 );
 
-// ─── 14c. stopGroupCallRecording — Agora Cloud Recording Stop ────────────────
+// ─── 14c. stopGroupCallRecording ─────────────────────────────────────────────
 exports.stopGroupCallRecording = onCall(
   {
     timeoutSeconds: 60,
@@ -1682,7 +1677,7 @@ exports.extractKeyMoments = onCall(
   },
 );
 
-// ─── 20. getUserInsights (Phân Tích Bản Thô - File 1) ────────────────────────
+// ─── 20. getUserInsights ─────────────────────────────────────────────────────
 exports.getUserInsights = onCall(
   {secrets: [geminiApiKey], memory: "256MiB", timeoutSeconds: 60},
   async (request) => {
@@ -1743,7 +1738,7 @@ exports.getUserInsights = onCall(
   },
 );
 
-// ─── 20b. getUserInsightsV2 (Phân Tích Có Cache/AI Nâng Cao - File 2) ────────
+// ─── 20b. getUserInsightsV2 ──────────────────────────────────────────────────
 exports.getUserInsightsV2 = onCall(
   {secrets: [geminiApiKey], timeoutSeconds: 30, memory: "512MiB"},
   async (request) => {
@@ -1754,7 +1749,6 @@ exports.getUserInsightsV2 = onCall(
     if (cleanMsgs.length === 0) {
       return {success: false, error: "Không có tin nhắn hợp lệ."};
     }
-    // Sử dụng index để tạo timestamp spread cách nhau 5 phút
     const msgObjects = cleanMsgs.map((c, i) => ({
       content: c,
       timestamp: Date.now() - (cleanMsgs.length - i) * 5 * 60 * 1000,
@@ -1844,48 +1838,112 @@ exports.scheduleMessageDeletion = onDocumentCreated(
 );
 
 // ─── 24. sendMessageNotification ─────────────────────────────────────────────
+// FIX CHÍNH: Tách conversations update thành bước riêng, chạy TRƯỚC khi check
+// receiver online. Dùng query participants để tìm đúng document ID (friendshipId).
+// Type labels khớp đúng TypeMessage constants phía client.
 exports.sendMessageNotification = onDocumentCreated(
   "messages/{conversationId}/{messageId}",
   async (event) => {
     const {conversationId} = event.params;
     const msgData = event.data?.data();
     if (!msgData || msgData.idFrom === "AI_BOT") return;
+
+    const idFrom       = msgData.idFrom     ?? "";
+    const idTo         = msgData.idTo       ?? "";
+    const msgType      = msgData.type       ?? 0;
+    const msgTimestamp = msgData.timestamp  ?? String(Date.now());
+
+    // Type preview map — khớp đúng TypeMessage constants trong client:
+    // 0=text, 1=image, 2=video, 3=voice, 4=document, 5=document,
+    // 6=poll, 10=sticker, 11=geoLocked
+    const TYPE_PREVIEW = {
+      1:  "📷 Hình ảnh",
+      2:  "🎬 Video",
+      3:  "🎤 Tin nhắn thoại",
+      4:  "📄 Tài liệu",
+      5:  "📄 Tài liệu",
+      6:  "📊 Bình chọn",
+      10: "😊 Sticker",
+      11: "📍 Tin nhắn địa điểm",
+    };
+
+    const rawContent = msgType === 0
+      ? String(msgData.content || "")
+      : (TYPE_PREVIEW[msgType] ?? "[Tệp đính kèm]");
+    const lastMessagePreview = rawContent.substring(0, 100);
+
+    // ── BƯỚC 1: Update conversations.lastMessage (luôn chạy bất kể online) ──
+    try {
+      const convoQuery = await db
+        .collection("conversations")
+        .where("participants", "array-contains", idFrom)
+        .get();
+
+      const convoDoc = convoQuery.docs.find((d) => {
+        const parts = d.data().participants || [];
+        return parts.includes(idTo);
+      });
+
+      if (convoDoc) {
+        await convoDoc.ref.set({
+          lastMessage:     lastMessagePreview,
+          lastMessageTime: msgTimestamp,
+          lastMessageType: msgType,
+        }, {merge: true});
+      } else {
+        // Fallback: doc chưa tồn tại → tạo mới với conversationId
+        await db.collection("conversations").doc(conversationId).set({
+          lastMessage:     lastMessagePreview,
+          lastMessageTime: msgTimestamp,
+          lastMessageType: msgType,
+          participants:    [idFrom, idTo],
+        }, {merge: true});
+      }
+    } catch (convoErr) {
+      logger.warn("[sendMessageNotification] convo update error:", convoErr);
+    }
+
+    // ── BƯỚC 2: Gửi push notification (chỉ khi receiver offline) ──────────
     try {
       const [receiverSnap, senderSnap] = await Promise.all([
-        db.collection("users").doc(msgData.idTo).get(),
-        db.collection("users").doc(msgData.idFrom).get(),
+        db.collection("users").doc(idTo).get(),
+        db.collection("users").doc(idFrom).get(),
       ]);
+
       if (!receiverSnap.exists) return;
       const receiverData = receiverSnap.data();
       if (receiverData?.isOnline) return;
+
       const pushToken = receiverData?.pushToken;
       if (!pushToken) return;
 
-      const senderData = senderSnap.exists ? senderSnap.data() : {};
-      const senderName = senderData?.nickname ?? "Ai đó";
+      const senderData   = senderSnap.exists ? senderSnap.data() : {};
+      const senderName   = senderData?.nickname ?? "Ai đó";
       const senderAvatar = senderData?.photoUrl ?? "";
 
-      const typeLabels = {1: "[Hình ảnh]", 2: "[Video]", 3: "[Tệp đính kèm]", 4: "[Âm thanh]"};
-      const messagePreview = msgData.type === 0 ? "Bạn có tin nhắn mới" : (typeLabels[msgData.type] ?? "[Tệp đính kèm]");
-      const encryptedContent = msgData.type === 0 ? (msgData.content ?? "") : (typeLabels[msgData.type] ?? "");
+      const notifBody = msgType === 0
+        ? "Bạn có tin nhắn mới"
+        : (TYPE_PREVIEW[msgType] ?? "[Tệp đính kèm]");
+
+      const encryptedContent = msgType === 0 ? String(msgData.content ?? "") : "";
 
       await sendPushNotification({
         pushToken,
         title: senderName,
-        body: messagePreview,
+        body:  notifBody,
         data: {
           conversationId,
-          senderId: msgData.idFrom,
+          senderId:         idFrom,
           senderName,
           senderAvatar,
-          type: "new_message",
-          messageType: String(msgData.type ?? 0),
+          type:             "new_message",
+          messageType:      String(msgType),
           encryptedContent,
-          participantIds: JSON.stringify([msgData.idTo, msgData.idFrom]),
+          participantIds:   JSON.stringify([idTo, idFrom]),
         },
       });
     } catch (err) {
-      logger.error("[sendMessageNotification]", err);
+      logger.error("[sendMessageNotification] push error:", err);
     }
   },
 );
@@ -1895,7 +1953,7 @@ exports.updateUserPresence = onDocumentUpdated(
   "users/{userId}",
   async (event) => {
     const before = event.data?.before.data();
-    const after = event.data?.after.data();
+    const after  = event.data?.after.data();
     if (!before || !after) return;
     if (before.isOnline && !after.isOnline) {
       try {
@@ -1921,16 +1979,16 @@ exports.onCallCreated = onDocumentCreated(
       await sendPushNotification({
         pushToken,
         title: `📞 Cuộc gọi ${callType} đến`,
-        body: `${callData.callerName ?? "Ai đó"} đang gọi cho bạn`,
+        body:  `${callData.callerName ?? "Ai đó"} đang gọi cho bạn`,
         data: {
-          type: "incoming_call",
-          callId: event.params.callId,
-          callerId: callData.callerId,
-          senderId: callData.callerId,
-          userId: callData.calleeId,
-          callerName: callData.callerName ?? "",
+          type:        "incoming_call",
+          callId:      event.params.callId,
+          callerId:    callData.callerId,
+          senderId:    callData.callerId,
+          userId:      callData.calleeId,
+          callerName:  callData.callerName  ?? "",
           callerAvatar: callData.callerAvatar ?? "",
-          callType: String(callData.callType ?? 0),
+          callType:    String(callData.callType ?? 0),
           channelName: callData.channelName ?? "",
         },
       });
@@ -1941,19 +1999,18 @@ exports.onCallCreated = onDocumentCreated(
   },
 );
 
-// ─── 26b. onGroupCallCreated — FCM khi có cuộc gọi nhóm mới ──────────────────
+// ─── 26b. onGroupCallCreated ──────────────────────────────────────────────────
 exports.onGroupCallCreated = onDocumentCreated(
   `${GROUP_CALLS_COLLECTION}/{callId}`,
   async (event) => {
     const call = event.data?.data();
     if (!call) return;
-
     const {
       invitedUserIds = [],
-      groupName = "Nhóm",
-      initiatorName = "Ai đó",
-      initiatorId = "", // Khai báo thêm initiatorId
-      callType = "video",
+      groupName      = "Nhóm",
+      initiatorName  = "Ai đó",
+      initiatorId    = "",
+      callType       = "video",
     } = call;
 
     if (!invitedUserIds.length) return;
@@ -1968,14 +2025,14 @@ exports.onGroupCallCreated = onDocumentCreated(
       sendPushNotification({
         pushToken: token,
         title: `${isVideo ? "📹" : "📞"} ${groupName}`,
-        body: `${initiatorName} đang gọi cho nhóm`,
+        body:  `${initiatorName} đang gọi cho nhóm`,
         data: {
-          type: "group_call_invite",
+          type:          "group_call_invite",
           callId,
           groupName,
           initiatorName,
-          senderId: initiatorId,
-          isVideo: String(isVideo),
+          senderId:      initiatorId,
+          isVideo:       String(isVideo),
           callType,
         },
       }).catch((e) =>
@@ -1995,7 +2052,7 @@ exports.onCallUpdated = onDocumentUpdated(
   "calls/{callId}",
   async (event) => {
     const before = event.data?.before.data();
-    const after = event.data?.after.data();
+    const after  = event.data?.after.data();
     if (!before || !after) return;
     if (before.status === after.status) return;
 
@@ -2008,10 +2065,10 @@ exports.onCallUpdated = onDocumentUpdated(
       if (!pushToken) return;
       const msgMap = {
         connected: "Cuộc gọi đã kết nối ✅",
-        declined: "Cuộc gọi bị từ chối ❌",
-        missed: "Cuộc gọi nhỡ 📵",
-        ended: "Cuộc gọi đã kết thúc",
-        busy: "Người dùng đang bận 🔔",
+        declined:  "Cuộc gọi bị từ chối ❌",
+        missed:    "Cuộc gọi nhỡ 📵",
+        ended:     "Cuộc gọi đã kết thúc",
+        busy:      "Người dùng đang bận 🔔",
       };
       const body = msgMap[after.status];
       if (!body) return;
@@ -2043,15 +2100,15 @@ exports.cleanupExpiredMessages = onSchedule(
         const expired = await db
           .collection("messages").doc(conv.id).collection(conv.id)
           .where("autoDeleteAt", "<=", now)
-          .where("isDeleted", "==", false)
+          .where("isDeleted",    "==", false)
           .limit(500)
           .get();
         if (expired.empty) continue;
         await batchUpdate(expired.docs, (batch, doc) => {
           batch.update(doc.ref, {
-            isDeleted: true,
-            content: "",
-            deletedAt: FieldValue.serverTimestamp(),
+            isDeleted:    true,
+            content:      "",
+            deletedAt:    FieldValue.serverTimestamp(),
             deleteReason: "auto_expire",
           });
         });
@@ -2074,7 +2131,7 @@ exports.cleanupTypingStatus = onSchedule(
       const updates = [];
       for (const doc of typingDocs.docs) {
         const updateObj = {};
-        let hasChanges = false;
+        let hasChanges  = false;
         for (const [userId, status] of Object.entries(doc.data())) {
           const ts = status?.timestamp?.toMillis?.();
           if (ts && ts < staleThreshold) {
@@ -2130,7 +2187,7 @@ exports.cleanupStaleCalls = onSchedule(
       if (staleCalls.empty) return;
       await batchUpdate(staleCalls.docs, (batch, doc) => {
         batch.update(doc.ref, {
-          status: "missed",
+          status:  "missed",
           endedAt: Date.now().toString(),
         });
       });
@@ -2141,7 +2198,7 @@ exports.cleanupStaleCalls = onSchedule(
   },
 );
 
-// ─── 31b. autoMissExpiredGroupCalls — Auto-miss sau timeout ──────────────────
+// ─── 31b. autoMissExpiredGroupCalls ──────────────────────────────────────────
 exports.autoMissExpiredGroupCalls = onSchedule(
   {schedule: "every 1 minutes", timeZone: "Asia/Ho_Chi_Minh"},
   async () => {
@@ -2158,10 +2215,10 @@ exports.autoMissExpiredGroupCalls = onSchedule(
 
       await batchUpdate(snap.docs, (batch, doc) => {
         batch.update(doc.ref, {
-          status: "missed",
-          endedAt: String(Date.now()),
+          status:          "missed",
+          endedAt:         String(Date.now()),
           durationSeconds: 0,
-          participants: [],
+          participants:    [],
         });
       });
 
@@ -2174,8 +2231,7 @@ exports.autoMissExpiredGroupCalls = onSchedule(
   },
 );
 
-// KHẮC PHỤC LỖI 4: Thêm function dọn dẹp game match quá hạn
-// ─── 31c. autoAbortExpiredGameMatches — Hủy ván cờ quá hạn ───────────────────
+// ─── 31c. autoAbortExpiredGameMatches ────────────────────────────────────────
 exports.autoAbortExpiredGameMatches = onSchedule(
   {schedule: "every 1 minutes", timeZone: "Asia/Ho_Chi_Minh"},
   async () => {
@@ -2191,9 +2247,9 @@ exports.autoAbortExpiredGameMatches = onSchedule(
 
       await batchUpdate(snap.docs, (batch, doc) => {
         batch.update(doc.ref, {
-          gameStatus: "aborted",
+          gameStatus:    "aborted",
           gameEndReason: "timeout",
-          endedAt: String(Date.now()),
+          endedAt:       String(Date.now()),
         });
       });
       logger.info(`[autoAbortExpiredGameMatches] Aborted ${snap.size} matches`);
@@ -2216,9 +2272,7 @@ exports.cleanupExpiredAiContent = onSchedule(
         try {
           const convId = convRef.id;
           const expiredDocs = await db
-            .collection("ai_content")
-            .doc(convId)
-            .collection(convId)
+            .collection("ai_content").doc(convId).collection(convId)
             .where("expireAt", "<=", now)
             .limit(500)
             .get();
@@ -2241,10 +2295,10 @@ exports.cleanupExpiredAiContent = onSchedule(
 // ─── 33. weeklyAiRecap ───────────────────────────────────────────────────────
 exports.weeklyAiRecap = onSchedule(
   {
-    schedule: "0 20 * * 0",
-    timeZone: "Asia/Ho_Chi_Minh",
-    secrets: [geminiApiKey],
-    memory: "512MiB",
+    schedule:       "0 20 * * 0",
+    timeZone:       "Asia/Ho_Chi_Minh",
+    secrets:        [geminiApiKey],
+    memory:         "512MiB",
     timeoutSeconds: 300,
   },
   async () => {
@@ -2259,9 +2313,7 @@ exports.weeklyAiRecap = onSchedule(
       for (const groupDoc of groups.docs) {
         const groupId = groupDoc.id;
         const msgsSnap = await db
-          .collection("ai_content")
-          .doc(groupId)
-          .collection(groupId)
+          .collection("ai_content").doc(groupId).collection(groupId)
           .where("timestamp", ">=", sevenDaysAgo)
           .orderBy("timestamp", "asc")
           .limit(200)
@@ -2271,7 +2323,6 @@ exports.weeklyAiRecap = onSchedule(
         const chatHistory = msgsSnap.docs
           .map((d) => {
             const content = d.data().content ?? "";
-            // Đảm bảo tin nhắn của AI bot từ tuần trước không bị học lại
             if (d.data().idFrom === "AI_BOT") return null;
             if (content.startsWith("{\"iv\":") || content.startsWith("eyJ")) return null;
             if (content.trim().length < 5) return null;
@@ -2291,20 +2342,15 @@ exports.weeklyAiRecap = onSchedule(
           const recap = await callGeminiWithRetry(model,
             `Đây là lịch sử chat nhóm tuần qua. Đóng vai MC vui nhộn, viết bản tin "Bóc Phốt Tuần" ` +
             `dưới 150 chữ: ai nói nhiều nhất, câu nói ấn tượng, trend hài hước, highlight của tuần. ` +
-            `Dùng emoji, tiếng lóng Gen Z vừa phải, vui vẻ.\n\nLịch sử:\n${chatHistory}`,
+            `Dùng emoji, tiếng lóng Gen Z vừa phải.\n\nLịch sử:\n${chatHistory}`,
           );
 
           const recapStructured = await (async () => {
             try {
-              const modelJson = createGeminiModel(
-                geminiApiKey.value(),
-                "Phân tích và trả về JSON hợp lệ.",
-                {maxOutputTokens: 256, temperature: 0.2},
-              );
+              const modelJson = createGeminiModel(geminiApiKey.value(), "Phân tích và trả về JSON hợp lệ.", {maxOutputTokens: 256, temperature: 0.2});
               const rawJson = await callGeminiWithRetry(modelJson,
                 `Từ bản tin sau, trích xuất JSON:\n` +
-                `{"summary":"...","highlights":["..."],"sentiment":"positive"|"neutral"|"negative"}\n\n` +
-                `Bản tin: ${recap.trim()}`,
+                `{"summary":"...","highlights":["..."],"sentiment":"positive"|"neutral"|"negative"}\n\nBản tin: ${recap.trim()}`,
               );
               return safeParseJson(rawJson) ?? {};
             } catch {
@@ -2313,10 +2359,9 @@ exports.weeklyAiRecap = onSchedule(
           })();
 
           const recapText = `🔥 BẢN TIN BÓC PHỐT TUẦN 🔥\n\n${recap.trim()}`;
-          const msgId = Date.now().toString();
-          const batch = db.batch();
-          const msgRef = db
-            .collection("messages").doc(groupId).collection(groupId).doc(msgId);
+          const msgId     = Date.now().toString();
+          const batch     = db.batch();
+          const msgRef    = db.collection("messages").doc(groupId).collection(groupId).doc(msgId);
 
           batch.set(msgRef, {
             idFrom: "AI_BOT",
@@ -2333,20 +2378,17 @@ exports.weeklyAiRecap = onSchedule(
           });
           await batch.commit();
 
-          await db.collection("users").doc(groupId).set(
-            {
-              weeklyRecap: {
-                summary: recapStructured.summary ?? recapText,
-                highlights: recapStructured.highlights ?? [],
-                sentiment: recapStructured.sentiment ?? "neutral",
-                fullText: recapText,
-                generatedAt: FieldValue.serverTimestamp(),
-                weekStart: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-                messageCount: msgsSnap.size,
-              },
+          await db.collection("users").doc(groupId).set({
+            weeklyRecap: {
+              summary:      recapStructured.summary ?? recapText,
+              highlights:   recapStructured.highlights ?? [],
+              sentiment:    recapStructured.sentiment ?? "neutral",
+              fullText:     recapText,
+              generatedAt:  FieldValue.serverTimestamp(),
+              weekStart:    new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+              messageCount: msgsSnap.size,
             },
-            {merge: true},
-          );
+          }, {merge: true});
           recapped++;
         } catch (err) {
           logger.error(`[weeklyAiRecap] Gemini error group ${groupId}:`, err);
@@ -2380,16 +2422,14 @@ exports.generateWeeklyRecap = onCall(
     }
 
     const validStyles = ["humorous", "professional", "romantic", "tv_host", "minimal"];
-    const safeStyle = validStyles.includes(recapStyle) ? recapStyle : "humorous";
-    const safeDays = Math.min(Math.max(parseInt(lookbackDays) || 7, 1), 30);
-    const cutoffTs = (Date.now() - safeDays * 24 * 60 * 60 * 1000).toString();
+    const safeStyle   = validStyles.includes(recapStyle) ? recapStyle : "humorous";
+    const safeDays    = Math.min(Math.max(parseInt(lookbackDays) || 7, 1), 30);
+    const cutoffTs    = (Date.now() - safeDays * 24 * 60 * 60 * 1000).toString();
 
     let msgsSnap;
     try {
       msgsSnap = await db
-        .collection("ai_content")
-        .doc(conversationId)
-        .collection(conversationId)
+        .collection("ai_content").doc(conversationId).collection(conversationId)
         .where("timestamp", ">=", cutoffTs)
         .orderBy("timestamp", "asc")
         .limit(200)
@@ -2411,9 +2451,8 @@ exports.generateWeeklyRecap = onCall(
 
     const chatHistory = msgsSnap.docs
       .map((d) => {
-        const data = d.data();
+        const data    = d.data();
         const content = data.content ?? "";
-        // Ngăn chặn học lại tin nhắn của bot
         if (data.idFrom === "AI_BOT") return null;
         if (content.startsWith("{\"iv\":") || content.startsWith("eyJ")) return null;
         if (/^[A-Za-z0-9+/=]+=*:[A-Za-z0-9+/=]+=*$/.test(content)) return null;
@@ -2428,7 +2467,7 @@ exports.generateWeeklyRecap = onCall(
       return {
         success: false,
         reason: "insufficient_content",
-        summary: "Nội dung chat chưa đủ để tạo tóm tắt (cần ít nhất 50 ký tự).",
+        summary: "Nội dung chat chưa đủ để tạo tóm tắt.",
         messageCount: msgsSnap.size,
         lookbackDays: safeDays,
       };
@@ -2451,8 +2490,8 @@ exports.generateWeeklyRecap = onCall(
         {maxOutputTokens: 512, temperature: 0.2},
         true,
       );
-      const rawJson = await callGeminiWithRetry(modelJson,
-        `Từ bản tóm tắt sau, trích xuất JSON với đúng cấu trúc:\n` +
+      const rawJson   = await callGeminiWithRetry(modelJson,
+        `Từ bản tóm tắt sau, trích xuất JSON:\n` +
         `{"summary":"(1 câu ngắn nhất mô tả nội dung)","highlights":["điểm 1","điểm 2","điểm 3"],"sentiment":"positive|neutral|negative","topKeywords":["từ1","từ2","từ3"]}\n\n` +
         `Bản tóm tắt:\n${recapText.trim()}`,
       );
@@ -2460,19 +2499,19 @@ exports.generateWeeklyRecap = onCall(
       logger.info(`[generateWeeklyRecap] ${safeStyle} recap OK for ${conversationId}, ${msgsSnap.size} msgs`);
 
       return {
-        success: true,
-        style: safeStyle,
-        styleLabel: styleConfig.label,
-        styleEmoji: styleConfig.emoji,
-        fullText: recapText.trim(),
-        summary: structured.summary ?? "",
-        highlights: structured.highlights ?? [],
-        sentiment: structured.sentiment ?? "neutral",
-        topKeywords: structured.topKeywords ?? [],
-        messageCount: msgsSnap.size,
-        generatedAt: Date.now(),
+        success:          true,
+        style:            safeStyle,
+        styleLabel:       styleConfig.label,
+        styleEmoji:       styleConfig.emoji,
+        fullText:         recapText.trim(),
+        summary:          structured.summary  ?? "",
+        highlights:       structured.highlights ?? [],
+        sentiment:        structured.sentiment  ?? "neutral",
+        topKeywords:      structured.topKeywords ?? [],
+        messageCount:     msgsSnap.size,
+        generatedAt:      Date.now(),
         conversationType: conversationType,
-        lookbackDays: safeDays,
+        lookbackDays:     safeDays,
       };
     } catch (geminiErr) {
       logger.error("[generateWeeklyRecap] Gemini error:", geminiErr);
@@ -2481,16 +2520,16 @@ exports.generateWeeklyRecap = onCall(
   },
 );
 
-// ─── 35. smartReplyEnhanced — Multi-media smart reply với sticker + tone-aware
+// ─── 35. smartReplyEnhanced ──────────────────────────────────────────────────
 exports.smartReplyEnhanced = onCall(
-  {secrets: [geminiApiKey], enforceAppCheck: true}, // Đã bật App Check
+  {secrets: [geminiApiKey], enforceAppCheck: true},
   async (request) => {
     requireAuth(request.auth);
     await checkRateLimit(request.auth.uid, "smart_reply_enhanced");
 
     const {
       messages,
-      closenessLevel = 3,        // 1–5: 1=rất trang trọng, 5=rất thân thiết
+      closenessLevel = 3,
       relationshipType = "friend",
       language = "vi",
       count = 3,
@@ -2501,7 +2540,6 @@ exports.smartReplyEnhanced = onCall(
       return {suggestions: [], suggestStickers: [], detectedEmotion: "neutral"};
     }
 
-    // ── Tone map theo closeness 1-5 ──────────────────────────────────────
     const toneMap = {
       1: "rất trang trọng, dùng kính ngữ đầy đủ, lịch sự",
       2: "lịch sự, tương đối trang trọng, thân thiện nhẹ",
@@ -2511,15 +2549,14 @@ exports.smartReplyEnhanced = onCall(
     };
     const relMap = {
       colleague: "đồng nghiệp hoặc cấp trên",
-      friend: "bạn bè thân",
-      family: "thành viên gia đình",
-      romantic: "người yêu / bạn đời",
-      unknown: "người quen mới",
+      friend:    "bạn bè thân",
+      family:    "thành viên gia đình",
+      romantic:  "người yêu / bạn đời",
+      unknown:   "người quen mới",
     };
     const toneDesc = toneMap[Math.min(5, Math.max(1, closenessLevel))] ?? toneMap[3];
     const relDesc  = relMap[relationshipType] ?? "người quen";
 
-    // ── Sticker catalog ───────────────────────────────────────────────────
     const STICKER_CATALOG = [
       {id: "mimi1", emotions: ["greeting", "happy", "hello", "chào", "hì"]},
       {id: "mimi2", emotions: ["laugh", "funny", "haha", "vui", "cười"]},
@@ -2608,7 +2645,7 @@ exports.dailyConversationDigest = onSchedule(
   async () => {
     logger.info("[dailyConversationDigest] Starting...");
     try {
-      const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000); // Đã chuyển sang Date object
+      const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000);
       const usersSnap = await db
         .collection("users")
         .where("lastSeen", ">=", sevenDaysAgo)
@@ -2842,7 +2879,6 @@ async function processUserInsights(uid, cutoff90) {
         .doc(convId)
         .collection(convId)
         .where("timestamp", ">=", String(cutoff90))
-        // Lọc idFrom phía client để tránh yêu cầu Composite Index trên collection group
         .orderBy("timestamp", "desc")
         .limit(200)
         .get();
