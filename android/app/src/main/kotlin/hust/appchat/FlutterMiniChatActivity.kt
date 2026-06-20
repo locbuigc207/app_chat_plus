@@ -11,9 +11,11 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.window.OnBackInvokedDispatcher
+import androidx.window.layout.WindowMetricsCalculator
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
@@ -23,30 +25,21 @@ import io.flutter.plugin.common.MethodChannel
 /**
  * FlutterMiniChatActivity — a compact floating Flutter window.
  *
- * This Activity renders inside a small, centred floating window (using
- * [WindowManager.LayoutParams]) rather than occupying the full screen.
- * It uses its own dedicated FlutterEngine (MINI_ENGINE_ID) to avoid any
- * collision with BubbleActivity's shared engine.
+ * * [SINGLE OWNER]: Hoàn toàn chịu trách nhiệm về vòng đời của MINI_ENGINE_ID.
+ * MainActivity chỉ chịu trách nhiệm nạp trước (warm-up), khi Activity này bị hủy
+ * nó sẽ giữ quyền quyết định engine nào sẽ bị evict để tránh memory leak.
  *
- * Window behaviour
- * ─────────────────
- * • Occupies ~88 % screen width × ~70 % screen height, centred.
- * • Rounded corners via a transparent window background + Flutter surface drawing.
- * • [FLAG_NOT_TOUCH_MODAL] allows touches outside to reach the app behind.
- * • [SOFT_INPUT_ADJUST_RESIZE] keeps the keyboard from covering the input.
- *
- * Flutter communication
- * ─────────────────────
- * Channel "mini_chat_channel" / "mini_chat_overlay":
- * Flutter → Native  : minimize, close, sendMessage, requestScreenSize, getUserInfo
- * Native  → Flutter : initMiniChat / navigateToMiniChat
+ * This Activity renders inside a small, centred floating window rather than
+ * occupying the full screen.
  */
 class FlutterMiniChatActivity : FlutterActivity() {
 
     // ─── Constants ────────────────────────────────────────────────────────
     companion object {
         private const val TAG          = "MiniChatActivity"
-        const val MINI_ENGINE_ID       = "mini_chat_overlay_engine"
+
+        // Đồng bộ định danh Mini Engine ID từ MainActivity
+        const val MINI_ENGINE_ID       = MainActivity.MINI_ENGINE_ID
         private const val CHANNEL      = "mini_chat_channel"
 
         private const val EXTRA_UID    = "userId"
@@ -85,7 +78,7 @@ class FlutterMiniChatActivity : FlutterActivity() {
         val cache = FlutterEngineCache.getInstance()
         var eng   = cache.get(MINI_ENGINE_ID)
 
-        // Evict dead engine
+        // Lọc bỏ Engine chết
         if (eng != null && !eng.dartExecutor.isExecutingDart) {
             Log.w(TAG, "⚠️ Stale mini engine — evicting")
             try { eng.destroy() } catch (_: Exception) {}
@@ -119,7 +112,7 @@ class FlutterMiniChatActivity : FlutterActivity() {
             Log.e(TAG, "❌ No userId"); finish(); return
         }
 
-        // LỖI O FIX: Đăng ký OnBackInvokedCallback chuẩn Android 16 cho API 33+
+        // Xử lý System Back gesture chuẩn từ Android 13+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(
                 OnBackInvokedDispatcher.PRIORITY_DEFAULT
@@ -137,7 +130,7 @@ class FlutterMiniChatActivity : FlutterActivity() {
     override fun configureFlutterEngine(engine: FlutterEngine) {
         super.configureFlutterEngine(engine)
 
-        // LỖI C FIX: Đánh thức engine từ standby mode sang active khi Activity attach thành công
+        // Wake up engine từ trạng thái detached của EngineWarmer
         engine.lifecycleChannel.appIsResumed()
 
         setupChannel(engine)
@@ -147,7 +140,7 @@ class FlutterMiniChatActivity : FlutterActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         val uid = intent.getStringExtra(EXTRA_UID) ?: return
-        if (uid == userId) return // same user — no re-nav
+        if (uid == userId) return
 
         Log.d(TAG, "🔄 New intent → ${intent.getStringExtra(EXTRA_NAME)}")
         userId    = uid
@@ -170,15 +163,17 @@ class FlutterMiniChatActivity : FlutterActivity() {
 
     private fun applyFloatingWindowStyle() {
         try {
-            val dm = resources.displayMetrics
-            val w  = (dm.widthPixels  * 0.88).toInt()
-            val h  = (dm.heightPixels * 0.70).toInt()
+            // [SỬA LỖI P1]: Sử dụng WindowMetricsCalculator thay vì DisplayMetrics để có kết quả chính xác
+            val metrics = WindowMetricsCalculator.getOrCreate().computeCurrentWindowMetrics(this)
+            val bounds = metrics.bounds
 
-            // LỖI E FIX: XÓA HOÀN TOÀN window.setType() vì gây BadTokenException trên Activity context.
+            val w = (bounds.width() * 0.88).toInt()
+            val h = (bounds.height() * 0.70).toInt()
+
             window.setLayout(w, h)
             window.setGravity(Gravity.CENTER)
 
-            // Set Window transparent cho bo góc từ Flutter Render
+            // Khởi tạo window transparent cho các góc bo tròn vẽ từ Flutter
             window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
             window.setFormat(PixelFormat.TRANSLUCENT)
 
@@ -190,7 +185,11 @@ class FlutterMiniChatActivity : FlutterActivity() {
                         WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
                         WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
             )
-            Log.d(TAG, "✅ Floating window ${w}×${h}")
+
+            // [SỬA LỖI P1]: Cấu hình hỗ trợ tiếp cận TalkBack
+            window.decorView.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+
+            Log.d(TAG, "✅ Floating window ${w}×${h} applied via Jetpack WindowMetrics")
         } catch (e: Exception) {
             Log.w(TAG, "⚠️ applyFloatingWindowStyle: $e")
         }
@@ -201,7 +200,7 @@ class FlutterMiniChatActivity : FlutterActivity() {
     // ═════════════════════════════════════════════════════════════════════
 
     private fun setupChannel(engine: FlutterEngine) {
-        // LỖI J FIX: Unregister handler cũ để tránh xung đột Isolate khi tái sử dụng Engine
+        // Dọn dẹp handler cũ khi tái sử dụng cache engine
         channel?.setMethodCallHandler(null)
         channel = null
 
@@ -226,7 +225,7 @@ class FlutterMiniChatActivity : FlutterActivity() {
                 "sendMessage" -> {
                     val msg = call.argument<String>("message") ?: ""
                     Log.d(TAG, "💬 User sent: $msg")
-                    // Broadcast to MainActivity → Flutter EventSink
+
                     sendBroadcast(Intent("CHAT_BUBBLE_MESSAGE").apply {
                         putExtra("userId",  userId)
                         putExtra("message", msg)
@@ -234,10 +233,11 @@ class FlutterMiniChatActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "requestScreenSize" -> {
-                    val dm = resources.displayMetrics
+                    val metrics = WindowMetricsCalculator.getOrCreate().computeCurrentWindowMetrics(this)
+                    val bounds = metrics.bounds
                     result.success(mapOf(
-                        "width"  to dm.widthPixels,
-                        "height" to dm.heightPixels
+                        "width"  to bounds.width(),
+                        "height" to bounds.height()
                     ))
                 }
                 "getUserInfo" -> {
@@ -251,10 +251,10 @@ class FlutterMiniChatActivity : FlutterActivity() {
             }
         }
 
-        // Fallback navigation if Flutter never calls flutterReady
+        // Kích hoạt navigation fallback nếu Flutter side quên invoke "flutterReady"
         mainHandler.postDelayed({
             if (!flutterReady && !isFinishing) {
-                Log.d(TAG, "⏰ Navigation fallback")
+                Log.d(TAG, "⏰ Navigation fallback triggered")
                 flutterReady = true
                 sendNavigation()
             }
@@ -289,7 +289,7 @@ class FlutterMiniChatActivity : FlutterActivity() {
     private fun sendNavigation() {
         if (isFinishing) return
         try {
-            // Gửi cả 2 call để hỗ trợ code Flutter cũ và mới
+            // [CẬP NHẬT]: Có thể loại bỏ "initMiniChat" ở bản tiếp theo nếu Flutter side đã clean.
             channel?.invokeMethod("initMiniChat", mapOf(
                 "userId"    to userId,
                 "userName"  to userName,

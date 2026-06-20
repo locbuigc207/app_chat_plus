@@ -1,5 +1,7 @@
 *.iml
 *.class
+*.jks
+*.keystore
 .gradle
 /local.properties
 /.idea/workspace.xml
@@ -8,3 +10,4 @@
 /build
 /captures
 GeneratedPluginRegistrant.java
+key.properties

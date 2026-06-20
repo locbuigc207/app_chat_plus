@@ -15,6 +15,10 @@ class FirestoreConstants {
   static const String pathStoryCollection = 'stories';
   static const String pathMediaStorage = 'media';
 
+  // ─── System Alerts & Config Collections (Fix Missing Constants) ─────────
+  static const String systemAlertsCollection = 'system_alerts';
+  static const String geminiKeyDoc = 'gemini_key';
+
   // ─── Game Center Collections ──────────────────────────────────────────────
   /// game_matches/{matchId}
   static const String pathGameMatchCollection = 'game_matches';

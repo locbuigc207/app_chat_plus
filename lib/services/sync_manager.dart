@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/services/services.dart';
+import 'package:flutter_chat_demo/utils/utils.dart'; // Đã thêm để sử dụng DataMaskingUtils
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC CONSTANTS
@@ -184,7 +185,8 @@ class SyncManager {
   }) async {
     await _localDb.addToSyncQueue({
       'type': SyncJobType.aiResponse,
-      'priority': JobPriority.low.index,
+      // Đã nâng JobPriority.normal thay vì low để tránh trễ hiển thị cho người dùng
+      'priority': JobPriority.normal.index,
       'payload': {
         'conversationId': conversationId,
         'currentUserId': currentUserId,
@@ -376,11 +378,11 @@ class SyncManager {
       return false;
     }
 
-    // 2. Ghi tài liệu lên Firestore Collection
+    // 2. Ghi tài liệu lên Firestore Collection (ĐÃ ĐỔI TÊN SUBCOLLECTION SANG 'messages')
     await FirebaseFirestore.instance
         .collection('messages')
         .doc(conversationId)
-        .collection(conversationId)
+        .collection('messages')
         .doc(messageId)
         .set({
           'idFrom': idFrom,
@@ -429,8 +431,10 @@ class SyncManager {
 
     // ── AI Content Bridge (Resilient Retry Path) ──────────────────────────
     // Đẩy plain text đã được mask sạch PII phục vụ hệ thống báo cáo phân tích tuần
-    // Chỉ áp dụng với tin nhắn văn bản (text), gọi bất đồng bộ với retry an toàn.
-    if (messageType == TypeMessage.text && plainContent.isNotEmpty) {
+    // Bổ sung chặn không push tin nhắn giao tiếp với chính AI Assistant vào dataset Insights
+    if (messageType == TypeMessage.text &&
+        plainContent.isNotEmpty &&
+        idTo != AppConstants.aiAssistantId) {
       _pushAiContent(
         conversationId: conversationId,
         messageId: messageId,
@@ -450,7 +454,13 @@ class SyncManager {
 
     if (conversationId.isEmpty || userMessage.isEmpty) return false;
 
-    // Trích xuất lịch sử hội thoại cục bộ (tối đa 30 tin nhắn gần nhất) theo thứ tự thời gian tăng dần
+    // Sửa lỗi tham số piiOnly không tồn tại → Gọi qua đối tượng MaskingConfig
+    final maskedUserMessage = DataMaskingUtils.maskText(
+      userMessage,
+      config: MaskingConfig.piiOnly,
+    );
+
+    // Trích xuất lịch sử hội thoại cục bộ (tối đa 30 tin nhắn gần nhất) + Masking
     final history = _localDb
         .getMessages(conversationId)
         .take(30)
@@ -459,40 +469,61 @@ class SyncManager {
         .map(
           (m) => <String, dynamic>{
             'idFrom': m['idFrom'],
-            'content': m['content'],
+            'content': DataMaskingUtils.maskText(
+              m['content']?.toString() ?? '',
+              config: MaskingConfig.piiOnly,
+            ),
           },
         )
         .toList();
 
-    // Gọi Gemini API lấy câu trả lời sinh bởi AI
-    final aiText = await _gemini.sendMessage(userMessage, history);
-    if (aiText.isEmpty) return false;
+    // Gọi Gemini API lấy câu trả lời sinh bởi AI thông qua detailed method để bắt isError
+    final response = await _gemini.sendMessageDetailed(
+      maskedUserMessage,
+      history,
+    );
 
-    final aiTimestamp = (DateTime.now().millisecondsSinceEpoch + 1).toString();
+    // Xử lý nhánh lỗi rõ ràng tránh lưu thông báo lỗi kĩ thuật thành câu trả lời của AI
+    if (response.isError) {
+      if (response.isRetryable == true) {
+        return false; // Lỗi timeout/mạng/quota → trả về false để SyncManager lặp lại theo backoff
+      }
+    }
+
+    // Tạo fallback message để UI không bị "im lặng tuyệt đối" khi cạn kiệt retry hoặc lỗi fatal
+    final aiText = (response.isError || response.text.isEmpty)
+        ? 'Trợ lý AI hiện không phản hồi được, vui lòng thử lại sau.'
+        : response.text;
+
+    // Fix lỗi timestamp collision +1ms
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final aiMessageId = '${nowMs}_${Random().nextInt(10000)}';
+    final aiTimestampStr = nowMs.toString();
 
     final aiMessage = <String, dynamic>{
-      'messageId': aiTimestamp,
+      'messageId': aiMessageId,
       'idFrom': AppConstants.aiAssistantId,
       'idTo': currentUserId,
-      'timestamp': aiTimestamp,
+      'timestamp': aiTimestampStr,
       'content': aiText,
       'type': TypeMessage.text,
       'status': MessageStatus.sent,
     };
 
     // Lưu trữ tạm xuống local cache (Optimistic UI updates)
-    await _localDb.saveMessage(conversationId, aiTimestamp, aiMessage);
+    await _localDb.saveMessage(conversationId, aiMessageId, aiMessage);
 
     // Đẩy dữ liệu lên Cloud Firestore (Tin nhắn AI gửi là plaintext công khai — không mã hóa E2EE)
+    // (ĐÃ ĐỔI TÊN SUBCOLLECTION SANG 'messages')
     await FirebaseFirestore.instance
         .collection('messages')
         .doc(conversationId)
-        .collection(conversationId)
-        .doc(aiTimestamp)
+        .collection('messages')
+        .doc(aiMessageId)
         .set({
           'idFrom': AppConstants.aiAssistantId,
           'idTo': currentUserId,
-          'timestamp': aiTimestamp,
+          'timestamp': aiTimestampStr,
           'content': aiText,
           'type': TypeMessage.text,
           'status': MessageStatus.sent,
@@ -506,7 +537,7 @@ class SyncManager {
           'lastMessage': aiText.length > 80
               ? '${aiText.substring(0, 80)}…'
               : aiText,
-          'lastMessageTime': aiTimestamp,
+          'lastMessageTime': aiTimestampStr,
           'lastMessageType': TypeMessage.text,
           'participants': FieldValue.arrayUnion([
             currentUserId,
@@ -515,6 +546,7 @@ class SyncManager {
         }, SetOptions(merge: true));
 
     debugPrint('[SyncManager] 🤖 AI response synced for $conversationId');
+    // Trả về true để loại bỏ job (bao gồm cả job bị lỗi fatal đã được cứu vãn bằng fallback message)
     return true;
   }
 
@@ -523,8 +555,6 @@ class SyncManager {
   // ═════════════════════════════════════════════════════════════════════════
 
   /// Đẩy ngầm plain text (đã che thông tin nhạy cảm) lên bộ nhớ xử lý `ai_content`.
-  /// [FIX 21]: Gọi phương thức pushAiContentWithRetry có cơ chế exponential backoff
-  /// thay vì gọi fire-and-forget thô, bảo vệ tuyệt đối tính vẹn toàn dữ liệu.
   void _pushAiContent({
     required String conversationId,
     required String messageId,
@@ -577,6 +607,7 @@ class SyncManager {
   // ═════════════════════════════════════════════════════════════════════════
 
   Future<void> _markMessageFailed(Map<String, dynamic> payload) async {
+    // Sửa lỗi _markMessageFailed crash vì không có messageId đối với các payload đặc thù
     final conversationId = _str(payload['conversationId']);
     final messageId = _str(payload['messageId']);
     if (conversationId.isEmpty || messageId.isEmpty) return;

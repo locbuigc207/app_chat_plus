@@ -4,7 +4,7 @@
 
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart'; // Bổ sung import để đọc cache từ DB
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 
@@ -28,8 +28,10 @@ enum RecapStyle {
 
   const RecapStyle(this.key, this.label, this.description);
 
-  static RecapStyle fromKey(String? key) =>
-      RecapStyle.values.firstWhere((s) => s.key == key, orElse: () => RecapStyle.humorous);
+  static RecapStyle fromKey(String? key) => RecapStyle.values.firstWhere(
+    (s) => s.key == key,
+    orElse: () => RecapStyle.humorous,
+  );
 
   /// Màu gradient [start, end] cho card chia sẻ.
   List<int> get gradientArgb => switch (this) {
@@ -52,8 +54,8 @@ enum RecapStyle {
 
 /// Loại hội thoại được tổng kết.
 enum RecapConversationType {
-  personal,  // Chat cá nhân 1-1
-  group,     // Chat nhóm
+  personal, // Chat cá nhân 1-1
+  group, // Chat nhóm
 }
 
 /// Khoảng thời gian nhìn lại để tổng kết.
@@ -117,24 +119,23 @@ class WeeklyRecapData {
   });
 
   factory WeeklyRecapData.failure(
-      String reason, {
-        RecapStyle style = RecapStyle.humorous,
-      }) =>
-      WeeklyRecapData(
-        success: false,
-        style: style,
-        styleLabel: style.label,
-        styleEmoji: '',
-        fullText: '',
-        summary: '',
-        highlights: const [],
-        sentiment: 'neutral',
-        topKeywords: const [],
-        messageCount: 0,
-        generatedAt: DateTime.now(),
-        conversationType: RecapConversationType.group,
-        failReason: reason,
-      );
+    String reason, {
+    RecapStyle style = RecapStyle.humorous,
+  }) => WeeklyRecapData(
+    success: false,
+    style: style,
+    styleLabel: style.label,
+    styleEmoji: '',
+    fullText: '',
+    summary: '',
+    highlights: const [],
+    sentiment: 'neutral',
+    topKeywords: const [],
+    messageCount: 0,
+    generatedAt: DateTime.now(),
+    conversationType: RecapConversationType.group,
+    failReason: reason,
+  );
 
   factory WeeklyRecapData.fromMap(Map<dynamic, dynamic> map, RecapStyle style) {
     final ts = map['generatedAt'];
@@ -149,16 +150,38 @@ class WeeklyRecapData {
       dt = DateTime.now();
     }
 
+    // Lấy structuredData nếu Cloud Function trả về theo cấu trúc lồng
+    final structuredData = map['structuredData'] as Map<dynamic, dynamic>?;
+
     return WeeklyRecapData(
       success: map['success'] as bool? ?? false,
       style: style,
       styleLabel: map['styleLabel'] as String? ?? style.label,
       styleEmoji: map['styleEmoji'] as String? ?? '',
-      fullText: map['fullText'] as String? ?? '',
-      summary: map['summary'] as String? ?? '',
-      highlights: List<String>.from(map['highlights'] as List? ?? []),
-      sentiment: map['sentiment'] as String? ?? 'neutral',
-      topKeywords: List<String>.from(map['topKeywords'] as List? ?? []),
+
+      // Fallback linh hoạt giữa "recap" (từ Callable CF) và "fullText" (từ Cache DB phẳng)
+      fullText: (map['recap'] as String?) ?? (map['fullText'] as String?) ?? '',
+
+      // Đọc từ structuredData nếu có, nếu không thì fallback về key phẳng
+      summary:
+          (structuredData?['summary'] as String?) ??
+          (map['summary'] as String?) ??
+          '',
+      highlights: List<String>.from(
+        (structuredData?['highlights'] as List?) ??
+            (map['highlights'] as List?) ??
+            [],
+      ),
+      sentiment:
+          (structuredData?['sentiment'] as String?) ??
+          (map['sentiment'] as String?) ??
+          'neutral',
+      topKeywords: List<String>.from(
+        (structuredData?['topKeywords'] as List?) ??
+            (map['topKeywords'] as List?) ??
+            [],
+      ),
+
       messageCount: map['messageCount'] as int? ?? 0,
       generatedAt: dt,
       conversationType: map['conversationType'] == 'personal'
@@ -189,29 +212,33 @@ class WeeklyRecapData {
 
   /// Tiêu đề ngắn phù hợp theo loại hội thoại & style.
   String get recapTitle => switch (style) {
-    RecapStyle.humorous => isPersonal ? '🎭 Bóc Phốt Đôi Bạn' : '🎭 Bóc Phốt Nhóm',
-    RecapStyle.professional => isPersonal ? '📊 Báo Cáo Cá Nhân' : '📊 Báo Cáo Nhóm',
-    RecapStyle.romantic => isPersonal ? '💕 Kỷ Niệm Tuần' : '💕 Hành Trình Nhóm',
+    RecapStyle.humorous =>
+      isPersonal ? '🎭 Bóc Phốt Đôi Bạn' : '🎭 Bóc Phốt Nhóm',
+    RecapStyle.professional =>
+      isPersonal ? '📊 Báo Cáo Cá Nhân' : '📊 Báo Cáo Nhóm',
+    RecapStyle.romantic =>
+      isPersonal ? '💕 Kỷ Niệm Tuần' : '💕 Hành Trình Nhóm',
     RecapStyle.tvHost => isPersonal ? '📺 Bản Tin Đôi' : '📺 Bản Tin Nhóm',
     RecapStyle.minimal => '📝 Tóm Tắt Tuần',
   };
 
-  WeeklyRecapData copyWith({RecapStyle? style, String? fullText}) => WeeklyRecapData(
-    success: success,
-    style: style ?? this.style,
-    styleLabel: style?.label ?? styleLabel,
-    styleEmoji: style?.key ?? styleEmoji,
-    fullText: fullText ?? this.fullText,
-    summary: summary,
-    highlights: highlights,
-    sentiment: sentiment,
-    topKeywords: topKeywords,
-    messageCount: messageCount,
-    generatedAt: generatedAt,
-    conversationType: conversationType,
-    lookbackDays: lookbackDays,
-    failReason: failReason,
-  );
+  WeeklyRecapData copyWith({RecapStyle? style, String? fullText}) =>
+      WeeklyRecapData(
+        success: success,
+        style: style ?? this.style,
+        styleLabel: style?.label ?? styleLabel,
+        styleEmoji: style?.key ?? styleEmoji,
+        fullText: fullText ?? this.fullText,
+        summary: summary,
+        highlights: highlights,
+        sentiment: sentiment,
+        topKeywords: topKeywords,
+        messageCount: messageCount,
+        generatedAt: generatedAt,
+        conversationType: conversationType,
+        lookbackDays: lookbackDays,
+        failReason: failReason,
+      );
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -265,7 +292,8 @@ class WeeklyRecapService {
 
       return WeeklyRecapData(
         success: true,
-        style: RecapStyle.humorous, // Scheduled Cloud Function dùng humorous mặc định
+        style: RecapStyle
+            .humorous, // Scheduled Cloud Function dùng humorous mặc định
         styleLabel: RecapStyle.humorous.label,
         styleEmoji: RecapStyle.humorous.decorIcon,
         fullText: recapData['fullText'] as String? ?? '',
@@ -307,13 +335,16 @@ class WeeklyRecapService {
         }
       }
 
-      // 2. [FIX 20] Đọc từ Persistent Cache Firestore (Áp dụng cho cấu hình mặc định)
+      // 2. Đọc từ Persistent Cache Firestore (Áp dụng cho cấu hình mặc định)
       // Scheduled jobs tự động chạy cấu hình humorous với 7 ngày
       if (style == RecapStyle.humorous && lookbackDays == 7) {
         final stored = await getStoredRecap(conversationId);
         if (stored != null) {
-          _cache[cacheKey] = stored; // Đưa vào RAM cache để lần sau lấy nhanh hơn
-          debugPrint('[WeeklyRecap] ✅ Trả về từ Persistent Firestore Cache cho $conversationId');
+          _cache[cacheKey] =
+              stored; // Đưa vào RAM cache để lần sau lấy nhanh hơn
+          debugPrint(
+            '[WeeklyRecap] ✅ Trả về từ Persistent Firestore Cache cho $conversationId',
+          );
           return stored;
         }
       }
@@ -325,8 +356,11 @@ class WeeklyRecapService {
         options: HttpsCallableOptions(timeout: _timeout),
       );
 
-      debugPrint('[WeeklyRecap] 🚀 Calling generateWeeklyRecap: $conversationId, style=${style.key}');
+      debugPrint(
+        '[WeeklyRecap] 🚀 Calling generateWeeklyRecap: $conversationId, style=${style.key}',
+      );
 
+      // Data request sẽ được bắt lấy thông qua req.data ở Cloud Function "generateWeeklyRecap" đã khai báo
       final result = await callable.call({
         'conversationId': conversationId,
         'recapStyle': style.key,
@@ -336,23 +370,35 @@ class WeeklyRecapService {
 
       final data = result.data as Map<dynamic, dynamic>?;
       if (data == null) {
-        return WeeklyRecapData.failure('Server không trả về dữ liệu.', style: style);
+        return WeeklyRecapData.failure(
+          'Server không trả về dữ liệu.',
+          style: style,
+        );
       }
 
       final recap = WeeklyRecapData.fromMap(data, style);
 
       if (recap.success) {
         _cache[cacheKey] = recap;
-        debugPrint('[WeeklyRecap] ✅ Generated ${recap.messageCount} messages, sentiment=${recap.sentiment}');
+        debugPrint(
+          '[WeeklyRecap] ✅ Generated ${recap.messageCount} messages, sentiment=${recap.sentiment}',
+        );
       }
 
       return recap;
     } on FirebaseFunctionsException catch (e) {
-      ErrorLogger.logError(e, null, context: 'WeeklyRecapService.generateRecap');
+      ErrorLogger.logError(
+        e,
+        null,
+        context: 'WeeklyRecapService.generateRecap',
+      );
       return WeeklyRecapData.failure(_mapFunctionsError(e), style: style);
     } catch (e, st) {
       ErrorLogger.logError(e, st, context: 'WeeklyRecapService.generateRecap');
-      return WeeklyRecapData.failure('Đã xảy ra lỗi. Vui lòng thử lại sau.', style: style);
+      return WeeklyRecapData.failure(
+        'Đã xảy ra lỗi. Vui lòng thử lại sau.',
+        style: style,
+      );
     }
   }
 
@@ -365,7 +411,11 @@ class WeeklyRecapService {
   }
 
   /// Lấy cache nếu có, null nếu không.
-  WeeklyRecapData? getCached(String conversationId, RecapStyle style, int lookbackDays) {
+  WeeklyRecapData? getCached(
+    String conversationId,
+    RecapStyle style,
+    int lookbackDays,
+  ) {
     final key = '${conversationId}_${style.key}_$lookbackDays';
     final cached = _cache[key];
     if (cached == null) return null;
@@ -383,7 +433,9 @@ class WeeklyRecapService {
     } else {
       _cache.clear();
     }
-    debugPrint('[WeeklyRecap] 🗑 Cache cleared${conversationId != null ? " for $conversationId" : ""}');
+    debugPrint(
+      '[WeeklyRecap] 🗑 Cache cleared${conversationId != null ? " for $conversationId" : ""}',
+    );
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────

@@ -21,11 +21,7 @@ class EncryptedPayload {
   final String data;
   final String? hmac;
 
-  const EncryptedPayload({
-    required this.iv,
-    required this.data,
-    this.hmac,
-  });
+  const EncryptedPayload({required this.iv, required this.data, this.hmac});
 
   factory EncryptedPayload.fromJson(Map<String, dynamic> json) =>
       EncryptedPayload(
@@ -35,10 +31,10 @@ class EncryptedPayload {
       );
 
   Map<String, dynamic> toJson() => {
-        'iv': iv,
-        'data': data,
-        if (hmac != null) 'hmac': hmac,
-      };
+    'iv': iv,
+    'data': data,
+    if (hmac != null) 'hmac': hmac,
+  };
 
   String toJsonString() => jsonEncode(toJson());
 }
@@ -60,7 +56,8 @@ class E2EEException implements Exception {
   const E2EEException(this.type, this.message, {this.cause});
 
   @override
-  String toString() => 'E2EEException(${type.name}): $message'
+  String toString() =>
+      'E2EEException(${type.name}): $message'
       '${cause != null ? ' — caused by: $cause' : ''}';
 }
 
@@ -117,7 +114,6 @@ class E2EEService {
 
   String? _localPrivateKey;
   String? _localPublicKey;
-  bool _isDisposed = false;
 
   final Map<String, _CachedKey> _sessionKeyCache = {};
   final Map<String, Completer<String>> _pendingKeys = {};
@@ -153,7 +149,6 @@ class E2EEService {
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<bool> loadLocalKeys() async {
-    _assertNotDisposed();
     try {
       _localPrivateKey = await _secureStorage.read(key: _kPrivateKey);
       _localPublicKey = await _secureStorage.read(key: _kPublicKey);
@@ -173,8 +168,6 @@ class E2EEService {
     String userId, {
     bool forceRegenerate = false,
   }) async {
-    _assertNotDisposed();
-
     if (!forceRegenerate) {
       await loadLocalKeys();
       if (isInitialized) return;
@@ -214,14 +207,11 @@ class E2EEService {
 
   Future<void> _uploadPublicKey(String userId, String publicKeyPem) async {
     try {
-      await _firestore.collection('users').doc(userId).set(
-        {
-          'publicKey': publicKeyPem,
-          'keyUpdatedAt': FieldValue.serverTimestamp(),
-          'keyVersion': _rsaKeySize,
-        },
-        SetOptions(merge: true),
-      );
+      await _firestore.collection('users').doc(userId).set({
+        'publicKey': publicKeyPem,
+        'keyUpdatedAt': FieldValue.serverTimestamp(),
+        'keyVersion': _rsaKeySize,
+      }, SetOptions(merge: true));
     } catch (e) {
       throw E2EEException(
         E2EEErrorType.keyDistributionFailed,
@@ -247,8 +237,6 @@ class E2EEService {
     required List<String> participantIds,
     required String currentUserId,
   }) async {
-    _assertNotDisposed();
-
     final cached = _sessionKeyCache[conversationId];
     if (cached != null && !cached.isExpired) return cached.key;
 
@@ -305,7 +293,8 @@ class E2EEService {
       // Key rỗng/null → tạo mới ngay
       if (encryptedKey == null || encryptedKey.trim().isEmpty) {
         debugPrint(
-            '[E2EE] ⚠️ encryptedKey rỗng trong Firestore → tạo lại session key');
+          '[E2EE] ⚠️ encryptedKey rỗng trong Firestore → tạo lại session key',
+        );
         return _createAndDistributeSessionKey(
           conversationId: conversationId,
           participantIds: participantIds,
@@ -325,8 +314,9 @@ class E2EEService {
         _resolveFailCount[conversationId] = fails;
 
         if (fails >= _maxDecryptFailsBeforeCooldown) {
-          _resolveCooldownUntil[conversationId] =
-              DateTime.now().add(_cooldownDuration);
+          _resolveCooldownUntil[conversationId] = DateTime.now().add(
+            _cooldownDuration,
+          );
           _resolveFailCount[conversationId] = 0;
           debugPrint(
             '[E2EE] 🛑 Cooldown ${_cooldownDuration.inSeconds}s cho '
@@ -343,7 +333,8 @@ class E2EEService {
         }
 
         debugPrint(
-            '[E2EE] ! Decrypt session key thất bại ($e), tạo lại key...');
+          '[E2EE] ! Decrypt session key thất bại ($e), tạo lại key...',
+        );
         evictSessionKey(conversationId);
         return _createAndDistributeSessionKey(
           conversationId: conversationId,
@@ -376,13 +367,16 @@ class E2EEService {
       currentUserId: currentUserId,
     );
 
-    final batch = _firestore.batch();
     int distributed = 0;
     int skippedBots = 0;
 
-    final userDocFutures = actualParticipants
-        .map((uid) => _firestore.collection('users').doc(uid).get());
+    final userDocFutures = actualParticipants.map(
+      (uid) => _firestore.collection('users').doc(uid).get(),
+    );
     final userDocs = await Future.wait(userDocFutures);
+
+    // Xử lý chunking cho Firestore Batch Write tránh vượt quá 500 thao tác
+    final List<Map<String, dynamic>> operations = [];
 
     for (int i = 0; i < actualParticipants.length; i++) {
       final uid = actualParticipants[i];
@@ -402,8 +396,10 @@ class E2EEService {
       }
 
       try {
-        final encryptedKey =
-            encryptSessionKeyWithPublicKey(newSessionKey, publicKey);
+        final encryptedKey = encryptSessionKeyWithPublicKey(
+          newSessionKey,
+          publicKey,
+        );
         if (encryptedKey.isEmpty) {
           debugPrint('[E2EE] ⚠️ encryptedKey rỗng cho user $uid, bỏ qua');
           continue;
@@ -415,11 +411,14 @@ class E2EEService {
             .collection('e2ee_keys')
             .doc(uid);
 
-        batch.set(keyRef, {
-          'encryptedKey': encryptedKey,
-          'createdAt': FieldValue.serverTimestamp(),
-          'createdBy': currentUserId,
-          'keyVersion': 1,
+        operations.add({
+          'ref': keyRef,
+          'data': {
+            'encryptedKey': encryptedKey,
+            'createdAt': FieldValue.serverTimestamp(),
+            'createdBy': currentUserId,
+            'keyVersion': 1,
+          },
         });
         distributed++;
       } catch (e) {
@@ -436,7 +435,17 @@ class E2EEService {
     }
 
     try {
-      await batch.commit();
+      for (var i = 0; i < operations.length; i += 500) {
+        final chunk = operations.sublist(i, min(i + 500, operations.length));
+        final batch = _firestore.batch();
+        for (var op in chunk) {
+          batch.set(
+            op['ref'] as DocumentReference,
+            op['data'] as Map<String, dynamic>,
+          );
+        }
+        await batch.commit();
+      }
     } catch (e) {
       throw E2EEException(
         E2EEErrorType.keyDistributionFailed,
@@ -473,8 +482,8 @@ class E2EEService {
           final data = convDoc.data()!;
           final fromFirestore =
               (data['participants'] as List?)?.cast<String>() ??
-                  (data['members'] as List?)?.cast<String>() ??
-                  (data['users'] as List?)?.cast<String>();
+              (data['members'] as List?)?.cast<String>() ??
+              (data['users'] as List?)?.cast<String>();
 
           if (fromFirestore != null && fromFirestore.isNotEmpty) {
             actual = fromFirestore;
@@ -506,9 +515,7 @@ class E2EEService {
     if (_sessionKeyCache.length >= _maxCacheSize) {
       // Evict entry cũ nhất (LRU-lite)
       final oldest = _sessionKeyCache.entries
-          .reduce(
-            (a, b) => a.value.cachedAt.isBefore(b.value.cachedAt) ? a : b,
-          )
+          .reduce((a, b) => a.value.cachedAt.isBefore(b.value.cachedAt) ? a : b)
           .key;
       _sessionKeyCache.remove(oldest);
     }
@@ -525,15 +532,21 @@ class E2EEService {
   ) {
     if (sessionKey.isEmpty) {
       throw const E2EEException(
-          E2EEErrorType.encryptionFailed, 'sessionKey rỗng');
+        E2EEErrorType.encryptionFailed,
+        'sessionKey rỗng',
+      );
     }
     if (publicKeyPem.trim().isEmpty) {
       throw const E2EEException(
-          E2EEErrorType.encryptionFailed, 'publicKeyPem rỗng');
+        E2EEErrorType.encryptionFailed,
+        'publicKeyPem rỗng',
+      );
     }
     try {
       final rsaPublicKey = CryptoUtils.rsaPublicKeyFromPem(publicKeyPem);
-      final encrypter = enc.Encrypter(enc.RSA(publicKey: rsaPublicKey));
+      final encrypter = enc.Encrypter(
+        enc.RSA(publicKey: rsaPublicKey, encoding: enc.RSAEncoding.OAEP),
+      );
       return encrypter.encrypt(sessionKey).base64;
     } catch (e) {
       throw E2EEException(
@@ -547,16 +560,17 @@ class E2EEService {
   String decryptSessionKeyWithMyPrivateKey(String encryptedBase64) {
     if (_localPrivateKey == null) {
       throw const E2EEException(
-          E2EEErrorType.keyNotInitialized, 'Private key chưa được tải.');
+        E2EEErrorType.keyNotInitialized,
+        'Private key chưa được tải.',
+      );
     }
     if (encryptedBase64.trim().isEmpty) {
       throw const E2EEException(
-          E2EEErrorType.decryptionFailed, 'encryptedBase64 rỗng');
+        E2EEErrorType.decryptionFailed,
+        'encryptedBase64 rỗng',
+      );
     }
 
-    // ✅ FIX: Validate kích thước ciphertext TRƯỚC khi decrypt
-    // Root cause của RangeError (length): Valid value range is empty: 0
-    // RSA-2048 ciphertext phải đúng 256 bytes
     late Uint8List ciphertextBytes;
     try {
       ciphertextBytes = base64Decode(encryptedBase64);
@@ -586,13 +600,18 @@ class E2EEService {
 
     try {
       final rsaPrivateKey = CryptoUtils.rsaPrivateKeyFromPem(_localPrivateKey!);
-      final encrypter = enc.Encrypter(enc.RSA(privateKey: rsaPrivateKey));
-      final decrypted =
-          encrypter.decrypt(enc.Encrypted.fromBase64(encryptedBase64));
+      final encrypter = enc.Encrypter(
+        enc.RSA(privateKey: rsaPrivateKey, encoding: enc.RSAEncoding.OAEP),
+      );
+      final decrypted = encrypter.decrypt(
+        enc.Encrypted.fromBase64(encryptedBase64),
+      );
 
       if (decrypted.isEmpty) {
         throw const E2EEException(
-            E2EEErrorType.decryptionFailed, 'RSA decrypt trả về chuỗi rỗng');
+          E2EEErrorType.decryptionFailed,
+          'RSA decrypt trả về chuỗi rỗng',
+        );
       }
       return decrypted;
     } on E2EEException {
@@ -644,16 +663,21 @@ class E2EEService {
   String decryptMessage(String encryptedPayload, String sessionKey) {
     if (encryptedPayload.trim().isEmpty) {
       throw const E2EEException(
-          E2EEErrorType.invalidPayload, 'encryptedPayload rỗng');
+        E2EEErrorType.invalidPayload,
+        'encryptedPayload rỗng',
+      );
     }
 
     try {
       final payload = EncryptedPayload.fromJson(
-          jsonDecode(encryptedPayload) as Map<String, dynamic>);
+        jsonDecode(encryptedPayload) as Map<String, dynamic>,
+      );
 
       if (payload.iv.isEmpty || payload.data.isEmpty) {
         throw const E2EEException(
-            E2EEErrorType.invalidPayload, 'payload.iv hoặc payload.data rỗng');
+          E2EEErrorType.invalidPayload,
+          'payload.iv hoặc payload.data rỗng',
+        );
       }
 
       final keyBytes = _decodeSessionKey(sessionKey);
@@ -737,7 +761,6 @@ class E2EEService {
     required List<String> participantIds,
     required String currentUserId,
   }) async {
-    _assertNotDisposed();
     _sessionKeyCache.remove(conversationId);
 
     final keysRef = _firestore
@@ -766,12 +789,11 @@ class E2EEService {
     required String currentUserId,
     required List<String> allParticipantIds,
   }) async {
-    _assertNotDisposed();
-
     // Bot không cần E2EE
     if (_botUserIds.contains(newParticipantId)) {
       debugPrint(
-          '[E2EE] ℹ️ $newParticipantId là bot, bỏ qua addParticipant E2EE');
+        '[E2EE] ℹ️ $newParticipantId là bot, bỏ qua addParticipant E2EE',
+      );
       return;
     }
 
@@ -781,8 +803,10 @@ class E2EEService {
       currentUserId: currentUserId,
     );
 
-    final userDoc =
-        await _firestore.collection('users').doc(newParticipantId).get();
+    final userDoc = await _firestore
+        .collection('users')
+        .doc(newParticipantId)
+        .get();
     final publicKey = userDoc.data()?['publicKey'] as String?;
 
     if (publicKey == null || publicKey.trim().isEmpty) {
@@ -800,10 +824,10 @@ class E2EEService {
         .collection('e2ee_keys')
         .doc(newParticipantId)
         .set({
-      'encryptedKey': encryptedKey,
-      'createdAt': FieldValue.serverTimestamp(),
-      'addedBy': currentUserId,
-    });
+          'encryptedKey': encryptedKey,
+          'createdAt': FieldValue.serverTimestamp(),
+          'addedBy': currentUserId,
+        });
 
     debugPrint('[E2EE] ✅ Thêm $newParticipantId vào E2EE conversation');
   }
@@ -822,13 +846,13 @@ class E2EEService {
           .collection('e2ee_keys');
 
       final snapshot = await keysRef.get();
-      final batch = _firestore.batch();
+      final List<DocumentReference> docsToDelete = [];
       int deleted = 0;
 
       for (final doc in snapshot.docs) {
         final key = doc.data()['encryptedKey'] as String? ?? '';
         if (key.trim().isEmpty) {
-          batch.delete(doc.reference);
+          docsToDelete.add(doc.reference);
           deleted++;
           debugPrint('[E2EE] 🧹 Xóa session key corrupt của ${doc.id}');
         } else {
@@ -836,7 +860,7 @@ class E2EEService {
           try {
             final bytes = base64Decode(key);
             if (bytes.length != _rsaCiphertextBytes) {
-              batch.delete(doc.reference);
+              docsToDelete.add(doc.reference);
               deleted++;
               debugPrint(
                 '[E2EE] 🧹 Xóa session key size sai '
@@ -844,16 +868,27 @@ class E2EEService {
               );
             }
           } catch (_) {
-            batch.delete(doc.reference);
+            docsToDelete.add(doc.reference);
             deleted++;
             debugPrint(
-                '[E2EE] 🧹 Xóa session key base64 invalid của ${doc.id}');
+              '[E2EE] 🧹 Xóa session key base64 invalid của ${doc.id}',
+            );
           }
         }
       }
 
       if (deleted > 0) {
-        await batch.commit();
+        for (var i = 0; i < docsToDelete.length; i += 500) {
+          final chunk = docsToDelete.sublist(
+            i,
+            min(i + 500, docsToDelete.length),
+          );
+          final batch = _firestore.batch();
+          for (var ref in chunk) {
+            batch.delete(ref);
+          }
+          await batch.commit();
+        }
         debugPrint('[E2EE] ✅ Cleanup xong: xóa $deleted key corrupt');
       }
       return deleted;
@@ -914,21 +949,11 @@ class E2EEService {
     debugPrint('[E2EE] 🧹 Đã dọn sạch tất cả khóa.');
   }
 
-  /// Gọi khi widget/page bị dispose để tránh memory leak
+  /// Gọi khi widget/page bị dispose để giải phóng tài nguyên.
   void dispose() {
-    _isDisposed = true;
     clearSessionCache();
     _pendingKeys.clear();
     debugPrint('[E2EE] 🗑️ Service disposed');
-  }
-
-  void _assertNotDisposed() {
-    if (_isDisposed) {
-      throw const E2EEException(
-        E2EEErrorType.storageError,
-        'E2EEService đã bị dispose',
-      );
-    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -938,7 +963,9 @@ class E2EEService {
   Uint8List _decodeSessionKey(String sessionKey) {
     if (sessionKey.trim().isEmpty) {
       throw const E2EEException(
-          E2EEErrorType.invalidPayload, 'Session key rỗng');
+        E2EEErrorType.invalidPayload,
+        'Session key rỗng',
+      );
     }
 
     final Uint8List bytes;
@@ -954,7 +981,9 @@ class E2EEService {
 
     if (bytes.isEmpty) {
       throw const E2EEException(
-          E2EEErrorType.invalidPayload, 'Session key decode ra 0 byte');
+        E2EEErrorType.invalidPayload,
+        'Session key decode ra 0 byte',
+      );
     }
     if (bytes.length != 32) {
       throw E2EEException(

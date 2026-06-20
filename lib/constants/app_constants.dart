@@ -4,10 +4,23 @@ class AppConstants {
   static const homeTitle = "Home";
   static const settingsTitle = "Settings";
   static const fullPhotoTitle = "Full Photo";
+
+  // ─── AI Assistant ────────────────────────────────────────────────────────
   static const String aiAssistantId = "ai_assistant_gemini_001";
   static const String aiAssistantName = "Gemini AI Assistant";
-  static const String aiAssistantAvatar =
-      "https://ui-avatars.com/api/?name=Gemini+AI&background=1A73E8&color=fff";
+
+  // [FIX] Thay thế URL 3rd-party (ui-avatars) bằng asset cục bộ để đảm bảo UI không bị vỡ khi mất mạng/lỗi service.
+  // Lưu ý: Đảm bảo bạn đã có file ảnh tương ứng (ví dụ: gemini_avatar.png) trong thư mục images/ và đã khai báo trong pubspec.yaml
+  static const String aiAssistantAvatar = "images/gemini_avatar.png";
+
+  // [FIX] Tập hợp các ID của Bot, dùng chung để loại trừ logic trên toàn app (Mã hóa E2EE, Insight, AutoPilot)
+  static const Set<String> aiBotUserIds = {aiAssistantId};
+
+  // [FIX] Tập trung hóa các magic strings được sử dụng ở gemini_service.dart và các tính năng hệ thống
+  static const String systemAlertsCollection = "system_alerts";
+  static const String geminiKeyDoc = "gemini_key";
+
+  // ─── Notification Channels ───────────────────────────────────────────────
   static const String messageChannelId = "message_channel";
   static const String reminderChannelId = "reminder_channel";
   static const String callChannelId = "call_channel";

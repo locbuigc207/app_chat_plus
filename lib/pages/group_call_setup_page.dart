@@ -6,12 +6,11 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 import '../models/group_call_model.dart';
-import '../pages/group_call_waiting_room.dart';
+import '../pages/pages.dart';
 import '../providers/providers.dart';
 import '../services/group_call_service.dart';
 import '../widgets/group_call_audio_visualizer.dart';
 import '../widgets/group_call_permission_gate.dart';
-import 'group_call_page.dart';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // GroupCallSetupPage
@@ -69,18 +68,23 @@ class _GroupCallSetupPageState extends State<GroupCallSetupPage>
     _checkPermissions();
 
     _enterCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 600))
-      ..forward();
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    )..forward();
     _pulseCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1800))
-      ..repeat(reverse: true);
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat(reverse: true);
 
     _fadeAnim = CurvedAnimation(parent: _enterCtrl, curve: Curves.easeOut);
-    _slideAnim = Tween<Offset>(begin: const Offset(0, 0.08), end: Offset.zero)
-        .animate(
-            CurvedAnimation(parent: _enterCtrl, curve: Curves.easeOutCubic));
-    _pulseAnim = Tween<double>(begin: 0.95, end: 1.05)
-        .animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
+    _slideAnim = Tween<Offset>(
+      begin: const Offset(0, 0.08),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _enterCtrl, curve: Curves.easeOutCubic));
+    _pulseAnim = Tween<double>(
+      begin: 0.95,
+      end: 1.05,
+    ).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
   }
 
   @override
@@ -172,10 +176,9 @@ class _GroupCallSetupPageState extends State<GroupCallSetupPage>
       setState(() => _isStarting = false);
       // Hiển thị error từ provider
       final err = provider.error ?? 'Không thể bắt đầu cuộc gọi.';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(err),
-        backgroundColor: const Color(0xFFEF4444),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(err), backgroundColor: const Color(0xFFEF4444)),
+      );
       return;
     }
 
@@ -189,26 +192,32 @@ class _GroupCallSetupPageState extends State<GroupCallSetupPage>
     );
   }
 
-  void _navigateTo(GroupCallModel call, String uid, String name,
-      {required bool isInitiator}) {
+  void _navigateTo(
+    GroupCallModel call,
+    String uid,
+    String name, {
+    required bool isInitiator,
+  }) {
     final auth = context.read<AuthProvider>();
 
     final avatar = auth.currentUserAvatar ?? '';
 
-    Navigator.of(context).pushReplacement(PageRouteBuilder(
-      transitionDuration: const Duration(milliseconds: 400),
-      pageBuilder: (_, __, ___) => GroupCallPage(
-        call: call,
-        isInitiator: isInitiator,
-        currentUserId: uid,
-        currentUserName: name,
-        currentUserAvatar: avatar,
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 400),
+        pageBuilder: (_, __, ___) => GroupCallPage(
+          call: call,
+          isInitiator: isInitiator,
+          currentUserId: uid,
+          currentUserName: name,
+          currentUserAvatar: avatar,
+        ),
+        transitionsBuilder: (_, anim, __, child) => FadeTransition(
+          opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
+          child: child,
+        ),
       ),
-      transitionsBuilder: (_, anim, __, child) => FadeTransition(
-        opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
-        child: child,
-      ),
-    ));
+    );
   }
 
   void _navigateToWaitingRoom(GroupCallModel call, String uid, String name) {
@@ -216,14 +225,16 @@ class _GroupCallSetupPageState extends State<GroupCallSetupPage>
 
     final avatar = auth.currentUserAvatar ?? '';
 
-    Navigator.of(context).pushReplacement(MaterialPageRoute(
-      builder: (_) => WaitingRoomPage(
-        call: call,
-        currentUserId: uid,
-        currentUserName: name,
-        currentUserAvatar: avatar,
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => GroupCallWaitingRoomPage(
+          call: call,
+          currentUserId: uid,
+          currentUserName: name,
+          currentUserAvatar: avatar,
+        ),
       ),
-    ));
+    );
     // WaitingRoomPage tự navigate vào GroupCallPage khi được admit
   }
 
@@ -280,7 +291,6 @@ class _GroupCallSetupPageState extends State<GroupCallSetupPage>
 
   // ── Body ───────────────────────────────────────────────────────────────────
   Widget _buildBody() {
-    // SỬA LẠI WIDGET NÀY:
     return GroupCallPermissionGate(
       callType: widget.callType,
       child: SingleChildScrollView(
@@ -384,8 +394,11 @@ class _GroupCallSetupPageState extends State<GroupCallSetupPage>
                 : null,
             backgroundColor: _surface2,
             child: widget.groupAvatarUrl.isEmpty
-                ? Icon(Icons.group_rounded,
-                    size: 48, color: Colors.white.withOpacity(0.4))
+                ? Icon(
+                    Icons.group_rounded,
+                    size: 48,
+                    color: Colors.white.withOpacity(0.4),
+                  )
                 : null,
           ),
         ),
@@ -462,11 +475,14 @@ class _GroupCallSetupPageState extends State<GroupCallSetupPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Kiểm tra micro',
-                    style: TextStyle(
-                        color: Colors.white54,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600)),
+                const Text(
+                  'Kiểm tra micro',
+                  style: TextStyle(
+                    color: Colors.white54,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const SizedBox(height: 8),
                 MicTestWidget(
                   micLevel: _micLevel,
@@ -504,7 +520,10 @@ class _GroupCallSetupPageState extends State<GroupCallSetupPage>
       title: Text(
         label,
         style: const TextStyle(
-            color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+          color: Colors.white,
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
       ),
       subtitle: Text(
         subtitle,
@@ -537,21 +556,25 @@ class _GroupCallSetupPageState extends State<GroupCallSetupPage>
         mainAxisSize: MainAxisSize.min,
         children: [
           if (widget.memberIds.length > 2) ...[
-            Row(children: [
-              Checkbox(
-                value: _waitingRoom,
-                onChanged: (v) => setState(() => _waitingRoom = v ?? false),
-                activeColor: _primaryColor,
-                side: BorderSide(color: Colors.white.withOpacity(0.2)),
-              ),
-              Expanded(
-                child: Text(
-                  'Bật phòng chờ (admin phê duyệt từng người)',
-                  style: TextStyle(
-                      color: Colors.white.withOpacity(0.55), fontSize: 12),
+            Row(
+              children: [
+                Checkbox(
+                  value: _waitingRoom,
+                  onChanged: (v) => setState(() => _waitingRoom = v ?? false),
+                  activeColor: _primaryColor,
+                  side: BorderSide(color: Colors.white.withOpacity(0.2)),
                 ),
-              ),
-            ]),
+                Expanded(
+                  child: Text(
+                    'Bật phòng chờ (admin phê duyệt từng người)',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.55),
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 8),
           ],
           // Info text
@@ -576,7 +599,7 @@ class _GroupCallSetupPageState extends State<GroupCallSetupPage>
                   colors: _isStarting
                       ? [
                           _primaryColor.withOpacity(0.5),
-                          _primaryColor.withOpacity(0.5)
+                          _primaryColor.withOpacity(0.5),
                         ]
                       : [_primaryColor, _primaryColor.withOpacity(0.85)],
                 ),
@@ -597,7 +620,8 @@ class _GroupCallSetupPageState extends State<GroupCallSetupPage>
                   backgroundColor: Colors.transparent,
                   shadowColor: Colors.transparent,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18)),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
                 ),
                 child: _isStarting
                     ? const SizedBox(
@@ -671,53 +695,69 @@ class _JoinExistingDialog extends StatelessWidget {
                     color: const Color(0xFF22C55E).withOpacity(0.12),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.groups_rounded,
-                      color: Color(0xFF22C55E), size: 28),
+                  child: const Icon(
+                    Icons.groups_rounded,
+                    color: Color(0xFF22C55E),
+                    size: 28,
+                  ),
                 ),
                 const SizedBox(height: 16),
-                const Text('Cuộc gọi đang diễn ra',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800)),
+                const Text(
+                  'Cuộc gọi đang diễn ra',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
                 const SizedBox(height: 8),
                 Text(
                   '${call.participantCount} người đang trong nhóm "${call.groupName}".\nBạn có muốn tham gia không?',
                   style: const TextStyle(
-                      color: Colors.white54, fontSize: 13, height: 1.5),
+                    color: Colors.white54,
+                    fontSize: 13,
+                    height: 1.5,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
-                Row(children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.white38,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.white38,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        child: const Text(
+                          'Huỷ',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
                       ),
-                      child: const Text('Huỷ',
-                          style: TextStyle(fontWeight: FontWeight.w600)),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: ElevatedButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF22C55E),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                        elevation: 0,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF22C55E),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          'Vào ngay',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
                       ),
-                      child: const Text('Vào ngay',
-                          style: TextStyle(fontWeight: FontWeight.w700)),
                     ),
-                  ),
-                ]),
+                  ],
+                ),
               ],
             ),
           ),

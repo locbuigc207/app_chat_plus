@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart'; // Chứa AsyncCallback
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:flutter_chat_demo/models/bubble_models.dart';
 import '../widgets/widgets.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -85,7 +86,6 @@ class _BubbleChatListItemState extends State<BubbleChatListItem>
   late Animation<Offset> _entrySlide;
 
   double _dragX = 0;
-  bool _bubbleOn = false; // reflects actual bubble state
 
   @override
   void initState() {
@@ -96,12 +96,8 @@ class _BubbleChatListItemState extends State<BubbleChatListItem>
         .animate(CurvedAnimation(parent: _entryCtrl, curve: Curves.easeOut));
     _entrySlide = Tween<Offset>(begin: const Offset(-0.05, 0), end: Offset.zero)
         .animate(
-            CurvedAnimation(parent: _entryCtrl, curve: Curves.easeOutCubic));
+        CurvedAnimation(parent: _entryCtrl, curve: Curves.easeOutCubic));
     _entryCtrl.forward();
-
-    // Reflect current bubble state
-    final ctrl = BubbleManager.of(context);
-    _bubbleOn = ctrl?.isBubbleActive(widget.item.peerId) ?? false;
   }
 
   @override
@@ -116,22 +112,21 @@ class _BubbleChatListItemState extends State<BubbleChatListItem>
     setState(() => _dragX = (_dragX + d.delta.dx).clamp(-80.0, 80.0));
   }
 
-  Future<void> _onDragEnd(DragEndDetails d) async {
+  Future<void> _onDragEnd(DragEndDetails d, bool currentBubbleOn) async {
     final vel = d.velocity.pixelsPerSecond.dx;
     if (_dragX > 50 || vel > 400) {
-      await _toggleBubble();
+      await _toggleBubble(currentBubbleOn);
     }
     setState(() => _dragX = 0);
   }
 
-  Future<void> _toggleBubble() async {
+  Future<void> _toggleBubble(bool currentBubbleOn) async {
     HapticFeedback.mediumImpact();
     final ctrl = BubbleManager.of(context);
     if (ctrl == null) return;
 
-    if (_bubbleOn) {
+    if (currentBubbleOn) {
       await ctrl.hideBubble(widget.item.peerId);
-      setState(() => _bubbleOn = false);
     } else {
       await ctrl.showBubble(
         userId: widget.item.peerId,
@@ -140,19 +135,18 @@ class _BubbleChatListItemState extends State<BubbleChatListItem>
         lastMessage: widget.item.lastMessage,
         isOnline: widget.item.isOnline,
       );
-      setState(() => _bubbleOn = true);
     }
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(_bubbleOn
-            ? '🫧 Bong bóng bật — ${widget.item.peerName}'
-            : '💬 Bong bóng tắt — ${widget.item.peerName}'),
+        content: Text(currentBubbleOn
+            ? '💬 Bong bóng tắt — ${widget.item.peerName}'
+            : '🫧 Bong bóng bật — ${widget.item.peerName}'),
         duration: const Duration(seconds: 1),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         backgroundColor:
-            _bubbleOn ? const Color(0xFF2979FF) : Colors.grey.shade700,
+        currentBubbleOn ? Colors.grey.shade700 : const Color(0xFF2979FF),
       ));
     }
   }
@@ -165,70 +159,82 @@ class _BubbleChatListItemState extends State<BubbleChatListItem>
   Widget build(BuildContext context) {
     final item = widget.item;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final ctrl = BubbleManager.of(context);
 
-    return FadeTransition(
-      opacity: _entryFade,
-      child: SlideTransition(
-        position: _entrySlide,
-        child: GestureDetector(
-          onTap: () {
-            HapticFeedback.lightImpact();
-            widget.onTap?.call();
-          },
-          onLongPress: () {
-            HapticFeedback.mediumImpact();
-            _showContextMenu();
-          },
-          onHorizontalDragUpdate: _onDragUpdate,
-          onHorizontalDragEnd: _onDragEnd,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            transform: Matrix4.translationValues(_dragX * 0.3, 0, 0),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? const Color(0xFF1A1A2E)
+    // [SỬA LỖI P1]: Lắng nghe trực tiếp luồng bubblesStream thay vì chỉ gán giá trị 1 lần tại initState.
+    // Đảm bảo icon UI phản hồi chuẩn xác khi user tắt Bong bóng từ Notification, Action Menu hoặc Settings.
+    return StreamBuilder<Map<String, BubbleData>>(
+      stream: ctrl?.bubblesStream,
+      initialData: const {},
+      builder: (context, snapshot) {
+        final activeBubbles = snapshot.data ?? {};
+        final bubbleOn = activeBubbles.containsKey(item.peerId);
+
+        return FadeTransition(
+          opacity: _entryFade,
+          child: SlideTransition(
+            position: _entrySlide,
+            child: GestureDetector(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                widget.onTap?.call();
+              },
+              onLongPress: () {
+                HapticFeedback.mediumImpact();
+                _showContextMenu(bubbleOn);
+              },
+              onHorizontalDragUpdate: _onDragUpdate,
+              onHorizontalDragEnd: (d) => _onDragEnd(d, bubbleOn),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                transform: Matrix4.translationValues(_dragX * 0.3, 0, 0),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF1A1A2E)
                       .withValues(alpha: item.hasUnread ? 1 : 0.9)
-                  : (item.hasUnread ? const Color(0xFFF0F4FF) : Colors.white),
-            ),
-            child: Stack(
-              children: [
-                // ── Swipe indicator ─────────────────────────────────
-                _SwipeIndicator(
-                  dragX: _dragX,
-                  bubbleOn: _bubbleOn,
+                      : (item.hasUnread ? const Color(0xFFF0F4FF) : Colors.white),
                 ),
-                // ── Main row ─────────────────────────────────────────
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                  child: Row(
-                    children: [
-                      _AvatarSection(item: item, bubbleOn: _bubbleOn),
-                      const SizedBox(width: 12),
-                      Expanded(child: _ContentSection(item: item)),
-                      const SizedBox(width: 8),
-                      _TrailingSection(
-                          item: item,
-                          bubbleOn: _bubbleOn,
-                          onBubbleTap: _toggleBubble),
-                    ],
-                  ),
+                child: Stack(
+                  children: [
+                    // ── Swipe indicator ─────────────────────────────────
+                    _SwipeIndicator(
+                      dragX: _dragX,
+                      bubbleOn: bubbleOn,
+                    ),
+                    // ── Main row ─────────────────────────────────────────
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                      child: Row(
+                        children: [
+                          _AvatarSection(item: item, bubbleOn: bubbleOn),
+                          const SizedBox(width: 12),
+                          Expanded(child: _ContentSection(item: item)),
+                          const SizedBox(width: 8),
+                          _TrailingSection(
+                              item: item,
+                              bubbleOn: bubbleOn,
+                              onBubbleTap: () async => await _toggleBubble(bubbleOn)),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
-  void _showContextMenu() {
+  void _showContextMenu(bool bubbleOn) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (_) => _ContextMenu(
         item: widget.item,
-        bubbleOn: _bubbleOn,
-        onBubble: _toggleBubble,
+        bubbleOn: bubbleOn,
+        onBubble: () async => await _toggleBubble(bubbleOn),
         onMute: widget.onMute,
         onPin: widget.onPin,
         onDelete: widget.onDelete,
@@ -343,14 +349,14 @@ class _AvatarSectionState extends State<_AvatarSection>
                 : null,
             child: item.peerAvatar.isEmpty
                 ? Text(
-                    item.peerName.isNotEmpty
-                        ? item.peerName[0].toUpperCase()
-                        : '?',
-                    style: const TextStyle(
-                      color: Color(0xFF2979FF),
-                      fontWeight: FontWeight.w700,
-                      fontSize: 20,
-                    ))
+                item.peerName.isNotEmpty
+                    ? item.peerName[0].toUpperCase()
+                    : '?',
+                style: const TextStyle(
+                  color: Color(0xFF2979FF),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 20,
+                ))
                 : null,
           ),
         ),
@@ -449,7 +455,7 @@ class _ContentSection extends StatelessWidget {
                 item.peerName,
                 style: TextStyle(
                   fontWeight:
-                      item.hasUnread ? FontWeight.w800 : FontWeight.w600,
+                  item.hasUnread ? FontWeight.w800 : FontWeight.w600,
                   fontSize: 15.5,
                   color: isDark ? Colors.white : Colors.black87,
                 ),
@@ -488,7 +494,7 @@ class _ContentSection extends StatelessWidget {
                         ? (isDark ? Colors.white70 : Colors.black54)
                         : Colors.grey.shade500,
                     fontWeight:
-                        item.hasUnread ? FontWeight.w600 : FontWeight.normal,
+                    item.hasUnread ? FontWeight.w600 : FontWeight.normal,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -539,7 +545,7 @@ class _TrailingSection extends StatelessWidget {
           style: TextStyle(
             fontSize: 11.5,
             color:
-                item.hasUnread ? const Color(0xFF2979FF) : Colors.grey.shade400,
+            item.hasUnread ? const Color(0xFF2979FF) : Colors.grey.shade400,
             fontWeight: item.hasUnread ? FontWeight.w700 : FontWeight.normal,
           ),
         ),
@@ -551,7 +557,7 @@ class _TrailingSection extends StatelessWidget {
         else if (item.isMuted)
           Icon(Icons.volume_off_rounded, size: 14, color: Colors.grey.shade400)
         else
-          // Bubble toggle button
+        // Bubble toggle button
           GestureDetector(
             onTap: () {
               HapticFeedback.lightImpact();
@@ -578,7 +584,7 @@ class _TrailingSection extends StatelessWidget {
                     : Icons.chat_bubble_outline_rounded,
                 size: 14,
                 color:
-                    bubbleOn ? const Color(0xFF2979FF) : Colors.grey.shade400,
+                bubbleOn ? const Color(0xFF2979FF) : Colors.grey.shade400,
               ),
             ),
           ),
@@ -635,11 +641,11 @@ class _ContextMenu extends StatelessWidget {
   final VoidCallback? onDelete;
   const _ContextMenu(
       {required this.item,
-      required this.bubbleOn,
-      required this.onBubble,
-      this.onMute,
-      this.onPin,
-      this.onDelete});
+        required this.bubbleOn,
+        required this.onBubble,
+        this.onMute,
+        this.onPin,
+        this.onDelete});
 
   @override
   Widget build(BuildContext context) {
@@ -681,7 +687,7 @@ class _ContextMenu extends StatelessWidget {
                       : null,
                   child: item.peerAvatar.isEmpty
                       ? Text(item.peerName[0].toUpperCase(),
-                          style: const TextStyle(fontWeight: FontWeight.w700))
+                      style: const TextStyle(fontWeight: FontWeight.w700))
                       : null,
                 ),
                 const SizedBox(width: 12),
@@ -750,9 +756,9 @@ class _MenuItem extends StatelessWidget {
   final VoidCallback onTap;
   const _MenuItem(
       {required this.icon,
-      required this.color,
-      required this.label,
-      required this.onTap});
+        required this.color,
+        required this.label,
+        required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -777,7 +783,7 @@ class _MenuItem extends StatelessWidget {
             const SizedBox(width: 14),
             Text(label,
                 style:
-                    const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+                const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
           ],
         ),
       ),

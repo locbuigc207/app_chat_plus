@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:audio_session/audio_session.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt; // Bổ sung package STT
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 
@@ -63,11 +64,11 @@ class _Pattern {
   final bool exact; // exact word vs. contains
 
   const _Pattern(
-    this.keyword,
-    this.category,
-    this.weight, {
-    this.exact = false,
-  });
+      this.keyword,
+      this.category,
+      this.weight, {
+        this.exact = false,
+      });
 }
 
 // ══════════════════════════════════════════════════════
@@ -82,8 +83,9 @@ class RealtimeAIService {
     region: 'asia-southeast1',
   );
 
-  // ── Deepfake Services ──────────────────────────────
+  // ── Deepfake & STT Services ─────────────────────────
   final _deepfakeDetector = DeepfakeDetectorService();
+  final stt.SpeechToText _speechToText = stt.SpeechToText();
   StreamSubscription? _deepfakeSub;
 
   // ── State ──────────────────────────────────────────
@@ -92,9 +94,6 @@ class RealtimeAIService {
   String _transcript = '';
   String _accumulated = '';
   int _analysisCount = 0;
-
-  // Buffer lưu trữ âm thanh dùng cho Live Caption (STT)
-  final List<int> _speechBuffer = [];
 
   /// Rolling confidence: tracks avg risk over last N analyses
   final List<double> _riskHistory = [];
@@ -183,13 +182,25 @@ class RealtimeAIService {
           AudioSessionConfiguration(
             avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
             avAudioSessionCategoryOptions:
-                AVAudioSessionCategoryOptions.allowBluetooth |
-                AVAudioSessionCategoryOptions.mixWithOthers |
-                AVAudioSessionCategoryOptions.defaultToSpeaker,
+            AVAudioSessionCategoryOptions.allowBluetooth |
+            AVAudioSessionCategoryOptions.mixWithOthers |
+            AVAudioSessionCategoryOptions.defaultToSpeaker,
             avAudioSessionMode: AVAudioSessionMode.videoChat,
           ),
         );
       }
+
+      // Khởi tạo Speech-to-Text On-Device
+      await _speechToText.initialize(
+        onError: (error) => debugPrint('[RealtimeAI] STT Error: $error'),
+        onStatus: (status) {
+          debugPrint('[RealtimeAI] STT Status: $status');
+          // Tự động kích hoạt lại STT nếu bị ngắt giữa chừng trong lúc gọi
+          if (status == 'done' && _isListening) {
+            _startListeningSTT();
+          }
+        },
+      );
 
       _initialized = true;
       return true;
@@ -206,9 +217,11 @@ class RealtimeAIService {
     _isListening = true;
     _analysisCount = 0;
     _accumulated = '';
-    _speechBuffer.clear();
     _riskHistory.clear();
     _emit(SecurityEvent.safe());
+
+    // Kích hoạt STT lắng nghe âm thanh hội thoại
+    _startListeningSTT();
 
     // Cloud AI analysis every 15 seconds
     _aiTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
@@ -253,8 +266,11 @@ class RealtimeAIService {
 
     _transcript = '';
     _accumulated = '';
-    _speechBuffer.clear();
     _riskHistory.clear();
+
+    if (_speechToText.isListening) {
+      await _speechToText.stop();
+    }
 
     _emit(SecurityEvent.safe());
     if (!_capCtrl.isClosed) _capCtrl.add('');
@@ -273,51 +289,40 @@ class RealtimeAIService {
   Future<void> feedAudioBuffer(Int16List buffer) async {
     if (!_isListening) return;
 
-    // 1. Phân tích Deepfake
+    // Phân tích Deepfake (STT đã được xử lý độc lập qua mic/speaker mix)
     await _deepfakeDetector.analyzeAudioBuffer(buffer);
-
-    // 2. Tích lũy buffer để gửi STT (Live Caption)
-    _speechBuffer.addAll(buffer);
-    if (_speechBuffer.length >= 32000) {
-      // ~2 giây audio ở 16kHz
-      final chunk = Int16List.fromList(_speechBuffer);
-      _speechBuffer.clear();
-      _sendToCloudSTT(chunk);
-    }
   }
 
-  // ── Speech-to-Text qua Cloud (Thay thế Plugin Local) ──
-  void _sendToCloudSTT(Int16List pcm) async {
-    // TODO: Gửi raw PCM data (`pcm`) lên Google Cloud STT API hoặc backend STT
-    /*
-    try {
-      final transcript = await _sttApiClient.transcribe(
-        audio: pcm,
-        sampleRate: 16000,
-        languageCode: 'vi-VN',
-      );
-      if (transcript.isNotEmpty) {
-        _handleNewText(transcript);
-      }
-    } catch (e) {
-      debugPrint('[RealtimeAI] Cloud STT error: $e');
-    }
-    */
+  // ── Speech-to-Text On-Device (Đã thay thế Cloud STT) ──
+  void _startListeningSTT() {
+    if (!_speechToText.isAvailable || _speechToText.isListening) return;
+
+    _speechToText.listen(
+      onResult: (result) {
+        _handleNewText(result.recognizedWords, result.finalResult);
+      },
+      localeId: 'vi_VN',
+      pauseFor: const Duration(seconds: 3),
+      partialResults: true,
+    );
   }
 
-  void _handleNewText(String words) {
+  void _handleNewText(String words, bool isFinal) {
     if (words.isEmpty) return;
 
     _transcript = words;
     if (!_capCtrl.isClosed) _capCtrl.add(_transcript);
 
-    _accumulated = '${_accumulated.trim()} $words'.trim();
-    // Cap at 800 chars
-    if (_accumulated.length > 800) {
-      _accumulated = _accumulated.substring(_accumulated.length - 800);
-    }
-
+    // Quét cảnh báo ngay lập tức trên UI
     _localScan(words);
+
+    if (isFinal) {
+      // Chỉ lưu dồn khi người dùng kết thúc một câu hoàn chỉnh, tránh duplicate từ
+      _accumulated = '${_accumulated.trim()} $words'.trim();
+      if (_accumulated.length > 800) {
+        _accumulated = _accumulated.substring(_accumulated.length - 800);
+      }
+    }
   }
 
   // ── Local pattern scan ─────────────────────────────
@@ -368,7 +373,7 @@ class RealtimeAIService {
     _resetTimer?.cancel();
     _resetTimer = Timer(
       Duration(seconds: status == SecurityStatus.danger ? 12 : 8),
-      () {
+          () {
         if (_isListening) _emit(SecurityEvent.safe());
       },
     );
@@ -378,13 +383,14 @@ class RealtimeAIService {
 
   Future<void> _cloudAnalysis(String peerId, String conversationId) async {
     if (!_isListening) return;
-    final transcript = _accumulated.trim();
-    if (transcript.isEmpty) return;
+
+    // Gộp cả đoạn transcript final hiện tại nếu STT chưa kích hoạt hàm isFinal
+    final currentFullTranscript = '${_accumulated.trim()} $_transcript'.trim();
+    if (currentFullTranscript.isEmpty) return;
 
     _emit(SecurityEvent.scanning());
     _analysisCount++;
 
-    // [FIX 16]: Kiểm tra Guard - Không gửi rác Deepfake score nếu hệ thống vẫn chưa hoàn thành việc enrolled (chưa đủ 4 frame)
     final isEnrolled =
         _deepfakeDetector.currentEnrollmentStatus == EnrollmentStatus.enrolled;
     final deepfakeScore = isEnrolled
@@ -398,7 +404,7 @@ class RealtimeAIService {
       );
 
       final result = await callable.call(<String, dynamic>{
-        'callTranscript': transcript,
+        'callTranscript': currentFullTranscript,
         'peerId': peerId,
         'conversationId': conversationId,
         'analysisCount': _analysisCount,
@@ -426,21 +432,45 @@ class RealtimeAIService {
   void _handleCloudResult(Map<dynamic, dynamic> data) {
     final isSafe = data['isSafe'] as bool? ?? true;
     final riskLevel = data['riskLevel'] as String? ?? 'LOW';
-    final rawCat = data['threatCategory'] as String? ?? '';
     final warning = data['warningMessage'] as String? ?? '';
-    final score = (data['riskScore'] as num?)?.toDouble() ?? 0.0;
+
+    // Đã sửa: Đọc trực tiếp confidenceScore thay vì riskScore, và định dạng về khoảng 0.0 - 1.0
+    final rawScore = (data['confidenceScore'] as num?)?.toDouble() ?? 0.0;
+    final score = rawScore > 1.0 ? rawScore / 100.0 : rawScore;
 
     if (!isSafe || riskLevel == 'HIGH' || riskLevel == 'MEDIUM') {
-      final cat = _parseCat(rawCat);
+
+      // Đã sửa: Tự động suy luận Category do server trả thiếu field `threatCategory`
+      final isDeepfakeVoice = data['isDeepfakeVoice'] as bool? ?? false;
+      final isScam = data['isScam'] as bool? ?? false;
+
+      ThreatCategory inferredCat = ThreatCategory.unknown;
+      if (isDeepfakeVoice) {
+        inferredCat = ThreatCategory.deepfake;
+      } else if (isScam) {
+        final lowerWarning = warning.toLowerCase();
+        if (lowerWarning.contains('tài chính') || lowerWarning.contains('chuyển tiền') || lowerWarning.contains('ngân hàng')) {
+          inferredCat = ThreatCategory.financialFraud;
+        } else if (lowerWarning.contains('otp') || lowerWarning.contains('mã xác nhận') || lowerWarning.contains('mật khẩu')) {
+          inferredCat = ThreatCategory.otp;
+        } else if (lowerWarning.contains('công an') || lowerWarning.contains('cảnh sát') || lowerWarning.contains('cơ quan')) {
+          inferredCat = ThreatCategory.phishing;
+        } else if (lowerWarning.contains('khẩn cấp') || lowerWarning.contains('ngay lập tức')) {
+          inferredCat = ThreatCategory.urgencyTrick;
+        } else {
+          inferredCat = ThreatCategory.financialFraud; // Default Scam
+        }
+      }
+
       _emit(
         SecurityEvent(
           status: riskLevel == 'HIGH'
               ? SecurityStatus.danger
               : SecurityStatus.warning,
-          category: cat,
+          category: inferredCat,
           message: warning.isNotEmpty
               ? warning
-              : '⚠️ AI phát hiện: ${_catLabel(cat)}',
+              : '⚠️ AI phát hiện: ${_catLabel(inferredCat)}',
           riskScore: score,
           timestamp: DateTime.now(),
         ),
@@ -454,24 +484,6 @@ class RealtimeAIService {
 
   void _emit(SecurityEvent event) {
     if (!_secCtrl.isClosed) _secCtrl.add(event);
-  }
-
-  ThreatCategory _parseCat(String raw) {
-    switch (raw.toLowerCase()) {
-      case 'financial_fraud':
-      case 'financialfraud':
-        return ThreatCategory.financialFraud;
-      case 'otp':
-        return ThreatCategory.otp;
-      case 'phishing':
-        return ThreatCategory.phishing;
-      case 'urgency':
-        return ThreatCategory.urgencyTrick;
-      case 'deepfake':
-        return ThreatCategory.deepfake;
-      default:
-        return ThreatCategory.unknown;
-    }
   }
 
   static String _catLabel(ThreatCategory cat) {

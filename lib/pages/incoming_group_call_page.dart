@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../models/group_call_model.dart';
 import '../services/group_call_service.dart';
 import 'group_call_page.dart';
+import 'group_call_waiting_room.dart';
 
 class IncomingGroupCallPage extends StatefulWidget {
   final GroupCallModel call;
@@ -183,8 +184,27 @@ class _IncomingGroupCallPageState extends State<IncomingGroupCallPage>
     HapticFeedback.mediumImpact();
 
     final ok = await _service.joinCall(widget.call.callId);
+
+    // [FIX 5]: Chuyển hướng người dùng bị đẩy vào phòng chờ thay vì silent dismiss
     if (!ok || !mounted) {
-      _dismissSilently();
+      final updatedCall = await _service.getCall(widget.call.callId);
+      if (updatedCall?.waitingRoomUserIds.contains(widget.currentUserId) == true && mounted) {
+        Navigator.of(context).pushReplacement(
+          PageRouteBuilder(
+            transitionDuration: const Duration(milliseconds: 400),
+            pageBuilder: (_, __, ___) => GroupCallWaitingRoomPage(
+              call: updatedCall!,
+              currentUserId: widget.currentUserId,
+            ),
+            transitionsBuilder: (_, anim, __, child) => FadeTransition(
+              opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
+              child: child,
+            ),
+          ),
+        );
+      } else {
+        _dismissSilently();
+      }
       return;
     }
 

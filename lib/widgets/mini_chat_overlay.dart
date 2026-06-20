@@ -135,28 +135,28 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
 
   // ── Header gradient (mode-aware) ─────────────────────────────────────────
   List<Color> get _headerColors => switch (widget.bubbleCtx.mode) {
-        BubbleMode.work => [
-            const Color(0xFF0D1B2A),
-            const Color(0xFF1E2D40),
-          ],
-        BubbleMode.media => [
-            const Color(0xFF880E4F),
-            const Color(0xFFAD1457),
-          ],
-        BubbleMode.location => [
-            const Color(0xFF1B5E20),
-            const Color(0xFF388E3C),
-          ],
-        BubbleMode.secure => [
-            const Color(0xFF0A0E1A),
-            const Color(0xFF1A2A50),
-          ],
-        BubbleMode.shared => [
-            const Color(0xFF311B92),
-            const Color(0xFF5E35B1),
-          ],
-        _ => [_K.grad1, _K.grad3],
-      };
+    BubbleMode.work => [
+      const Color(0xFF0D1B2A),
+      const Color(0xFF1E2D40),
+    ],
+    BubbleMode.media => [
+      const Color(0xFF880E4F),
+      const Color(0xFFAD1457),
+    ],
+    BubbleMode.location => [
+      const Color(0xFF1B5E20),
+      const Color(0xFF388E3C),
+    ],
+    BubbleMode.secure => [
+      const Color(0xFF0A0E1A),
+      const Color(0xFF1A2A50),
+    ],
+    BubbleMode.shared => [
+      const Color(0xFF311B92),
+      const Color(0xFF5E35B1),
+    ],
+    _ => [_K.grad1, _K.grad3],
+  };
 
   // ═════════════════════════════════════════════════════════════════════════
   // LIFECYCLE
@@ -183,7 +183,7 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
         CurvedAnimation(parent: _openCtrl, curve: const Interval(0.0, 0.6)));
     _openSlide = Tween<Offset>(begin: const Offset(0, 0.08), end: Offset.zero)
         .animate(
-            CurvedAnimation(parent: _openCtrl, curve: Curves.easeOutCubic));
+        CurvedAnimation(parent: _openCtrl, curve: Curves.easeOutCubic));
 
     // Close (plays in reverse for dismiss)
     _closeCtrl = AnimationController(vsync: this, duration: _K.closeDur);
@@ -345,12 +345,14 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
 
   void _exitPip() {
     HapticFeedback.mediumImpact();
-    setState(() => _isPip = false);
-    _pipCtrl.reverse();
-    // Snap window back to a comfortable position
     final screen = MediaQuery.of(context).size;
-    _x = (screen.width - _w) / 2;
-    _y = (screen.height - _h) * 0.12 + 40;
+    setState(() {
+      _isPip = false;
+      // Snap window back to a comfortable position safely inside setState
+      _x = (screen.width - _w) / 2;
+      _y = (screen.height - _h) * 0.12 + 40;
+    });
+    _pipCtrl.reverse();
   }
 
   void _onPipSwipeUpdate(DragUpdateDetails d) {
@@ -452,15 +454,15 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
                   backgroundColor: Colors.white.withValues(alpha: 0.15),
                   child: widget.peerAvatar.isEmpty
                       ? Text(
-                          widget.peerNickname.isNotEmpty
-                              ? widget.peerNickname[0].toUpperCase()
-                              : '?',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 20,
-                          ),
-                        )
+                    widget.peerNickname.isNotEmpty
+                        ? widget.peerNickname[0].toUpperCase()
+                        : '?',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 20,
+                    ),
+                  )
                       : null,
                 ),
 
@@ -643,7 +645,7 @@ class _Header extends StatefulWidget {
   final BubbleContext bubbleCtx;
   final List<Color> colors;
   final VoidCallback onMinimize;
-  final AsyncCallback onClose;
+  final VoidCallback onClose;
   final VoidCallback? onExpand;
 
   const _Header({
@@ -716,7 +718,7 @@ class _HeaderState extends State<_Header> with SingleTickerProviderStateMixin {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: List.generate(
                       3,
-                      (_) => Container(
+                          (_) => Container(
                         margin: const EdgeInsets.symmetric(vertical: 1.5),
                         width: 16,
                         height: 2,
@@ -742,24 +744,24 @@ class _HeaderState extends State<_Header> with SingleTickerProviderStateMixin {
                             width: 2),
                         image: widget.peerAvatar.isNotEmpty
                             ? DecorationImage(
-                                image: NetworkImage(widget.peerAvatar),
-                                fit: BoxFit.cover)
+                            image: NetworkImage(widget.peerAvatar),
+                            fit: BoxFit.cover)
                             : null,
                         color: Colors.white.withValues(alpha: 0.15),
                       ),
                       child: widget.peerAvatar.isEmpty
                           ? Center(
-                              child: Text(
-                                widget.peerName.isNotEmpty
-                                    ? widget.peerName[0].toUpperCase()
-                                    : '?',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 15,
-                                ),
-                              ),
-                            )
+                        child: Text(
+                          widget.peerName.isNotEmpty
+                              ? widget.peerName[0].toUpperCase()
+                              : '?',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                          ),
+                        ),
+                      )
                           : null,
                     ),
                     if (widget.isOnline)
@@ -779,7 +781,7 @@ class _HeaderState extends State<_Header> with SingleTickerProviderStateMixin {
                                 _onlineCtrl.value,
                               ),
                               border:
-                                  Border.all(color: Colors.white, width: 1.5),
+                              Border.all(color: Colors.white, width: 1.5),
                               boxShadow: [
                                 BoxShadow(
                                   color: const Color(0xFF69F0AE).withValues(
@@ -989,7 +991,7 @@ class _HBtnState extends State<_HBtn> with SingleTickerProviderStateMixin {
               borderRadius: BorderRadius.circular(9),
               border: widget.isClose
                   ? Border.all(
-                      color: Colors.red.withValues(alpha: 0.35), width: 1)
+                  color: Colors.red.withValues(alpha: 0.35), width: 1)
                   : null,
             ),
             child: Icon(
@@ -1093,7 +1095,7 @@ class _ResizePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..color =
-          (active ? Colors.blueGrey : Colors.blueGrey.withValues(alpha: 0.35))
+      (active ? Colors.blueGrey : Colors.blueGrey.withValues(alpha: 0.35))
       ..strokeWidth = 1.5
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
@@ -1327,12 +1329,12 @@ class _AvatarWidget extends StatelessWidget {
           backgroundImage: url.isNotEmpty ? NetworkImage(url) : null,
           child: url.isEmpty
               ? Text(
-                  name.isNotEmpty ? name[0].toUpperCase() : '?',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14),
-                )
+            name.isNotEmpty ? name[0].toUpperCase() : '?',
+            style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 14),
+          )
               : null,
         ),
         if (isOnline)

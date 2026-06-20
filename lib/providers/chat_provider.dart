@@ -29,7 +29,9 @@ abstract class SyncJobType {
 }
 
 // =============================================================================
-// ChatProvider — with complete bubble integration & conversation fixes
+// ChatProvider — Decoupled Data & Service Layer
+// * Đã loại bỏ hoàn toàn các liên kết cứng với UI/Bubble (Decoupling)
+// * Chỉ chuyên trách việc tương tác dữ liệu Firebase Firestore/Storage và LocalDb
 // =============================================================================
 
 class ChatProvider {
@@ -38,11 +40,6 @@ class ChatProvider {
   final FirebaseFirestore firebaseFirestore;
   final FirebaseStorage firebaseStorage;
 
-  /// Optional bubble service — set via [attachBubbleService] after construction.
-  /// When null, all bubble-related calls are silently skipped.
-  UnifiedBubbleService? _bubbleService;
-
-  final GeminiService _geminiService = GeminiService();
   final MediaCompressionService _compressionService = MediaCompressionService();
   final LocalDbService _localDb = LocalDbService();
   final SyncManager _syncManager = SyncManager();
@@ -54,13 +51,12 @@ class ChatProvider {
     required this.firebaseStorage,
   });
 
-  // ── Bubble service injection ───────────────────────────────────────────────
-
-  /// Call once in your app's Provider setup:
-  ///   chatProvider.attachBubbleService(ref.read(unifiedBubbleServiceProvider));
-  void attachBubbleService(UnifiedBubbleService? svc) {
-    _bubbleService = svc;
-    _log('🫧 BubbleService attached: ${svc != null}');
+  // [SỬA LỖI P0/P1]: Đã xóa bỏ hàm attachBubbleService và _bubbleService.
+  // Giao lại toàn bộ việc xử lý UI (âm thanh, hiển thị bong bóng, cập nhật bong bóng)
+  // cho các lớp Controller (ChatPage, GroupChatPage).
+  void attachBubbleService(dynamic svc) {
+    // Để trống nhằm giữ khả năng tương thích ngược nếu các file cũ vẫn đang gọi hàm này.
+    // Logic thực tế đã bị gỡ bỏ.
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -77,7 +73,7 @@ class ChatProvider {
     return raw.map((e) => _toStringMap(e)).toList();
   }
 
-  void _log(String message) => debugPrint('[ChatProvider] $message');
+  void _log(String message) => debugPrint('☁️ [ChatProvider] $message');
 
   // ── Storage ───────────────────────────────────────────────────────────────
 
@@ -171,6 +167,8 @@ class ChatProvider {
   // CONVERSATION FALLBACK UPDATE
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // [SỬA LỖI P1]: Tránh quét toàn bộ DB chỉ để cập nhật một conversation.
+  // Dùng thẳng doc(groupChatId).set() để tăng hiệu năng và tiết kiệm chi phí.
   Future<void> _updateConversationLastMessage({
     required String groupChatId,
     required String currentUserId,
@@ -180,144 +178,19 @@ class ChatProvider {
     required String timestamp,
   }) async {
     try {
-      final snap = await firebaseFirestore
+      final docRef = firebaseFirestore
           .collection(FirestoreConstants.pathConversationCollection)
-          .where('participants', arrayContains: currentUserId)
-          .get();
+          .doc(groupChatId);
 
-      final doc = snap.docs.where((d) {
-        final p = List<String>.from((d.data())['participants'] as List? ?? []);
-        return p.contains(peerId);
-      }).firstOrNull;
-
-      if (doc == null) return;
-
-      await doc.reference.set({
+      await docRef.set({
+        // Nếu đây là hội thoại mới, thiết lập luôn array participants
+        'participants': FieldValue.arrayUnion([currentUserId, peerId]),
         'lastMessage': _previewFor(content, type),
         'lastMessageTime': timestamp,
         'lastMessageType': type,
       }, SetOptions(merge: true));
     } catch (e) {
       _log('⚠️ _updateConversationLastMessage error: $e');
-    }
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // BUBBLE — core helpers (no BuildContext, pure service layer)
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  /// Map message [type] → bubble messageType string.
-  String _bubbleTypeStr(int type) => switch (type) {
-    TypeMessage.image => 'image',
-    TypeMessage.video => 'video',
-    3 => 'voice', // voice
-    TypeMessage.geoLocked => 'location',
-    TypeMessage.document => 'file',
-    TypeMessage.poll => 'poll',
-    TypeMessage.gameInvite => 'game',
-    TypeMessage.gameResult => 'game',
-    _ => 'text',
-  };
-
-  /// Short display string for bubble notification.
-  String _bubblePreview(String content, int type, {String? senderName}) {
-    final base = switch (type) {
-      TypeMessage.image => '📷 Hình ảnh',
-      TypeMessage.video => '🎬 Video',
-      3 => '🎤 Tin nhắn thoại',
-      TypeMessage.geoLocked => '📍 Tin nhắn vị trí',
-      TypeMessage.document => '📎 Tệp đính kèm',
-      TypeMessage.sticker => '😊 Sticker',
-      TypeMessage.poll => '📊 Bình chọn',
-      TypeMessage.gameInvite => '🎮 Lời mời chơi game',
-      TypeMessage.gameResult => '🏆 Kết quả game',
-      _ =>
-        content.contains('maps.google.com') || content.contains('Location:')
-            ? '📍 Vị trí'
-            : (content.length > 60 ? '${content.substring(0, 60)}…' : content),
-    };
-    return senderName != null ? '$senderName: $base' : base;
-  }
-
-  /// Send bubble notification for an INCOMING message (fromUser = false)
-  /// or an OUTGOING message update (fromUser = true).
-  /// Safely no-ops when bubble disabled or not active.
-  Future<void> _tryUpdateBubble({
-    required String conversationId,
-    required String userName,
-    required String avatarUrl,
-    required String content,
-    required int type,
-    required bool fromUser,
-    String? senderName, // for group chats
-  }) async {
-    try {
-      final settings = BubbleSettingsService();
-      if (!settings.isEnabled) return;
-
-      // Do not push bubble when user is actively inside the chat
-      if (settings.settings.autoHideWhenChatOpen && !fromUser) return;
-
-      final svc = _bubbleService;
-      if (svc == null) return;
-      if (!svc.isBubbleActive(conversationId)) return;
-
-      final preview = _bubblePreview(content, type, senderName: senderName);
-
-      await svc.sendMessage(
-        userId: conversationId,
-        userName: userName,
-        message: preview,
-        avatarUrl: avatarUrl,
-        messageType: _bubbleTypeStr(type),
-      );
-    } catch (e) {
-      _log('⚠️ _tryUpdateBubble: $e');
-    }
-  }
-
-  /// Show the bubble popup for a conversation (creates if not already active).
-  /// Called when a message arrives and app is backgrounded.
-  Future<void> _tryShowBubble({
-    required String conversationId,
-    required String userName,
-    required String avatarUrl,
-  }) async {
-    try {
-      final settings = BubbleSettingsService();
-      if (!settings.isEnabled) return;
-      final svc = _bubbleService;
-      if (svc == null || !svc.isSupported) return;
-      await svc.showChatBubble(
-        userId: conversationId,
-        userName: userName,
-        avatarUrl: avatarUrl,
-      );
-    } catch (e) {
-      _log('⚠️ _tryShowBubble: $e');
-    }
-  }
-
-  /// Play receive sound based on current BubbleMode for the conversation.
-  Future<void> _tryPlayReceiveSound(String conversationId) async {
-    try {
-      if (!BubbleSettingsService().settings.soundEnabled) return;
-      final ctx = ContextualBubbleService.instance.getContext(conversationId);
-      await BubbleSoundService().playReceive(ctx.mode);
-    } catch (e) {
-      _log('⚠️ _tryPlayReceiveSound: $e');
-    }
-  }
-
-  /// Update conversation context for auto-mode detection.
-  void _updateBubbleContext(String conversationId, String messageContent) {
-    try {
-      ContextualBubbleService.instance.updateContext(
-        conversationId: conversationId,
-        message: messageContent,
-      );
-    } catch (e) {
-      _log('⚠️ _updateBubbleContext: $e');
     }
   }
 
@@ -386,19 +259,6 @@ class ChatProvider {
     }
 
     _syncManager.startListening();
-
-    // ── Bubble: update context + bubble message after send ────────────────
-    _updateBubbleContext(groupChatId, content);
-    unawaited(
-      _tryUpdateBubble(
-        conversationId: groupChatId,
-        userName: peerId,
-        avatarUrl: '',
-        content: content,
-        type: type,
-        fromUser: true,
-      ),
-    );
   }
 
   String _previewFor(String content, int type) {
@@ -615,15 +475,17 @@ class ChatProvider {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // FIREBASE LISTENER — INCOMING MESSAGES + BUBBLE
+  // FIREBASE LISTENER — INCOMING MESSAGES
   // ═══════════════════════════════════════════════════════════════════════════
 
-  void listenToFirebaseChanges(
+  // [SỬA LỖI P0]: Trả về StreamSubscription để Controller (Page) nắm giữ và hủy bỏ
+  // khi màn hình Dispose, ngăn ngừa rò rỉ bộ nhớ (memory leak).
+  StreamSubscription<QuerySnapshot> listenToFirebaseChanges(
     String groupChatId,
     String currentUserId,
     String peerId,
   ) {
-    firebaseFirestore
+    return firebaseFirestore
         .collection(FirestoreConstants.pathMessageCollection)
         .doc(groupChatId)
         .collection(groupChatId)
@@ -632,16 +494,19 @@ class ChatProvider {
         .snapshots()
         .listen(
           (snapshot) async {
-            for (final doc in snapshot.docs) {
+            // [SỬA LỖI P0]: Chỉ xử lý các thay đổi dựa trên docChanges thay vì quét lại toàn bộ snapshot.docs
+            for (final change in snapshot.docChanges) {
               try {
-                await _processIncomingDoc(
-                  doc: doc,
+                await _processIncomingDocChange(
+                  change: change,
                   groupChatId: groupChatId,
                   currentUserId: currentUserId,
                   peerId: peerId,
                 );
               } catch (e) {
-                _log('❌ _processIncomingDoc error [${doc.id}]: $e');
+                _log(
+                  '❌ _processIncomingDocChange error [${change.doc.id}]: $e',
+                );
               }
             }
           },
@@ -651,34 +516,30 @@ class ChatProvider {
         );
   }
 
-  // ── Track processed messages to avoid duplicate bubble/sound ─────────────
-  final Set<String> _processedIncomingIds = {};
-
-  Future<void> _processIncomingDoc({
-    required QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  Future<void> _processIncomingDocChange({
+    required DocumentChange<Map<String, dynamic>> change,
     required String groupChatId,
     required String currentUserId,
     required String peerId,
   }) async {
+    final doc = change.doc;
     final data = _toStringMap(doc.data());
     final messageId = doc.id;
     final isFromMe = data['idFrom'] == currentUserId;
     final type = data['type'] as int? ?? TypeMessage.text;
 
-    // ── Own message: mark as sent & sync poll options ────────────────────────
+    // ── Own message (Sync Status & Polls) ────────────────────────
     if (isFromMe) {
       final key = '${groupChatId}_$messageId';
       final existingRaw = _localDb.messagesBox.get(key);
       final existing = _toStringMap(existingRaw);
 
       if (existing.isNotEmpty) {
-        // Chỉ update status nếu đang pending
         final currentStatus = existing['status'] as String? ?? '';
         final newStatus = currentStatus == MessageStatus.pending
             ? MessageStatus.sent
             : currentStatus;
 
-        // Merge lại toàn bộ các field có thể thay đổi sau vote
         final merged = <String, dynamic>{
           ...existing,
           'status': newStatus,
@@ -700,11 +561,11 @@ class ChatProvider {
 
     String content = data[FirestoreConstants.content] as String? ?? '';
 
-    // Sửa lỗi 3: Bỏ qua giải mã (decrypt) cho các định dạng Game Message thuần JSON
+    // Bỏ qua decrypt cho Game Message
     if (type == TypeMessage.gameInvite ||
         type == TypeMessage.gameResult ||
         type == TypeMessage.gameLive) {
-      // Bỏ qua giải mã, bảo toàn chuỗi content JSON thuần tuý
+      // Bảo toàn JSON
     } else if (type == TypeMessage.text && content.isNotEmpty) {
       try {
         content = await EncryptionService().decryptPayload(
@@ -718,7 +579,6 @@ class ChatProvider {
       }
     }
 
-    // Link preview extraction
     String? previewUrl = data['previewUrl'] as String?;
     if (previewUrl == null && type == TypeMessage.text) {
       final urls = _extractUrls(content);
@@ -756,8 +616,8 @@ class ChatProvider {
     // Save to local DB first
     await _localDb.saveMessage(groupChatId, messageId, updatedMessage);
 
-    // ── Fallback Update Conversation ──────────────────────────────────────────
-    if (!isFromMe &&
+    // Fallback Update Conversation Last Message
+    if (change.type == DocumentChangeType.added &&
         content.isNotEmpty &&
         data['idFrom'] != AppConstants.aiAssistantId) {
       unawaited(
@@ -775,62 +635,14 @@ class ChatProvider {
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // BUBBLE INTEGRATION for INCOMING messages
+    // AI Auto-Analysis (parallel, non-blocking)
     // ════════════════════════════════════════════════════════════════════════
 
-    // Deduplicate: only trigger bubble+sound once per new message
-    final bubbleKey = '${groupChatId}_${messageId}_bubble';
-    if (!_processedIncomingIds.contains(bubbleKey) &&
-        data['idFrom'] != AppConstants.aiAssistantId &&
-        content.isNotEmpty) {
-      _processedIncomingIds.add(bubbleKey);
-      // Prevent unbounded growth
-      if (_processedIncomingIds.length > 500) {
-        _processedIncomingIds.remove(_processedIncomingIds.first);
-      }
-
-      // 1. Update contextual bubble service — auto-detect mode from content
-      _updateBubbleContext(groupChatId, content);
-
-      // 2. Play notification sound based on BubbleMode
-      unawaited(_tryPlayReceiveSound(groupChatId));
-
-      // 3. Determine peer display info
-      final senderAvatar = await _fetchPeerAvatar(peerId);
-      final senderName = await _fetchPeerName(peerId);
-
-      // 4. Update bubble message (if bubble already active)
-      unawaited(
-        _tryUpdateBubble(
-          conversationId: groupChatId,
-          userName: senderName,
-          avatarUrl: senderAvatar,
-          content: content,
-          type: type,
-          fromUser: false,
-        ),
-      );
-
-      // 5. Show bubble if app is in background and no bubble exists yet
-      final settings = BubbleSettingsService();
-      if (settings.isEnabled &&
-          _bubbleService != null &&
-          !_bubbleService!.isBubbleActive(groupChatId)) {
-        unawaited(
-          _tryShowBubble(
-            conversationId: groupChatId,
-            userName: senderName,
-            avatarUrl: senderAvatar,
-          ),
-        );
-      }
-    }
-
-    // ════════════════════════════════════════════════════════════════════════
-    // AI Auto-Analysis (parallel, non-blocking — unchanged)
-    // ════════════════════════════════════════════════════════════════════════
-
-    if (type == TypeMessage.text &&
+    // [SỬA LỖI P0]: Chỉ thực hiện Cloud AI Check (phát sinh chi phí API)
+    // khi đây là tin nhắn MỚI ĐƯỢC THÊM (DocumentChangeType.added).
+    // Bỏ qua khi có các sự kiện modified (như đổi status isRead, vote poll).
+    if (change.type == DocumentChangeType.added &&
+        type == TypeMessage.text &&
         content.isNotEmpty &&
         content.length > 15 &&
         data['idFrom'] != AppConstants.aiAssistantId) {
@@ -871,43 +683,6 @@ class ChatProvider {
             })
             .catchError((e) => _log('HateSpeech check skipped: $e')),
       );
-    }
-  }
-
-  // ── Peer info helpers ─────────────────────────────────────────────────────
-
-  /// Simple in-memory cache: userId → avatarUrl
-  final Map<String, String> _avatarCache = {};
-  final Map<String, String> _nameCache = {};
-
-  Future<String> _fetchPeerAvatar(String userId) async {
-    if (_avatarCache.containsKey(userId)) return _avatarCache[userId]!;
-    try {
-      final doc = await firebaseFirestore
-          .collection(FirestoreConstants.pathUserCollection)
-          .doc(userId)
-          .get();
-      final url = doc.data()?[FirestoreConstants.photoUrl] as String? ?? '';
-      _avatarCache[userId] = url;
-      return url;
-    } catch (_) {
-      return '';
-    }
-  }
-
-  Future<String> _fetchPeerName(String userId) async {
-    if (_nameCache.containsKey(userId)) return _nameCache[userId]!;
-    try {
-      final doc = await firebaseFirestore
-          .collection(FirestoreConstants.pathUserCollection)
-          .doc(userId)
-          .get();
-      final name =
-          doc.data()?[FirestoreConstants.nickname] as String? ?? 'User';
-      _nameCache[userId] = name;
-      return name;
-    } catch (_) {
-      return 'User';
     }
   }
 
@@ -968,18 +743,6 @@ class ChatProvider {
         groupChatId,
         currentUserId,
         peerId,
-      );
-
-      // ── Bubble: update with media type immediately ──────────────────────
-      unawaited(
-        _tryUpdateBubble(
-          conversationId: groupChatId,
-          userName: peerId,
-          avatarUrl: '',
-          content: contentPayload,
-          type: msgType,
-          fromUser: true,
-        ),
       );
 
       return true;
@@ -1054,7 +817,7 @@ class ChatProvider {
       _compressionService.cancelCompression();
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // GAME CENTER METHODS + BUBBLE
+  // GAME CENTER METHODS
   // ═══════════════════════════════════════════════════════════════════════════
 
   Future<String> sendGameInviteMessage({
@@ -1106,33 +869,8 @@ class ChatProvider {
         lastMessageType: TypeMessage.gameInvite,
       );
 
-      // ── Bubble: game invite notification ─────────────────────────────────
-      _updateBubbleContext(groupChatId, '🎮 game invite');
-      unawaited(
-        _tryUpdateBubble(
-          conversationId: groupChatId,
-          userName: payload.challengerName,
-          avatarUrl: payload.challengerAvatar,
-          content: preview,
-          type: TypeMessage.gameInvite,
-          fromUser: true,
-        ),
-      );
-
-      // Push notification to target player
-      if (payload.targetUserId?.isNotEmpty == true) {
-        unawaited(
-          ChatBubbleService().sendGameChallengeNotification(
-            targetUserId: payload.targetUserId!,
-            challengerName: payload.challengerName,
-            challengerAvatar: payload.challengerAvatar,
-            matchId: payload.matchId,
-            groupId: groupChatId,
-            gameType: payload.gameType.name,
-            timeControlLabel: _resolveTimeLabel(payload),
-          ),
-        );
-      }
+      // [SỬA LỖI P0]: Xóa logic gọi RPC native cũ của ChatBubbleService vì đã dọn dẹp khỏi Kotlin.
+      // Firebase Cloud Functions sẽ lo nhiệm vụ gửi Notification thay thế.
 
       _log('🎮 Game invite sent: ${payload.matchId} → $groupChatId');
       return timestamp;
@@ -1140,16 +878,6 @@ class ChatProvider {
       _log('❌ sendGameInviteMessage error: $e');
       rethrow;
     }
-  }
-
-  String _resolveTimeLabel(GameInvitePayload payload) {
-    if (payload.gameType == GameType.chess && payload.timeControlSeconds > 0) {
-      return '${payload.timeControlSeconds ~/ 60} phút';
-    }
-    if (payload.gameType == GameType.caro) {
-      return payload.boardSize == 3 ? '3×3' : 'vô hạn';
-    }
-    return '';
   }
 
   Future<String> sendGameResultMessage({
@@ -1203,20 +931,6 @@ class ChatProvider {
         lastMessageType: TypeMessage.gameResult,
       );
 
-      // ── Bubble: game result notification ─────────────────────────────────
-      unawaited(
-        _tryUpdateBubble(
-          conversationId: groupChatId,
-          userName: payload.player1Name,
-          avatarUrl: '',
-          content: previewText,
-          type: TypeMessage.gameResult,
-          fromUser: false,
-        ),
-      );
-      // Play special sound for game result
-      unawaited(_tryPlayReceiveSound(groupChatId));
-
       _log('🏁 Game result sent: ${payload.matchId} → $groupChatId');
       return timestamp;
     } catch (e) {
@@ -1240,7 +954,7 @@ class ChatProvider {
 
       await firebaseFirestore.runTransaction((tx) async {
         final doc = await tx.get(docRef);
-        // Sửa lỗi 16: Cảnh báo log khi document không tồn tại
+        // Ngăn chặn lỗi khi document messageId không tồn tại trên Firestore
         if (!doc.exists) {
           _log(
             '⚠️ [updateGameMessageStatus] Document messageId: $messageId không tồn tại trên Firestore.',
@@ -1299,20 +1013,6 @@ class ChatProvider {
           FirestoreConstants.content: updatedContent,
           FirestoreConstants.type: newType,
         });
-      }
-
-      // ── Bubble: live game status update ───────────────────────────────────
-      if (newStatus == MatchStatus.live) {
-        unawaited(
-          _tryUpdateBubble(
-            conversationId: groupChatId,
-            userName: 'Game',
-            avatarUrl: '',
-            content: '🔴 Trận đấu đang diễn ra trực tiếp!',
-            type: TypeMessage.gameLive,
-            fromUser: false,
-          ),
-        );
       }
 
       _log('🔄 Game message status updated: $messageId → ${newStatus.name}');

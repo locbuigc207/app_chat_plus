@@ -236,7 +236,7 @@ class _GroupCallPageState extends State<GroupCallPage>
           builder: (ctx) => AlertDialog(
             backgroundColor: _K.surface2,
             shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: const Row(
               children: [
                 Icon(Icons.error_outline_rounded, color: _K.red),
@@ -264,7 +264,7 @@ class _GroupCallPageState extends State<GroupCallPage>
                   if (mounted) Navigator.pop(context);
                 },
                 child:
-                    const Text('Quay lại', style: TextStyle(color: _K.accent)),
+                const Text('Quay lại', style: TextStyle(color: _K.accent)),
               ),
             ],
           ),
@@ -349,13 +349,13 @@ class _GroupCallPageState extends State<GroupCallPage>
       onRtcStats: (_, s) {
         if (mounted)
           setState(() => _stats = RtcCallStats(
-                txBitrate: s.txKBitRate ?? 0,
-                rxBitrate: s.rxKBitRate ?? 0,
-                txPacketLoss: s.txPacketLossRate ?? 0,
-                rxPacketLoss: s.rxPacketLossRate ?? 0,
-                rtt: s.lastmileDelay ?? 0,
-                duration: s.duration ?? 0,
-              ));
+            txBitrate: s.txKBitRate ?? 0,
+            rxBitrate: s.rxKBitRate ?? 0,
+            txPacketLoss: s.txPacketLossRate ?? 0,
+            rxPacketLoss: s.rxPacketLossRate ?? 0,
+            rtt: s.lastmileDelay ?? 0,
+            duration: s.duration ?? 0,
+          ));
       },
       onError: (err, msg) => debugPrint('❌ Agora[$err]: $msg'),
     ));
@@ -391,35 +391,36 @@ class _GroupCallPageState extends State<GroupCallPage>
         sampleRate: 16000,
         channel: 1,
         mode: RawAudioFrameOpModeType.rawAudioFrameOpModeReadOnly,
-        samplesPerCall: 1024,
+        // Đã sửa lại samplesPerCall từ 1024 thành 2048 để AI AudioFeatureExtractor hoạt động (Cần tối thiểu 2048 samples)
+        samplesPerCall: 2048,
       );
 
       _engine.getMediaEngine().registerAudioFrameObserver(
-            AudioFrameObserver(
-              onRecordAudioFrame: (String channelId, AudioFrame audioFrame) {
-                if (audioFrame.buffer != null) {
-                  try {
-                    final bytes = audioFrame.buffer!;
-                    final pcm16Data = Int16List.view(
-                      bytes.buffer,
-                      bytes.offsetInBytes,
-                      bytes.lengthInBytes ~/ 2,
-                    );
-                    RealtimeAIService().feedAudioBuffer(pcm16Data);
-                  } catch (e) {
-                    debugPrint(
-                        '[Deepfake] Lỗi khi xử lý Audio Frame Group: $e');
-                  }
-                }
-              },
-              onPlaybackAudioFrame:
-                  (String channelId, AudioFrame audioFrame) {},
-              onMixedAudioFrame: (String channelId, AudioFrame audioFrame) {},
-              onEarMonitoringAudioFrame: (AudioFrame audioFrame) {},
-              onPlaybackAudioFrameBeforeMixing:
-                  (String channelId, int uid, AudioFrame audioFrame) {},
-            ),
-          );
+        AudioFrameObserver(
+          onRecordAudioFrame: (String channelId, AudioFrame audioFrame) {
+            if (audioFrame.buffer != null) {
+              try {
+                final bytes = audioFrame.buffer!;
+                final pcm16Data = Int16List.view(
+                  bytes.buffer,
+                  bytes.offsetInBytes,
+                  bytes.lengthInBytes ~/ 2,
+                );
+                RealtimeAIService().feedAudioBuffer(pcm16Data);
+              } catch (e) {
+                debugPrint(
+                    '[Deepfake] Lỗi khi xử lý Audio Frame Group: $e');
+              }
+            }
+          },
+          onPlaybackAudioFrame:
+              (String channelId, AudioFrame audioFrame) {},
+          onMixedAudioFrame: (String channelId, AudioFrame audioFrame) {},
+          onEarMonitoringAudioFrame: (AudioFrame audioFrame) {},
+          onPlaybackAudioFrameBeforeMixing:
+              (String channelId, int uid, AudioFrame audioFrame) {},
+        ),
+      );
       debugPrint('✅ [Agora] Đã đăng ký AudioFrameObserver (Group Call)');
     } catch (e) {
       debugPrint('❌ [Agora] Không thể đăng ký AudioFrameObserver (Group): $e');
@@ -716,16 +717,16 @@ class _GroupCallPageState extends State<GroupCallPage>
     // Giải phóng AudioFrameObserver tránh leak
     try {
       _engine.getMediaEngine().registerAudioFrameObserver(
-            AudioFrameObserver(
-              onRecordAudioFrame: (String channelId, AudioFrame audioFrame) {},
-              onPlaybackAudioFrame:
-                  (String channelId, AudioFrame audioFrame) {},
-              onMixedAudioFrame: (String channelId, AudioFrame audioFrame) {},
-              onEarMonitoringAudioFrame: (AudioFrame audioFrame) {},
-              onPlaybackAudioFrameBeforeMixing:
-                  (String channelId, int uid, AudioFrame audioFrame) {},
-            ),
-          );
+        AudioFrameObserver(
+          onRecordAudioFrame: (String channelId, AudioFrame audioFrame) {},
+          onPlaybackAudioFrame:
+              (String channelId, AudioFrame audioFrame) {},
+          onMixedAudioFrame: (String channelId, AudioFrame audioFrame) {},
+          onEarMonitoringAudioFrame: (AudioFrame audioFrame) {},
+          onPlaybackAudioFrameBeforeMixing:
+              (String channelId, int uid, AudioFrame audioFrame) {},
+        ),
+      );
     } catch (_) {}
 
     try {
@@ -780,7 +781,7 @@ class _GroupCallPageState extends State<GroupCallPage>
   // ── Join/Leave toasts ─────────────────────────────────────────────────────
   void _showJoinToast(int uid) {
     final p = _model.participants.firstWhere(
-        (x) => x.userId.hashCode.abs() % 100000 == uid % 100000,
+            (x) => x.userId.hashCode.abs() % 100000 == uid % 100000,
         orElse: () => GroupCallParticipant(
             userId: '$uid',
             userName: 'Người dùng',
@@ -792,7 +793,7 @@ class _GroupCallPageState extends State<GroupCallPage>
 
   void _showLeaveToast(int uid) {
     final p = _model.participants.firstWhere(
-        (x) => x.userId.hashCode.abs() % 100000 == uid % 100000,
+            (x) => x.userId.hashCode.abs() % 100000 == uid % 100000,
         orElse: () => GroupCallParticipant(
             userId: '$uid',
             userName: 'Người dùng',
@@ -805,10 +806,10 @@ class _GroupCallPageState extends State<GroupCallPage>
   void _addToast(String name, String avatar, bool joining) {
     if (!mounted) return;
     setState(() => _toasts.add((
-          name: name,
-          avatar: avatar.isNotEmpty ? avatar : null,
-          joining: joining
-        )));
+    name: name,
+    avatar: avatar.isNotEmpty ? avatar : null,
+    joining: joining
+    )));
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted && _toasts.isNotEmpty) setState(() => _toasts.removeAt(0));
     });
@@ -931,7 +932,7 @@ class _GroupCallPageState extends State<GroupCallPage>
                 onPinTap: () {
                   // Pin the sharer's uid
                   final uid = _remoteUids.firstWhere(
-                      (u) => u
+                          (u) => u
                           .toString()
                           .contains(_model.screenShareUserId!.substring(0, 4)),
                       orElse: () => -1);
@@ -1150,7 +1151,7 @@ class _GroupCallPageState extends State<GroupCallPage>
     final speaking = _activeSpeaker == uid;
     final level = (_audioLevel[uid] ?? 0) / 255.0;
     final p = _model.participants.cast<GroupCallParticipant?>().firstWhere(
-        (x) => x != null && x.userId.hashCode.abs() % 100000 == uid % 100000,
+            (x) => x != null && x.userId.hashCode.abs() % 100000 == uid % 100000,
         orElse: () => null);
 
     return Stack(fit: StackFit.expand, children: [
@@ -1159,27 +1160,27 @@ class _GroupCallPageState extends State<GroupCallPage>
           borderRadius: BorderRadius.circular(big ? 0 : 12),
           child: videoOff
               ? _videoOffHolder(
-                  name: p?.userName,
-                  avatar: p?.userAvatar,
-                  big: big,
-                  speaking: speaking)
+              name: p?.userName,
+              avatar: p?.userAvatar,
+              big: big,
+              speaking: speaking)
               : AgoraVideoView(
-                  controller: VideoViewController.remote(
-                      rtcEngine: _engine,
-                      canvas: VideoCanvas(uid: uid),
-                      connection:
-                          RtcConnection(channelId: widget.call.channelName)))),
+              controller: VideoViewController.remote(
+                  rtcEngine: _engine,
+                  canvas: VideoCanvas(uid: uid),
+                  connection:
+                  RtcConnection(channelId: widget.call.channelName)))),
 
       // Speaking border
       if (speaking && !videoOff)
         Positioned.fill(
             child: IgnorePointer(
                 child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(big ? 0 : 12),
-              border: Border.all(color: _K.speaking, width: 2.5)),
-        ))),
+                  duration: const Duration(milliseconds: 200),
+                  decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(big ? 0 : 12),
+                      border: Border.all(color: _K.speaking, width: 2.5)),
+                ))),
 
       // Audio level bar
       if (speaking && level > 0.05)
@@ -1251,124 +1252,124 @@ class _GroupCallPageState extends State<GroupCallPage>
       color: const Color(0xFF0D1524),
       child: Center(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-        AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                    color:
+            AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                        color:
                         speaking ? _K.speaking : Colors.white.withOpacity(0.1),
-                    width: speaking ? 2.5 : 1.5),
-                boxShadow: speaking
-                    ? [
-                        BoxShadow(
-                            color: _K.speaking.withOpacity(0.4),
-                            blurRadius: 16,
-                            spreadRadius: 2)
-                      ]
-                    : null),
-            child: CircleAvatar(
-                radius: r,
-                backgroundImage: (avatar?.isNotEmpty ?? false)
-                    ? NetworkImage(avatar!)
-                    : null,
-                backgroundColor: _K.surface2,
-                child: (avatar?.isNotEmpty ?? false)
-                    ? null
-                    : Icon(Icons.person, size: r, color: _K.muted))),
-        if (name != null) ...[
-          const SizedBox(height: 8),
-          Text(name, style: const TextStyle(color: _K.sub, fontSize: 12))
-        ],
-      ])),
+                        width: speaking ? 2.5 : 1.5),
+                    boxShadow: speaking
+                        ? [
+                      BoxShadow(
+                          color: _K.speaking.withOpacity(0.4),
+                          blurRadius: 16,
+                          spreadRadius: 2)
+                    ]
+                        : null),
+                child: CircleAvatar(
+                    radius: r,
+                    backgroundImage: (avatar?.isNotEmpty ?? false)
+                        ? NetworkImage(avatar!)
+                        : null,
+                    backgroundColor: _K.surface2,
+                    child: (avatar?.isNotEmpty ?? false)
+                        ? null
+                        : Icon(Icons.person, size: r, color: _K.muted))),
+            if (name != null) ...[
+              const SizedBox(height: 8),
+              Text(name, style: const TextStyle(color: _K.sub, fontSize: 12))
+            ],
+          ])),
     );
   }
 
   // ── Local widgets ─────────────────────────────────────────────────────────
   Widget _localGridTile() => Stack(fit: StackFit.expand, children: [
-        ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: _camOff
-                ? Container(
-                    color: const Color(0xFF0D1524),
-                    child: const Center(
-                        child: Icon(Icons.videocam_off_rounded,
-                            color: _K.muted, size: 34)))
-                : (_engineReady
-                    ? AgoraVideoView(
-                        controller: VideoViewController(
-                            rtcEngine: _engine,
-                            canvas: const VideoCanvas(uid: 0)))
-                    : Container(color: _K.bg))),
-        if (_micMuted)
-          Positioned(
-              bottom: 8, left: 8, child: _badge(Icons.mic_off_rounded, _K.red)),
-        Positioned(bottom: 8, right: 8, child: _nameBadge('Bạn', false, false)),
-      ]);
+    ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: _camOff
+            ? Container(
+            color: const Color(0xFF0D1524),
+            child: const Center(
+                child: Icon(Icons.videocam_off_rounded,
+                    color: _K.muted, size: 34)))
+            : (_engineReady
+            ? AgoraVideoView(
+            controller: VideoViewController(
+                rtcEngine: _engine,
+                canvas: const VideoCanvas(uid: 0)))
+            : Container(color: _K.bg))),
+    if (_micMuted)
+      Positioned(
+          bottom: 8, left: 8, child: _badge(Icons.mic_off_rounded, _K.red)),
+    Positioned(bottom: 8, right: 8, child: _nameBadge('Bạn', false, false)),
+  ]);
 
   Widget _localPip() => Container(
-        width: 100,
-        height: 148,
-        decoration: BoxDecoration(
-            color: _K.bg,
-            borderRadius: BorderRadius.circular(14),
-            border:
-                Border.all(color: Colors.white.withOpacity(0.18), width: 1.5),
-            boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withOpacity(0.5),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8))
-            ]),
-        child: ClipRRect(
-            borderRadius: BorderRadius.circular(12.5),
-            child: _camOff
-                ? Container(
-                    color: const Color(0xFF0D1524),
-                    child: const Center(
-                        child: Icon(Icons.videocam_off_rounded,
-                            color: _K.muted, size: 24)))
-                : (_engineReady
-                    ? AgoraVideoView(
-                        controller: VideoViewController(
-                            rtcEngine: _engine,
-                            canvas: const VideoCanvas(uid: 0)))
-                    : Container(color: _K.bg))),
-      );
+    width: 100,
+    height: 148,
+    decoration: BoxDecoration(
+        color: _K.bg,
+        borderRadius: BorderRadius.circular(14),
+        border:
+        Border.all(color: Colors.white.withOpacity(0.18), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.5),
+              blurRadius: 20,
+              offset: const Offset(0, 8))
+        ]),
+    child: ClipRRect(
+        borderRadius: BorderRadius.circular(12.5),
+        child: _camOff
+            ? Container(
+            color: const Color(0xFF0D1524),
+            child: const Center(
+                child: Icon(Icons.videocam_off_rounded,
+                    color: _K.muted, size: 24)))
+            : (_engineReady
+            ? AgoraVideoView(
+            controller: VideoViewController(
+                rtcEngine: _engine,
+                canvas: const VideoCanvas(uid: 0)))
+            : Container(color: _K.bg))),
+  );
 
   Widget _localThumb() => _thumbWrap(
       child: _camOff
           ? Container(
-              color: const Color(0xFF0D1524),
-              child: const Center(
-                  child: Icon(Icons.person, color: _K.muted, size: 20)))
+          color: const Color(0xFF0D1524),
+          child: const Center(
+              child: Icon(Icons.person, color: _K.muted, size: 20)))
           : (_engineReady
-              ? AgoraVideoView(
-                  controller: VideoViewController(
-                      rtcEngine: _engine, canvas: const VideoCanvas(uid: 0)))
-              : Container(color: _K.bg)));
+          ? AgoraVideoView(
+          controller: VideoViewController(
+              rtcEngine: _engine, canvas: const VideoCanvas(uid: 0)))
+          : Container(color: _K.bg)));
 
   Widget _remoteThumb(int uid) => GestureDetector(
-        onTap: () => setState(() => _spotUid = uid),
-        child: _thumbWrap(
-            child: AgoraVideoView(
-                controller: VideoViewController.remote(
-                    rtcEngine: _engine,
-                    canvas: VideoCanvas(uid: uid),
-                    connection:
-                        RtcConnection(channelId: widget.call.channelName)))),
-      );
+    onTap: () => setState(() => _spotUid = uid),
+    child: _thumbWrap(
+        child: AgoraVideoView(
+            controller: VideoViewController.remote(
+                rtcEngine: _engine,
+                canvas: VideoCanvas(uid: uid),
+                connection:
+                RtcConnection(channelId: widget.call.channelName)))),
+  );
 
   Widget _thumbWrap({required Widget child}) => Container(
-        width: 66,
-        height: 92,
-        margin: const EdgeInsets.only(right: 6),
-        decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.white.withOpacity(0.12))),
-        child: ClipRRect(borderRadius: BorderRadius.circular(9), child: child),
-      );
+    width: 66,
+    height: 92,
+    margin: const EdgeInsets.only(right: 6),
+    decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withOpacity(0.12))),
+    child: ClipRRect(borderRadius: BorderRadius.circular(9), child: child),
+  );
 
   // ── Badges ────────────────────────────────────────────────────────────────
   Widget _badge(IconData icon, Color color) => Container(
@@ -1450,30 +1451,30 @@ class _GroupCallPageState extends State<GroupCallPage>
 
   // ── Gradients ─────────────────────────────────────────────────────────────
   Widget _buildGrads() => Positioned.fill(
-          child: IgnorePointer(
-              child: Column(children: [
-        Container(
-            height: 180,
-            decoration: BoxDecoration(
-                gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                  Colors.black.withOpacity(0.78),
-                  Colors.transparent
-                ]))),
-        const Spacer(),
-        Container(
-            height: 260,
-            decoration: BoxDecoration(
-                gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [
-                  Colors.black.withOpacity(0.9),
-                  Colors.transparent
-                ]))),
-      ])));
+      child: IgnorePointer(
+          child: Column(children: [
+            Container(
+                height: 180,
+                decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withOpacity(0.78),
+                          Colors.transparent
+                        ]))),
+            const Spacer(),
+            Container(
+                height: 260,
+                decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          Colors.black.withOpacity(0.9),
+                          Colors.transparent
+                        ]))),
+          ])));
 
   // ── Floating reaction ─────────────────────────────────────────────────────
   Widget _buildFloatRx(_FloatReaction r) => Positioned(
@@ -1491,7 +1492,7 @@ class _GroupCallPageState extends State<GroupCallPage>
                     child: Transform.scale(
                         scale: r.scale.value,
                         child:
-                            Column(mainAxisSize: MainAxisSize.min, children: [
+                        Column(mainAxisSize: MainAxisSize.min, children: [
                           Text(r.emoji, style: const TextStyle(fontSize: 36)),
                           Container(
                               margin: const EdgeInsets.only(top: 2),
@@ -1511,10 +1512,10 @@ class _GroupCallPageState extends State<GroupCallPage>
       mainAxisSize: MainAxisSize.min,
       children: _toasts
           .map((t) => Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: _ParticipantToast(
-                    name: t.name, avatar: t.avatar, joining: t.joining),
-              ))
+        padding: const EdgeInsets.only(bottom: 6),
+        child: _ParticipantToast(
+            name: t.name, avatar: t.avatar, joining: t.joining),
+      ))
           .toList());
 
   // ── Top bar ───────────────────────────────────────────────────────────────
@@ -1524,48 +1525,48 @@ class _GroupCallPageState extends State<GroupCallPage>
       right: 0,
       child: ClipRect(
           child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          color: Colors.black.withOpacity(0.22),
-          child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
-                child: Row(children: [
-                  _topBtn(Icons.picture_in_picture_alt_rounded, _enterPip,
-                      'Thu nhỏ'),
-                  const SizedBox(width: 8),
-                  Expanded(
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                        Text(widget.call.groupName,
-                            style: const TextStyle(
-                                color: _K.text,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: -0.3),
-                            overflow: TextOverflow.ellipsis),
-                        if (_joinedAt != null)
-                          CallTimerWidget(
-                              startTime: _joinedAt!,
-                              showPulse: _joined,
-                              style: const TextStyle(
-                                  color: _K.sub,
-                                  fontSize: 11,
-                                  letterSpacing: 0.3)),
-                      ])),
-                  if (_screenSharing) _screenBadge(),
-                  const SizedBox(width: 6),
-                  _participantChip(),
-                  const SizedBox(width: 6),
-                  // Chat button
-                  _chatChip(),
-                ]),
-              )),
-        ),
-      )));
+            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+            child: Container(
+              color: Colors.black.withOpacity(0.22),
+              child: SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+                    child: Row(children: [
+                      _topBtn(Icons.picture_in_picture_alt_rounded, _enterPip,
+                          'Thu nhỏ'),
+                      const SizedBox(width: 8),
+                      Expanded(
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(widget.call.groupName,
+                                    style: const TextStyle(
+                                        color: _K.text,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: -0.3),
+                                    overflow: TextOverflow.ellipsis),
+                                if (_joinedAt != null)
+                                  CallTimerWidget(
+                                      startTime: _joinedAt!,
+                                      showPulse: _joined,
+                                      style: const TextStyle(
+                                          color: _K.sub,
+                                          fontSize: 11,
+                                          letterSpacing: 0.3)),
+                              ])),
+                      if (_screenSharing) _screenBadge(),
+                      const SizedBox(width: 6),
+                      _participantChip(),
+                      const SizedBox(width: 6),
+                      // Chat button
+                      _chatChip(),
+                    ]),
+                  )),
+            ),
+          )));
 
   Widget _topBtn(IconData icon, VoidCallback tap, String tip) => Tooltip(
       message: tip,
@@ -1636,7 +1637,7 @@ class _GroupCallPageState extends State<GroupCallPage>
                       : Colors.white.withOpacity(0.12),
                   width: 0.5)),
           child:
-              const Icon(Icons.chat_rounded, color: Colors.white, size: 18)));
+          const Icon(Icons.chat_rounded, color: Colors.white, size: 18)));
 
   // ── Participants panel ────────────────────────────────────────────────────
   Widget _buildParticipantsPanel() => Positioned(
@@ -1648,27 +1649,27 @@ class _GroupCallPageState extends State<GroupCallPage>
           onTap: () {},
           child: ClipRect(
               child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-            child: Container(
-              color: Colors.black.withOpacity(0.84),
-              child: SafeArea(
-                  child: Column(children: [
-                _panelHeader(),
-                if (_canModerate) _adminBar(),
-                Divider(color: Colors.white.withOpacity(0.07), height: 1),
-                Expanded(
-                    child: ListView.separated(
-                  itemCount: _model.participants.length,
-                  separatorBuilder: (_, __) =>
-                      Divider(color: Colors.white.withOpacity(0.04), height: 1),
-                  itemBuilder: (_, i) =>
-                      _participantTile(_model.participants[i]),
-                )),
-                if (_model.waitingRoomUserIds.isNotEmpty && _canModerate)
-                  _waitingSection(),
-              ])),
-            ),
-          ))));
+                filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                child: Container(
+                  color: Colors.black.withOpacity(0.84),
+                  child: SafeArea(
+                      child: Column(children: [
+                        _panelHeader(),
+                        if (_canModerate) _adminBar(),
+                        Divider(color: Colors.white.withOpacity(0.07), height: 1),
+                        Expanded(
+                            child: ListView.separated(
+                              itemCount: _model.participants.length,
+                              separatorBuilder: (_, __) =>
+                                  Divider(color: Colors.white.withOpacity(0.04), height: 1),
+                              itemBuilder: (_, i) =>
+                                  _participantTile(_model.participants[i]),
+                            )),
+                        if (_model.waitingRoomUserIds.isNotEmpty && _canModerate)
+                          _waitingSection(),
+                      ])),
+                ),
+              ))));
 
   Widget _panelHeader() => Padding(
       padding: const EdgeInsets.fromLTRB(16, 14, 10, 10),
@@ -1697,14 +1698,14 @@ class _GroupCallPageState extends State<GroupCallPage>
                     color: Colors.white.withOpacity(0.07),
                     borderRadius: BorderRadius.circular(9)),
                 child:
-                    const Icon(Icons.close_rounded, color: _K.sub, size: 16))),
+                const Icon(Icons.close_rounded, color: _K.sub, size: 16))),
       ]));
 
   Widget _adminBar() => Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       child: Wrap(spacing: 8, children: [
         _adminChip(Icons.mic_off_rounded, 'Tắt tất cả',
-            () => _svc.muteAll(widget.call.callId)),
+                () => _svc.muteAll(widget.call.callId)),
       ]));
 
   Widget _adminChip(IconData icon, String label, VoidCallback onTap) =>
@@ -1741,24 +1742,24 @@ class _GroupCallPageState extends State<GroupCallPage>
                     width: 2),
                 boxShadow: p.isSpeaking
                     ? [
-                        BoxShadow(
-                            color: _K.speaking.withOpacity(0.3), blurRadius: 8)
-                      ]
+                  BoxShadow(
+                      color: _K.speaking.withOpacity(0.3), blurRadius: 8)
+                ]
                     : null),
             child: CircleAvatar(
                 radius: 18,
                 backgroundImage:
-                    p.userAvatar.isNotEmpty ? NetworkImage(p.userAvatar) : null,
+                p.userAvatar.isNotEmpty ? NetworkImage(p.userAvatar) : null,
                 backgroundColor: _K.surface2,
                 child: p.userAvatar.isEmpty
                     ? Text(
-                        p.userName.isNotEmpty
-                            ? p.userName[0].toUpperCase()
-                            : '?',
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13))
+                    p.userName.isNotEmpty
+                        ? p.userName[0].toUpperCase()
+                        : '?',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13))
                     : null)),
         if (p.isAdmin || p.isCoHost)
           Positioned(
@@ -1785,9 +1786,9 @@ class _GroupCallPageState extends State<GroupCallPage>
       subtitle: p.isAdmin
           ? const Text('Admin', style: TextStyle(color: _K.amber, fontSize: 10))
           : p.isCoHost
-              ? const Text('Co-host',
-                  style: TextStyle(color: _K.accent, fontSize: 10))
-              : null,
+          ? const Text('Co-host',
+          style: TextStyle(color: _K.accent, fontSize: 10))
+          : null,
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
         if (_model.hasRaisedHand(p.userId))
           const Text('✋', style: TextStyle(fontSize: 12)),
@@ -1827,18 +1828,18 @@ class _GroupCallPageState extends State<GroupCallPage>
                 }
               },
               itemBuilder: (_) => [
-                    _pop('mute', Icons.mic_off_rounded, 'Tắt mic'),
-                    _pop('pin', Icons.push_pin_rounded, 'Ghim'),
-                    _pop('cohost', Icons.shield_rounded, 'Đặt Co-host'),
-                    _pop('kick', Icons.person_remove_rounded, 'Xoá khỏi phòng',
-                        color: _K.red),
-                  ]),
+                _pop('mute', Icons.mic_off_rounded, 'Tắt mic'),
+                _pop('pin', Icons.push_pin_rounded, 'Ghim'),
+                _pop('cohost', Icons.shield_rounded, 'Đặt Co-host'),
+                _pop('kick', Icons.person_remove_rounded, 'Xoá khỏi phòng',
+                    color: _K.red),
+              ]),
       ]),
     );
   }
 
   PopupMenuItem<String> _pop(String v, IconData icon, String label,
-          {Color? color}) =>
+      {Color? color}) =>
       PopupMenuItem<String>(
           value: v,
           child: Row(children: [
@@ -1849,14 +1850,14 @@ class _GroupCallPageState extends State<GroupCallPage>
           ]));
 
   Widget _waitingSection() => WaitingRoomAdminPanel(
-        callId: _model.callId,
-        onAdmitAll: () async {
-          for (final uid in _model.waitingRoomUserIds) {
-            await _svc.admitFromWaitingRoom(
-                callId: widget.call.callId, targetUserId: uid);
-          }
-        },
-      );
+    callId: _model.callId,
+    onAdmitAll: () async {
+      for (final uid in _model.waitingRoomUserIds) {
+        await _svc.admitFromWaitingRoom(
+            callId: widget.call.callId, targetUserId: uid);
+      }
+    },
+  );
 
   // ── Reaction picker ───────────────────────────────────────────────────────
   Widget _buildRxPicker() => Positioned(
@@ -1868,7 +1869,7 @@ class _GroupCallPageState extends State<GroupCallPage>
               filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
               child: Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
                   decoration: BoxDecoration(
                       color: _K.surface.withOpacity(0.96),
                       borderRadius: BorderRadius.circular(30),
@@ -1883,14 +1884,14 @@ class _GroupCallPageState extends State<GroupCallPage>
                       spacing: 2,
                       children: CallReactionType.values
                           .map((t) => GestureDetector(
-                              onTap: () => _sendReaction(t),
-                              child: SizedBox(
-                                  width: 44,
-                                  height: 44,
-                                  child: Center(
-                                      child: Text(t.emoji,
-                                          style:
-                                              const TextStyle(fontSize: 26))))))
+                          onTap: () => _sendReaction(t),
+                          child: SizedBox(
+                              width: 44,
+                              height: 44,
+                              child: Center(
+                                  child: Text(t.emoji,
+                                      style:
+                                      const TextStyle(fontSize: 26))))))
                           .toList())))));
 
   // ── More menu ─────────────────────────────────────────────────────────────
@@ -1932,9 +1933,9 @@ class _GroupCallPageState extends State<GroupCallPage>
                     }),
                     _menuItem(Icons.flip_camera_android_rounded, 'Đổi camera',
                         false, _K.sub, () {
-                      setState(() => _showMoreMenu = false);
-                      _flipCamera();
-                    }),
+                          setState(() => _showMoreMenu = false);
+                          _flipCamera();
+                        }),
                     _menuItem(
                         _showCaptions
                             ? Icons.subtitles_rounded
@@ -1949,30 +1950,30 @@ class _GroupCallPageState extends State<GroupCallPage>
                     }),
                     _menuItem(
                         Icons.wallpaper_rounded, 'Nền ảo', false, _K.purple,
-                        () async {
-                      setState(() => _showMoreMenu = false);
-                      await VirtualBackgroundPicker.show(
-                        context,
-                        current: VirtualBackground.none,
-                      );
-                    }),
+                            () async {
+                          setState(() => _showMoreMenu = false);
+                          await VirtualBackgroundPicker.show(
+                            context,
+                            current: VirtualBackground.none,
+                          );
+                        }),
                     _menuItem(Icons.bar_chart_rounded, 'Xem thống kê',
                         _statsExpanded, _K.accent, () {
-                      setState(() {
-                        _showMoreMenu = false;
-                        _statsExpanded = !_statsExpanded;
-                      });
-                    }),
+                          setState(() {
+                            _showMoreMenu = false;
+                            _statsExpanded = !_statsExpanded;
+                          });
+                        }),
                     if (_canModerate)
                       _menuItem(Icons.mic_off_rounded, 'Tắt mic tất cả', false,
                           _K.red, () {
-                        setState(() => _showMoreMenu = false);
-                        _svc.muteAll(widget.call.callId);
-                      }),
+                            setState(() => _showMoreMenu = false);
+                            _svc.muteAll(widget.call.callId);
+                          }),
                   ])))));
 
   Widget _menuItem(IconData icon, String label, bool active, Color color,
-          VoidCallback onTap) =>
+      VoidCallback onTap) =>
       InkWell(
           onTap: onTap,
           child: Padding(
@@ -1985,7 +1986,7 @@ class _GroupCallPageState extends State<GroupCallPage>
                         color: color.withOpacity(active ? 0.25 : 0.08),
                         borderRadius: BorderRadius.circular(9)),
                     child:
-                        Icon(icon, color: active ? color : _K.sub, size: 16)),
+                    Icon(icon, color: active ? color : _K.sub, size: 16)),
                 const SizedBox(width: 11),
                 Expanded(
                     child: Text(label,
@@ -1993,127 +1994,127 @@ class _GroupCallPageState extends State<GroupCallPage>
                             color: active ? color : _K.text,
                             fontSize: 13,
                             fontWeight:
-                                active ? FontWeight.w700 : FontWeight.w500))),
+                            active ? FontWeight.w700 : FontWeight.w500))),
                 if (active)
                   Container(
                       width: 7,
                       height: 7,
                       decoration:
-                          BoxDecoration(color: color, shape: BoxShape.circle)),
+                      BoxDecoration(color: color, shape: BoxShape.circle)),
               ])));
 
   // ── Bottom controls ───────────────────────────────────────────────────────
   Widget _buildBottomCtrl() => Positioned(
-        bottom: 0,
-        left: 0,
-        right: 0,
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    child: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    _secBtn(
-                        Icons.emoji_emotions_rounded,
-                        _showReactions,
+                _secBtn(
+                    Icons.emoji_emotions_rounded,
+                    _showReactions,
                         () => setState(() {
-                              _showReactions = !_showReactions;
-                              _showMoreMenu = false;
-                            })),
-                    const SizedBox(width: 8),
-                    _secBtn(
-                        Icons.more_horiz_rounded,
-                        _showMoreMenu,
+                      _showReactions = !_showReactions;
+                      _showMoreMenu = false;
+                    })),
+                const SizedBox(width: 8),
+                _secBtn(
+                    Icons.more_horiz_rounded,
+                    _showMoreMenu,
                         () => setState(() {
-                              _showMoreMenu = !_showMoreMenu;
-                              _showReactions = false;
-                            })),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(38),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(38),
-                        border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.09)),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          _primBtn(
-                              icon: _micMuted
-                                  ? Icons.mic_off_rounded
-                                  : Icons.mic_rounded,
-                              label: _micMuted ? 'Mở Mic' : 'Mic',
-                              active: _micMuted,
-                              activeColor: _K.red,
-                              onTap: _toggleMic),
-                          if (widget.call.isVideo)
-                            _primBtn(
-                                icon: _camOff
-                                    ? Icons.videocam_off_rounded
-                                    : Icons.videocam_rounded,
-                                label: _camOff ? 'Bật Cam' : 'Cam',
-                                active: _camOff,
-                                activeColor: const Color(0xFFFF9F0A),
-                                onTap: _toggleCam),
-                          _primBtn(
-                              icon: _speakerOn
-                                  ? Icons.volume_up_rounded
-                                  : Icons.hearing_rounded,
-                              label: _speakerOn ? 'Loa' : 'Tai nghe',
-                              active: _speakerOn,
-                              activeColor: _K.accent,
-                              onTap: _toggleSpeaker),
-                          _endBtn(),
-                          if (_canModerate)
-                            _primBtn(
-                                icon: _model.isRecording
-                                    ? Icons.fiber_manual_record_rounded
-                                    : Icons.radio_button_unchecked_rounded,
-                                label: _model.isRecording ? 'Dừng REC' : 'REC',
-                                active: _model.isRecording,
-                                activeColor: _K.red,
-                                onTap: _toggleRecording),
-                          if (widget.call.isVideo)
-                            _primBtn(
-                                icon: Icons.flip_camera_android_rounded,
-                                label: 'Xoay',
-                                active: false,
-                                activeColor: _K.sub,
-                                onTap: _flipCamera)
-                          else
-                            _primBtn(
-                                icon: _handRaised
-                                    ? Icons.back_hand_rounded
-                                    : Icons.back_hand_outlined,
-                                label: _handRaised ? 'Hạ tay' : 'Giơ tay',
-                                active: _handRaised,
-                                activeColor: _K.amber,
-                                onTap: _toggleHand),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
+                      _showMoreMenu = !_showMoreMenu;
+                      _showReactions = false;
+                    })),
               ],
             ),
-          ),
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(38),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(38),
+                    border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.09)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _primBtn(
+                          icon: _micMuted
+                              ? Icons.mic_off_rounded
+                              : Icons.mic_rounded,
+                          label: _micMuted ? 'Mở Mic' : 'Mic',
+                          active: _micMuted,
+                          activeColor: _K.red,
+                          onTap: _toggleMic),
+                      if (widget.call.isVideo)
+                        _primBtn(
+                            icon: _camOff
+                                ? Icons.videocam_off_rounded
+                                : Icons.videocam_rounded,
+                            label: _camOff ? 'Bật Cam' : 'Cam',
+                            active: _camOff,
+                            activeColor: const Color(0xFFFF9F0A),
+                            onTap: _toggleCam),
+                      _primBtn(
+                          icon: _speakerOn
+                              ? Icons.volume_up_rounded
+                              : Icons.hearing_rounded,
+                          label: _speakerOn ? 'Loa' : 'Tai nghe',
+                          active: _speakerOn,
+                          activeColor: _K.accent,
+                          onTap: _toggleSpeaker),
+                      _endBtn(),
+                      if (_canModerate)
+                        _primBtn(
+                            icon: _model.isRecording
+                                ? Icons.fiber_manual_record_rounded
+                                : Icons.radio_button_unchecked_rounded,
+                            label: _model.isRecording ? 'Dừng REC' : 'REC',
+                            active: _model.isRecording,
+                            activeColor: _K.red,
+                            onTap: _toggleRecording),
+                      if (widget.call.isVideo)
+                        _primBtn(
+                            icon: Icons.flip_camera_android_rounded,
+                            label: 'Xoay',
+                            active: false,
+                            activeColor: _K.sub,
+                            onTap: _flipCamera)
+                      else
+                        _primBtn(
+                            icon: _handRaised
+                                ? Icons.back_hand_rounded
+                                : Icons.back_hand_outlined,
+                            label: _handRaised ? 'Hạ tay' : 'Giơ tay',
+                            active: _handRaised,
+                            activeColor: _K.amber,
+                            onTap: _toggleHand),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
-      );
+      ),
+    ),
+  );
 
   Widget _secBtn(IconData icon, bool active,
-          VoidCallback onTap) =>
+      VoidCallback onTap) =>
       GestureDetector(
           onTap: onTap,
           child: AnimatedContainer(
@@ -2122,23 +2123,23 @@ class _GroupCallPageState extends State<GroupCallPage>
               height: 42,
               decoration: BoxDecoration(
                   color:
-                      active
-                          ? Colors.white.withOpacity(0.22)
-                          : Colors.white.withOpacity(0.08),
+                  active
+                      ? Colors.white.withOpacity(0.22)
+                      : Colors.white.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(12),
                   border:
-                      Border.all(
-                          color: Colors.white.withOpacity(active ? 0.4 : 0.1),
-                          width: 0.5)),
+                  Border.all(
+                      color: Colors.white.withOpacity(active ? 0.4 : 0.1),
+                      width: 0.5)),
               child: Icon(icon,
                   color: active ? Colors.white : Colors.white60, size: 18)));
 
   Widget _primBtn(
-          {required IconData icon,
-          required String label,
-          required bool active,
-          required Color activeColor,
-          required VoidCallback onTap}) =>
+      {required IconData icon,
+        required String label,
+        required bool active,
+        required Color activeColor,
+        required VoidCallback onTap}) =>
       GestureDetector(
           onTap: onTap,
           child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -2157,10 +2158,10 @@ class _GroupCallPageState extends State<GroupCallPage>
                             : Colors.white.withOpacity(0.16)),
                     boxShadow: active
                         ? [
-                            BoxShadow(
-                                color: activeColor.withOpacity(0.22),
-                                blurRadius: 12)
-                          ]
+                      BoxShadow(
+                          color: activeColor.withOpacity(0.22),
+                          blurRadius: 12)
+                    ]
                         : null),
                 child: Icon(icon,
                     color: active ? activeColor : Colors.white, size: 22)),
@@ -2210,96 +2211,96 @@ class _GroupCallPageState extends State<GroupCallPage>
               stops: [0, 0.5, 1])),
       child: SafeArea(
           child: Column(children: [
-        _voiceTopBar(),
-        const Spacer(flex: 2),
-        Text(widget.call.groupName,
-            style: const TextStyle(
-                color: _K.text,
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.5),
-            textAlign: TextAlign.center),
-        const SizedBox(height: 6),
-        if (_joinedAt != null)
-          CallTimerWidget(
-              startTime: _joinedAt!,
-              showPulse: true,
-              style: const TextStyle(
-                  color: _K.green,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.2)),
-        const Spacer(flex: 1),
-        _voiceParticipants(),
-        const Spacer(flex: 2),
-        if (_model.raisedHandUserIds.isNotEmpty)
-          Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: RaiseHandQueuePanel(
-                  call: _model,
-                  currentUserId: widget.currentUserId,
-                  isAdmin: _canModerate)),
-        if (_floatReactions.isNotEmpty)
-          Container(
-              height: 48,
-              alignment: Alignment.center,
-              child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                      children: _floatReactions
-                          .map((r) => Padding(
+            _voiceTopBar(),
+            const Spacer(flex: 2),
+            Text(widget.call.groupName,
+                style: const TextStyle(
+                    color: _K.text,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5),
+                textAlign: TextAlign.center),
+            const SizedBox(height: 6),
+            if (_joinedAt != null)
+              CallTimerWidget(
+                  startTime: _joinedAt!,
+                  showPulse: true,
+                  style: const TextStyle(
+                      color: _K.green,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1.2)),
+            const Spacer(flex: 1),
+            _voiceParticipants(),
+            const Spacer(flex: 2),
+            if (_model.raisedHandUserIds.isNotEmpty)
+              Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: RaiseHandQueuePanel(
+                      call: _model,
+                      currentUserId: widget.currentUserId,
+                      isAdmin: _canModerate)),
+            if (_floatReactions.isNotEmpty)
+              Container(
+                  height: 48,
+                  alignment: Alignment.center,
+                  child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                          children: _floatReactions
+                              .map((r) => Padding(
                               padding:
-                                  const EdgeInsets.symmetric(horizontal: 5),
+                              const EdgeInsets.symmetric(horizontal: 5),
                               child: Text(r.emoji,
                                   style: const TextStyle(fontSize: 30))))
-                          .toList()))),
+                              .toList()))),
 
-        // Hiển thị Live Caption ở UI Voice nếu được bật
-        if (_showCaptions)
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            child: LiveCaptionOverlay(),
-          ),
+            // Hiển thị Live Caption ở UI Voice nếu được bật
+            if (_showCaptions)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                child: LiveCaptionOverlay(),
+              ),
 
-        Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 22),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              _voiceChip(
-                  icon: Icons.emoji_emotions_rounded,
-                  label: 'React',
-                  active: _showReactions,
-                  onTap: () =>
-                      setState(() => _showReactions = !_showReactions)),
-              const SizedBox(width: 10),
-              _voiceChip(
-                  icon: _handRaised
-                      ? Icons.back_hand_rounded
-                      : Icons.back_hand_outlined,
-                  label: 'Giơ tay',
-                  active: _handRaised,
-                  onTap: _toggleHand),
-              const SizedBox(width: 10),
-              _voiceChip(
-                  icon: Icons.chat_rounded,
-                  label: 'Chat',
-                  active: _showChat,
-                  onTap: () => setState(() => _showChat = !_showChat)),
-              const SizedBox(width: 10),
-              _voiceChip(
-                  icon: _showCaptions
-                      ? Icons.subtitles_rounded
-                      : Icons.subtitles_off_rounded,
-                  label: 'Phụ đề',
-                  active: _showCaptions,
-                  onTap: () => setState(() => _showCaptions = !_showCaptions)),
-            ])),
-        if (_showReactions) ...[const SizedBox(height: 10), _voiceRxRow()],
-        const SizedBox(height: 18),
-        _voiceControls(),
-        const SizedBox(height: 30),
-        // Overlay chat as bottom sheet
-        if (_showChat) _voiceChatSheet(),
-      ])));
+            Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 22),
+                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  _voiceChip(
+                      icon: Icons.emoji_emotions_rounded,
+                      label: 'React',
+                      active: _showReactions,
+                      onTap: () =>
+                          setState(() => _showReactions = !_showReactions)),
+                  const SizedBox(width: 10),
+                  _voiceChip(
+                      icon: _handRaised
+                          ? Icons.back_hand_rounded
+                          : Icons.back_hand_outlined,
+                      label: 'Giơ tay',
+                      active: _handRaised,
+                      onTap: _toggleHand),
+                  const SizedBox(width: 10),
+                  _voiceChip(
+                      icon: Icons.chat_rounded,
+                      label: 'Chat',
+                      active: _showChat,
+                      onTap: () => setState(() => _showChat = !_showChat)),
+                  const SizedBox(width: 10),
+                  _voiceChip(
+                      icon: _showCaptions
+                          ? Icons.subtitles_rounded
+                          : Icons.subtitles_off_rounded,
+                      label: 'Phụ đề',
+                      active: _showCaptions,
+                      onTap: () => setState(() => _showCaptions = !_showCaptions)),
+                ])),
+            if (_showReactions) ...[const SizedBox(height: 10), _voiceRxRow()],
+            const SizedBox(height: 18),
+            _voiceControls(),
+            const SizedBox(height: 30),
+            // Overlay chat as bottom sheet
+            if (_showChat) _voiceChatSheet(),
+          ])));
 
   Widget _voiceTopBar() => Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -2340,31 +2341,31 @@ class _GroupCallPageState extends State<GroupCallPage>
                     color: p.isSpeaking
                         ? _K.speaking
                         : p.isMuted
-                            ? _K.red.withOpacity(0.5)
-                            : Colors.white.withOpacity(0.14),
+                        ? _K.red.withOpacity(0.5)
+                        : Colors.white.withOpacity(0.14),
                     width: p.isSpeaking ? 3 : 2),
                 boxShadow: p.isSpeaking
                     ? [
-                        BoxShadow(
-                            color: _K.speaking.withOpacity(0.4),
-                            blurRadius: 18,
-                            spreadRadius: 3)
-                      ]
+                  BoxShadow(
+                      color: _K.speaking.withOpacity(0.4),
+                      blurRadius: 18,
+                      spreadRadius: 3)
+                ]
                     : null),
             child: CircleAvatar(
                 radius: 34,
                 backgroundImage:
-                    p.userAvatar.isNotEmpty ? NetworkImage(p.userAvatar) : null,
+                p.userAvatar.isNotEmpty ? NetworkImage(p.userAvatar) : null,
                 backgroundColor: _K.surface2,
                 child: p.userAvatar.isEmpty
                     ? Text(
-                        p.userName.isNotEmpty
-                            ? p.userName[0].toUpperCase()
-                            : '?',
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 22))
+                    p.userName.isNotEmpty
+                        ? p.userName[0].toUpperCase()
+                        : '?',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 22))
                     : null)),
         Positioned(
             right: -2,
@@ -2407,17 +2408,17 @@ class _GroupCallPageState extends State<GroupCallPage>
                 color: _K.amber.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(5),
                 border:
-                    Border.all(color: _K.amber.withOpacity(0.35), width: 0.5)),
+                Border.all(color: _K.amber.withOpacity(0.35), width: 0.5)),
             child: const Text('admin',
                 style: TextStyle(color: _K.amber, fontSize: 8))),
     ]);
   }
 
   Widget _voiceChip(
-          {required IconData icon,
-          required String label,
-          required bool active,
-          required VoidCallback onTap}) =>
+      {required IconData icon,
+        required String label,
+        required bool active,
+        required VoidCallback onTap}) =>
       GestureDetector(
           onTap: onTap,
           child: AnimatedContainer(
@@ -2453,8 +2454,8 @@ class _GroupCallPageState extends State<GroupCallPage>
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: CallReactionType.values
               .map((t) => GestureDetector(
-                  onTap: () => _sendReaction(t),
-                  child: Text(t.emoji, style: const TextStyle(fontSize: 28))))
+              onTap: () => _sendReaction(t),
+              child: Text(t.emoji, style: const TextStyle(fontSize: 28))))
               .toList()));
 
   Widget _voiceControls() => Padding(
@@ -2493,11 +2494,11 @@ class _GroupCallPageState extends State<GroupCallPage>
   // ── Helpers ───────────────────────────────────────────────────────────────
   Widget _avatarWidget(double r) => widget.call.groupAvatarUrl.isNotEmpty
       ? CircleAvatar(
-          radius: r, backgroundImage: NetworkImage(widget.call.groupAvatarUrl))
+      radius: r, backgroundImage: NetworkImage(widget.call.groupAvatarUrl))
       : CircleAvatar(
-          radius: r,
-          backgroundColor: _K.surface2,
-          child: Icon(Icons.group_rounded, size: r * 0.85, color: _K.muted));
+      radius: r,
+      backgroundColor: _K.surface2,
+      child: Icon(Icons.group_rounded, size: r * 0.85, color: _K.muted));
 }
 
 // ─── Supporting widgets ───────────────────────────────────────────────────────
@@ -2554,13 +2555,13 @@ class _NetDots extends StatelessWidget {
     final c = quality >= 3
         ? _K.green
         : quality == 2
-            ? const Color(0xFFFF9F0A)
-            : _K.red;
+        ? const Color(0xFFFF9F0A)
+        : _K.red;
     return Row(
         mainAxisSize: MainAxisSize.min,
         children: List.generate(
             4,
-            (i) => Container(
+                (i) => Container(
                 width: 3,
                 height: 3,
                 margin: const EdgeInsets.symmetric(horizontal: 1),
@@ -2606,12 +2607,12 @@ class _ParticipantToastState extends State<_ParticipantToast>
             alignment: Alignment.centerLeft,
             child: Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                     color: Colors.black.withOpacity(0.68),
                     borderRadius: BorderRadius.circular(22),
                     border:
-                        Border.all(color: color.withOpacity(0.25), width: 0.5)),
+                    Border.all(color: color.withOpacity(0.25), width: 0.5)),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   CircleAvatar(
                       radius: 11,
@@ -2621,11 +2622,11 @@ class _ParticipantToastState extends State<_ParticipantToast>
                       backgroundColor: _K.surface2,
                       child: widget.avatar == null
                           ? Text(
-                              widget.name.isNotEmpty
-                                  ? widget.name[0].toUpperCase()
-                                  : '?',
-                              style: const TextStyle(
-                                  color: Colors.white, fontSize: 8))
+                          widget.name.isNotEmpty
+                              ? widget.name[0].toUpperCase()
+                              : '?',
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 8))
                           : null),
                   const SizedBox(width: 6),
                   Text(

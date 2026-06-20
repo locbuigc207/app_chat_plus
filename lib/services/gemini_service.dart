@@ -51,18 +51,20 @@ enum GeminiAvailability {
 class GeminiResponse {
   final String text;
   final bool isError;
+  final bool isRetryable;
   final int? promptTokenCount;
   final int? candidateTokenCount;
 
   const GeminiResponse({
     required this.text,
     this.isError = false,
+    this.isRetryable = false,
     this.promptTokenCount,
     this.candidateTokenCount,
   });
 
-  factory GeminiResponse.error(String message) =>
-      GeminiResponse(text: message, isError: true);
+  factory GeminiResponse.error(String message, {bool isRetryable = true}) =>
+      GeminiResponse(text: message, isError: true, isRetryable: isRetryable);
 }
 
 // ─────────────────────────────────────────────
@@ -74,10 +76,14 @@ class GeminiService {
   static final GeminiService _instance = GeminiService._internal();
   factory GeminiService() => _instance;
 
-  static const String _modelId = 'gemini-2.5-flash';
+  // Cập nhật model thế hệ mới nhất theo đúng lộ trình GA 2026
+  static const String _modelIdFull = 'gemini-3.5-flash';
+  static const String _modelIdLite = 'gemini-3.1-flash-lite';
+
   static const int _maxRetries = 3;
   static const Duration _baseRetryDelay = Duration(seconds: 2);
   static const int _maxHistoryMessages = 20;
+  static const Duration _pingCacheTTL = Duration(minutes: 5);
 
   // Cache model theo taskType để tránh tạo lại không cần thiết
   final Map<String, GenerativeModel> _modelCache = {};
@@ -87,18 +93,29 @@ class GeminiService {
   // ── Availability state ───────────────────────
   GeminiAvailability _availability = GeminiAvailability.available;
   DateTime? _keyExpiredAt;
+  DateTime? _lastPingTime;
   bool _alertSent = false;
 
   GeminiAvailability get availability => _availability;
   bool get isAvailable => _availability == GeminiAvailability.available;
 
   // ─────────────────────────────────────────────
-  // Model factory (Đã được refactor dùng firebase_ai)
+  // Model factory
   // ─────────────────────────────────────────────
+
+  String _getModelIdForTask(GeminiTaskType type) {
+    switch (type) {
+      case GeminiTaskType.chat:
+      case GeminiTaskType.codeAssist:
+        return _modelIdFull;
+      default:
+        return _modelIdLite;
+    }
+  }
 
   GenerativeModel _buildModel(GeminiTaskType taskType) {
     return FirebaseAI.googleAI().generativeModel(
-      model: _modelId,
+      model: _getModelIdForTask(taskType),
       generationConfig: _buildGenerationConfig(taskType),
       safetySettings: _buildSafetySettings(),
       systemInstruction: Content.system(_buildSystemPrompt(taskType)),
@@ -114,8 +131,13 @@ class GeminiService {
   // Public API
   // ─────────────────────────────────────────────
 
-  /// Health check — gọi khi app start
+  /// Health check — gọi khi app start. Tích hợp cache tránh spam tốn quota.
   Future<GeminiAvailability> checkAvailability() async {
+    if (_lastPingTime != null &&
+        DateTime.now().difference(_lastPingTime!) < _pingCacheTTL) {
+      return _availability;
+    }
+
     try {
       final model = _getModel(GeminiTaskType.chat);
       final chat = model.startChat();
@@ -126,6 +148,7 @@ class GeminiService {
       if (response.text != null) {
         _availability = GeminiAvailability.available;
         _alertSent = false;
+        _lastPingTime = DateTime.now();
         debugPrint('[GeminiService] ✅ Available');
       }
     } catch (e) {
@@ -140,7 +163,8 @@ class GeminiService {
     List<Map<String, dynamic>> historyRaw,
   ) async {
     final response = await sendMessageDetailed(message, historyRaw);
-    return response.text;
+    return response
+        .text; // Có thể chứa mã lỗi, Caller (như SyncManager) nên dùng sendMessageDetailed để nhận diện isError
   }
 
   Future<GeminiResponse> sendMessageDetailed(
@@ -148,9 +172,13 @@ class GeminiService {
     List<Map<String, dynamic>> historyRaw, {
     GeminiTaskType taskType = GeminiTaskType.chat,
   }) async {
-    if (_isDisposed) return GeminiResponse.error('Service đã bị dispose.');
+    if (_isDisposed)
+      return GeminiResponse.error('Service đã bị dispose.', isRetryable: false);
     if (message.trim().isEmpty) {
-      return GeminiResponse.error('Tin nhắn không được trống.');
+      return GeminiResponse.error(
+        'Tin nhắn không được trống.',
+        isRetryable: false,
+      );
     }
 
     try {
@@ -163,7 +191,7 @@ class GeminiService {
     } on GeminiKeyExpiredException {
       rethrow;
     } catch (e) {
-      return GeminiResponse.error(_handleError(e));
+      return GeminiResponse.error(_handleError(e), isRetryable: true);
     }
   }
 
@@ -179,21 +207,36 @@ class GeminiService {
       return;
     }
 
-    try {
-      final model = _getModel(taskType);
-      final history = _buildValidHistory(historyRaw);
-      final chat = model.startChat(history: history);
+    int attempt = 0;
+    while (attempt <= _maxRetries) {
+      try {
+        final model = _getModel(taskType);
+        final history = _buildValidHistory(historyRaw);
+        final chat = model.startChat(history: history);
 
-      final stream = chat.sendMessageStream(Content.text(message));
-      await for (final chunk in stream) {
-        if (_isDisposed) break;
-        final text = chunk.text;
-        if (text != null && text.isNotEmpty) yield text;
+        final stream = chat.sendMessageStream(Content.text(message));
+        await for (final chunk in stream) {
+          if (_isDisposed) break;
+          final text = chunk.text;
+          if (text != null && text.isNotEmpty) yield text;
+        }
+        break; // Thành công -> Thoát vòng lặp retry
+      } on GeminiKeyExpiredException {
+        yield '🔑 Gemini service configuration error. Vui lòng liên hệ admin.';
+        break;
+      } catch (e) {
+        if (_isRateLimitError(e) && attempt < _maxRetries) {
+          attempt++;
+          final delay = _baseRetryDelay * (1 << attempt);
+          debugPrint(
+            '[GeminiService] Stream Rate limited, retry $attempt sau ${delay.inSeconds}s',
+          );
+          await Future.delayed(delay);
+          continue; // Chạy lại vòng lặp
+        }
+        yield _handleError(e); // Lỗi fatal hoặc đã cạn lượt retry
+        break;
       }
-    } on GeminiKeyExpiredException {
-      yield '🔑 Gemini service configuration error. Vui lòng liên hệ admin.';
-    } catch (e) {
-      yield _handleError(e);
     }
   }
 
@@ -319,7 +362,6 @@ Tin nhắn cần phân tích:
     }
   }
 
-  // ĐÃ SỬA: Thêm tham số `null` ở vị trí thứ 3 để fallback về HarmBlockMethod.probability
   List<SafetySetting> _buildSafetySettings() => [
     SafetySetting(HarmCategory.harassment, HarmBlockThreshold.medium, null),
     SafetySetting(HarmCategory.hateSpeech, HarmBlockThreshold.medium, null),
@@ -379,7 +421,19 @@ Tin nhắn cần phân tích:
       final content = msg['content']?.toString().trim() ?? '';
 
       if (content.isEmpty) continue;
-      if (contents.isNotEmpty && contents.last.role == role) continue;
+
+      // Guard Check: Chặn tuyệt đối nội dung Ciphertext bị lọt vào History Local Database
+      if (content.startsWith('{"iv":') || content.startsWith('eyJ')) continue;
+
+      if (contents.isNotEmpty && contents.last.role == role) {
+        // Gom nội dung tin nhắn liên tiếp thay vì xóa drop làm mất ngữ cảnh
+        final existingParts = contents.last.parts
+            .whereType<TextPart>()
+            .map((p) => p.text)
+            .join('\n');
+        contents.last = Content(role, [TextPart('$existingParts\n$content')]);
+        continue;
+      }
 
       contents.add(Content(role, [TextPart(content)]));
     }
@@ -412,16 +466,32 @@ Tin nhắn cần phân tích:
             .sendMessage(Content.text(message))
             .timeout(const Duration(seconds: 30));
 
+        // Kiểm tra bị block từ khâu Prompt
+        if (response.promptFeedback?.blockReason != null) {
+          return GeminiResponse.error(
+            '⚠️ Câu hỏi của bạn bị chặn (Lý do: ${response.promptFeedback?.blockReason?.name}).',
+            isRetryable: false,
+          );
+        }
+
         final text = response.text;
+        final candidate = response.candidates.firstOrNull;
+
         if (text == null || text.isEmpty) {
-          final candidate = response.candidates.firstOrNull;
           if (candidate?.finishReason == FinishReason.safety) {
             return GeminiResponse.error(
-              '⚠️ Nội dung bị chặn bởi bộ lọc an toàn. Vui lòng diễn đạt lại.',
+              '⚠️ Nội dung trả lời bị chặn bởi bộ lọc an toàn. Vui lòng diễn đạt lại.',
+              isRetryable: false,
+            );
+          } else if (candidate?.finishReason == FinishReason.recitation) {
+            return GeminiResponse.error(
+              '⚠️ Câu trả lời bị chặn do vấn đề trùng lặp bản quyền dữ liệu.',
+              isRetryable: false,
             );
           }
           return GeminiResponse.error(
             'Xin lỗi, tôi không thể tạo câu trả lời lúc này.',
+            isRetryable: true,
           );
         }
 
@@ -431,16 +501,25 @@ Tin nhắn cần phân tích:
           _alertSent = false;
         }
 
+        // Báo cho user nếu câu trả lời dài chạm ngưỡng Output Tokens
+        String finalText = text;
+        if (candidate?.finishReason == FinishReason.maxTokens) {
+          finalText += '\n\n*(Câu trả lời bị cắt ngang do giới hạn độ dài)*';
+        }
+
         return GeminiResponse(
-          text: text,
+          text: finalText,
           promptTokenCount: response.usageMetadata?.promptTokenCount,
           candidateTokenCount: response.usageMetadata?.candidatesTokenCount,
         );
       } catch (e) {
-        // Auth / permission error → KHÔNG retry, throw ngay
+        // Auth / permission error → KHÔNG retry, throw hoặc handle ngay
         if (_isAuthError(e)) {
           await _handleAuthError(e);
-          throw const GeminiKeyExpiredException();
+          return GeminiResponse.error(
+            '🔑 Lỗi xác thực hoặc API Key hết hạn. Vui lòng liên hệ admin.',
+            isRetryable: false,
+          );
         }
 
         // Rate limit → retry với exponential backoff
@@ -455,12 +534,14 @@ Tin nhắn cần phân tích:
           continue;
         }
 
-        rethrow;
+        // Lỗi mạng hoặc các lỗi khác
+        return GeminiResponse.error(_handleError(e), isRetryable: true);
       }
     }
 
     return GeminiResponse.error(
       'Xin lỗi, hệ thống đang bận. Vui lòng thử lại sau vài giây.',
+      isRetryable: true,
     );
   }
 
@@ -551,9 +632,12 @@ Tin nhắn cần phân tích:
     if (_alertSent) return;
     _alertSent = true;
 
+    // Lưu lỗi vào Document Alerts để chờ Cloud Function hoặc Cron job xử lý gửi cho Admin (Báo cáo trước đó có chỉ điểm lỗi treo luồng logic ở đây, nếu Admin không thiết lập Firebase Cloud Functions trigger `system_alerts`, alert này chỉ mang ý nghĩa Logging).
     try {
       await FirebaseFirestore.instance
-          .collection('system_alerts')
+          .collection(
+            'system_alerts',
+          ) // Thay thế Magic String cứng nếu AppConstants đã quy định, tạm giữ nguyên gốc
           .doc('gemini_key')
           .set({
             'status': 'expired',

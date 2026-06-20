@@ -17,12 +17,16 @@ class BubbleLifecycleObserver with WidgetsBindingObserver {
   final _service = UnifiedBubbleService();
 
   // ── State ─────────────────────────────────────────────────────────────────
-  bool _attached = false;
+  // [SỬA LỖI P0]: Quản lý đăng ký bằng cơ chế Reference Counting (Đếm tham chiếu)
+  // để ngăn một Widget con vô tình gỡ bỏ Observer của toàn bộ Root App khi bị dispose.
+  int _attachCount = 0;
+
   bool _initialized = false;
   AppLifecycleState _lastState = AppLifecycleState.resumed;
 
-  // Currently open conversation — set by BubbleChatPageMixin
-  String? _activeChatUserId;
+  // [SỬA LỖI P1]: Chuyển từ String? sang Set<String> để hỗ trợ theo dõi
+  // nhiều cuộc trò chuyện cùng lúc (Ví dụ: ChatPage và MiniChat mở song song).
+  final Set<String> _activeChatUserIds = {};
 
   // Debounce resume events (some devices fire resume twice rapidly)
   Timer? _resumeDebounce;
@@ -43,36 +47,41 @@ class BubbleLifecycleObserver with WidgetsBindingObserver {
   }
 
   void attach() {
-    if (_attached) return;
-    WidgetsBinding.instance.addObserver(this);
-    _attached = true;
-    debugPrint('✅ BubbleLifecycleObserver attached');
+    _attachCount++;
+    if (_attachCount == 1) {
+      // Chỉ gắn WidgetsBindingObserver khi lần đầu tiên có widget yêu cầu (count từ 0 lên 1)
+      WidgetsBinding.instance.addObserver(this);
+      debugPrint('✅ BubbleLifecycleObserver attached to root');
+    }
   }
 
   void detach() {
-    if (!_attached) return;
-    WidgetsBinding.instance.removeObserver(this);
-    _attached = false;
-    debugPrint('✅ BubbleLifecycleObserver detached');
+    if (_attachCount == 0) return;
+    _attachCount--;
+    if (_attachCount == 0) {
+      // Chỉ tháo gỡ hoàn toàn khi không còn widget nào tham chiếu
+      WidgetsBinding.instance.removeObserver(this);
+      debugPrint('✅ BubbleLifecycleObserver completely detached from root');
+    }
   }
 
   // ─── Active conversation tracking ────────────────────────────────────────
 
   /// Call when a chat page is opened.
   void onChatOpened(String userId) {
-    _activeChatUserId = userId;
-    // Clear unread for this conversation
+    _activeChatUserIds.add(userId);
+    // Clear unread for this conversation immediately
     _service.clearUnread(userId);
-    debugPrint('💬 Chat opened: $userId');
+    debugPrint('💬 Chat opened: $userId (Total active: ${_activeChatUserIds.length})');
   }
 
   /// Call when a chat page is closed.
   void onChatClosed(String userId) {
-    if (_activeChatUserId == userId) _activeChatUserId = null;
-    debugPrint('💬 Chat closed: $userId');
+    _activeChatUserIds.remove(userId);
+    debugPrint('💬 Chat closed: $userId (Total active: ${_activeChatUserIds.length})');
   }
 
-  bool isChatActive(String userId) => _activeChatUserId == userId;
+  bool isChatActive(String userId) => _activeChatUserIds.contains(userId);
 
   // ═════════════════════════════════════════════════════════════════════
   // LIFECYCLE CALLBACKS
@@ -97,7 +106,7 @@ class BubbleLifecycleObserver with WidgetsBindingObserver {
         break;
 
       case AppLifecycleState.inactive:
-        // Transitional state — do nothing
+      // Transitional state — do nothing
         break;
 
       case AppLifecycleState.detached:
@@ -105,7 +114,7 @@ class BubbleLifecycleObserver with WidgetsBindingObserver {
         break;
 
       case AppLifecycleState.hidden:
-        // Android 14+ hidden state (picture-in-picture, split screen)
+      // Android 14+ hidden state (picture-in-picture, split screen)
         _onHidden();
         break;
     }
@@ -121,23 +130,14 @@ class BubbleLifecycleObserver with WidgetsBindingObserver {
 
     _resumeDebounce?.cancel();
     _resumeDebounce = Timer(const Duration(milliseconds: 300), () {
-      // Clear unread for currently active chat
-      if (_activeChatUserId != null) {
-        _service.clearUnread(_activeChatUserId!);
+      // Xóa badge chưa đọc (unread) cho toàn bộ các cửa sổ chat đang mở
+      for (final activeId in _activeChatUserIds) {
+        if (_service.isBubbleActive(activeId)) {
+          _service.clearUnread(activeId);
+        }
       }
-      // Auto-hide bubbles for open conversations
-      _autoHideActiveChatBubble();
       debugPrint('▶️ App resumed — bubble sync complete');
     });
-  }
-
-  void _autoHideActiveChatBubble() {
-    if (_activeChatUserId == null) return;
-    // If the user has the chat page open, the bubble is redundant
-    if (_service.isBubbleActive(_activeChatUserId!)) {
-      // Don't fully hide — just clear unread so badge disappears
-      _service.clearUnread(_activeChatUserId!);
-    }
   }
 
   // ─── Background (paused) ─────────────────────────────────────────────────
@@ -191,10 +191,14 @@ class BubbleLifecycleObserver with WidgetsBindingObserver {
   // ═════════════════════════════════════════════════════════════════════
 
   void dispose() {
-    detach();
+    if (_attachCount > 0) {
+      WidgetsBinding.instance.removeObserver(this);
+      _attachCount = 0;
+    }
     _resumeDebounce?.cancel();
     _stateCtrl.close();
     _initialized = false;
+    _activeChatUserIds.clear();
     debugPrint('✅ BubbleLifecycleObserver disposed');
   }
 }
@@ -256,12 +260,12 @@ class _LifecycleStateBannerState extends State<LifecycleStateBanner> {
   }
 
   static Color _color(AppLifecycleState s) => switch (s) {
-        AppLifecycleState.resumed => Colors.green,
-        AppLifecycleState.paused => Colors.orange,
-        AppLifecycleState.inactive => Colors.amber,
-        AppLifecycleState.detached => Colors.red,
-        _ => Colors.grey,
-      };
+    AppLifecycleState.resumed => Colors.green,
+    AppLifecycleState.paused => Colors.orange,
+    AppLifecycleState.inactive => Colors.amber,
+    AppLifecycleState.detached => Colors.red,
+    _ => Colors.grey,
+  };
 
   @override
   Widget build(BuildContext context) {

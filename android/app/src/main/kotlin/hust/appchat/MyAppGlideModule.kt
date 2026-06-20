@@ -20,6 +20,7 @@ import com.bumptech.glide.request.RequestOptions
  * - Decode format: PREFER_ARGB_8888 (đảm bảo chất lượng ảnh avatar cao).
  * - Disk strategy: AUTOMATIC (cache cả source và result).
  * - Manifest parsing: Disabled (tối ưu tốc độ khởi động cold-start ~40ms).
+ * - Timeout      : 5000ms mặc định (tránh kẹt luồng mạng tải ảnh).
  */
 @GlideModule
 class MyAppGlideModule : AppGlideModule() {
@@ -28,6 +29,7 @@ class MyAppGlideModule : AppGlideModule() {
         private const val TAG          = "GlideModule"
         private const val DISK_CACHE   = 32L * 1024 * 1024   // 32 MB
         private const val MEMORY_CACHE = 8L  * 1024 * 1024   // 8 MB
+        private const val TIMEOUT_MS   = 5000                // 5 giây (Hỗ trợ fix timeout ở AvatarLoader)
     }
 
     override fun applyOptions(context: Context, builder: GlideBuilder) {
@@ -43,10 +45,12 @@ class MyAppGlideModule : AppGlideModule() {
                     .format(DecodeFormat.PREFER_ARGB_8888)
                     .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                     .skipMemoryCache(false)
+                    // [SỬA LỖI P2]: Thêm timeout mặc định tránh treo load ảnh diện rộng
+                    .timeout(TIMEOUT_MS)
             )
 
         Log.d(TAG, "Glide configured — heap: ${maxHeapMb}MB, " +
-                "memCache: ${memCacheBytes / 1024 / 1024}MB, diskCache: 32MB")
+                "memCache: ${memCacheBytes / 1024 / 1024}MB, diskCache: 32MB, timeout: ${TIMEOUT_MS}ms")
     }
 
     // Tắt manifest parsing để tăng tốc độ khởi động app

@@ -17,15 +17,17 @@ dependencies:
   flutter_dotenv: ^5.1.0
 
   # ── Firebase ──────────────────────────────────────────────────────────────
-  firebase_core: ^4.1.0
+  firebase_core: ^4.11.0
   firebase_auth: ^6.0.0
   firebase_storage: ^13.0.4
   firebase_messaging: ^16.0.4
-  cloud_firestore: ^6.0.0
+  cloud_firestore: ^6.6.0
   firebase_analytics: ^12.0.0
   firebase_crashlytics: ^5.0.0
   cloud_functions: ^6.3.1
-  firebase_app_check: ^0.4.4+1
+  firebase_app_check: ^0.4.5
+  # Thêm Firebase Remote Config để kiểm soát Model ID (Khắc phục Technical Debt)
+  firebase_remote_config: ^6.0.0
 
   # ── Authentication ────────────────────────────────────────────────────────
   google_sign_in: ^6.2.1
@@ -124,8 +126,10 @@ dependencies:
   translator: ^1.0.0
   package_info_plus: ^9.0.1
   emoji_regex: ^0.0.5
-  firebase_ai: ^3.12.2
+  # Nâng cấp Firebase AI lên bản mới nhất hỗ trợ các tính năng như URL Context & Grounding
+  firebase_ai: ^3.13.0
   google_sign_in_web: ^0.12.4+4
+  device_info_plus: ^12.4.0
 
 dev_dependencies:
   flutter_test:
@@ -138,7 +142,6 @@ dev_dependencies:
 
 dependency_overrides:
   permission_handler: ^12.0.0
-  firebase_core: ^4.1.0
   firebase_auth: ^6.0.0
   record_linux: ^1.1.0
 

@@ -13,8 +13,20 @@ import 'package:flutter_chat_demo/services/chat_bubble_service.dart';
 ///  • [ChatBubbleService] → Android < 11 (WindowManager overlay)
 ///  • none                → Non-Android / Web
 ///
-/// All public methods are safe to call before init completes — they are queued
-/// and replayed once the implementation is detected.
+/// Mutation methods (showChatBubble, updateBubbleMessage, hideChatBubble,
+/// hideAllBubbles, clearUnread, onAppHidden, showMiniChat, hideMiniChat,
+/// migrateToModernApi) đi qua [_queue] nên an toàn để gọi trước khi init
+/// xong — chúng tự chờ và được replay sau khi phát hiện implementation.
+///
+/// Các method async KHÔNG đi qua queue (hasOverlayPermission,
+/// requestOverlayPermission, sendMessage, getBubbleStats, logBubbleState)
+/// giờ tự chờ init qua [_ensureInitialized] trước khi đọc [_impl], để
+/// tránh đọc nhầm giá trị "unknown" và rẽ sai nhánh implementation.
+///
+/// Các getter đồng bộ (isBubbleActive, activeBubbleCount, activeBubbles,
+/// implementationInfo...) phản ánh trạng thái tốt nhất tại thời điểm gọi —
+/// về bản chất không thể "chờ" bên trong một getter đồng bộ, nên nếu gọi
+/// rất sớm (trước khi init xong) có thể trả về giá trị mặc định/rỗng.
 class UnifiedBubbleService {
   // ── Implementations ───────────────────────────────────────────────────────
   late final BubbleServiceV2 _bubbleApi;
@@ -83,7 +95,7 @@ class UnifiedBubbleService {
 
     _initCompleter = Completer<void>();
     try {
-      // Thêm timeout cho _detectImpl để tránh treo hệ thống vĩnh viễn (Vấn đề 14)
+      // Timeout cho _detectImpl để tránh treo hệ thống vĩnh viễn.
       _impl = await _detectImpl().timeout(const Duration(seconds: 3));
       debugPrint('✅ UnifiedBubbleService: using ${_impl.name}');
     } catch (e, st) {
@@ -103,11 +115,28 @@ class UnifiedBubbleService {
     }
   }
 
+  /// Đảm bảo quá trình phát hiện implementation (_detectImpl) đã hoàn tất
+  /// trước khi đọc [_impl]. Áp dụng cho các method async không đi qua
+  /// [_queue] nhưng vẫn cần biết chính xác implementation đang dùng trước
+  /// khi quyết định gọi xuống native bên nào.
+  Future<void> _ensureInitialized() async {
+    if (_isInitialized) return;
+    if (_initCompleter != null) {
+      await _initCompleter!.future.catchError((_) {});
+      return;
+    }
+    await _initialize();
+  }
+
   Future<BubbleImplementation> _detectImpl() async {
     if (kIsWeb || !Platform.isAndroid) return BubbleImplementation.none;
-    final supported = await _bubbleApi.checkBubbleApiSupport();
-    if (supported) {
-      await _bubbleApi.initialize();
+    // ĐÃ SỬA: Gọi thẳng initialize() — bên trong nó đã tự gọi
+    // checkBubbleApiSupport() và lưu kết quả vào _bubbleApi.isSupported.
+    // Trước đây gọi checkBubbleApiSupport() ở đây RỒI initialize() lại gọi
+    // lần nữa → 2 lượt round-trip MethodChannel cho cùng một câu hỏi mỗi
+    // lần khởi động app. Giờ chỉ còn 1 lượt.
+    await _bubbleApi.initialize();
+    if (_bubbleApi.isSupported) {
       return BubbleImplementation.bubbleApi;
     }
     return BubbleImplementation.windowManager;
@@ -164,11 +193,15 @@ class UnifiedBubbleService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   Future<bool> hasOverlayPermission() async {
+    // ĐÃ SỬA: chờ init xong trước khi đọc _impl, tránh rẽ nhầm nhánh khi
+    // gọi quá sớm (lúc _impl vẫn còn là BubbleImplementation.unknown).
+    await _ensureInitialized();
     if (_impl == BubbleImplementation.bubbleApi) return true;
     return _windowMgr.hasOverlayPermission();
   }
 
   Future<bool> requestOverlayPermission() async {
+    await _ensureInitialized();
     if (_impl == BubbleImplementation.bubbleApi) return true;
     return _windowMgr.requestOverlayPermission();
   }
@@ -204,6 +237,18 @@ class UnifiedBubbleService {
         return false;
       }).then((v) => v ?? false);
 
+  /// Cập nhật tin nhắn mới nhất hiển thị trên bubble.
+  ///
+  /// LƯU Ý QUAN TRỌNG (chưa thể tự đóng kín trong file này):
+  /// Ở nhánh [BubbleImplementation.bubbleApi], hàm này chỉ gửi xuống
+  /// `userId` + `message` vì chữ ký hiện tại của
+  /// `BubbleServiceV2.updateBubble()` (file bubble_service_v2.dart) chưa
+  /// có tham số `userName`/`avatarUrl` để nhận và chuyển tiếp xuống
+  /// native. Việc native (MainActivity.kt) đang hard-code "" cho hai
+  /// trường này khi xử lý lệnh `updateBubble` ở kênh V2 là một lỗi nằm ở
+  /// các file khác (bubble_service_v2.dart + 3 file Kotlin), không thể
+  /// sửa dứt điểm chỉ bằng cách đổi file này — xem giải thích đầy đủ ở
+  /// phần trả lời kèm theo.
   Future<void> updateBubbleMessage({
     required String userId,
     required String message,
@@ -242,15 +287,24 @@ class UnifiedBubbleService {
     }
   });
 
-  // ĐÃ THÊM: Xử lý ẩn Bubble Overlay khi rơi vào trạng thái Split-screen (Vấn đề 15)
+  // Xử lý ẩn Bubble Overlay khi rơi vào trạng thái Split-screen.
+  // Chỉ áp dụng cho nhánh windowManager — bubble native (bubbleApi) do hệ
+  // thống quản lý độc lập với tiến trình app, không cần can thiệp ở đây.
   Future<void> onAppHidden() => _queue(() async {
     if (_impl == BubbleImplementation.windowManager) {
       await _windowMgr.hideAllBubbles();
-      debugPrint('🙈 App hidden (Split screen) - WindowManager Bubbles auto-hidden');
+      debugPrint(
+          '🙈 App hidden (Split screen) - WindowManager Bubbles auto-hidden');
     }
   });
 
   // ── Mini Chat (WindowManager only) ────────────────────────────────────────
+  //
+  // Lưu ý: đây KHÔNG phải đường dẫn chính cho Mini Chat trong app. Đường
+  // chính là BubbleManager (widget) tự dựng OverlayEntry thuần Flutter
+  // (Overlay.of(navigatorContext)) và hoạt động trên mọi phiên bản Android.
+  // Hai method dưới đây chỉ là fallback được gọi khi BubbleManager.of(context)
+  // trả về null, và đúng theo thiết kế chỉ có tác dụng ở nhánh windowManager.
 
   Future<bool> showMiniChat({
     required String userId,
@@ -265,7 +319,7 @@ class UnifiedBubbleService {
             avatarUrl: avatarUrl,
           );
         }
-        debugPrint('⚠️ Mini chat only available with WindowManager');
+        debugPrint('⚠️ Mini chat (fallback) only available with WindowManager');
         return false;
       }).then((v) => v ?? false);
 
@@ -285,6 +339,8 @@ class UnifiedBubbleService {
     required String avatarUrl,
     String messageType = 'text',
   }) async {
+    // ĐÃ SỬA: chờ init xong trước khi kiểm tra _impl.
+    await _ensureInitialized();
     if (_impl != BubbleImplementation.bubbleApi) return false;
     return _bubbleApi.sendMessage(
       userId: userId,
@@ -311,6 +367,7 @@ class UnifiedBubbleService {
       );
 
   Future<Map<String, dynamic>> getBubbleStats() async {
+    await _ensureInitialized();
     if (_impl == BubbleImplementation.bubbleApi) {
       return _bubbleApi.getBubbleStats();
     }
@@ -318,6 +375,7 @@ class UnifiedBubbleService {
   }
 
   Future<void> logBubbleState() async {
+    await _ensureInitialized();
     if (_impl == BubbleImplementation.bubbleApi) {
       await _bubbleApi.logBubbleState();
     }
@@ -384,10 +442,12 @@ class UnifiedBubbleService {
   }
 
   Map<String, BubbleData> get activeBubbles {
-    if (_impl == BubbleImplementation.bubbleApi)
+    if (_impl == BubbleImplementation.bubbleApi) {
       return _bubbleApi.activeBubbles;
-    if (_impl == BubbleImplementation.windowManager)
+    }
+    if (_impl == BubbleImplementation.windowManager) {
       return _windowMgr.activeBubbles;
+    }
     return {};
   }
 
@@ -409,7 +469,8 @@ class UnifiedBubbleService {
     final completer = Completer<T?>();
     _opQueue.add(_QueuedOp(run: () async {
       try {
-        // ĐÃ SỬA: Thêm giới hạn Timeout 5s để Queue không bị kẹt vĩnh viễn (Lỗi 16)
+        // Giới hạn timeout 5s để Queue không bị kẹt vĩnh viễn nếu native
+        // không bao giờ trả lời (ví dụ MethodChannel bị treo).
         final result = await op().timeout(
           const Duration(seconds: 5),
           onTimeout: () {
@@ -430,7 +491,8 @@ class UnifiedBubbleService {
     if (_processingQueue) return;
     _processingQueue = true;
     try {
-      // ĐÃ SỬA: Chờ _initialize hoàn tất để tránh xả hàng đợi khi hệ thống chưa ready
+      // Chờ _initialize hoàn tất để tránh xả hàng đợi khi hệ thống chưa
+      // ready (tức là _impl vẫn đang ở trạng thái unknown).
       if (!_isInitialized && _initCompleter != null) {
         await _initCompleter!.future.catchError((_) {});
       }

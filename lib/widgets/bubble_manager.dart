@@ -68,6 +68,9 @@ class _BubbleManagerState extends State<BubbleManager>
   void _attachListeners() {
     if (kIsWeb || !Platform.isAndroid) return;
 
+    // [SỬA LỖI P0]: Stream này không kích hoạt khi user click trên Bubble Native Android 11+.
+    // BubbleActivity Native sẽ được mở thẳng. Tuy nhiên, nó vẫn sẽ được dùng cho tính năng
+    // giả lập In-app Overlay.
     _subs.add(
       _service.bubbleClickStream.listen(
         _onBubbleClick,
@@ -214,7 +217,6 @@ class _BubbleManagerState extends State<BubbleManager>
     await Future.delayed(const Duration(milliseconds: 100));
     if (!mounted) return;
 
-    // ĐÃ SỬA: Lấy Overlay từ navigator context thay vì context của _BubbleManagerState
     final navState = globalNavigatorKey.currentState;
     if (navState == null) {
       debugPrint('❌ BubbleManager: navigator not ready');
@@ -792,6 +794,9 @@ class _BubbleTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // [SỬA LỖI P2]: Check an toàn tên userName trước khi index chữ cái đầu
+    final String initial = (data.userName.isNotEmpty) ? data.userName[0].toUpperCase() : '?';
+
     return ListTile(
       leading: Stack(
         children: [
@@ -799,7 +804,7 @@ class _BubbleTile extends StatelessWidget {
             backgroundImage:
             data.avatarUrl.isNotEmpty ? NetworkImage(data.avatarUrl) : null,
             child: data.avatarUrl.isEmpty
-                ? Text(data.userName[0].toUpperCase())
+                ? Text(initial)
                 : null,
           ),
           if (data.unreadCount > 0)
@@ -823,7 +828,7 @@ class _BubbleTile extends StatelessWidget {
             ),
         ],
       ),
-      title: Text(data.userName,
+      title: Text(data.userName.isNotEmpty ? data.userName : 'Unknown',
           style: const TextStyle(fontWeight: FontWeight.w600)),
       subtitle: Text(
         data.lastMessage ?? 'Không có tin nhắn',

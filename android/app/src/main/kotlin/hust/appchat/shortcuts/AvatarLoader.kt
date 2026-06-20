@@ -8,16 +8,15 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.Icon
-import android.os.Build
 import android.os.Looper
 import android.util.Log
 import android.util.LruCache
-import androidx.annotation.RequiresApi
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.request.RequestOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 
 /**
@@ -25,7 +24,7 @@ import kotlin.math.abs
  *
  * Architecture & Features:
  * • L1 Cache: In-process [LruCache]<String, Icon> with dynamic sizing based on
- * device heap memory to prevent OutOfMemory errors.
+ * device heap memory byte limits to prevent OutOfMemory errors.
  * • L2 Cache: Glide disk cache — survives process restarts.
  * • Fallback: Auto-generates a polished initial-letter avatar with a
  * deterministic colored background and specular highlight if URL is empty or fails.
@@ -33,11 +32,11 @@ import kotlin.math.abs
  * a background thread. [loadAvatarIconAsync] and [preloadAvatarsBatch] wrap
  * operations in [Dispatchers.IO] for coroutine safety.
  */
-@RequiresApi(Build.VERSION_CODES.M)
 object AvatarLoader {
 
     private const val TAG         = "AvatarLoader"
     private const val AVATAR_SIZE = 120          // px for Glide override
+    private const val TIMEOUT_SEC = 5L           // Giới hạn thời gian tải ảnh
 
     // ─── Colour palette for initials avatars ──────────────────────────────
     private val PALETTE = intArrayOf(
@@ -48,11 +47,21 @@ object AvatarLoader {
     )
 
     // ─── LRU cache (Icon wrappers) ────────────────────────────────────────
+
+    // [SỬA LỖI P1]: Quản lý LruCache dựa trên kích thước byte thực tế chiếm dụng trong RAM
     private val cache: LruCache<String, Icon> by lazy {
-        val maxMb    = (Runtime.getRuntime().maxMemory() / 1024 / 1024).toInt()
-        val capacity = minOf(20, maxOf(8, maxMb / 4))
-        Log.d(TAG, "LRU capacity: $capacity (heap=${maxMb}MB)")
-        LruCache(capacity)
+        val maxMemoryBytes = Runtime.getRuntime().maxMemory()
+        // Sử dụng 1/16 bộ nhớ tối đa cho cache avatar (~ vài MB đến chục MB tùy thiết bị)
+        val cacheCapacityBytes = (maxMemoryBytes / 16).toInt()
+
+        Log.d(TAG, "LRU capacity: ${cacheCapacityBytes / 1024 / 1024} MB (heap=${maxMemoryBytes / 1024 / 1024} MB)")
+
+        object : LruCache<String, Icon>(cacheCapacityBytes) {
+            override fun sizeOf(key: String, value: Icon): Int {
+                // Ước tính kích thước byte của Icon tạo từ Bitmap (ARGB_8888 -> 4 bytes/pixel)
+                return AVATAR_SIZE * AVATAR_SIZE * 4
+            }
+        }
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -65,7 +74,7 @@ object AvatarLoader {
      */
     @JvmStatic
     fun loadAvatarIcon(context: Context, avatarUrl: String, userName: String): Icon {
-        // LỖI R FIX: Bắt buộc không được chạy trên Main Thread để tránh ANR vì Glide block
+        // Bắt buộc không được chạy trên Main Thread để tránh ANR vì Glide block
         check(Looper.myLooper() != Looper.getMainLooper()) {
             "🚨 loadAvatarIcon() must NOT be called on the Main thread. Use loadAvatarIconAsync() instead."
         }
@@ -100,7 +109,6 @@ object AvatarLoader {
     /** Preload avatar into cache safely */
     fun preloadAvatar(context: Context, avatarUrl: String, userName: String) {
         try {
-            // Nên được bọc trong IO context nếu gọi từ bên ngoài
             loadAvatarIcon(context, avatarUrl, userName)
         } catch (e: Exception) {
             Log.e(TAG, "❌ preload failed for $userName: $e")
@@ -170,6 +178,7 @@ object AvatarLoader {
     // ═════════════════════════════════════════════════════════════════════
 
     private fun loadFromUrl(context: Context, url: String, name: String): Icon {
+        // [SỬA LỖI P0]: Bổ sung Timeout 5s nghiêm ngặt để không bị kẹt luồng mạng
         val bmp = Glide.with(context.applicationContext)
             .asBitmap()
             .load(url)
@@ -180,8 +189,9 @@ object AvatarLoader {
                     .override(AVATAR_SIZE, AVATAR_SIZE)
                     .error(0)          // 0 → Glide throws on error → we catch below
             )
-            .submit()
-            .get()                     // blocking; must be called off main thread
+            .submit(AVATAR_SIZE, AVATAR_SIZE)
+            .get(TIMEOUT_SEC, TimeUnit.SECONDS) // blocking; must be called off main thread
+
         return Icon.createWithBitmap(bmp)
     }
 

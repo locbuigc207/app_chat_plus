@@ -2,7 +2,7 @@
 // lib/services/ai_backend_service.dart
 
 import 'dart:async';
-import 'dart:convert'; // Bổ sung để hỗ trợ decode JSON an toàn trong các filter
+import 'dart:convert';
 
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
@@ -516,19 +516,34 @@ class AIBackendService {
     if (messages.isEmpty) return null;
     try {
       final safeMessages = DataMaskingUtils.prepareForAI(messages);
+
+      // Đã sửa: Gọi đúng Cloud Function hỗ trợ userProfile có cấu trúc và trả về stickers
       final result = await _call(
-        functionName: 'smartReplyEnhanced',
+        functionName:
+            'smartReplyEnhanced', // Alias của smartReplyWithContext ở backend
         params: {
           'messages': safeMessages,
-          'closenessLevel': closenessLevel.clamp(1, 5),
-          'relationshipType': relationshipType,
+          'userProfile': {
+            'closenessLevel': closenessLevel,
+            'relationshipType': relationshipType,
+          },
           'language': language,
           'count': count,
         },
         timeout: _kAnalysisTimeout,
       );
+
       if (result == null) return null;
-      return EnhancedSmartReplyResult.fromMap(result);
+
+      final mappedResult = {
+        'replies': result['replies'] ?? result['suggestions'] ?? [],
+        'stickers':
+            result['stickers'] ??
+            [], // Dữ liệu thật từ backend thay vì hard-code []
+        ...result,
+      };
+
+      return EnhancedSmartReplyResult.fromMap(mappedResult);
     } catch (e, st) {
       _logError('smartReplyEnhanced', e, st);
       return null;
@@ -727,32 +742,43 @@ class AIBackendService {
           .subtract(Duration(days: lookbackDays))
           .millisecondsSinceEpoch;
 
-      final recentMessages = LocalDbService()
+      // Đã sửa: Lọc và map cấu trúc Object chứa cả Timestamp thay vì string
+      final recentRawMessages = LocalDbService()
           .getMessages(conversationId)
           .where((m) {
             final ts = int.tryParse(m['timestamp']?.toString() ?? '0') ?? 0;
             return ts >= cutoff;
           })
           .take(messageLimit)
-          .map((m) => m['content']?.toString() ?? '')
-          .where(
-            (c) =>
-                c.isNotEmpty && !c.startsWith('{"iv":') && !c.startsWith('eyJ'),
-          )
+          .where((m) {
+            final c = m['content']?.toString() ?? '';
+            return c.isNotEmpty &&
+                !c.startsWith('{"iv":') &&
+                !c.startsWith('eyJ');
+          })
           .toList();
 
-      if (recentMessages.length < 5) {
-        _log('getUserInsights: not enough messages (${recentMessages.length})');
+      if (recentRawMessages.length < 5) {
+        _log(
+          'getUserInsights: not enough messages (${recentRawMessages.length})',
+        );
         return null;
       }
 
-      final maskedMessages = DataMaskingUtils.maskList(
-        recentMessages,
-        config: _kAiMaskingConfig,
-      );
+      // Gửi mảng các object chứa text đã che giấu PII và timestamp thật để backend phân tích Activity Pattern
+      final maskedMessages = recentRawMessages.map((m) {
+        final contentStr = m['content']?.toString() ?? '';
+        return {
+          'content': DataMaskingUtils.maskText(
+            contentStr,
+            config: _kAiMaskingConfig,
+          ),
+          'timestamp': m['timestamp'],
+        };
+      }).toList();
 
       final result = await _call(
-        functionName: 'getUserInsights',
+        functionName: 'getUserInsightsV2',
         params: {
           'messages': maskedMessages,
           'lookbackDays': lookbackDays,
@@ -762,6 +788,7 @@ class AIBackendService {
         },
         timeout: _kInsightTimeout,
       );
+
       if (result == null) return null;
       return UserInsightsResult.fromMap(Map<String, dynamic>.from(result));
     } catch (e, st) {
@@ -1165,14 +1192,13 @@ class AIBackendService {
     required List<String> messages,
     required List<String> messageIds,
     bool checkToxicity = true,
-    bool checkHateSpeech = false,
+    bool checkHateSpeech = false, // Đã được sử dụng và kích hoạt bên dưới
   }) async {
     final results = <String, dynamic>{};
     if (messages.isEmpty) return results;
 
     try {
       if (checkToxicity) {
-        // Cập nhật để tránh lỗi index out of bounds khi map messageIds
         final inputs = messages
             .asMap()
             .entries
@@ -1185,6 +1211,14 @@ class AIBackendService {
             .toList();
         final toxicityResults = await analyzeToxicityBatch(inputs);
         results['toxicity'] = toxicityResults;
+      }
+
+      // Đã sửa: Thực thi kiểm tra checkHateSpeech theo như khai báo
+      if (checkHateSpeech) {
+        final hateSpeechResults = await Future.wait(
+          messages.map((m) => detectHateSpeechDetailed(m)),
+        );
+        results['hateSpeech'] = hateSpeechResults;
       }
     } catch (e, st) {
       _logError('batchAnalyzeMessages', e, st);

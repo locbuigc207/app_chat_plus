@@ -1,7 +1,6 @@
 // android/app/src/main/kotlin/hust/appchat/notifications/BubbleNotificationActionReceiver.kt
 package hust.appchat.notifications
 
-import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Person
@@ -10,7 +9,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.util.Log
-import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.app.RemoteInput
 import com.google.firebase.auth.FirebaseAuth
@@ -18,11 +16,11 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FieldValue
 import hust.appchat.R
 import hust.appchat.shortcuts.AvatarLoader
-import hust.appchat.shortcuts.ShortcutHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 /**
  * BubbleNotificationActionReceiver — handles quick actions from the notification shade.
@@ -30,28 +28,28 @@ import kotlinx.coroutines.launch
  * Actions supported
  * ──────────────────
  * REPLY      : User typed a reply in the notification inline-reply input.
- *              → Sends the message to Firestore.
- *              → Updates the MessagingStyle notification with the sent message.
- *              → Forwards event to Flutter via broadcast.
+ * → Sends the message to Firestore.
+ * → Updates the MessagingStyle notification with the sent message.
+ * → Forwards event to Flutter via broadcast.
  *
  * MARK_READ  : User tapped "Mark as read" action button.
- *              → Cancels the notification.
- *              → Clears BubbleNotificationManager history.
- *              → Broadcasts CHAT_BUBBLE_DISMISS to Flutter EventSink.
+ * → Cancels the notification.
+ * → Clears BubbleNotificationManager history.
+ * → Broadcasts CHAT_BUBBLE_DISMISS to Flutter EventSink.
  *
  * DISMISS    : User swiped the notification away.
- *              → Same as MARK_READ.
+ * → Same as MARK_READ.
  *
  * AndroidManifest registration (add inside <application>):
  * ─────────────────────────────────────────────────────────
  * <receiver
- *     android:name=".notifications.BubbleNotificationActionReceiver"
- *     android:exported="false">
- *     <intent-filter>
- *         <action android:name="hust.appchat.BUBBLE_REPLY" />
- *         <action android:name="hust.appchat.BUBBLE_MARK_READ" />
- *         <action android:name="hust.appchat.BUBBLE_DISMISS" />
- *     </intent-filter>
+ * android:name=".notifications.BubbleNotificationActionReceiver"
+ * android:exported="false">
+ * <intent-filter>
+ * <action android:name="hust.appchat.BUBBLE_REPLY" />
+ * <action android:name="hust.appchat.BUBBLE_MARK_READ" />
+ * <action android:name="hust.appchat.BUBBLE_DISMISS" />
+ * </intent-filter>
  * </receiver>
  */
 class BubbleNotificationActionReceiver : BroadcastReceiver() {
@@ -94,11 +92,13 @@ class BubbleNotificationActionReceiver : BroadcastReceiver() {
                 putExtra(EXTRA_AVATAR_URL, avatarUrl)
                 putExtra(EXTRA_NOTIF_ID,   notifId)
             }
+
+            // [SỬA LỖI P2]: Giãn cách Request Code bằng hàm băm để chống va chạm Intent
+            val reqCode = (ACTION_REPLY + userId).hashCode()
+
             val pi = PendingIntent.getBroadcast(
-                ctx, notifId + 1, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-                            PendingIntent.FLAG_MUTABLE else 0
+                ctx, reqCode, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
             )
 
             return NotificationCompat.Action.Builder(
@@ -119,11 +119,12 @@ class BubbleNotificationActionReceiver : BroadcastReceiver() {
                 putExtra(EXTRA_USER_ID,  userId)
                 putExtra(EXTRA_NOTIF_ID, notifId)
             }
+
+            val reqCode = (ACTION_MARK_READ + userId).hashCode()
+
             val pi = PendingIntent.getBroadcast(
-                ctx, notifId + 2, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-                            PendingIntent.FLAG_IMMUTABLE else 0
+                ctx, reqCode, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             return NotificationCompat.Action.Builder(
                 R.drawable.ic_notification, "Đã đọc", pi).build()
@@ -140,11 +141,12 @@ class BubbleNotificationActionReceiver : BroadcastReceiver() {
                 putExtra(EXTRA_USER_ID,  userId)
                 putExtra(EXTRA_NOTIF_ID, notifId)
             }
+
+            val reqCode = (ACTION_DISMISS + userId).hashCode()
+
             return PendingIntent.getBroadcast(
-                ctx, notifId + 3, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-                            PendingIntent.FLAG_IMMUTABLE else 0
+                ctx, reqCode, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
         }
     }
@@ -191,17 +193,15 @@ class BubbleNotificationActionReceiver : BroadcastReceiver() {
 
         Log.d(TAG, "💬 Reply from notification: ${replyText.take(40)}")
 
-        // 1. Send to Firestore
         scope.launch {
             try {
+                // [SỬA LỖI P1]: Chờ kết quả ghi Firestore để chắc chắn thành công
                 sendMessageToFirestore(ctx, userId, replyText)
 
-                // 2. Update MessagingStyle notification on API 30+
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    updateNotificationWithReply(ctx, userId, name, avatar, replyText, notifId)
-                }
+                // Update MessagingStyle notification
+                updateNotificationWithReply(ctx, userId, name, avatar, replyText, notifId)
 
-                // 3. Forward to Flutter EventSink via broadcast
+                // Forward to Flutter EventSink via broadcast
                 ctx.sendBroadcast(Intent("CHAT_BUBBLE_MESSAGE").apply {
                     putExtra("userId",  userId)
                     putExtra("message", replyText)
@@ -209,11 +209,24 @@ class BubbleNotificationActionReceiver : BroadcastReceiver() {
 
                 Log.d(TAG, "✅ Reply sent and notification updated")
             } catch (e: Exception) {
-                Log.e(TAG, "❌ handleReply: $e")
+                Log.e(TAG, "❌ handleReply failed: $e")
+
+                // [SỬA LỖI P1]: Nếu mất mạng, cập nhật Bubble Notification với dòng lỗi
+                // để người dùng biết tin nhắn chưa đi và giữ lại nội dung để họ copy/nhớ.
+                updateNotificationWithReply(
+                    ctx = ctx,
+                    userId = userId,
+                    name = name,
+                    avatar = avatar,
+                    reply = "[Lỗi mạng, chưa gửi] $replyText",
+                    notifId = notifId
+                )
             }
         }
     }
 
+    // [SỬA LỖI P1]: Sử dụng await() từ thư viện kotlinx-coroutines-play-services
+    // để biến lời gọi async thành exception chặn luồng nếu thất bại.
     private suspend fun sendMessageToFirestore(
         ctx    : Context,
         peerId : String,
@@ -221,7 +234,7 @@ class BubbleNotificationActionReceiver : BroadcastReceiver() {
     ) {
         val db   = FirebaseFirestore.getInstance()
         val auth = FirebaseAuth.getInstance()
-        val myId = auth.currentUser?.uid ?: return
+        val myId = auth.currentUser?.uid ?: throw IllegalStateException("User not logged in")
 
         val convId = if (myId < peerId) "$myId-$peerId" else "$peerId-$myId"
         val ts     = System.currentTimeMillis().toString()
@@ -239,20 +252,18 @@ class BubbleNotificationActionReceiver : BroadcastReceiver() {
             .document(convId)
             .collection(convId)
             .document(ts)
-            .set(msgData)
+            .set(msgData).await()
 
-        // Update conversation metadata
         db.collection("conversations").document(convId)
             .update(mapOf(
                 "lastMessage"  to message,
                 "lastSenderId" to myId,
                 "updatedAt"    to FieldValue.serverTimestamp(),
-            ))
+            )).await()
 
         Log.d(TAG, "✅ Message saved to Firestore")
     }
 
-    @RequiresApi(Build.VERSION_CODES.R)
     private fun updateNotificationWithReply(
         ctx    : Context,
         userId : String,
@@ -265,16 +276,6 @@ class BubbleNotificationActionReceiver : BroadcastReceiver() {
             val auth = FirebaseAuth.getInstance()
             val myId = auth.currentUser?.uid ?: return
 
-            val myIcon = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
-                AvatarLoader.loadAvatarIcon(ctx, "", "Tôi")
-            else return
-
-            val mePerson = Person.Builder()
-                .setName("Tôi")
-                .setKey(myId)
-                .setIcon(myIcon)
-                .build()
-
             // Add "Tôi: <reply>" to message history then re-render
             BubbleNotificationManager.addMessage(
                 context   = ctx,
@@ -285,7 +286,6 @@ class BubbleNotificationActionReceiver : BroadcastReceiver() {
                 fromUser  = true,
             )
 
-            // Mark sending animation complete — just cancel the "sending" spinner
             Log.d(TAG, "✅ Notification updated with reply")
         } catch (e: Exception) {
             Log.e(TAG, "❌ updateNotificationWithReply: $e")
@@ -300,9 +300,7 @@ class BubbleNotificationActionReceiver : BroadcastReceiver() {
         try {
             val nm = ctx.getSystemService(NotificationManager::class.java)
             nm?.cancel(notifId)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                BubbleNotificationManager.clearHistory(userId)
-            }
+            BubbleNotificationManager.clearHistory(userId)
             broadcastDismiss(ctx, userId)
             Log.d(TAG, "✅ Marked as read: $userId")
         } catch (e: Exception) {
@@ -316,9 +314,7 @@ class BubbleNotificationActionReceiver : BroadcastReceiver() {
 
     private fun handleDismiss(ctx: Context, userId: String, notifId: Int) {
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                BubbleNotificationManager.clearHistory(userId)
-            }
+            BubbleNotificationManager.clearHistory(userId)
             broadcastDismiss(ctx, userId)
             Log.d(TAG, "✅ Dismissed: $userId")
         } catch (e: Exception) {

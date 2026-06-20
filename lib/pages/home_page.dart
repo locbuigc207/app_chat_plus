@@ -568,19 +568,27 @@ class _HomePageState extends State<HomePage>
                   fontWeight: FontWeight.w600)),
         ]),
       ),
+      // [SỬA LỖI P1]: Chờ tiến trình mạng xử lý xong mới confirm ẩn thẻ để tránh UI nhấp nháy
       confirmDismiss: (direction) async {
         if (direction == DismissDirection.startToEnd) {
-          // Mark as read — không dismiss, chỉ action
-          await _conversationProvider.markAsRead(
-              conversation.id, _currentUserId);
-          HapticFeedback.lightImpact();
-          return false; // Không remove tile khỏi list
+          try {
+            await _conversationProvider.markAsRead(conversation.id, _currentUserId);
+            HapticFeedback.lightImpact();
+            return false; // Chỉ thay đổi trạng thái Firebase, thẻ vẫn ở lại
+          } catch (e) {
+            Fluttertoast.showToast(msg: '❌ Lỗi đánh dấu đã đọc');
+            return false;
+          }
         } else {
-          // Archive — confirm dismiss
-          await _conversationProvider.toggleArchiveConversation(
-              conversation.id, _currentUserId, true);
-          HapticFeedback.mediumImpact();
-          return true; // Tile biến mất khỏi list (đã archive)
+          try {
+            await _conversationProvider.toggleArchiveConversation(
+                conversation.id, _currentUserId, true);
+            HapticFeedback.mediumImpact();
+            return true; // Lưu trữ thành công, tile biến mất hoàn toàn
+          } catch (e) {
+            Fluttertoast.showToast(msg: '❌ Lỗi kết nối mạng, vui lòng thử lại');
+            return false;
+          }
         }
       },
       child: child,
@@ -1585,116 +1593,116 @@ class _BubbleDock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<UnifiedBubbleService>(
-      builder: (_, svc, __) {
-        return StreamBuilder<Map<String, BubbleData>>(
-          stream: svc.activeBubblesStream,
-          builder: (ctx, snap) {
-            final bubbles = snap.data?.values.toList() ?? [];
-            return AnimatedPositioned(
-              duration: const Duration(milliseconds: 380),
-              curve: Curves.easeOutBack,
-              left: 0,
-              right: 0,
-              bottom: bubbles.isEmpty ? -80 : 88,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 250),
-                opacity: bubbles.isEmpty ? 0 : 1,
-                child: Center(
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 320),
-                    curve: Curves.easeOutBack,
-                    height: 58,
-                    constraints: BoxConstraints(
-                        maxWidth:
-                        math.min(64.0 * bubbles.length + 96, 340)),
-                    margin: const EdgeInsets.symmetric(horizontal: 24),
-                    decoration: BoxDecoration(
+    // [SỬA LỖI P2]: Xóa Widget bọc Consumer thừa ở HomePage
+    // Thay vào đó chỉ dùng context.read() và StreamBuilder.
+    final unifiedBubbleService = context.read<UnifiedBubbleService>();
+
+    return StreamBuilder<Map<String, BubbleData>>(
+      stream: unifiedBubbleService.activeBubblesStream,
+      builder: (ctx, snap) {
+        final bubbles = snap.data?.values.toList() ?? [];
+        return AnimatedPositioned(
+          duration: const Duration(milliseconds: 380),
+          curve: Curves.easeOutBack,
+          left: 0,
+          right: 0,
+          bottom: bubbles.isEmpty ? -80 : 88,
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 250),
+            opacity: bubbles.isEmpty ? 0 : 1,
+            child: Center(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 320),
+                curve: Curves.easeOutBack,
+                height: 58,
+                constraints: BoxConstraints(
+                    maxWidth:
+                    math.min(64.0 * bubbles.length + 96, 340)),
+                margin: const EdgeInsets.symmetric(horizontal: 24),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? Colors.white.withOpacity(0.07)
+                      : Colors.white.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(32),
+                  border: Border.all(
                       color: isDark
-                          ? Colors.white.withOpacity(0.07)
+                          ? Colors.white.withOpacity(0.1)
                           : Colors.white.withOpacity(0.9),
-                      borderRadius: BorderRadius.circular(32),
-                      border: Border.all(
-                          color: isDark
-                              ? Colors.white.withOpacity(0.1)
-                              : Colors.white.withOpacity(0.9),
-                          width: 1.5),
-                      boxShadow: [
-                        BoxShadow(
-                            color: Colors.black.withOpacity(0.18),
-                            blurRadius: 28,
-                            offset: const Offset(0, 8)),
-                        BoxShadow(
-                            color: _kAccent.withOpacity(0.08),
-                            blurRadius: 12,
-                            offset: const Offset(0, 3)),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(32),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const SizedBox(width: 12),
-                          // Count badge
-                          Container(
-                            width: 28,
-                            height: 28,
-                            decoration: const BoxDecoration(
-                                color: _kAccent, shape: BoxShape.circle),
-                            child: Center(
-                                child: Text('${bubbles.length}',
-                                    style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w800))),
-                          ),
-                          const SizedBox(width: 8),
-                          // Avatar list — mỗi bubble có entrance animation
-                          ...bubbles.map((b) => _BubbleAvatar(
-                            bubble: b,
-                            isDark: isDark,
-                            onTap: () {
-                              HapticFeedback.lightImpact();
-                              onBubbleTap(b);
-                            },
-                            onLongPress: () {
-                              HapticFeedback.mediumImpact();
-                              onBubbleLongPress(b);
-                            },
-                          )),
-                          // Settings button
-                          GestureDetector(
-                            onTap: () {
-                              HapticFeedback.lightImpact();
-                              onSettingsTap();
-                            },
-                            child: Container(
-                                width: 30,
-                                height: 30,
-                                margin: const EdgeInsets.only(right: 4),
-                                decoration: BoxDecoration(
-                                    color: isDark
-                                        ? Colors.white.withOpacity(0.08)
-                                        : Colors.grey.shade100,
-                                    borderRadius:
-                                    BorderRadius.circular(9)),
-                                child: Icon(Icons.settings_rounded,
-                                    color: isDark
-                                        ? Colors.white38
-                                        : Colors.grey.shade500,
-                                    size: 14)),
-                          ),
-                          const SizedBox(width: 4),
-                        ],
+                      width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.black.withOpacity(0.18),
+                        blurRadius: 28,
+                        offset: const Offset(0, 8)),
+                    BoxShadow(
+                        color: _kAccent.withOpacity(0.08),
+                        blurRadius: 12,
+                        offset: const Offset(0, 3)),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(32),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const SizedBox(width: 12),
+                      // Count badge
+                      Container(
+                        width: 28,
+                        height: 28,
+                        decoration: const BoxDecoration(
+                            color: _kAccent, shape: BoxShape.circle),
+                        child: Center(
+                            child: Text('${bubbles.length}',
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800))),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      // Avatar list — mỗi bubble có entrance animation
+                      ...bubbles.map((b) => _BubbleAvatar(
+                        bubble: b,
+                        isDark: isDark,
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          onBubbleTap(b);
+                        },
+                        onLongPress: () {
+                          HapticFeedback.mediumImpact();
+                          onBubbleLongPress(b);
+                        },
+                      )),
+                      // Settings button
+                      GestureDetector(
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          onSettingsTap();
+                        },
+                        child: Container(
+                            width: 30,
+                            height: 30,
+                            margin: const EdgeInsets.only(right: 4),
+                            decoration: BoxDecoration(
+                                color: isDark
+                                    ? Colors.white.withOpacity(0.08)
+                                    : Colors.grey.shade100,
+                                borderRadius:
+                                BorderRadius.circular(9)),
+                            child: Icon(Icons.settings_rounded,
+                                color: isDark
+                                    ? Colors.white38
+                                    : Colors.grey.shade500,
+                                size: 14)),
+                      ),
+                      const SizedBox(width: 4),
+                    ],
                   ),
                 ),
               ),
-            );
-          },
+            ),
+          ),
         );
       },
     );

@@ -1,11 +1,10 @@
 // android/app/src/main/kotlin/hust/appchat/MainActivity.kt
 package hust.appchat
 
+import android.app.NotificationManager
 import android.content.*
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import android.util.Log
 import androidx.annotation.NonNull
 import io.flutter.embedding.android.FlutterActivity
@@ -14,29 +13,15 @@ import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
-import hust.appchat.bubble.BubbleManager
-import hust.appchat.bubble.BubbleOverlayService
 import hust.appchat.notifications.BubbleNotificationManager
 import hust.appchat.notifications.BubbleNotificationService
 import hust.appchat.shortcuts.ShortcutHelper
 
 /**
  * MainActivity — complete Flutter ↔ Android bridge.
- *
- * Channels exposed to Dart:
- * Legacy (ChatBubbleService / Android < 11):
- * METHOD  "chat_bubble_overlay"   → hasPermission, requestPermission, showBubble,
- * hideBubble, hideAllBubbles, showMiniChat, hideMiniChat
- * EVENT   "chat_bubble_events"    → click, message, dismiss
- *
- * V2 (BubbleServiceV2 / Android 11+):
- * METHOD  "chat_bubbles_v2"       → checkBubbleApiSupport, showBubble, updateBubble,
- * hideBubble, hideAllBubbles, sendMessage, getMessageCount,
- * getBubbleStats, clearMessageHistory, logBubbleState,
- * getShortcutCount, verifyShortcut
- * EVENT   "chat_bubble_events_v2" → click, message, dismiss
- *
- * Events are broadcast to BOTH sinks so either Dart service can listen.
+ * * Đã dọn dẹp toàn bộ tàn dư của luồng WindowManager (Android < 11).
+ * Mọi thao tác hiển thị bong bóng chat hiện tại được định tuyến thẳng qua
+ * BubbleNotificationService (sử dụng Native Bubble API).
  */
 class MainActivity : FlutterActivity() {
 
@@ -57,16 +42,13 @@ class MainActivity : FlutterActivity() {
         private const val ACTION_BUBBLE_MESSAGE = "CHAT_BUBBLE_MESSAGE"
         private const val ACTION_BUBBLE_DISMISS = "CHAT_BUBBLE_DISMISS"
 
-        private const val OVERLAY_REQUEST = 1001
-
-        // Thêm ID cho Mini Chat Engine khớp với Service/Activity
+        // ID Engine dùng chung
         const val MINI_ENGINE_ID = "mini_chat_overlay_engine"
     }
 
     // ── State ─────────────────────────────────────────────────────────────
     private var eventSinkLegacy   : EventChannel.EventSink? = null
     private var eventSinkV2       : EventChannel.EventSink? = null
-    private var pendingPermResult : MethodChannel.Result?   = null
     private var broadcastReceiver : BroadcastReceiver?      = null
     private var receiversRegistered = false
     private var isFlutterReady      = false
@@ -78,18 +60,13 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         try {
-            BubbleManager.init(this)
-            Log.d(TAG, "✅ BubbleManager initialized")
-
             BubbleNotificationService.init(this)
             Log.d(TAG, "✅ BubbleNotificationService initialized")
 
-            // FIX C: Warm up shared Flutter engine cho BubbleActivity
-            BubbleActivity.warmUpBubbleEngine(this)
-            Log.d(TAG, "✅ Shared Flutter engine warm-up initiated")
-
-            // FIX G: Warm up thêm engine cho MiniChat để loại bỏ cold-start 2-4s
-            warmUpMiniChatEngine()
+            // [SỬA LỖI P0 & P1]: Sử dụng chung thực thể EngineWarmer để nạp trước
+            // Cả Bubble Engine (cần truyền đúng ID của BubbleActivity) và Mini Chat Engine
+            EngineWarmer.warmUp(this, "bubble_chat_engine") // Thay thế BubbleActivity.warmUpBubbleEngine(this)
+            EngineWarmer.warmUp(this, MINI_ENGINE_ID)
 
             if (ShortcutHelper.isShortcutsSupported()) {
                 Log.d(TAG, "✅ Shortcuts supported")
@@ -99,24 +76,6 @@ class MainActivity : FlutterActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "❌ Boot failed: $e")
         }
-    }
-
-    private fun warmUpMiniChatEngine() {
-        val cache = FlutterEngineCache.getInstance()
-        if (cache.get(MINI_ENGINE_ID)?.dartExecutor?.isExecutingDart == true) {
-            Log.d(TAG, "♻️ Mini Chat Engine already warm")
-            return
-        }
-
-        Log.d(TAG, "🔥 Warming mini chat engine…")
-        val eng = FlutterEngine(this.applicationContext)
-        eng.dartExecutor.executeDartEntrypoint(
-            DartExecutor.DartEntrypoint.createDefault()
-        )
-        // FIX G: Đưa engine vào trạng thái standby, không render cho đến khi cần
-        eng.lifecycleChannel.appIsDetached()
-        cache.put(MINI_ENGINE_ID, eng)
-        Log.d(TAG, "✅ Mini chat engine warm and standby")
     }
 
     override fun configureFlutterEngine(@NonNull engine: FlutterEngine) {
@@ -135,18 +94,12 @@ class MainActivity : FlutterActivity() {
     override fun onResume() {
         super.onResume()
         if (!isFlutterReady) return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
-            BubbleNotificationService.onAppResumed(this)
-        else
-            BubbleManager.onAppResumed(this)
+        BubbleNotificationService.onAppResumed(this)
     }
 
     override fun onPause() {
         super.onPause()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
-            BubbleNotificationService.onAppPaused()
-        else
-            BubbleManager.onAppPaused()
+        BubbleNotificationService.onAppPaused()
     }
 
     override fun onDestroy() {
@@ -166,50 +119,42 @@ class MainActivity : FlutterActivity() {
                 Log.d(TAG, "📞 Legacy: ${call.method}")
                 try {
                     when (call.method) {
-
-                        "hasPermission" ->
-                            result.success(hasOverlayPermission())
-
-                        "requestPermission" ->
-                            requestOverlayPermission(result)
+                        // Trả về true luôn do trên Android 11+ với Bubble API không cần quyền overlay
+                        "hasPermission" -> result.success(true)
+                        "requestPermission" -> result.success(true)
 
                         "showBubble" -> {
                             val uid   = call.argument<String>("userId")    ?: return@setMethodCallHandler result.success(false)
                             val uname = call.argument<String>("userName")  ?: return@setMethodCallHandler result.success(false)
                             val av    = call.argument<String>("avatarUrl") ?: ""
                             val msg   = call.argument<String>("lastMessage") ?: ""
-                            showBubbleCompat(uid, uname, av, msg)
+                            BubbleNotificationService.showBubbleNotification(this, uid, uname, msg, av)
                             result.success(true)
                         }
 
                         "hideBubble" -> {
                             val uid = call.argument<String>("userId") ?: return@setMethodCallHandler result.success(false)
-                            hideBubbleCompat(uid)
+                            BubbleNotificationService.dismissBubble(this, uid)
                             result.success(true)
                         }
 
                         "hideAllBubbles" -> {
-                            hideAllBubblesCompat()
+                            BubbleNotificationService.dismissAllBubbles(this)
                             result.success(true)
                         }
 
+                        // [SỬA LỖI P0]: Lấy Meta từ BubbleNotificationManager để chống lỗi mất tên/ảnh
                         "updateBubble" -> {
                             val uid = call.argument<String>("userId")  ?: return@setMethodCallHandler result.success(false)
                             val msg = call.argument<String>("message") ?: ""
-                            updateBubbleCompat(uid, msg)
+                            val meta = BubbleNotificationManager.getMeta(uid)
+                            BubbleNotificationService.updateBubbleNotification(this, uid, meta?.first ?: "", msg, meta?.second ?: "")
                             result.success(true)
                         }
 
-                        "showMiniChat" -> {
-                            val uid   = call.argument<String>("userId")    ?: return@setMethodCallHandler result.success(false)
-                            val uname = call.argument<String>("userName")  ?: ""
-                            val av    = call.argument<String>("avatarUrl") ?: ""
-                            result.success(startMiniChatService(uid, uname, av))
-                        }
-
-                        "hideMiniChat" -> {
-                            result.success(stopMiniChatService())
-                        }
+                        // Native Mini Chat đã chết, trả về false để Flutter nhường quyền cho Dart Overlay
+                        "showMiniChat" -> result.success(false)
+                        "hideMiniChat" -> result.success(false)
 
                         else -> result.notImplemented()
                     }
@@ -250,14 +195,15 @@ class MainActivity : FlutterActivity() {
                 try {
                     when (call.method) {
 
-                        "checkBubbleApiSupport" ->
-                            result.success(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+                        "checkBubbleApiSupport" -> result.success(true) // Luôn true với minSdk 30
+
+                        // [SỬA LỖI P1]: Hàm báo cáo trạng thái tắt/mở quyền hiển thị bubble toàn hệ thống
+                        "checkBubbleChannelEnabled" -> {
+                            val nm = getSystemService(NotificationManager::class.java)
+                            result.success(nm?.areBubblesAllowed() == true)
+                        }
 
                         "showBubble" -> {
-                            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-                                result.error("UNSUPPORTED", "Bubble API requires Android 11+", null)
-                                return@setMethodCallHandler
-                            }
                             val uid   = call.argument<String>("userId")    ?: return@setMethodCallHandler result.success(false)
                             val uname = call.argument<String>("userName")  ?: return@setMethodCallHandler result.success(false)
                             val msg   = call.argument<String>("message")   ?: ""
@@ -266,33 +212,27 @@ class MainActivity : FlutterActivity() {
                             result.success(true)
                         }
 
+                        // [SỬA LỖI P0]: Lấy tên và avatar từ nguồn Meta để không bị trắng lịch sử
                         "updateBubble" -> {
-                            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) { result.success(false); return@setMethodCallHandler }
                             val uid = call.argument<String>("userId")  ?: return@setMethodCallHandler result.success(false)
                             val msg = call.argument<String>("message") ?: ""
-                            BubbleNotificationService.updateBubbleNotification(this, uid, "", msg, "")
+                            val meta = BubbleNotificationManager.getMeta(uid)
+                            BubbleNotificationService.updateBubbleNotification(this, uid, meta?.first ?: "", msg, meta?.second ?: "")
                             result.success(true)
                         }
 
                         "hideBubble" -> {
                             val uid = call.argument<String>("userId") ?: return@setMethodCallHandler result.success(false)
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
-                                BubbleNotificationService.dismissBubble(this, uid)
-                            else
-                                BubbleManager.removeBubble(this, uid)
+                            BubbleNotificationService.dismissBubble(this, uid)
                             result.success(true)
                         }
 
                         "hideAllBubbles" -> {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
-                                BubbleNotificationService.dismissAllBubbles(this)
-                            else
-                                BubbleManager.cleanup()
+                            BubbleNotificationService.dismissAllBubbles(this)
                             result.success(true)
                         }
 
                         "sendMessage" -> {
-                            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) { result.success(false); return@setMethodCallHandler }
                             val uid   = call.argument<String>("userId")      ?: return@setMethodCallHandler result.error("INVALID_ARGS", "Missing required arguments", null)
                             val uname = call.argument<String>("userName")    ?: return@setMethodCallHandler result.error("INVALID_ARGS", "Missing required arguments", null)
                             val msg   = call.argument<String>("message")     ?: return@setMethodCallHandler result.error("INVALID_ARGS", "Missing required arguments", null)
@@ -310,22 +250,15 @@ class MainActivity : FlutterActivity() {
 
                         "getMessageCount" -> {
                             val uid = call.argument<String>("userId") ?: return@setMethodCallHandler result.success(0)
-                            result.success(
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
-                                    BubbleNotificationManager.getMessageCount(uid)
-                                else 0
-                            )
+                            result.success(BubbleNotificationManager.getMessageCount(uid))
                         }
 
-                        "getBubbleStats" ->
-                            result.success(BubbleNotificationService.getBubbleStats())
+                        "getBubbleStats" -> result.success(BubbleNotificationService.getBubbleStats())
 
                         "clearMessageHistory" -> {
                             val uid = call.argument<String>("userId") ?: return@setMethodCallHandler result.success(false)
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                                BubbleNotificationManager.clearHistory(uid)
-                                result.success(true)
-                            } else result.success(false)
+                            BubbleNotificationManager.clearHistory(uid)
+                            result.success(true)
                         }
 
                         "logBubbleState" -> {
@@ -333,8 +266,7 @@ class MainActivity : FlutterActivity() {
                             result.success(true)
                         }
 
-                        "getShortcutCount" ->
-                            result.success(ShortcutHelper.getShortcutCount(this))
+                        "getShortcutCount" -> result.success(ShortcutHelper.getShortcutCount(this))
 
                         "verifyShortcut" -> {
                             val uid = call.argument<String>("userId") ?: return@setMethodCallHandler result.success(false)
@@ -439,104 +371,35 @@ class MainActivity : FlutterActivity() {
             }
         }
     }
+}
 
-    // ═════════════════════════════════════════════════════════════════════
-    // COMPAT HELPERS
-    // ═════════════════════════════════════════════════════════════════════
+/**
+ * [SỬA LỖI P0]: Lớp khởi động chung tập trung hóa tài nguyên Engine
+ * Quản lý khởi tạo sớm các Flutter Engine nhằm giải quyết tình trạng giật lag màn hình đen (Cold Start)
+ * từ 2-4s khi hiển thị UI Native (Bubble Activity) hoặc Mini Chat.
+ */
+object EngineWarmer {
+    private const val TAG = "EngineWarmer"
 
-    private fun showBubbleCompat(uid: String, uname: String, av: String, msg: String) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
-            BubbleNotificationService.showBubbleNotification(this, uid, uname, msg, av)
-        else
-            BubbleManager.showBubble(this, uid, uname, av, msg)
-    }
-
-    private fun hideBubbleCompat(uid: String) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
-            BubbleNotificationService.dismissBubble(this, uid)
-        else
-            BubbleManager.removeBubble(this, uid)
-    }
-
-    private fun hideAllBubblesCompat() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
-            BubbleNotificationService.dismissAllBubbles(this)
-        else {
-            stopService(Intent(this, BubbleOverlayService::class.java))
-            BubbleManager.cleanup()
+    fun warmUp(context: Context, engineId: String) {
+        val cache = FlutterEngineCache.getInstance()
+        if (cache.get(engineId)?.dartExecutor?.isExecutingDart == true) {
+            Log.d(TAG, "♻️ Engine $engineId already warm")
+            return
         }
-    }
 
-    private fun updateBubbleCompat(uid: String, msg: String) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
-            BubbleNotificationService.updateBubbleNotification(this, uid, "", msg, "")
-        else
-            BubbleManager.showBubble(this, uid, "", "", msg)
-    }
-
-    private fun startMiniChatService(uid: String, uname: String, av: String): Boolean {
-        return try {
-            val intent = Intent(this, BubbleOverlayService::class.java).apply {
-                action = BubbleOverlayService.ACTION_SHOW_MINI_CHAT
-                putExtra("userId",    uid)
-                putExtra("userName",  uname)
-                putExtra("avatarUrl", av)
-            }
-            // FIX N: Tránh crash ngầm Foreground Service trên Android 15
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                try {
-                    startForegroundService(intent)
-                } catch (e: Exception) {
-                    Log.e(TAG, "⚠️ ForegroundServiceStart blocked by Android 15, fallback to normal start", e)
-                    startService(intent)
-                }
-            } else {
-                startService(intent)
-            }
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ startMiniChatService: $e"); false
-        }
-    }
-
-    private fun stopMiniChatService(): Boolean {
-        return try {
-            startService(Intent(this, BubbleOverlayService::class.java).apply {
-                action = BubbleOverlayService.ACTION_HIDE_MINI_CHAT
-            })
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ stopMiniChatService: $e"); false
-        }
-    }
-
-    // ═════════════════════════════════════════════════════════════════════
-    // OVERLAY PERMISSION
-    // ═════════════════════════════════════════════════════════════════════
-
-    private fun hasOverlayPermission(): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)
-
-    private fun requestOverlayPermission(result: MethodChannel.Result) {
-        if (hasOverlayPermission()) { result.success(true); return }
-        pendingPermResult = result
+        Log.d(TAG, "🔥 Warming engine $engineId…")
         try {
-            startActivityForResult(
-                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:$packageName")),
-                OVERLAY_REQUEST
+            val eng = FlutterEngine(context.applicationContext)
+            eng.dartExecutor.executeDartEntrypoint(
+                DartExecutor.DartEntrypoint.createDefault()
             )
+            // Đưa engine vào trạng thái standby, ngừng render UI cho đến khi Activity kích hoạt thực sự
+            eng.lifecycleChannel.appIsDetached()
+            cache.put(engineId, eng)
+            Log.d(TAG, "✅ Engine $engineId warm and standby")
         } catch (e: Exception) {
-            result.success(false)
-            pendingPermResult = null
-        }
-    }
-
-    override fun onActivityResult(req: Int, res: Int, data: Intent?) {
-        super.onActivityResult(req, res, data)
-        if (req == OVERLAY_REQUEST) {
-            pendingPermResult?.success(hasOverlayPermission())
-            pendingPermResult = null
+            Log.e(TAG, "❌ Engine warmup failed for $engineId: $e")
         }
     }
 }

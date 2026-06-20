@@ -5,83 +5,74 @@ import android.animation.*
 import android.view.View
 import android.view.animation.*
 import androidx.core.animation.doOnEnd
+import androidx.dynamicanimation.animation.DynamicAnimation
+import androidx.dynamicanimation.animation.SpringAnimation
+import androidx.dynamicanimation.animation.SpringForce
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.interpolator.view.animation.LinearOutSlowInInterpolator
 
 /**
  * BubbleAnimationHelper — factory for reusable bubble system animations.
  *
- * All methods return the started [Animator] so callers can cancel or
- * chain animations.  The helper never holds references to Views; it is
- * safe to call from any thread as long as the animations are started on
- * the main thread (they always are, because ValueAnimator.start() is
- * main-thread-only).
- *
- * Spring physics baseline
- * ────────────────────────
- * Android's built-in SpringForce is in the DynamicAnimation library.
- * This helper uses ValueAnimator + OvershootInterpolator as a lighter
- * alternative that doesn't require the extra dependency, while still
- * producing the characteristic "overshoot → settle" feel.
- *
- * Usage
- * ──────
- * ```kotlin
- * BubbleAnimationHelper.popIn(bubbleView)
- * BubbleAnimationHelper.shake(bubbleView) { /* after shake */ }
- * BubbleAnimationHelper.morphSendButton(btnView, sending = true)
- * ```
+ * * [SỬA LỖI P1]: Đã chuyển đổi sang mô hình vật lý SpringAnimation chuẩn của Android
+ * (thông qua thư viện DynamicAnimation) cho các hiệu ứng xuất hiện và tương tác.
+ * * [DỌN DẸP]: Đã loại bỏ các hàm liên quan đến WindowManager cũ (như snapToEdge).
  */
 object BubbleAnimationHelper {
 
     // ─── Interpolators ────────────────────────────────────────────────────
-    val OVERSHOOT_1 : Interpolator = OvershootInterpolator(1.2f)
-    val OVERSHOOT_2 : Interpolator = OvershootInterpolator(2.0f)
-    val OVERSHOOT_3 : Interpolator = OvershootInterpolator(3.0f)
-    val EASE_OUT    : Interpolator = DecelerateInterpolator(2f)
-    val EASE_IN_OUT : Interpolator = FastOutSlowInInterpolator()
+    val EASE_OUT       : Interpolator = DecelerateInterpolator(2f)
+    val EASE_IN_OUT    : Interpolator = FastOutSlowInInterpolator()
     val EASE_OUT_LINEAR: Interpolator = LinearOutSlowInInterpolator()
-    val BOUNCE      : Interpolator = BounceInterpolator()
-    val ANTICIPATE  : Interpolator = AnticipateInterpolator(1.5f)
-    val ANT_OVER    : Interpolator = AnticipateOvershootInterpolator(1.5f)
+    val ANTICIPATE     : Interpolator = AnticipateInterpolator(1.5f)
 
     // ─────────────────────────────────────────────────────────────────────
     // ENTRANCE
     // ─────────────────────────────────────────────────────────────────────
 
     /**
-     * Scale-from-zero with overshoot — used when a new bubble first appears.
-     * Duration: 380 ms
+     * Scale-from-zero with natural Spring physics — used when a new view first appears.
      */
     fun popIn(
-        view         : View,
-        durationMs   : Long          = 380,
-        interpolator : Interpolator  = OVERSHOOT_2,
-        onEnd        : (() -> Unit)? = null,
-    ): AnimatorSet {
+        view: View,
+        onEnd: (() -> Unit)? = null,
+    ) {
         view.scaleX = 0f; view.scaleY = 0f; view.alpha = 0f
-        val sx = ObjectAnimator.ofFloat(view, View.SCALE_X, 0f, 1f)
-        val sy = ObjectAnimator.ofFloat(view, View.SCALE_Y, 0f, 1f)
-        val fa = ObjectAnimator.ofFloat(view, View.ALPHA,   0f, 1f)
-        fa.duration = (durationMs * 0.5).toLong()
 
-        return AnimatorSet().apply {
-            playTogether(sx, sy, fa)
-            duration          = durationMs
-            this.interpolator = interpolator
-            onEnd?.let { doOnEnd { it() } }
-            start()
+        val alphaAnim = ObjectAnimator.ofFloat(view, View.ALPHA, 0f, 1f)
+        alphaAnim.duration = 200
+
+        val springX = SpringAnimation(view, DynamicAnimation.SCALE_X, 1f)
+        val springY = SpringAnimation(view, DynamicAnimation.SCALE_Y, 1f)
+
+        val force = SpringForce(1f).apply {
+            stiffness = SpringForce.STIFFNESS_MEDIUM
+            dampingRatio = SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY
         }
+        springX.spring = force
+        springY.spring = force
+
+        var isEndCalled = false
+        springX.addEndListener { _, _, _, _ ->
+            if (!isEndCalled) {
+                isEndCalled = true
+                onEnd?.invoke()
+            }
+        }
+
+        alphaAnim.start()
+        springX.start()
+        springY.start()
     }
 
     /**
      * Fade + translateY-up entrance — for header or message bubbles.
      */
     fun slideInUp(
-        view     : View,
-        fromDpY  : Float = 24f,
-        durationMs: Long = 280,
-        onEnd    : (() -> Unit)? = null,
+        view      : View,
+        fromDpY   : Float = 24f,
+        durationMs: Long  = 280,
+        onEnd     : (() -> Unit)? = null,
     ): AnimatorSet {
         val density = view.resources.displayMetrics.density
         val fromPx  = fromDpY * density
@@ -92,7 +83,7 @@ object BubbleAnimationHelper {
 
         return AnimatorSet().apply {
             playTogether(ty, fa)
-            duration    = durationMs
+            duration     = durationMs
             interpolator = EASE_OUT
             onEnd?.let { doOnEnd { it() } }
             start()
@@ -105,7 +96,6 @@ object BubbleAnimationHelper {
 
     /**
      * Scale-to-zero with rotation — used when a bubble is deleted.
-     * Calls [onEnd] when complete so the caller can remove the view.
      */
     fun deleteExit(
         view    : View,
@@ -125,14 +115,13 @@ object BubbleAnimationHelper {
         }
     }
 
-    /** Simple fade-out. */
     fun fadeOut(
         view      : View,
-        durationMs: Long         = 200,
+        durationMs: Long          = 200,
         onEnd     : (() -> Unit)? = null,
     ): ObjectAnimator =
         ObjectAnimator.ofFloat(view, View.ALPHA, view.alpha, 0f).apply {
-            duration    = durationMs
+            duration     = durationMs
             interpolator = EASE_IN_OUT
             onEnd?.let { doOnEnd { it() } }
             start()
@@ -144,7 +133,6 @@ object BubbleAnimationHelper {
 
     /**
      * Horizontal shake — used to indicate an error or boundary hit.
-     * 3 cycles, decaying amplitude.
      */
     fun shake(
         view    : View,
@@ -175,32 +163,44 @@ object BubbleAnimationHelper {
     fun pulse(
         view         : View,
         peakScale    : Float = 1.35f,
-        durationMs   : Long  = 260,
         onEnd        : (() -> Unit)? = null,
-    ): AnimatorSet {
-        val scaleUp   = ObjectAnimator.ofPropertyValuesHolder(view,
-            PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, peakScale),
-            PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, peakScale))
-        val scaleDown = ObjectAnimator.ofPropertyValuesHolder(view,
-            PropertyValuesHolder.ofFloat(View.SCALE_X, peakScale, 1f),
-            PropertyValuesHolder.ofFloat(View.SCALE_Y, peakScale, 1f))
+    ) {
+        val springX = SpringAnimation(view, DynamicAnimation.SCALE_X, peakScale)
+        val springY = SpringAnimation(view, DynamicAnimation.SCALE_Y, peakScale)
 
-        scaleUp.duration   = durationMs / 2
-        scaleDown.duration = durationMs / 2
-        scaleUp.interpolator   = OVERSHOOT_1
-        scaleDown.interpolator = EASE_OUT
-
-        return AnimatorSet().apply {
-            playSequentially(scaleUp, scaleDown)
-            onEnd?.let { doOnEnd { it() } }
-            start()
+        val forceUp = SpringForce(peakScale).apply {
+            stiffness    = SpringForce.STIFFNESS_MEDIUM
+            dampingRatio = SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY
         }
+        springX.spring = forceUp
+        springY.spring = forceUp
+
+        springX.addEndListener { _, _, _, _ ->
+            val downX = SpringAnimation(view, DynamicAnimation.SCALE_X, 1f)
+            val downY = SpringAnimation(view, DynamicAnimation.SCALE_Y, 1f)
+
+            val forceDown = SpringForce(1f).apply {
+                stiffness    = SpringForce.STIFFNESS_MEDIUM
+                dampingRatio = SpringForce.DAMPING_RATIO_NO_BOUNCY
+            }
+            downX.spring = forceDown
+            downY.spring = forceDown
+
+            var isEndCalled = false
+            downX.addEndListener { _, _, _, _ ->
+                if (!isEndCalled) {
+                    isEndCalled = true
+                    onEnd?.invoke()
+                }
+            }
+            downX.start()
+            downY.start()
+        }
+
+        springX.start()
+        springY.start()
     }
 
-    /**
-     * Ring ripple — expands a circular "ring" view outward from a centre point.
-     * Used for the online-indicator pulse in BubbleView.
-     */
     fun rippleExpand(
         ring         : View,
         fromScale    : Float = 0.6f,
@@ -225,10 +225,6 @@ object BubbleAnimationHelper {
     // TYPING DOTS
     // ─────────────────────────────────────────────────────────────────────
 
-    /**
-     * Staggers a vertical bounce across [dots].
-     * Returns a list of animators so the caller can cancel all at once.
-     */
     fun typingBounce(
         dots        : List<View>,
         amplitude   : Float = 8f,
@@ -261,62 +257,41 @@ object BubbleAnimationHelper {
         sending  : Boolean,
         onSwap   : () -> Unit,
     ) {
-        val scaleDown = ObjectAnimator.ofPropertyValuesHolder(view,
-            PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 0f),
-            PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 0f)).apply {
-            duration     = 100
-            interpolator = ANTICIPATE
-        }
-        val scaleUp = ObjectAnimator.ofPropertyValuesHolder(view,
-            PropertyValuesHolder.ofFloat(View.SCALE_X, 0f, 1f),
-            PropertyValuesHolder.ofFloat(View.SCALE_Y, 0f, 1f)).apply {
-            duration     = 180
-            interpolator = OVERSHOOT_2
-        }
-        AnimatorSet().apply {
-            playSequentially(scaleDown, scaleUp)
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(a: Animator) {}
-                override fun onAnimationRepeat(a: Animator) {}
-                override fun onAnimationStart(a: Animator) {}
-                // Swap the icon at the mid-point (after scale-down)
-            })
-            scaleDown.doOnEnd { onSwap() }
-            start()
-        }
-    }
+        val scaleDownX = SpringAnimation(view, DynamicAnimation.SCALE_X, 0f)
+        val scaleDownY = SpringAnimation(view, DynamicAnimation.SCALE_Y, 0f)
 
-    // ─────────────────────────────────────────────────────────────────────
-    // SNAP TO EDGE
-    // ─────────────────────────────────────────────────────────────────────
-
-    /**
-     * Animates a bubble's X position to [targetX] with spring overshoot.
-     * Used by BubbleOverlayService after drag-end.
-     */
-    fun snapToEdge(
-        view        : View,
-        currentX    : Int,
-        targetX     : Int,
-        updateLayout: (Int) -> Unit,
-        durationMs  : Long = 340,
-    ): ValueAnimator = ValueAnimator.ofInt(currentX, targetX).apply {
-        duration     = durationMs
-        interpolator = OvershootInterpolator(1.4f)
-        addUpdateListener { a ->
-            updateLayout(a.animatedValue as Int)
+        val forceDown = SpringForce(0f).apply {
+            stiffness    = SpringForce.STIFFNESS_HIGH
+            dampingRatio = SpringForce.DAMPING_RATIO_NO_BOUNCY
         }
-        start()
+        scaleDownX.spring = forceDown
+        scaleDownY.spring = forceDown
+
+        scaleDownX.addEndListener { _, _, _, _ ->
+            onSwap()
+
+            val scaleUpX = SpringAnimation(view, DynamicAnimation.SCALE_X, 1f)
+            val scaleUpY = SpringAnimation(view, DynamicAnimation.SCALE_Y, 1f)
+
+            val forceUp = SpringForce(1f).apply {
+                stiffness    = SpringForce.STIFFNESS_MEDIUM
+                dampingRatio = SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY
+            }
+            scaleUpX.spring = forceUp
+            scaleUpY.spring = forceUp
+
+            scaleUpX.start()
+            scaleUpY.start()
+        }
+
+        scaleDownX.start()
+        scaleDownY.start()
     }
 
     // ─────────────────────────────────────────────────────────────────────
     // COLOUR TRANSITION
     // ─────────────────────────────────────────────────────────────────────
 
-    /**
-     * Smooth background colour transition — used when the bubble header
-     * morphs between BubbleModes.
-     */
     fun transitionBackground(
         view       : View,
         fromColor  : Int,
@@ -341,5 +316,9 @@ object BubbleAnimationHelper {
 
     fun cancelAll(animators: List<Animator?>) {
         animators.forEach { it?.cancel() }
+    }
+
+    fun cancelAllSprings(vararg springs: DynamicAnimation<*>?) {
+        springs.forEach { it?.cancel() }
     }
 }

@@ -25,11 +25,15 @@ object BubbleNotificationManager {
     private const val MAX_HISTORY      = 12
     private const val CHANNEL_MESSAGES = "chat_messages"
 
-    // LỖI I FIX: Tăng base ID và dải chia dư để dứt điểm vụ trùng lặp Notification ID
+    // Tăng base ID và dải chia dư để dứt điểm vụ trùng lặp Notification ID
     private const val BASE_ID          = 10_000
 
-    private val history      = ConcurrentHashMap<String, CopyOnWriteArrayList<Message>>()
+    private val history       = ConcurrentHashMap<String, CopyOnWriteArrayList<Message>>()
     private val expandedUsers = ConcurrentHashMap.newKeySet<String>()
+
+    // [GIẢI QUYẾT LỖI P0]: Thêm map lưu trữ Meta Data để giải quyết triệt để lỗi
+    // quên tên (userName) và ảnh (avatarUrl) trên các phiên bản Android 11+
+    private val conversationMeta = ConcurrentHashMap<String, Pair<String, String>>() // userId -> (userName, avatarUrl)
 
     data class Message(
         val text     : String,
@@ -44,6 +48,13 @@ object BubbleNotificationManager {
     // PUBLIC API
     // ═════════════════════════════════════════════════════════════════════
 
+    // [GIẢI QUYẾT LỖI P0]: Các hàm truy xuất và lưu trữ Meta Data
+    fun rememberMeta(userId: String, userName: String, avatarUrl: String) {
+        conversationMeta[userId] = Pair(userName, avatarUrl)
+    }
+
+    fun getMeta(userId: String): Pair<String, String>? = conversationMeta[userId]
+
     fun addMessage(
         context  : Context,
         userId   : String,
@@ -53,6 +64,9 @@ object BubbleNotificationManager {
         fromUser : Boolean,
         type     : MessageType = MessageType.TEXT,
     ): Int {
+        // Lưu metadata ngay khi có tin nhắn mới để các luồng update sau (syncState) có dữ liệu để dùng
+        rememberMeta(userId, userName, avatarUrl)
+
         val msgs = history.getOrPut(userId) { CopyOnWriteArrayList() }
         msgs.add(Message(message, System.currentTimeMillis(), fromUser, type))
         while (msgs.size > MAX_HISTORY) msgs.removeAt(0)
@@ -73,6 +87,10 @@ object BubbleNotificationManager {
             addMessage(context, userId, userName, message, avatarUrl, fromUser = false)
             return
         }
+
+        // Cập nhật lại metadata phòng trường hợp người dùng đổi tên/avatar
+        rememberMeta(userId, userName, avatarUrl)
+
         val msgs = history[userId] ?: return
         postNotification(context, userId, userName, avatarUrl, msgs.toList(), notifId(userId))
     }
@@ -84,12 +102,14 @@ object BubbleNotificationManager {
     fun clearHistory(userId: String) {
         history.remove(userId)
         expandedUsers.remove(userId)
+        conversationMeta.remove(userId) // [GIẢI QUYẾT LỖI P2]: Dọn dẹp metadata để tránh leak memory
         Log.d(TAG, "🗑️ History cleared: $userId")
     }
 
     fun clearAllHistory() {
         history.clear()
         expandedUsers.clear()
+        conversationMeta.clear()
     }
 
     fun getMessageCount(userId: String) = history[userId]?.size ?: 0
@@ -99,6 +119,7 @@ object BubbleNotificationManager {
         "conversations" to history.size,
         "totalMessages" to history.values.sumOf { it.size },
         "expandedCount" to expandedUsers.size,
+        "metaCount"     to conversationMeta.size
     )
 
     fun logState() {
@@ -107,6 +128,11 @@ object BubbleNotificationManager {
             Log.d(TAG, "  $uid: ${msgs.size} msg — last: ${msgs.lastOrNull()?.text?.take(30)}")
         }
     }
+
+    // [GIẢI QUYẾT LỖI P0]: Đổi thành hàm public để NotificationHelper có thể gọi chung,
+    // loại bỏ tình trạng có 2 công thức tính Notification ID chạy song song
+    fun notifId(userId: String): Int =
+        BASE_ID + ((userId.hashCode() and 0x7FFFFFFF) % 50_000)
 
     // ═════════════════════════════════════════════════════════════════════
     // PRIVATE IMPLEMENTATION
@@ -137,8 +163,8 @@ object BubbleNotificationManager {
                 .setAutoCancel(false)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
 
-            // LỖI E & S FIX: Nếu buildBubble trả về null do thiếu shortcut,
-            // bỏ qua setBubbleMetadata để system vẫn post Notification dạng thường.
+            // Nếu buildBubble trả về null do thiếu shortcut, bỏ qua setBubbleMetadata
+            // để system vẫn post Notification dạng thường.
             bubbleMeta?.let { builder.setBubbleMetadata(it) }
 
             val notif = builder.build()
@@ -184,7 +210,7 @@ object BubbleNotificationManager {
         icon     : Icon,
     ): Notification.BubbleMetadata? {
 
-        // LỖI E & S FIX: Kiểm tra kỹ shortcut trước khi build BubbleMetadata framework API.
+        // Kiểm tra kỹ shortcut trước khi build BubbleMetadata framework API.
         // Trên Android 15/16, shortcut bắt buộc phải được publish trước.
         if (!ShortcutHelper.shortcutExists(context, userId)) {
             Log.w(TAG, "⚠️ Shortcut missing for $userId — deferring bubble metadata")
@@ -253,6 +279,8 @@ object BubbleNotificationManager {
     private fun fallbackIcon(ctx: Context): Icon =
         Icon.createWithResource(ctx, notifIconRes(ctx))
 
+    // [GIẢI QUYẾT LỖI P1]: Hàm này có thể được tách ra Util chung trong tương lai.
+    // Hiện tại giữ ở dạng private scope để đảm bảo an toàn biên dịch cho file này.
     private fun iconToBitmap(ctx: Context, icon: Icon): Bitmap? {
         return try {
             val drawable = icon.loadDrawable(ctx) ?: return null
@@ -268,8 +296,4 @@ object BubbleNotificationManager {
             null
         }
     }
-
-    // LỖI I FIX: Công thức tính notifId mới với range rộng hơn [10000, 60000]
-    private fun notifId(userId: String) =
-        BASE_ID + ((userId.hashCode() and 0x7FFFFFFF) % 50_000)
 }

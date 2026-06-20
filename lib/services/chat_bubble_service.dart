@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/models/bubble_models.dart';
@@ -10,9 +11,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Overlay-window chat bubble service for Android < 11.
 /// Uses [SYSTEM_ALERT_WINDOW] permission + WindowManager overlay.
 ///
-/// Giai đoạn 2 — Game Center:
-///   Thêm [sendGameChallengeNotification] để gửi push notification
-///   riêng biệt khi có lời mời thách đấu đích danh (tag tên người nhận).
+/// * [SỬA LỖI P0]: Đã gỡ bỏ toàn bộ logic gọi RPC `showGameChallengeNotification` và
+/// event `game_challenge_tap` do phía Kotlin hoàn toàn không cung cấp điểm kết nối (Endpoint),
+/// tránh lỗi MissingPluginException.
+/// * [SỬA LỖI P2]: Tự động ngắt khởi tạo EventChannel khi máy chạy Android 11+ (minSdk 30)
+/// để tiết kiệm tài nguyên.
 class ChatBubbleService {
   // ── Channels ──────────────────────────────────────────────────────────────
   static const _method = MethodChannel('chat_bubble_overlay');
@@ -24,7 +27,8 @@ class ChatBubbleService {
 
   ChatBubbleService._internal() {
     if (!kIsWeb && Platform.isAndroid) {
-      Future.delayed(const Duration(milliseconds: 400), _bootstrap);
+      // Chỉ Bootstrap nếu thiết bị thực sự chạy Android 10 trở xuống (Legacy)
+      _checkAndroidVersionAndBootstrap();
     }
   }
 
@@ -42,22 +46,38 @@ class ChatBubbleService {
   final _bubblesCtrl = StreamController<Map<String, BubbleData>>.broadcast();
   final _clickCtrl = StreamController<BubbleClickEvent>.broadcast();
   final _miniMsgCtrl = StreamController<MiniChatMessage>.broadcast();
-
-  // ─── Game Center: Stream cho sự kiện game challenge ──────────────────────
   final _gameChallengeCtrl = StreamController<GameChallengeEvent>.broadcast();
 
   Stream<Map<String, BubbleData>> get activeBubblesStream =>
       _bubblesCtrl.stream;
   Stream<BubbleClickEvent> get bubbleClickStream => _clickCtrl.stream;
   Stream<MiniChatMessage> get miniChatMessageStream => _miniMsgCtrl.stream;
-
-  /// Stream emit khi user tap vào notification thách đấu game.
   Stream<GameChallengeEvent> get gameChallengeStream =>
       _gameChallengeCtrl.stream;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // BOOTSTRAP
   // ═══════════════════════════════════════════════════════════════════════════
+
+  Future<void> _checkAndroidVersionAndBootstrap() async {
+    try {
+      final deviceInfo = DeviceInfoPlugin();
+      final androidInfo = await deviceInfo.androidInfo;
+
+      // Nếu API >= 30 (Android 11), WindowManager path bị khóa hoàn toàn. Không bootstrap.
+      if (androidInfo.version.sdkInt >= 30) {
+        debugPrint(
+          'ℹ️ ChatBubbleService bypass bootstrap on Android 11+ (Using Native API instead)',
+        );
+        return;
+      }
+
+      Future.delayed(const Duration(milliseconds: 400), _bootstrap);
+    } catch (e) {
+      // Fallback an toàn nếu lỗi thư viện
+      Future.delayed(const Duration(milliseconds: 400), _bootstrap);
+    }
+  }
 
   Future<void> _bootstrap() async {
     _setupEventListener();
@@ -82,9 +102,7 @@ class ChatBubbleService {
             case 'dismiss':
               _handleDismiss(event);
               break;
-            case 'game_challenge_tap':
-              _handleGameChallengeTap(event);
-              break;
+            // [SỬA LỖI P0]: Đã gỡ bỏ case 'game_challenge_tap' ảo
           }
         },
         onError: (Object err) =>
@@ -101,23 +119,27 @@ class ChatBubbleService {
   void _handleClick(Map<String, dynamic> e) {
     final userId = e['userId'] as String?;
     if (userId == null || _clickCtrl.isClosed) return;
-    _clickCtrl.add(BubbleClickEvent(
-      userId: userId,
-      userName: e['userName'] as String? ?? '',
-      avatarUrl: e['avatarUrl'] as String? ?? '',
-      message: e['message'] as String? ?? '',
-    ));
+    _clickCtrl.add(
+      BubbleClickEvent(
+        userId: userId,
+        userName: e['userName'] as String? ?? '',
+        avatarUrl: e['avatarUrl'] as String? ?? '',
+        message: e['message'] as String? ?? '',
+      ),
+    );
   }
 
   void _handleMiniMsg(Map<String, dynamic> e) {
     final userId = e['userId'] as String?;
     final message = e['message'] as String?;
     if (userId == null || message == null || _miniMsgCtrl.isClosed) return;
-    _miniMsgCtrl.add(MiniChatMessage(
-      userId: userId,
-      message: message,
-      timestamp: DateTime.now(),
-    ));
+    _miniMsgCtrl.add(
+      MiniChatMessage(
+        userId: userId,
+        message: message,
+        timestamp: DateTime.now(),
+      ),
+    );
   }
 
   void _handleDismiss(Map<String, dynamic> e) {
@@ -127,19 +149,6 @@ class ChatBubbleService {
       _emitBubbles();
       _saveBubbles();
     }
-  }
-
-  // ─── Game Center: Xử lý tap vào notification thách đấu ───────────────────
-  void _handleGameChallengeTap(Map<String, dynamic> e) {
-    if (_gameChallengeCtrl.isClosed) return;
-    final event = GameChallengeEvent(
-      matchId: e['matchId'] as String? ?? '',
-      groupId: e['groupId'] as String? ?? '',
-      challengerName: e['challengerName'] as String? ?? '',
-      gameType: e['gameType'] as String? ?? 'caro',
-    );
-    _gameChallengeCtrl.add(event);
-    debugPrint('🎮 Game challenge tapped: ${event.matchId}');
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -192,15 +201,18 @@ class ChatBubbleService {
 
       for (int attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-          final success = await _method.invokeMethod<bool>('showBubble', {
-                'userId': userId,
-                'userName': userName,
-                'avatarUrl': avatarUrl,
-                'lastMessage': lastMessage ?? '',
-              }).timeout(
-                const Duration(seconds: 5),
-                onTimeout: () => false,
-              ) ??
+          final success =
+              await _method
+                  .invokeMethod<bool>('showBubble', {
+                    'userId': userId,
+                    'userName': userName,
+                    'avatarUrl': avatarUrl,
+                    'lastMessage': lastMessage ?? '',
+                  })
+                  .timeout(
+                    const Duration(seconds: 5),
+                    onTimeout: () => false,
+                  ) ??
               false;
 
           if (success) {
@@ -233,10 +245,10 @@ class ChatBubbleService {
     if (kIsWeb || !Platform.isAndroid) return false;
     try {
       await _waitRateLimit();
-      final success = await _method
-              .invokeMethod<bool>('hideBubble', {'userId': userId}).timeout(
-                  const Duration(seconds: 3),
-                  onTimeout: () => false) ??
+      final success =
+          await _method
+              .invokeMethod<bool>('hideBubble', {'userId': userId})
+              .timeout(const Duration(seconds: 3), onTimeout: () => false) ??
           false;
       if (success) {
         _activeBubbles.remove(userId);
@@ -304,11 +316,13 @@ class ChatBubbleService {
     try {
       await _waitRateLimit();
       if (!await hasOverlayPermission()) return false;
-      return await _method.invokeMethod<bool>('showMiniChat', {
-            'userId': userId,
-            'userName': userName,
-            'avatarUrl': avatarUrl,
-          }).timeout(const Duration(seconds: 5), onTimeout: () => false) ??
+      return await _method
+              .invokeMethod<bool>('showMiniChat', {
+                'userId': userId,
+                'userName': userName,
+                'avatarUrl': avatarUrl,
+              })
+              .timeout(const Duration(seconds: 5), onTimeout: () => false) ??
           false;
     } catch (e) {
       debugPrint('❌ showMiniChat: $e');
@@ -331,21 +345,6 @@ class ChatBubbleService {
   // GAME CENTER: GAME CHALLENGE NOTIFICATION
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// Gửi push notification đích danh khi có lời mời thách đấu game.
-  ///
-  /// Được gọi từ [ChatProvider.sendGameInviteMessage] sau khi tin nhắn
-  /// đã được ghi vào Firestore, khi [targetUserId] != null (thách đấu đích danh).
-  ///
-  /// Trên Android: hiển thị notification với action "Vào bàn" và "Từ chối".
-  /// Tap vào notification → emit [gameChallengeStream] → navigate đến match room.
-  ///
-  /// [targetUserId]   : ID người được thách đấu
-  /// [challengerName] : Tên người tạo thách đấu (dùng làm @tag)
-  /// [challengerAvatar]: Avatar người tạo
-  /// [matchId]        : ID trận đấu cần join
-  /// [groupId]        : ID nhóm để navigate về đúng nhóm
-  /// [gameType]       : 'caro' | 'chess'
-  /// [timeControlLabel]: Mô tả thời gian, ví dụ "10 phút" hay "Không giới hạn"
   Future<void> sendGameChallengeNotification({
     required String targetUserId,
     required String challengerName,
@@ -355,42 +354,23 @@ class ChatBubbleService {
     required String gameType,
     String timeControlLabel = '',
   }) async {
-    // Trên web hoặc iOS: không dùng MethodChannel overlay
-    // → notification được xử lý bởi PushNotificationService (FCM)
     if (kIsWeb) return;
 
     final gameEmoji = gameType == 'chess' ? '♟️' : '⭕';
     final timeLabel = timeControlLabel.isNotEmpty ? ' ($timeControlLabel)' : '';
     final title =
         '$gameEmoji $challengerName thách bạn đấu ${_gameDisplayName(gameType)}$timeLabel!';
-    const body = 'Bấm để vào bàn đấu ngay';
 
     try {
-      if (Platform.isAndroid) {
-        // Gửi qua MethodChannel để native hiển thị notification có action buttons
-        await _method.invokeMethod('showGameChallengeNotification', {
-          'targetUserId': targetUserId,
-          'title': title,
-          'body': body,
-          'matchId': matchId,
-          'groupId': groupId,
-          'gameType': gameType,
-          'challengerName': challengerName,
-          'challengerAvatar': challengerAvatar,
-        });
-        debugPrint('🔔 Game challenge notification sent to $targetUserId');
-      }
+      // [SỬA LỖI P0]: Xóa gọi MethodChannel 'showGameChallengeNotification'
+      // Native FCM Notification sẽ được kích hoạt từ Backend/Push Service thay thế.
 
-      // Cập nhật badge trên bubble nếu đang active
+      // Chỉ cập nhật hiển thị lên Bubble nếu đang active trên màn hình
       if (_activeBubbles.containsKey(targetUserId)) {
-        await updateBubbleMessage(
-          userId: targetUserId,
-          message: title,
-        );
+        await updateBubbleMessage(userId: targetUserId, message: title);
       }
     } catch (e) {
-      // Không crash nếu notification thất bại — chỉ log
-      debugPrint('⚠️ sendGameChallengeNotification error: $e');
+      debugPrint('⚠️ sendGameChallengeNotification update error: $e');
     }
   }
 
@@ -437,7 +417,8 @@ class ChatBubbleService {
       for (final entry in decoded.entries) {
         try {
           final data = BubbleData.fromJson(
-              Map<String, dynamic>.from(entry.value as Map));
+            Map<String, dynamic>.from(entry.value as Map),
+          );
           if (!data.isValid || data.isStale) continue;
           final ok = await showChatBubble(
             userId: data.userId,

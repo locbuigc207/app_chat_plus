@@ -234,6 +234,8 @@
             android:theme="@style/TransparentFloatingTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
+            android:resizeableActivity="true"
+            android:allowEmbedded="true"
             android:launchMode="singleTask"
             android:taskAffinity=".minichat"
             android:windowSoftInputMode="adjustResize">
@@ -250,24 +252,14 @@
             android:launchMode="singleTask"
             android:showWhenLocked="true"
             android:turnScreenOn="true"
+            android:resizeableActivity="true"
+            android:supportsPictureInPicture="true"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:windowSoftInputMode="adjustNothing" />
 
         <!-- ═══════════════════════════════════════════════════════════
              SERVICES
         ═══════════════════════════════════════════════════════════════ -->
-
-        <!-- Bubble Overlay Service (WindowManager < Android 11) -->
-        <service
-            android:name=".bubble.BubbleOverlayService"
-            android:exported="false"
-            android:enabled="true"
-            android:foregroundServiceType="specialUse"
-            android:stopWithTask="false">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Chat bubble overlay for quick messaging" />
-        </service>
 
         <!-- Agora RTC Call Service (audio + video) -->
         <service

@@ -5,7 +5,6 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
-import android.os.Build
 import android.util.Log
 import hust.appchat.shortcuts.AvatarLoader
 import hust.appchat.shortcuts.ShortcutHelper
@@ -23,17 +22,13 @@ import kotlinx.coroutines.*
  *
  * Channels:
  * • CHANNEL_MESSAGES — high importance; allows bubbles; shows badge.
- * • CHANNEL_SERVICE  — min importance; used by foreground service; no sound.
+ * (Đã dọn dẹp CHANNEL_SERVICE do BubbleOverlayService không còn tồn tại ở minSdk 30)
  */
 object NotificationHelper {
 
     private const val TAG = "NotificationHelper"
 
     const val CHANNEL_MESSAGES = "chat_messages"
-    const val CHANNEL_SERVICE  = "chat_bubbles"
-
-    // LỖI I FIX: Đồng bộ BASE_ID với BubbleNotificationManager
-    private const val BASE_NOTIF_ID = 10_000
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var channelsCreated = false
@@ -43,7 +38,7 @@ object NotificationHelper {
     // ========================================
 
     fun createNotificationChannel(context: Context) {
-        if (channelsCreated || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        if (channelsCreated) return
 
         try {
             val nm = context.getSystemService(NotificationManager::class.java) ?: return
@@ -61,27 +56,12 @@ object NotificationHelper {
                 vibrationPattern = longArrayOf(0, 120, 60, 120)
                 setShowBadge(true)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    setAllowBubbles(true)
-                }
+                setAllowBubbles(true) // Luôn áp dụng trên Android 11+
             }
 
-            // Service channel — for foreground service notification (silent)
-            val svcChannel = NotificationChannel(
-                CHANNEL_SERVICE,
-                "Dịch vụ bong bóng",
-                NotificationManager.IMPORTANCE_MIN
-            ).apply {
-                description = "Duy trì bong bóng chat trong nền"
-                setShowBadge(false)
-                enableLights(false)
-                enableVibration(false)
-            }
-
-            nm.createNotificationChannels(listOf(msgChannel, svcChannel))
+            nm.createNotificationChannel(msgChannel)
             channelsCreated = true
-            Log.d(TAG, "✅ Notification channels created")
+            Log.d(TAG, "✅ Notification channel created")
 
         } catch (e: Exception) {
             Log.e(TAG, "❌ createNotificationChannel: $e")
@@ -114,9 +94,9 @@ object NotificationHelper {
         }
     }
 
-    // LỖI I FIX: Đồng bộ modulo 50_000 với BubbleNotificationManager để hủy chính xác
+    // [SỬA LỖI P0]: Gộp công thức tính ID về một nguồn duy nhất (Single Source of Truth)
     fun getNotificationId(userId: String): Int {
-        return BASE_NOTIF_ID + ((userId.hashCode() and 0x7FFFFFFF) % 50_000)
+        return BubbleNotificationManager.notifId(userId)
     }
 
     // ========================================
@@ -124,8 +104,6 @@ object NotificationHelper {
     // ========================================
 
     fun preloadAvatar(context: Context, avatarUrl: String, userName: String) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
-
         scope.launch {
             try {
                 AvatarLoader.preloadAvatar(context, avatarUrl, userName)
@@ -139,31 +117,22 @@ object NotificationHelper {
         context: Context,
         users: List<Triple<String, String, String>>
     ) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
         val avatarList = users.map { (_, userName, avatarUrl) -> avatarUrl to userName }
         AvatarLoader.preloadAvatarsBatch(context, avatarList)
     }
 
     fun clearAvatarCache(avatarUrl: String, userName: String) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            AvatarLoader.clearCache(avatarUrl, userName)
-            Log.d(TAG, "🗑️ Cleared avatar cache for: $userName")
-        }
+        AvatarLoader.clearCache(avatarUrl, userName)
+        Log.d(TAG, "🗑️ Cleared avatar cache for: $userName")
     }
 
     fun clearAllAvatarCache() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            AvatarLoader.clearAllCache()
-            Log.d(TAG, "🗑️ Cleared all avatar cache")
-        }
+        AvatarLoader.clearAllCache()
+        Log.d(TAG, "🗑️ Cleared all avatar cache")
     }
 
     fun getAvatarCacheStats(): Map<String, Any> {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            AvatarLoader.getCacheStats()
-        } else {
-            emptyMap()
-        }
+        return AvatarLoader.getCacheStats()
     }
 
     // ========================================
@@ -171,17 +140,17 @@ object NotificationHelper {
     // ========================================
 
     fun isBubbleChannelEnabled(context: Context): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
-
         return try {
             val nm = context.getSystemService(NotificationManager::class.java) ?: return false
             val channel = nm.getNotificationChannel(CHANNEL_MESSAGES) ?: return false
 
-            // LỖI A FIX: Bỏ hoàn toàn check areBubblesAllowed() do bị deprecated và lỗi ngầm trên OEM.
-            // Chỉ kiểm tra tầm quan trọng của channel và trạng thái thông báo tổng thể.
-            channel.importance >= NotificationManager.IMPORTANCE_DEFAULT && nm.areNotificationsEnabled()
+            // [SỬA LỖI P2]: Dùng canBubble() kết hợp areNotificationsEnabled() là phương pháp chuẩn
+            // và ổn định nhất để kiểm tra trạng thái Bubble API trên Android 11+.
+            channel.importance >= NotificationManager.IMPORTANCE_DEFAULT &&
+                    nm.areNotificationsEnabled() &&
+                    channel.canBubble()
         } catch (e: Exception) {
-            true // Mặc định trả về true để hệ thống tự quyết định việc hiển thị
+            true // Mặc định trả về true để hệ thống tự quyết định việc hiển thị nếu kiểm tra lỗi
         }
     }
 
@@ -198,10 +167,8 @@ object NotificationHelper {
     // ========================================
 
     fun cleanup() {
-        scope.coroutineContext.cancelChildren() // Safely cancel ongoing jobs without killing the scope entirely
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            AvatarLoader.clearAllCache()
-        }
+        scope.coroutineContext.cancelChildren() // Hủy an toàn các tác vụ con đang chạy
+        AvatarLoader.clearAllCache()
         ShortcutHelper.cleanup()
         channelsCreated = false
         Log.d(TAG, "✅ NotificationHelper cleanup complete")

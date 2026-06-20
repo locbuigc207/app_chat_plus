@@ -1,5 +1,6 @@
 # ===========================================================================
 # proguard-rules.pro — Hoàn chỉnh cho Flutter + Native Bubble Chat System
+# (Đã cập nhật minSdk 30 - Xóa các cấu hình WindowManager/BubbleManager cũ)
 # ===========================================================================
 
 # ── 1. DEBUGGING & STACK TRACES ──────────────────────────────────────────────
@@ -19,19 +20,10 @@
 -dontwarn io.flutter.**
 
 # ── 3. NATIVE APP CODE CỦA BẠN (Bubble Chat, Notifications, Activity) ────────
-# Giữ lại toàn bộ code Kotlin/Java trong package của bạn để tránh lỗi service
+# Tối ưu hóa: Giữ lại toàn bộ code Kotlin/Java trong package hiện hành để tránh lỗi runtime.
+# Đã dọn dẹp toàn bộ khối lệnh -keep liên quan đến BubbleManager/MultiBubbleManager cũ.
 -keep class hust.appchat.** { *; }
 -keepclassmembers class hust.appchat.** { *; }
-
-# BubbleManager persistence models (Gson serialization/deserialization)
--keepclassmembers class hust.appchat.bubble.BubbleManager {
-    static ** INSTANCE;
-}
--keep class hust.appchat.bubble.BubbleManager$BubbleEntry { *; }
--keep class hust.appchat.bubble.BubbleManager$PersistedEntry { *; }
--keep class hust.appchat.bubble.BubbleManager$Companion { *; }
--keep class hust.appchat.bubble.MultiBubbleManager$BubbleInfo { *; }
--keep class hust.appchat.bubble.MultiBubbleManager$Position { *; }
 
 # ── 4. THIRD-PARTY SDKS (DeepAR, Agora, FFmpeg, Media3) ─────────────────────
 # DeepAR (Cực kỳ quan trọng để không crash Camera Story)

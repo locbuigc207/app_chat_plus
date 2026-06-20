@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:http/http.dart' as http;
 
 import '../constants/app_constants.dart';
 import '../models/group_call_model.dart';
@@ -18,7 +21,7 @@ import '../services/group_call_service.dart';
 class GroupCallNotificationService {
   GroupCallNotificationService._();
   static final GroupCallNotificationService instance =
-      GroupCallNotificationService._();
+  GroupCallNotificationService._();
 
   final _db = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
@@ -36,6 +39,24 @@ class GroupCallNotificationService {
     debugPrint('✅ GroupCallNotificationService initialized');
   }
 
+  // ── Utility: Tải và lưu ảnh để dùng làm Large Icon ─────────────────────────
+  Future<String?> _downloadAndSaveImage(String url, String fileName) async {
+    try {
+      final directory = await getTemporaryDirectory();
+      final filePath = '${directory.path}/$fileName';
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final file = File(filePath);
+        await file.writeAsBytes(response.bodyBytes);
+        return filePath;
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error downloading avatar image for notification: $e');
+    }
+    return null;
+  }
+
   // ── Show incoming call notification ────────────────────────────────────────
   Future<void> showIncomingCallNotification({
     required GroupCallModel call,
@@ -50,8 +71,14 @@ class GroupCallNotificationService {
       final body =
           '${call.initiatorName} đang gọi cho nhóm "${call.groupName}"';
 
-      // FIX LỖI 1 & LỖI 2: Sử dụng `groupCallChannelId` thay vì `gameChannelId` hay `callChannelId`
-      // để đảm bảo notification hoạt động trên đúng channel hợp lệ dành riêng cho cuộc gọi nhóm.
+      String? largeIconPath;
+      if (call.groupAvatarUrl.isNotEmpty) {
+        largeIconPath = await _downloadAndSaveImage(
+            call.groupAvatarUrl,
+            'group_avatar_${call.callId}.png'
+        );
+      }
+
       final androidDetails = AndroidNotificationDetails(
         AppConstants.groupCallChannelId,
         'Cuộc gọi nhóm',
@@ -76,8 +103,9 @@ class GroupCallNotificationService {
           ),
         ],
         styleInformation: BigTextStyleInformation(body),
-        largeIcon: call.groupAvatarUrl.isNotEmpty
-            ? DrawableResourceAndroidBitmap(call.groupAvatarUrl)
+        // [FIX L9] Sử dụng FilePathAndroidBitmap sau khi download ảnh từ URL thay vì hàm cũ gây lỗi
+        largeIcon: largeIconPath != null
+            ? FilePathAndroidBitmap(largeIconPath)
             : null,
       );
 
@@ -134,8 +162,6 @@ class GroupCallNotificationService {
     try {
       final isVideo = call.callType == GroupCallType.video;
 
-      // FIX LỖI 3: Dùng `ongoingCallChannelId` (với Importance.low) thay vì channel mặc định (Importance.max).
-      // Việc này giúp thông báo nằm im lặng (silent) trên status bar thay vì rung chuông liên tục.
       final androidDetails = AndroidNotificationDetails(
         AppConstants.ongoingCallChannelId,
         'Cuộc gọi đang diễn ra',
@@ -187,9 +213,6 @@ class GroupCallNotificationService {
     required GroupCallModel call,
     required List<String> memberIds,
   }) async {
-    // FIX LỖI 7: Xóa bỏ hoàn toàn luồng ghi vào Firestore collection `_fcm_triggers`.
-    // Cloud Function lắng nghe `group_calls/{callId}` (onGroupCallCreated)
-    // đã tự động xử lý gửi FCM tới các thành viên. Ghi vào đây là dead write tốn quota.
     debugPrint(
       '✅ FCM invites handled by Cloud Functions for call: ${call.callId}',
     );

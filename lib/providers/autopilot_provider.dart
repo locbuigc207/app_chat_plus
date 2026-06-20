@@ -5,6 +5,7 @@ import 'package:emoji_regex/emoji_regex.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../constants/app_constants.dart';
 import '../providers/providers.dart';
 import '../services/services.dart';
 
@@ -14,55 +15,55 @@ enum AutoPilotTone { friendly, professional, funny, brief, likeMe }
 
 extension AutoPilotToneX on AutoPilotTone {
   String get label => const {
-        AutoPilotTone.friendly: 'Thân thiện',
-        AutoPilotTone.professional: 'Chuyên nghiệp',
-        AutoPilotTone.funny: 'Hài hước',
-        AutoPilotTone.brief: 'Ngắn gọn',
-        AutoPilotTone.likeMe: 'Giống tôi',
-      }[this]!;
+    AutoPilotTone.friendly: 'Thân thiện',
+    AutoPilotTone.professional: 'Chuyên nghiệp',
+    AutoPilotTone.funny: 'Hài hước',
+    AutoPilotTone.brief: 'Ngắn gọn',
+    AutoPilotTone.likeMe: 'Giống tôi',
+  }[this]!;
 
   String get description => const {
-        AutoPilotTone.friendly: 'Ấm áp, thân mật, gần gũi',
-        AutoPilotTone.professional: 'Lịch sự, trang trọng, súc tích',
-        AutoPilotTone.funny: 'Vui vẻ, hài hước, Gen Z',
-        AutoPilotTone.brief: 'Ngắn gọn, thẳng vào vấn đề',
-        AutoPilotTone.likeMe: 'Học từ cách nhắn tin của bạn',
-      }[this]!;
+    AutoPilotTone.friendly: 'Ấm áp, thân mật, gần gũi',
+    AutoPilotTone.professional: 'Lịch sự, trang trọng, súc tích',
+    AutoPilotTone.funny: 'Vui vẻ, hài hước, Gen Z',
+    AutoPilotTone.brief: 'Ngắn gọn, thẳng vào vấn đề',
+    AutoPilotTone.likeMe: 'Học từ cách nhắn tin của bạn',
+  }[this]!;
 
   String get emoji => const {
-        AutoPilotTone.friendly: '😊',
-        AutoPilotTone.professional: '💼',
-        AutoPilotTone.funny: '😂',
-        AutoPilotTone.brief: '⚡',
-        AutoPilotTone.likeMe: '🪞',
-      }[this]!;
+    AutoPilotTone.friendly: '😊',
+    AutoPilotTone.professional: '💼',
+    AutoPilotTone.funny: '😂',
+    AutoPilotTone.brief: '⚡',
+    AutoPilotTone.likeMe: '🪞',
+  }[this]!;
 
   String get systemPromptHint => const {
-        AutoPilotTone.friendly:
-            'Trả lời THÂN THIỆN: ấm áp, gần gũi như bạn thân nhắn tin, có thể dùng emoji nhẹ nhàng, câu ngắn.',
-        AutoPilotTone.professional:
-            'Trả lời CHUYÊN NGHIỆP: lịch sự, trang trọng, súc tích, không tiếng lóng, không emoji.',
-        AutoPilotTone.funny:
-            'Trả lời HÀI HƯỚC Gen Z: vui vẻ, dí dỏm, emoji vừa phải 😂🔥, tiếng lóng tự nhiên.',
-        AutoPilotTone.brief:
-            'Trả lời CỰC NGẮN: chỉ 1 câu hoặc vài từ, thẳng vào vấn đề, không giải thích.',
-        AutoPilotTone.likeMe:
-            'Trả lời GIỐNG CHỦ TÀI KHOẢN: bắt chước đúng phong cách đã học từ persona.',
-      }[this]!;
+    AutoPilotTone.friendly:
+        'Trả lời THÂN THIỆN: ấm áp, gần gũi như bạn thân nhắn tin, có thể dùng emoji nhẹ nhàng, câu ngắn.',
+    AutoPilotTone.professional:
+        'Trả lời CHUYÊN NGHIỆP: lịch sự, trang trọng, súc tích, không tiếng lóng, không emoji.',
+    AutoPilotTone.funny:
+        'Trả lời HÀI HƯỚC Gen Z: vui vẻ, dí dỏm, emoji vừa phải 😂🔥, tiếng lóng tự nhiên.',
+    AutoPilotTone.brief:
+        'Trả lời CỰC NGẮN: chỉ 1 câu hoặc vài từ, thẳng vào vấn đề, không giải thích.',
+    AutoPilotTone.likeMe:
+        'Trả lời GIỐNG CHỦ TÀI KHOẢN: bắt chước đúng phong cách đã học từ persona.',
+  }[this]!;
 
   static AutoPilotTone fromString(String s) => AutoPilotTone.values.firstWhere(
-        (e) => e.name == s,
-        orElse: () => AutoPilotTone.friendly,
-      );
+    (e) => e.name == s,
+    orElse: () => AutoPilotTone.friendly,
+  );
 }
 
 enum ScheduleMode { always, sleepHours, workHours, custom }
 
 extension ScheduleModeX on ScheduleMode {
   static ScheduleMode fromString(String s) => ScheduleMode.values.firstWhere(
-        (e) => e.name == s,
-        orElse: () => ScheduleMode.always,
-      );
+    (e) => e.name == s,
+    orElse: () => ScheduleMode.always,
+  );
 }
 
 // ─── AutoPilotConfig Model ────────────────────────────────────────────────────
@@ -116,43 +117,44 @@ class AutoPilotConfig {
     String? awayMessage,
     String? learnedPersona,
     DateTime? personaLearnedAt,
-  }) =>
-      AutoPilotConfig(
-        conversationId: conversationId,
-        isEnabled: isEnabled ?? this.isEnabled,
-        tone: tone ?? this.tone,
-        scheduleMode: scheduleMode ?? this.scheduleMode,
-        startHour: startHour ?? this.startHour,
-        endHour: endHour ?? this.endHour,
-        awayMessage: awayMessage ?? this.awayMessage,
-        learnedPersona: learnedPersona ?? this.learnedPersona,
-        personaLearnedAt: personaLearnedAt ?? this.personaLearnedAt,
-      );
+  }) => AutoPilotConfig(
+    conversationId: conversationId,
+    isEnabled: isEnabled ?? this.isEnabled,
+    tone: tone ?? this.tone,
+    scheduleMode: scheduleMode ?? this.scheduleMode,
+    startHour: startHour ?? this.startHour,
+    endHour: endHour ?? this.endHour,
+    awayMessage: awayMessage ?? this.awayMessage,
+    learnedPersona: learnedPersona ?? this.learnedPersona,
+    personaLearnedAt: personaLearnedAt ?? this.personaLearnedAt,
+  );
 
   Map<String, dynamic> toMap() => {
-        'conversationId': conversationId,
-        'isEnabled': isEnabled,
-        'tone': tone.name,
-        'scheduleMode': scheduleMode.name,
-        'startHour': startHour,
-        'endHour': endHour,
-        'awayMessage': awayMessage,
-        if (learnedPersona != null) 'learnedPersona': learnedPersona,
-        if (personaLearnedAt != null)
-          'personaLearnedAt': personaLearnedAt!.millisecondsSinceEpoch,
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
+    'conversationId': conversationId,
+    'isEnabled': isEnabled,
+    'tone': tone.name,
+    'scheduleMode': scheduleMode.name,
+    'startHour': startHour,
+    'endHour': endHour,
+    'awayMessage': awayMessage,
+    if (learnedPersona != null) 'learnedPersona': learnedPersona,
+    if (personaLearnedAt != null)
+      'personaLearnedAt': personaLearnedAt!.millisecondsSinceEpoch,
+    'updatedAt': FieldValue.serverTimestamp(),
+  };
 
   factory AutoPilotConfig.fromMap(String convId, Map<String, dynamic> m) =>
       AutoPilotConfig(
         conversationId: convId,
         isEnabled: m['isEnabled'] as bool? ?? false,
         tone: AutoPilotToneX.fromString(m['tone'] as String? ?? 'friendly'),
-        scheduleMode:
-            ScheduleModeX.fromString(m['scheduleMode'] as String? ?? 'always'),
+        scheduleMode: ScheduleModeX.fromString(
+          m['scheduleMode'] as String? ?? 'always',
+        ),
         startHour: m['startHour'] as int? ?? 22,
         endHour: m['endHour'] as int? ?? 7,
-        awayMessage: m['awayMessage'] as String? ??
+        awayMessage:
+            m['awayMessage'] as String? ??
             'Mình đang bận, sẽ nhắn lại sau nha! 😊',
         learnedPersona: m['learnedPersona'] as String?,
         personaLearnedAt: m['personaLearnedAt'] != null
@@ -167,10 +169,7 @@ class AutoPilotProvider extends ChangeNotifier {
   final FirebaseFirestore firebaseFirestore;
   final SharedPreferences prefs;
 
-  AutoPilotProvider({
-    required this.firebaseFirestore,
-    required this.prefs,
-  });
+  AutoPilotProvider({required this.firebaseFirestore, required this.prefs});
 
   final Map<String, AutoPilotConfig> _configs = {};
   final Map<String, DateTime> _lastReplyTime = {};
@@ -198,8 +197,10 @@ class AutoPilotProvider extends ChangeNotifier {
           .get();
 
       if (doc.exists && doc.data() != null) {
-        _configs[conversationId] =
-            AutoPilotConfig.fromMap(conversationId, doc.data()!);
+        _configs[conversationId] = AutoPilotConfig.fromMap(
+          conversationId,
+          doc.data()!,
+        );
         notifyListeners();
       }
     } catch (e) {
@@ -227,8 +228,11 @@ class AutoPilotProvider extends ChangeNotifier {
     _persist(id);
   }
 
-  void updateCustomSchedule(String id,
-      {required int startHour, required int endHour}) {
+  void updateCustomSchedule(
+    String id, {
+    required int startHour,
+    required int endHour,
+  }) {
     _configs[id] = getConfig(id).copyWith(
       scheduleMode: ScheduleMode.custom,
       startHour: startHour,
@@ -276,7 +280,8 @@ class AutoPilotProvider extends ChangeNotifier {
     // Guards
     if (!config.isActiveNow) return null;
     if (currentUserId != null && senderId == currentUserId) return null;
-    if (senderId == 'AI_BOT') return null;
+    // Fix: Thay AI_BOT thành AppConstants.aiAssistantId
+    if (senderId == AppConstants.aiAssistantId) return null;
 
     // Rate limit
     final last = _lastReplyTime[conversationId];
@@ -292,6 +297,9 @@ class AutoPilotProvider extends ChangeNotifier {
         incomingMessage: incomingMessage,
         myStyleContext: personaCtx,
         awayMessage: config.awayMessage,
+        // Fix: Bổ sung 2 params quan trọng để AIBackendService đẩy xuống Cloud Functions
+        tone: config.tone.name,
+        contextMessages: contextMessages,
       );
 
       if (reply != null && reply.isNotEmpty) {
@@ -320,11 +328,13 @@ class AutoPilotProvider extends ChangeNotifier {
     try {
       final msgs = LocalDbService()
           .getMessages(conversationId)
-          .where((m) =>
-              m['idFrom'] == currentUserId &&
-              m['type'] == 0 &&
-              (m['content']?.toString().length ?? 0) > 3 &&
-              !(m['content']?.toString().startsWith('{"iv":') ?? false))
+          .where(
+            (m) =>
+                m['idFrom'] == currentUserId &&
+                m['type'] == 0 &&
+                (m['content']?.toString().length ?? 0) > 3 &&
+                !(m['content']?.toString().startsWith('{"iv":') ?? false),
+          )
           .take(100)
           .map((m) => m['content']?.toString() ?? '')
           .where((c) => c.isNotEmpty)
@@ -333,10 +343,9 @@ class AutoPilotProvider extends ChangeNotifier {
       if (msgs.length < 10) return false;
 
       final persona = _analyzePersonaLocally(msgs);
-      _configs[conversationId] = getConfig(conversationId).copyWith(
-        learnedPersona: persona,
-        personaLearnedAt: DateTime.now(),
-      );
+      _configs[conversationId] = getConfig(
+        conversationId,
+      ).copyWith(learnedPersona: persona, personaLearnedAt: DateTime.now());
       notifyListeners();
       _persist(conversationId);
       return true;
@@ -397,30 +406,31 @@ class AutoPilotProvider extends ChangeNotifier {
         }
       }
     }
-    final topWords = (freq.entries.toList()
-          ..sort((a, b) => b.value.compareTo(a.value)))
-        .take(5)
-        .map((e) => e.key)
-        .join(', ');
+    final topWords =
+        (freq.entries.toList()..sort((a, b) => b.value.compareTo(a.value)))
+            .take(5)
+            .map((e) => e.key)
+            .join(', ');
 
     final emojiLevel = emojiCount > messages.length * 0.5
         ? 'thường xuyên dùng emoji'
         : emojiCount > messages.length * 0.2
-            ? 'đôi khi dùng emoji'
-            : 'ít dùng emoji';
+        ? 'đôi khi dùng emoji'
+        : 'ít dùng emoji';
 
     final lenStyle = avgLen < 20
         ? 'nhắn rất ngắn (1–2 từ hoặc 1 câu)'
         : avgLen < 60
-            ? 'nhắn vừa phải (1–2 câu)'
-            : 'nhắn dài và chi tiết';
+        ? 'nhắn vừa phải (1–2 câu)'
+        : 'nhắn dài và chi tiết';
 
     final greetCount = messages.where((m) {
       final l = m.toLowerCase();
       return l.startsWith('ê') || l.startsWith('hey') || l.startsWith('alo');
     }).length;
-    final greetStyle =
-        greetCount > 2 ? ', hay bắt đầu bằng "Ê" hoặc "Hey"' : '';
+    final greetStyle = greetCount > 2
+        ? ', hay bắt đầu bằng "Ê" hoặc "Hey"'
+        : '';
 
     return '$lenStyle$greetStyle. $emojiLevel.'
         '${topWords.isNotEmpty ? ' Hay dùng: $topWords.' : ''}';

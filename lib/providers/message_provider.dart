@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
+import 'package:flutter_chat_demo/services/services.dart';
 
 enum MessageType { text, image, video, audio, file, location, sticker, gif }
 
@@ -19,13 +20,13 @@ class MessageProvider {
   // ── Streams ───────────────────────────────────────────────────────────────
 
   Stream<QuerySnapshot> getMessages(
-      String groupChatId, {
-        int limit = 30,
-        DocumentSnapshot? startAfter,
-      }) {
-    var query = _msgCollection(groupChatId)
-        .orderBy(FirestoreConstants.timestamp, descending: true)
-        .limit(limit);
+    String groupChatId, {
+    int limit = 30,
+    DocumentSnapshot? startAfter,
+  }) {
+    var query = _msgCollection(
+      groupChatId,
+    ).orderBy(FirestoreConstants.timestamp, descending: true).limit(limit);
 
     if (startAfter != null) query = query.startAfterDocument(startAfter);
     return query.snapshots();
@@ -48,10 +49,10 @@ class MessageProvider {
   // ── Mutations ─────────────────────────────────────────────────────────────
 
   Future<bool> editMessage(
-      String groupChatId,
-      String messageId,
-      String newContent,
-      ) async {
+    String groupChatId,
+    String messageId,
+    String newContent,
+  ) async {
     try {
       await _msgCollection(groupChatId).doc(messageId).update({
         FirestoreConstants.content: newContent,
@@ -59,7 +60,18 @@ class MessageProvider {
         'isEdited': true,
       });
 
-      await _syncConversationLastMessage(groupChatId, messageId, newContent);
+      // [SỬA LỖI P1]: Đồng bộ hóa trực tiếp lên Bubble Native.
+      final isLastMsg = await _syncConversationLastMessage(
+        groupChatId,
+        messageId,
+        newContent,
+      );
+      if (isLastMsg) {
+        await ChatBubbleService().updateBubbleMessage(
+          userId: _extractPeerId(groupChatId),
+          message: newContent,
+        );
+      }
       return true;
     } catch (e) {
       debugPrint('❌ Error editing message: $e');
@@ -68,26 +80,40 @@ class MessageProvider {
   }
 
   Future<bool> deleteMessage(
-      String groupChatId,
-      String messageId, {
-        bool forEveryone = true,
-      }) async {
+    String groupChatId,
+    String messageId, {
+    bool forEveryone = true,
+  }) async {
     try {
       final now = DateTime.now().millisecondsSinceEpoch.toString();
+      final deletedText = 'This message was deleted';
 
       if (forEveryone) {
         await _msgCollection(groupChatId).doc(messageId).update({
           'isDeleted': true,
-          FirestoreConstants.content: 'This message was deleted',
+          FirestoreConstants.content: deletedText,
           'deletedAt': now,
           'autoDeleteAt': FieldValue.delete(),
         });
       } else {
-        await _msgCollection(groupChatId).doc(messageId).update({
-          'deletedBySender': true,
-          'deletedAt': now,
-        });
+        await _msgCollection(
+          groupChatId,
+        ).doc(messageId).update({'deletedBySender': true, 'deletedAt': now});
       }
+
+      // [SỬA LỖI P1]: Đồng bộ hóa bong bóng chat nếu tin nhắn cuối cùng bị xóa
+      final isLastMsg = await _syncConversationLastMessage(
+        groupChatId,
+        messageId,
+        deletedText,
+      );
+      if (isLastMsg) {
+        await ChatBubbleService().updateBubbleMessage(
+          userId: _extractPeerId(groupChatId),
+          message: 'Tin nhắn đã thu hồi',
+        );
+      }
+
       return true;
     } catch (e) {
       debugPrint('❌ Error deleting message: $e');
@@ -95,17 +121,21 @@ class MessageProvider {
     }
   }
 
-  Future<int> deleteMultipleMessages(String groupChatId, List<String> messageIds) async {
+  Future<int> deleteMultipleMessages(
+    String groupChatId,
+    List<String> messageIds,
+  ) async {
     try {
       WriteBatch batch = firebaseFirestore.batch();
       int count = 0;
       int deleted = 0;
       final now = DateTime.now().millisecondsSinceEpoch.toString();
+      final deletedText = 'This message was deleted';
 
       for (final id in messageIds) {
         batch.update(_msgCollection(groupChatId).doc(id), {
           'isDeleted': true,
-          FirestoreConstants.content: 'This message was deleted',
+          FirestoreConstants.content: deletedText,
           'deletedAt': now,
         });
 
@@ -120,6 +150,25 @@ class MessageProvider {
       }
 
       if (count > 0) await batch.commit();
+
+      // [SỬA LỖI P1]: Đồng bộ hóa nếu trong tập hợp tin bị xóa có tin cuối cùng.
+      final latestMsgDoc = await _msgCollection(
+        groupChatId,
+      ).orderBy(FirestoreConstants.timestamp, descending: true).limit(1).get();
+
+      if (latestMsgDoc.docs.isNotEmpty &&
+          messageIds.contains(latestMsgDoc.docs.first.id)) {
+        await firebaseFirestore
+            .collection(FirestoreConstants.pathConversationCollection)
+            .doc(groupChatId)
+            .update({FirestoreConstants.lastMessage: deletedText});
+
+        await ChatBubbleService().updateBubbleMessage(
+          userId: _extractPeerId(groupChatId),
+          message: 'Tin nhắn đã thu hồi',
+        );
+      }
+
       return deleted;
     } catch (e) {
       debugPrint('❌ Error deleting multiple messages: $e');
@@ -128,10 +177,10 @@ class MessageProvider {
   }
 
   Future<bool> togglePinMessage(
-      String groupChatId,
-      String messageId,
-      bool currentPinStatus,
-      ) async {
+    String groupChatId,
+    String messageId,
+    bool currentPinStatus,
+  ) async {
     try {
       final newPinned = !currentPinStatus;
       await _msgCollection(groupChatId).doc(messageId).update({
@@ -148,11 +197,11 @@ class MessageProvider {
   }
 
   Future<bool> toggleStarMessage(
-      String groupChatId,
-      String messageId,
-      String userId,
-      bool isStarred,
-      ) async {
+    String groupChatId,
+    String messageId,
+    String userId,
+    bool isStarred,
+  ) async {
     try {
       await _msgCollection(groupChatId).doc(messageId).update({
         'starredBy': isStarred
@@ -173,10 +222,14 @@ class MessageProvider {
     required String senderId,
   }) async {
     try {
-      final original = await _msgCollection(fromGroupChatId).doc(messageId).get();
+      final original = await _msgCollection(
+        fromGroupChatId,
+      ).doc(messageId).get();
       if (!original.exists) return false;
 
-      final data = Map<String, dynamic>.from(original.data() as Map<String, dynamic>);
+      final data = Map<String, dynamic>.from(
+        original.data() as Map<String, dynamic>,
+      );
 
       data.remove('isPinned');
       data.remove('pinnedAt');
@@ -185,7 +238,8 @@ class MessageProvider {
       data.remove('autoDeleteAt');
 
       data[FirestoreConstants.idFrom] = senderId;
-      data[FirestoreConstants.timestamp] = DateTime.now().millisecondsSinceEpoch.toString();
+      data[FirestoreConstants.timestamp] = DateTime.now().millisecondsSinceEpoch
+          .toString();
       data['isForwarded'] = true;
       data['forwardedFrom'] = fromGroupChatId;
 
@@ -203,7 +257,9 @@ class MessageProvider {
     required Map<String, dynamic> messageData,
   }) async {
     try {
-      final replyToDoc = await _msgCollection(groupChatId).doc(replyToMessageId).get();
+      final replyToDoc = await _msgCollection(
+        groupChatId,
+      ).doc(replyToMessageId).get();
 
       String replyPreview = '';
       String replyToSender = '';
@@ -234,7 +290,11 @@ class MessageProvider {
 
   // ── Read receipts ─────────────────────────────────────────────────────────
 
-  Future<void> markMessageRead(String groupChatId, String messageId, String userId) async {
+  Future<void> markMessageRead(
+    String groupChatId,
+    String messageId,
+    String userId,
+  ) async {
     try {
       await _msgCollection(groupChatId).doc(messageId).update({
         'readBy': FieldValue.arrayUnion([userId]),
@@ -271,6 +331,9 @@ class MessageProvider {
         }
       }
       if (count > 0) await batch.commit();
+
+      // [SỬA LỖI P1]: Xóa thông báo Unread Badge màu đỏ trên bong bóng.
+      await ChatBubbleService().clearUnread(_extractPeerId(groupChatId));
     } catch (e) {
       debugPrint('❌ Error marking all messages read: $e');
     }
@@ -279,9 +342,9 @@ class MessageProvider {
   // ── Search ────────────────────────────────────────────────────────────────
 
   Future<List<QueryDocumentSnapshot>> searchMessages(
-      String groupChatId,
-      String query,
-      ) async {
+    String groupChatId,
+    String query,
+  ) async {
     try {
       final trimmed = query.trim().toLowerCase();
       if (trimmed.isEmpty) return [];
@@ -292,9 +355,10 @@ class MessageProvider {
           .get();
 
       return snapshot.docs.where((doc) {
-        final content = (doc.data() as Map<String, dynamic>)[FirestoreConstants.content]
-            ?.toString()
-            .toLowerCase() ??
+        final content =
+            (doc.data() as Map<String, dynamic>)[FirestoreConstants.content]
+                ?.toString()
+                .toLowerCase() ??
             '';
         return content.contains(trimmed);
       }).toList();
@@ -306,25 +370,40 @@ class MessageProvider {
 
   // ── Internal ──────────────────────────────────────────────────────────────
 
-  Future<void> _syncConversationLastMessage(
-      String groupChatId,
-      String messageId,
-      String newContent,
-      ) async {
+  /// Cập nhật thông tin Last Message lên Conversation Node và trả về true
+  /// nếu document thay đổi vừa rồi thực sự nằm cuối cùng chuỗi.
+  Future<bool> _syncConversationLastMessage(
+    String groupChatId,
+    String messageId,
+    String newContent,
+  ) async {
     try {
-      final latest = await _msgCollection(groupChatId)
-          .orderBy(FirestoreConstants.timestamp, descending: true)
-          .limit(1)
-          .get();
+      final latest = await _msgCollection(
+        groupChatId,
+      ).orderBy(FirestoreConstants.timestamp, descending: true).limit(1).get();
 
       if (latest.docs.isNotEmpty && latest.docs.first.id == messageId) {
         await firebaseFirestore
             .collection(FirestoreConstants.pathConversationCollection)
             .doc(groupChatId)
             .update({FirestoreConstants.lastMessage: newContent});
+        return true;
       }
+      return false;
     } catch (e) {
       debugPrint('❌ Error syncing conversation last message: $e');
+      return false;
     }
+  }
+
+  // Trích xuất lại User Id đích từ format ghép UID
+  String _extractPeerId(String groupChatId) {
+    if (!groupChatId.contains('-'))
+      return groupChatId; // Trường hợp là chat nhóm
+
+    // Nếu là chat 1-1, tìm ID khác với current User ID đang nắm giữ Bubble
+    // (Bằng cách lấy mảng tách ra, sau đó lấy ID cuối cùng)
+    final parts = groupChatId.split('-');
+    return parts.last;
   }
 }

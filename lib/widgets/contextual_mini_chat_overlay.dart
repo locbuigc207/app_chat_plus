@@ -57,8 +57,10 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
   // Sử dụng Singleton instance của Service
   final _ctxSvc = ContextualBubbleService.instance;
 
-  BubbleContext _ctx =
-      BubbleContext(mode: BubbleMode.normal, updatedAt: DateTime.now());
+  BubbleContext _ctx = BubbleContext(
+    mode: BubbleMode.normal,
+    updatedAt: DateTime.now(),
+  );
   StreamSubscription<BubbleContext>? _ctxSub;
 
   Offset _pos = const Offset(_kDefaultLeftOffset, _kDefaultTopOffset);
@@ -81,24 +83,33 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     super.initState();
 
     _slideIn = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 420))
-      ..forward();
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    )..forward();
 
     _expandAnim = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 340),
       value: 1.0,
     );
-    _expandCurve =
-        CurvedAnimation(parent: _expandAnim, curve: Curves.easeInOutCubic);
+    _expandCurve = CurvedAnimation(
+      parent: _expandAnim,
+      curve: Curves.easeInOutCubic,
+    );
 
     _sharedAnim = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 380));
+      vsync: this,
+      duration: const Duration(milliseconds: 380),
+    );
 
     _dragScale = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 120));
-    _dragScaleCurve = Tween<double>(begin: 1.0, end: 0.97)
-        .animate(CurvedAnimation(parent: _dragScale, curve: Curves.easeIn));
+      vsync: this,
+      duration: const Duration(milliseconds: 120),
+    );
+    _dragScaleCurve = Tween<double>(
+      begin: 1.0,
+      end: 0.97,
+    ).animate(CurvedAnimation(parent: _dragScale, curve: Curves.easeIn));
 
     // Khởi tạo state ban đầu
     _ctx = _ctxSvc.getContext(widget.conversationId);
@@ -148,11 +159,15 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     _isSharedOpen ? _sharedAnim.forward() : _sharedAnim.reverse();
 
     if (_isSharedOpen) {
-      _ctxSvc.overrideContext(widget.conversationId,
-          BubbleContext(mode: BubbleMode.shared, updatedAt: DateTime.now()));
+      _ctxSvc.overrideContext(
+        widget.conversationId,
+        BubbleContext(mode: BubbleMode.shared, updatedAt: DateTime.now()),
+      );
     } else {
-      _ctxSvc.overrideContext(widget.conversationId,
-          BubbleContext(mode: BubbleMode.normal, updatedAt: DateTime.now()));
+      _ctxSvc.overrideContext(
+        widget.conversationId,
+        BubbleContext(mode: BubbleMode.normal, updatedAt: DateTime.now()),
+      );
     }
     HapticFeedback.mediumImpact();
   }
@@ -161,24 +176,31 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     setState(() => _isSecureOn = !_isSecureOn);
 
     if (_isSecureOn) {
-      _ctxSvc.overrideContext(widget.conversationId,
-          BubbleContext(mode: BubbleMode.secure, updatedAt: DateTime.now()));
+      _ctxSvc.overrideContext(
+        widget.conversationId,
+        BubbleContext(mode: BubbleMode.secure, updatedAt: DateTime.now()),
+      );
     } else {
-      _ctxSvc.overrideContext(widget.conversationId,
-          BubbleContext(mode: BubbleMode.normal, updatedAt: DateTime.now()));
+      _ctxSvc.overrideContext(
+        widget.conversationId,
+        BubbleContext(mode: BubbleMode.normal, updatedAt: DateTime.now()),
+      );
     }
     HapticFeedback.heavyImpact();
   }
 
+  // [SỬA LỖI P0]: Dùng `overrideContext` thay vì `updateContext` để ép chế độ
+  // bỏ qua cơ chế lọc theo keyword vốn không khả dụng qua cách gọi bằng .name.
   void _setMode(BubbleMode mode) {
     if (_ctx.mode == mode) {
-      _ctxSvc.overrideContext(widget.conversationId,
-          BubbleContext(mode: BubbleMode.normal, updatedAt: DateTime.now()));
+      _ctxSvc.overrideContext(
+        widget.conversationId,
+        BubbleContext(mode: BubbleMode.normal, updatedAt: DateTime.now()),
+      );
     } else {
-      _ctxSvc.updateContext(
-        conversationId: widget.conversationId,
-        message: mode.name,
-        messageType: 0,
+      _ctxSvc.overrideContext(
+        widget.conversationId,
+        BubbleContext(mode: mode, updatedAt: DateTime.now()),
       );
     }
     HapticFeedback.selectionClick();
@@ -223,8 +245,10 @@ class _ContextualMiniChatOverlayState extends State<ContextualMiniChatOverlay>
     _lastScreenWidth = screen.width;
 
     final clampedX = _pos.dx.clamp(0.0, screen.width - _kOverlayWidth);
-    final clampedY = _pos.dy
-        .clamp(0.0, screen.height - _targetHeight.clamp(0, screen.height));
+    final clampedY = _pos.dy.clamp(
+      0.0,
+      screen.height - _targetHeight.clamp(0, screen.height),
+    );
 
     return Positioned(
       left: clampedX,
@@ -532,8 +556,10 @@ class _BottomBarBtn extends StatelessWidget {
           children: [
             Icon(icon, size: 14, color: const Color(0xFF9AA5B8)),
             const SizedBox(width: 3),
-            Text(label,
-                style: const TextStyle(color: Color(0xFF9AA5B8), fontSize: 10)),
+            Text(
+              label,
+              style: const TextStyle(color: Color(0xFF9AA5B8), fontSize: 10),
+            ),
           ],
         ),
       ),

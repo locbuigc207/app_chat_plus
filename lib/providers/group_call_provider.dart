@@ -194,26 +194,26 @@ class GroupCallProvider extends ChangeNotifier {
     _callSub?.cancel();
     _callSub =
         GroupCallService.instance.watchCall(call.callId).listen((updated) {
-      if (updated == null) {
-        _clearCall();
-        return;
-      }
+          if (updated == null) {
+            _clearCall();
+            return;
+          }
 
-      final wasKicked = updated.isKicked(currentUserId);
-      if (wasKicked) {
-        _clearCall();
-        _setError('Bạn đã bị xoá khỏi cuộc gọi.');
-        return;
-      }
+          final wasKicked = updated.isKicked(currentUserId);
+          if (wasKicked) {
+            _clearCall();
+            _setError('Bạn đã bị xoá khỏi cuộc gọi.');
+            return;
+          }
 
-      if (_isWaitingRoom && updated.isParticipant(currentUserId)) {
-        _isWaitingRoom = false;
-      }
+          if (_isWaitingRoom && updated.isParticipant(currentUserId)) {
+            _isWaitingRoom = false;
+          }
 
-      _activeCall = updated;
-      if (updated.isEnded) _clearCall();
-      notifyListeners();
-    });
+          _activeCall = updated;
+          if (updated.isEnded) _clearCall();
+          notifyListeners();
+        });
     notifyListeners();
   }
 
@@ -299,7 +299,8 @@ class GroupCallProvider extends ChangeNotifier {
     required String agoraUid,
   }) async {
     final call = _activeCall;
-    if (call == null || !isAdmin) return;
+    // [FIX V3] Cập nhật logic để cả Admin lẫn Co-host đều có quyền ghi âm
+    if (call == null || !canModerate) return;
 
     HapticFeedback.mediumImpact();
 

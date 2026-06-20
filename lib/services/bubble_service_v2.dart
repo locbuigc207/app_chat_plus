@@ -135,12 +135,14 @@ class BubbleServiceV2 {
     if (userId == null) return;
     _ensureClickCtrl();
     if (!(_clickCtrl?.isClosed ?? true)) {
-      _clickCtrl!.add(BubbleClickEvent(
-        userId: userId,
-        userName: event['userName'] as String? ?? '',
-        avatarUrl: event['avatarUrl'] as String? ?? '',
-        message: event['message'] as String? ?? '',
-      ));
+      _clickCtrl!.add(
+        BubbleClickEvent(
+          userId: userId,
+          userName: event['userName'] as String? ?? '',
+          avatarUrl: event['avatarUrl'] as String? ?? '',
+          message: event['message'] as String? ?? '',
+        ),
+      );
     }
   }
 
@@ -172,7 +174,8 @@ class BubbleServiceV2 {
         return await updateBubble(userId: userId, message: message);
       }
 
-      final success = await _method.invokeMethod<bool>('showBubble', {
+      final success =
+          await _method.invokeMethod<bool>('showBubble', {
             'userId': userId,
             'userName': userName,
             'message': message,
@@ -211,9 +214,14 @@ class BubbleServiceV2 {
     if (existing == null) return false;
 
     try {
-      final success = await _method.invokeMethod<bool>('updateBubble', {
+      // [SỬA LỖI P0]: Truyền toàn bộ thông tin userName và avatarUrl đang có sẵn trong bộ nhớ đệm Dart
+      // ngược lên cho Native Kotlin thay vì để Kotlin hardcode chuỗi rỗng gây lỗi tự tắt.
+      final success =
+          await _method.invokeMethod<bool>('updateBubble', {
             'userId': userId,
             'message': message,
+            'userName': existing.userName,
+            'avatarUrl': existing.avatarUrl,
           }) ??
           false;
 
@@ -221,8 +229,9 @@ class BubbleServiceV2 {
         _activeBubbles[userId] = existing.copyWith(
           lastMessage: message,
           timestamp: DateTime.now(),
-          unreadCount:
-              incrementUnread ? existing.unreadCount + 1 : existing.unreadCount,
+          unreadCount: incrementUnread
+              ? existing.unreadCount + 1
+              : existing.unreadCount,
         );
         _emitActiveBubbles();
         await _saveBubbles();
@@ -239,7 +248,7 @@ class BubbleServiceV2 {
     try {
       final success =
           await _method.invokeMethod<bool>('hideBubble', {'userId': userId}) ??
-              false;
+          false;
       if (success) {
         _activeBubbles.remove(userId);
         _emitActiveBubbles();
@@ -309,8 +318,9 @@ class BubbleServiceV2 {
 
   Future<bool> verifyShortcut(String userId) async {
     try {
-      return await _method
-              .invokeMethod<bool>('verifyShortcut', {'userId': userId}) ??
+      return await _method.invokeMethod<bool>('verifyShortcut', {
+            'userId': userId,
+          }) ??
           false;
     } catch (_) {
       return false;
@@ -360,9 +370,20 @@ class BubbleServiceV2 {
 
       final dynamic decoded = jsonDecode(raw);
 
-      // ĐÃ SỬA: Đảm bảo payload trả về phải là một Map trước khi xử lý để tránh lỗi TypeError
       if (decoded is! Map) {
         debugPrint('⚠️ Saved bubbles format invalid');
+        await _clearSavedBubbles();
+        return;
+      }
+
+      // [SỬA LỖI P1]: Lấy danh sách shortcut có thật trên Android để kiểm chứng
+      // ngăn chặn hiện tượng khôi phục trạng thái Dart trong khi hệ điều hành
+      // đã dọn dẹp các Shortcut (gây bong bóng ảo).
+      final activeShortcutCount = await getShortcutCount();
+      if (activeShortcutCount == 0) {
+        debugPrint(
+          '⚠️ System has cleared all shortcuts, abandoning local restore',
+        );
         await _clearSavedBubbles();
         return;
       }
@@ -374,7 +395,6 @@ class BubbleServiceV2 {
 
           final mapData = Map<String, dynamic>.from(entry.value as Map);
 
-          // ĐÃ SỬA: Null-safe parse cho trường timestamp
           if (mapData['timestamp'] == null) {
             mapData['timestamp'] = DateTime.now().toIso8601String();
           }
@@ -382,10 +402,19 @@ class BubbleServiceV2 {
           final data = BubbleData.fromJson(mapData);
 
           if (!data.isValid || data.isStale) continue;
+
+          // Kiểm tra chéo với Native Shortcut Manager
+          final isShortcutAlive = await verifyShortcut(data.userId);
+          if (!isShortcutAlive) {
+            debugPrint(
+              '⚠️ Bubble ${data.userName} discarded (Shortcut expired/killed by OS)',
+            );
+            continue;
+          }
+
           _activeBubbles[entry.key] = data;
           restored++;
         } catch (e) {
-          // Bắt lỗi riêng cho từng bong bóng, không xóa trắng nếu chỉ 1 bong bóng lỗi
           debugPrint('⚠️ Failed to restore bubble ${entry.key}: $e');
         }
       }
@@ -394,7 +423,6 @@ class BubbleServiceV2 {
         _emitActiveBubbles();
         debugPrint('📦 Restored $restored bubble(s)');
       } else {
-        // Nếu không restore được bong bóng nào hợp lệ thì mới xóa rác
         await _clearSavedBubbles();
       }
     } catch (e) {

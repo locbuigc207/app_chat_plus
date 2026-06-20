@@ -12,6 +12,7 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
+import javax.crypto.Mac
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -24,37 +25,20 @@ import javax.crypto.spec.SecretKeySpec
  * Design
  * ───────
  * • Each conversation gets a deterministic symmetric key derived from the
- *   sorted concatenation of both user IDs (SHA-256 → 32 bytes).
- *   In a production system replace this with a proper ECDH key exchange
- *   (e.g. Signal Protocol / Diffie-Hellman over Curve25519).
+ * sorted concatenation of both user IDs (SHA-256 → 32 bytes).
+ * In a production system replace this with a proper ECDH key exchange
+ * (e.g. Signal Protocol / Diffie-Hellman over Curve25519).
  *
  * • Every message is encrypted with a fresh random 12-byte IV.
- *   The ciphertext is stored as:  base64( IV[12] || ciphertext || GCM tag[16] )
+ * The ciphertext is stored as:  base64( IV[12] || ciphertext || GCM tag[16] )
  *
  * • Android Keystore is used to protect a per-device master key; the
- *   conversation key is XOR'd with the master key before storage to
- *   prevent extraction from app storage.
+ * conversation key is XOR'd with the master key before storage to
+ * prevent extraction from app storage.
  *
  * Wire format (base64-encoded)
  * ─────────────────────────────
- *   [ 4 bytes magic "ENC:" ] [ 12 bytes IV ] [ N bytes ciphertext+tag ]
- *
- * Usage
- * ──────
- * ```kotlin
- * val helper = BubbleEncryptionHelper
- *
- * // Sender
- * val encrypted = helper.encrypt(myId, peerId, "Tin nhắn bí mật")
- * firestore.set(mapOf("content" to encrypted, "encrypted" to true))
- *
- * // Receiver
- * val doc = firestore.get()
- * if (doc["encrypted"] == true) {
- *     val plain = helper.decrypt(myId, peerId, doc["content"] as String)
- *     println(plain)
- * }
- * ```
+ * [ 4 bytes magic "ENC:" ] [ 12 bytes IV ] [ N bytes ciphertext+tag ]
  */
 object BubbleEncryptionHelper {
 
@@ -184,8 +168,8 @@ object BubbleEncryptionHelper {
     // ─── Android Keystore master key ──────────────────────────────────────
 
     /**
-     * Get or create a hardware-backed AES master key in Android Keystore.
-     * Falls back to a software key on devices without HSM.
+     * Get or create a hardware-backed master key in Android Keystore.
+     * Falls back to a software derivation on devices without HSM.
      * Returns the raw 32-byte key material for XOR mixing.
      */
     private fun getMasterKeyBytes(): ByteArray {
@@ -197,20 +181,27 @@ object BubbleEncryptionHelper {
                 createMasterKey()
             }
 
-            // We can't directly export key bytes from Keystore.
-            // Instead, encrypt a known constant and use the result as salt.
             val entry = keyStore.getEntry(KEYSTORE_ALIAS, null)
                     as? KeyStore.SecretKeyEntry
                 ?: return fallbackMasterBytes()
 
-            val cipher = Cipher.getInstance(ALGORITHM)
-            val knownIv = ByteArray(IV_SIZE_BYTES)   // all-zero IV for salt
-            cipher.init(Cipher.ENCRYPT_MODE, entry.secretKey,
-                GCMParameterSpec(TAG_SIZE_BITS, knownIv))
-            val salt = cipher.doFinal(KEYSTORE_ALIAS.toByteArray())
+            // [SỬA LỖI P2]: Sử dụng HMAC-SHA256 (tiêu chuẩn cho KDF) thay vì AES-GCM với IV-zero.
+            // Điều này đảm bảo tính toán chuỗi byte an toàn, đúng đắn và không vi phạm quy tắc mã hóa.
+            val mac = Mac.getInstance("HmacSHA256")
 
-            // SHA-256 of the salt for a stable 32-byte key material
-            MessageDigest.getInstance("SHA-256").digest(salt)
+            try {
+                mac.init(entry.secretKey)
+            } catch (e: java.security.InvalidKeyException) {
+                // Tự động migration: Nếu key cũ là AES từ phiên bản trước, xóa đi và tạo lại HMAC
+                Log.w(TAG, "⚠️ Legacy AES key detected, migrating to HMAC...")
+                keyStore.deleteEntry(KEYSTORE_ALIAS)
+                createMasterKey()
+                val newEntry = keyStore.getEntry(KEYSTORE_ALIAS, null) as KeyStore.SecretKeyEntry
+                mac.init(newEntry.secretKey)
+            }
+
+            // Trả về chính xác 32 bytes (256 bits) cho thao tác XOR
+            mac.doFinal("bubble_stable_master_salt_v2".toByteArray(StandardCharsets.UTF_8))
 
         } catch (e: Exception) {
             Log.w(TAG, "⚠️ Keystore unavailable: $e")
@@ -219,19 +210,15 @@ object BubbleEncryptionHelper {
     }
 
     private fun createMasterKey() {
+        // Sử dụng thuật toán HMAC thay cho AES để tạo mã tĩnh
         val kg = KeyGenerator.getInstance(
-            KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+            KeyProperties.KEY_ALGORITHM_HMAC_SHA256, "AndroidKeyStore")
         kg.init(
-            KeyGenParameterSpec.Builder(KEYSTORE_ALIAS,
-                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(256)
-                .setUserAuthenticationRequired(false)
+            KeyGenParameterSpec.Builder(KEYSTORE_ALIAS, KeyProperties.PURPOSE_SIGN)
                 .build()
         )
         kg.generateKey()
-        Log.d(TAG, "✅ Master key created in Android Keystore")
+        Log.d(TAG, "✅ HMAC Master key created in Android Keystore")
     }
 
     /** Deterministic fallback when Keystore is unavailable (emulator etc.) */

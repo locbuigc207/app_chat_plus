@@ -3,6 +3,7 @@ package hust.appchat
 
 import android.content.Context
 import android.content.Intent
+import android.content.LocusId
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
@@ -24,7 +25,8 @@ class BubbleActivity : FlutterActivity() {
     companion object {
         private const val TAG = "BubbleActivity"
 
-        const val BUBBLE_ENGINE_ID = "bubble_flutter_engine"
+        // Đã đồng bộ với định danh truyền vào EngineWarmer tại MainActivity
+        const val BUBBLE_ENGINE_ID = "bubble_chat_engine"
 
         private const val CHANNEL        = "bubble_chat_channel"
         private const val EXTRA_UID      = "userId"
@@ -37,37 +39,14 @@ class BubbleActivity : FlutterActivity() {
         private const val KEYBOARD_DELAY_MS    = 350L
         private const val MAX_NAV_CACHE        = 50
 
-        /** Idempotent — safe to call multiple times. */
-        fun warmUpBubbleEngine(ctx: Context) {
-            val cache = FlutterEngineCache.getInstance()
-            cache.get(BUBBLE_ENGINE_ID)
-                ?.takeIf { it.dartExecutor.isExecutingDart }
-                ?.also { Log.d(TAG, "♻️ Bubble Engine already warm"); return }
-
-            cache.get(BUBBLE_ENGINE_ID)?.let {
-                Log.w(TAG, "⚠️ Stale engine — evicting")
-                cache.remove(BUBBLE_ENGINE_ID)
-            }
-
-            Log.d(TAG, "🔥 Warming bubble engine…")
-            val eng = FlutterEngine(ctx.applicationContext)
-            eng.dartExecutor.executeDartEntrypoint(
-                DartExecutor.DartEntrypoint.createDefault()
-            )
-            // LỖI C FIX: Đặt engine ở trạng thái detached standby — KHÔNG gọi appIsResumed() ở đây
-            eng.lifecycleChannel.appIsDetached()
-            cache.put(BUBBLE_ENGINE_ID, eng)
-            Log.d(TAG, "✅ Bubble engine warm and standby")
-        }
-
         fun createIntent(
             ctx: Context,
             userId: String,
             userName: String,
             avatarUrl: String
         ): Intent = Intent(ctx, BubbleActivity::class.java).apply {
-            action = Intent.ACTION_VIEW   // ĐÃ SỬA: Bắt buộc để tránh NullPointerException ở Native Bubble Renderer
-            data = android.net.Uri.parse("bubble://chat/$userId") // ĐÃ SỬA: Định danh conversation tránh lẫn task
+            action = Intent.ACTION_VIEW
+            data = android.net.Uri.parse("bubble://chat/$userId")
             putExtra(EXTRA_UID,    userId)
             putExtra(EXTRA_NAME,   userName)
             putExtra(EXTRA_AVATAR, avatarUrl)
@@ -96,11 +75,7 @@ class BubbleActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            Log.w(TAG, "⚠️ Bubble API requires Android 11+"); finish(); return
-        }
-
-        // LỖI O FIX: Xử lý back gesture đúng chuẩn Android 16 (Tiramisu trở lên)
+        // Xử lý back gesture đúng chuẩn Android 16 (Tiramisu trở lên)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(
                 OnBackInvokedDispatcher.PRIORITY_DEFAULT
@@ -113,6 +88,9 @@ class BubbleActivity : FlutterActivity() {
 
         if (savedInstanceState == null) readExtras(intent)
         if (!validateUser()) { Log.e(TAG, "❌ Missing user info"); finish(); return }
+
+        // [SỬA LỖI P1]: Gắn LocusId để hệ thống join đúng task khi mở lại từ Bubble Bar / Recents
+        setLocusContext(LocusId(currentUid!!), null)
 
         Log.d(TAG, "✅ onCreate — user: $currentName ($currentUid)")
     }
@@ -141,7 +119,7 @@ class BubbleActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(engine: FlutterEngine) {
         super.configureFlutterEngine(engine)
-        // LỖI C FIX: Engine giờ mới thực sự được "wake up" khi Activity attach
+        // Engine giờ mới thực sự được "wake up" khi Activity attach
         engine.lifecycleChannel.appIsResumed()
 
         configureWindow()
@@ -150,11 +128,22 @@ class BubbleActivity : FlutterActivity() {
         scheduleNav(0)
     }
 
-    // LỖI P FIX: Handle bubble resize/re-embed trên Android 16
+    // Handle bubble resize/re-embed trên Android 16
     override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: Configuration) {
         super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
         Log.d(TAG, "🪟 Multi-window mode changed: $isInMultiWindowMode")
-        // Khi bubble bị resize, engine không cần restart, chỉ re-notify Flutter
+        if (isFlutterReady) {
+            channel?.invokeMethod("onWindowSizeChanged", mapOf(
+                "width" to newConfig.screenWidthDp,
+                "height" to newConfig.screenHeightDp
+            ))
+        }
+    }
+
+    // [SỬA LỖI P1]: Báo cáo kích thước cửa sổ ngay cả khi chỉ xoay màn hình hoặc thay đổi configuration
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        Log.d(TAG, "📐 Configuration changed: w=${newConfig.screenWidthDp}, h=${newConfig.screenHeightDp}")
         if (isFlutterReady) {
             channel?.invokeMethod("onWindowSizeChanged", mapOf(
                 "width" to newConfig.screenWidthDp,
@@ -239,7 +228,7 @@ class BubbleActivity : FlutterActivity() {
     }
 
     private fun setupChannel(engine: FlutterEngine) {
-        // LỖI J FIX: Unregister handler cũ nếu engine được reuse từ cache
+        // Unregister handler cũ nếu engine được reuse từ cache
         channel?.setMethodCallHandler(null)
         channel = null
 

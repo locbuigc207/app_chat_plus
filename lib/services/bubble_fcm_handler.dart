@@ -1,16 +1,9 @@
 // lib/services/bubble_fcm_handler.dart
 //
-// Wires Firebase Cloud Messaging → UnifiedBubbleService so every incoming
-// push notification automatically spawns or updates a chat bubble.
-//
-// Usage in main.dart
-// ──────────────────
-//   void main() async {
-//     WidgetsFlutterBinding.ensureInitialized();
-//     await Firebase.initializeApp();
-//     await BubbleFcmHandler.initialize();
-//     runApp(BubbleSystemWrapper(child: MyApp()));
-//   }
+// Wires Firebase Cloud Messaging → Event Stream
+// [SỬA LỖI P0]: Đã dọn dẹp các side-effect dư thừa (tự tạo bubble từ Dart)
+// Vì trách nhiệm sinh Bubble giờ đây do Native Android (FcmService.kt + BubbleNotificationManager.kt) đảm nhận 100%
+// để tương thích API 30+.
 
 import 'dart:async';
 import 'dart:io';
@@ -26,7 +19,6 @@ import 'package:flutter_chat_demo/services/services.dart';
 class BubbleFcmHandler {
   BubbleFcmHandler._();
 
-  static final _svc = UnifiedBubbleService();
   static final _seen = <String>{}; // dedup message IDs
   static const _maxSeen = 200;
 
@@ -106,10 +98,8 @@ class BubbleFcmHandler {
     // ── Extract fields ───────────────────────────────────────────────────
     final userId = data['senderId'] ?? data['userId'] ?? '';
     final userName = data['senderName'] ?? data['userName'] ?? 'Unknown';
-    final avatarUrl = data['avatarUrl'] ?? data['photoUrl'] ?? '';
     final message =
         data['message'] ?? data['body'] ?? msg.notification?.body ?? '';
-    final msgType = data['messageType'] ?? 'text';
     final convId = data['conversationId'] ?? userId;
 
     if (userId.isEmpty) {
@@ -123,64 +113,16 @@ class BubbleFcmHandler {
       message: message,
     );
 
-    // ── Show / update bubble ──────────────────────────────────────────────
-    if (!fromBackground) {
-      // Foreground: update or show bubble
-      if (_svc.isBubbleActive(userId)) {
-        await _svc.updateBubbleMessage(
-          userId: userId,
-          message: _preview(message, msgType),
-        );
-      } else {
-        await _svc.showChatBubble(
-          userId: userId,
-          userName: userName,
-          avatarUrl: avatarUrl,
-          lastMessage: _preview(message, msgType),
-          isOnline: true,
-        );
-      }
-    }
-    // Background messages are handled natively by BubbleNotificationService
-    // on Android; we just forward the event stream here.
+    // [SỬA LỖI P0]: Xóa logic tự tạo bubble bằng _svc.showChatBubble() hay _svc.updateBubbleMessage()
+    // Tránh việc UI Dart giành việc với Native (FcmService.kt đã gọi BubbleNotificationManager
+    // ngay khi tin nhắn đến, dù là Foreground hay Background).
 
     _messageCtrl.add(msg);
 
     debugPrint(
-      '✅ FCM processed → bubble: $userName '
+      '✅ FCM processed Event Stream: $userName '
       '(bg=$fromBackground, tap=$userTapped)',
     );
-  }
-
-  // ─── Helpers ────────────────────────────────────────────────────────────
-
-  static String _preview(String message, String type) {
-    switch (type.toLowerCase()) {
-      case 'image':
-      case '1':
-        return '📷 Hình ảnh';
-      case 'video':
-      case '2':
-        return '🎬 Video';
-      case 'voice':
-      case '3':
-        return '🎤 Tin nhắn thoại';
-      case 'file':
-      case '4':
-      case '5':
-        return '📎 Tệp đính kèm';
-      case 'poll':
-      case '6':
-        return '📊 Bình chọn';
-      case 'sticker':
-      case '10':
-        return '😊 Nhãn dán';
-      case 'location':
-      case '11':
-        return '📍 Vị trí';
-      default:
-        return message.length > 60 ? '${message.substring(0, 60)}…' : message;
-    }
   }
 
   static void dispose() {

@@ -16,7 +16,7 @@ import 'package:flutter_chat_demo/models/call_model.dart';
 import 'package:flutter_chat_demo/models/group_call_model.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:flutter_chat_demo/providers/phone_auth_provider.dart'
-as custom_auth;
+    as custom_auth;
 import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_chat_demo/utils/utils.dart';
@@ -35,7 +35,7 @@ import 'package:timezone/timezone.dart' as tz;
 // ─────────────────────────────────────────────────────────────────────────────
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-FlutterLocalNotificationsPlugin();
+    FlutterLocalNotificationsPlugin();
 
 /// Navigator key dùng cho toàn app. Vì BubbleManager (và mọi widget cần
 /// Overlay) giờ được lồng BÊN TRONG MaterialApp.builder's `child` (tức là
@@ -43,7 +43,7 @@ FlutterLocalNotificationsPlugin();
 /// giữ lại làm fallback an toàn cho các trường hợp gọi từ context không
 /// chắc chắn (ví dụ callback bất đồng bộ chạy sau khi 1 màn hình đã dispose).
 final GlobalKey<NavigatorState> globalNavigatorKey =
-GlobalKey<NavigatorState>();
+    GlobalKey<NavigatorState>();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FCM background handler
@@ -118,14 +118,17 @@ Future<void> main() async {
   }
 
   final unifiedBubbleService = UnifiedBubbleService();
-  final chatBubbleService = ChatBubbleService();
   final notificationService = NotificationService();
+
+  // [SỬA LỖI P1]: KHÔNG KHỞI TẠO `ChatBubbleService` (Legacy WindowManager).
+  // Vì Kotlin minSdk đã là 30, toàn bộ pipeline cũ đã bị xóa. Việc khởi tạo và listen EventChannel cũ
+  // sẽ gây hao phí tài nguyên bộ nhớ và tạo các Dead RPC.
+  // ChatApp bên dưới cũng đã loại bỏ yêu cầu truyền instance này vào.
 
   runApp(
     ChatApp(
       prefs: prefs,
       notificationsPlugin: flutterLocalNotificationsPlugin,
-      chatBubbleService: chatBubbleService,
       notificationService: notificationService,
       unifiedBubbleService: unifiedBubbleService,
     ),
@@ -152,7 +155,7 @@ Future<void> _initializeFirebase() async {
       debugPrint('⚠️ Offline Persistence (Web không hỗ trợ): $e');
     }
 
-    const disableAppCheckForTesting = true;
+    const disableAppCheckForTesting = false;
 
     if (kDebugMode && disableAppCheckForTesting) {
       debugPrint('⚠️ App Check ĐÃ TẮT cho mục đích test (debug mode)');
@@ -210,15 +213,10 @@ Future<void> _initializeFcm() async {
           debugPrint('📱 FCM Token mới: ${token.substring(0, 20)}...');
           final uid = firebase_auth.FirebaseAuth.instance.currentUser?.uid;
           if (uid != null) {
-            // [FIX 24]: Lưu đồng thời pushToken (cho Cloud Functions Node.js đọc)
-            // và fcmToken (để backward compatibility cho client code cũ)
             await FirebaseFirestore.instance
                 .collection('users')
                 .doc(uid)
-                .update({
-              'pushToken': token,
-              'fcmToken': token
-            });
+                .update({'pushToken': token, 'fcmToken': token});
           }
         },
       );
@@ -241,8 +239,8 @@ Future<void> _initializeFcm() async {
 // ─────────────────────────────────────────────────────────────────────────────
 
 Future<void> _initializeLocalNotifications(
-    FlutterLocalNotificationsPlugin plugin,
-    ) async {
+  FlutterLocalNotificationsPlugin plugin,
+) async {
   try {
     const androidSettings = AndroidInitializationSettings(
       '@mipmap/ic_launcher',
@@ -271,15 +269,15 @@ Future<void> _initializeLocalNotifications(
       initSettings,
       onDidReceiveNotificationResponse: _onNotificationTapped,
       onDidReceiveBackgroundNotificationResponse:
-      _onBackgroundNotificationTapped,
+          _onBackgroundNotificationTapped,
     );
 
     if (Platform.isAndroid) await _setupAndroidNotificationChannels(plugin);
     if (Platform.isIOS) {
       await plugin
           .resolvePlatformSpecificImplementation<
-          IOSFlutterLocalNotificationsPlugin
-      >()
+            IOSFlutterLocalNotificationsPlugin
+          >()
           ?.requestPermissions(alert: true, badge: true, sound: true);
     }
     debugPrint('✅ Local Notifications khởi tạo xong');
@@ -294,12 +292,12 @@ Future<void> _initializeLocalNotifications(
 }
 
 Future<void> _setupAndroidNotificationChannels(
-    FlutterLocalNotificationsPlugin plugin,
-    ) async {
+  FlutterLocalNotificationsPlugin plugin,
+) async {
   final androidPlugin = plugin
       .resolvePlatformSpecificImplementation<
-      AndroidFlutterLocalNotificationsPlugin
-  >();
+        AndroidFlutterLocalNotificationsPlugin
+      >();
   if (androidPlugin == null) return;
 
   await androidPlugin.requestNotificationsPermission();
@@ -454,7 +452,7 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
     _recentNavigations.add(dedupKey);
     Future.delayed(
       const Duration(seconds: 10),
-          () => _recentNavigations.remove(dedupKey),
+      () => _recentNavigations.remove(dedupKey),
     );
 
     await _waitForNavigator();
@@ -500,13 +498,6 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MiniChatOverlayManager
-//
-// GHI CHÚ KIẾN TRÚC (Flutter 3.44 / LookupBoundary):
-// Widget này gọi Overlay.of(context) ở _showOverlay(). Để lệnh gọi này
-// luôn tìm thấy Overlay hợp lệ, MiniChatOverlayManager BẮT BUỘC phải nằm
-// ở vị trí là CON (descendant) của Navigator/Overlay do MaterialApp tạo ra.
-// Việc đặt đúng vị trí được xử lý tại ChatApp.build() -> builder, xem phần
-// "FIX KIẾN TRÚC OVERLAY" ở dưới.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class MiniChatOverlayManager extends StatefulWidget {
@@ -520,7 +511,6 @@ class MiniChatOverlayManager extends StatefulWidget {
 class _MiniChatOverlayManagerState extends State<MiniChatOverlayManager> {
   static const _channel = MethodChannel('mini_chat_channel');
   OverlayEntry? _overlay;
-  // track insertion state để tránh double-remove
   bool _overlayInserted = false;
 
   @override
@@ -548,12 +538,12 @@ class _MiniChatOverlayManagerState extends State<MiniChatOverlayManager> {
       case 'minimize':
       case 'close':
         _removeOverlay();
+      // [SỬA LỖI P1]: Đã gỡ bỏ block "initMiniChat" trống rỗng gây Dead RPC
     }
     return null;
   }
 
   void _showOverlay(String userId, String userName, String avatarUrl) {
-    // Luôn remove overlay cũ trước
     _removeOverlay();
 
     if (!mounted) return;
@@ -565,23 +555,21 @@ class _MiniChatOverlayManagerState extends State<MiniChatOverlayManager> {
         avatarUrl: avatarUrl,
         onMinimize: () {
           _removeOverlay();
-          _channel.invokeMethod('minimize', {'userId': userId});
+          _channel
+              .invokeMethod('minimize', {'userId': userId})
+              .catchError((_) {});
         },
         onClose: () {
           _removeOverlay();
-          _channel.invokeMethod('close', {'userId': userId});
+          _channel.invokeMethod('close', {'userId': userId}).catchError((_) {});
         },
       ),
     );
 
-    // Bọc insert trong try/catch, chỉ set flag khi insert thành công.
-    // Ưu tiên Overlay.of(context) trực tiếp (đúng nếu vị trí widget tree đã
-    // chuẩn). Nếu vì lý do nào đó context tạm thời không có Overlay ancestor
-    // (ví dụ đang giữa quá trình rebuild), fallback sang globalNavigatorKey.
     try {
       final overlayState =
           Overlay.maybeOf(context) ??
-              Overlay.of(globalNavigatorKey.currentState!.context);
+          Overlay.of(globalNavigatorKey.currentState!.context);
       overlayState.insert(_overlay!);
       _overlayInserted = true;
     } catch (e) {
@@ -592,7 +580,6 @@ class _MiniChatOverlayManagerState extends State<MiniChatOverlayManager> {
   }
 
   void _removeOverlay() {
-    // Chỉ remove nếu đã insert thành công
     if (_overlay != null && _overlayInserted) {
       try {
         _overlay!.remove();
@@ -801,12 +788,12 @@ class _MiniChatHeader extends StatelessWidget {
                 : null,
             child: avatarUrl.isEmpty
                 ? Text(
-              userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            )
+                    userName.isNotEmpty ? userName[0].toUpperCase() : '?',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  )
                 : null,
           ),
           const SizedBox(width: 9),
@@ -929,8 +916,8 @@ class _AppInitializerState extends State<AppInitializer>
 
   void _startNotificationService() {
     _authSub = firebase_auth.FirebaseAuth.instance.authStateChanges().listen((
-        user,
-        ) {
+      user,
+    ) {
       if (user != null && !_notificationStarted) {
         widget.notificationService.listenForNewMessages(user.uid);
         _notificationStarted = true;
@@ -1099,7 +1086,6 @@ class _AppInitializerState extends State<AppInitializer>
 class ChatApp extends StatefulWidget {
   final SharedPreferences prefs;
   final FlutterLocalNotificationsPlugin notificationsPlugin;
-  final ChatBubbleService chatBubbleService;
   final NotificationService notificationService;
   final UnifiedBubbleService unifiedBubbleService;
 
@@ -1107,7 +1093,6 @@ class ChatApp extends StatefulWidget {
     super.key,
     required this.prefs,
     required this.notificationsPlugin,
-    required this.chatBubbleService,
     required this.notificationService,
     required this.unifiedBubbleService,
   });
@@ -1137,30 +1122,12 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
             navigatorKey: AppRouter.navigatorKey,
             themeMode: themeProvider.flutterThemeMode ?? ThemeMode.system,
             theme:
-            themeProvider.lightTheme ??
+                themeProvider.lightTheme ??
                 _buildFallbackTheme(Brightness.light),
             darkTheme:
-            themeProvider.darkTheme ?? _buildFallbackTheme(Brightness.dark),
+                themeProvider.darkTheme ?? _buildFallbackTheme(Brightness.dark),
             initialRoute: AppRouter.splash,
             onGenerateRoute: AppRouter.onGenerateRoute,
-            // ═══════════════════════════════════════════════════════════
-            // FIX KIẾN TRÚC OVERLAY (Flutter 3.44 LookupBoundary)
-            // ═══════════════════════════════════════════════════════════
-            // `builder` ở đây nhận `child` = cây Navigator đã được
-            // MaterialApp dựng sẵn (cây này TỰ CHỨA một Overlay hợp lệ).
-            //
-            // TRƯỚC: BubbleSystemWrapper/BubbleManager bọc NGOÀI
-            // MaterialApp -> context của BubbleManager là CHA của
-            // Navigator's Overlay -> Overlay.of(context) luôn thất bại
-            // ("no Overlay in context"), đặc biệt từ Flutter 3.38+ khi
-            // LookupBoundary được enforce nghiêm ngặt hơn.
-            //
-            // SAU: mọi Manager cần Overlay (BubbleManager,
-            // MiniChatOverlayManager...) được lồng NGAY TẠI ĐÂY, tức là
-            // chúng trở thành CON (descendant) của Navigator/Overlay.
-            // Overlay.of(context) từ các widget này giờ luôn tìm thấy
-            // đúng Overlay gần nhất một cách hợp lệ và ổn định.
-            // ═══════════════════════════════════════════════════════════
             builder: (context, child) {
               Widget content = AppInitializer(
                 notificationService: widget.notificationService,
@@ -1168,13 +1135,13 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
               );
 
               if (!kIsWeb) {
+                // [SỬA LỖI P1]: Đã xóa bỏ Widget bọc BubbleManager (vốn chứa WindowManager lỗi thời).
+                // Cấu trúc Flutter 3.44 LookupBoundary giờ sạch và nhẹ hơn.
                 content = GroupCallMiniManager(
                   child: BubbleChatChannelManager(
                     child: GroupCallListener(
                       child: CallListener(
-                        child: BubbleManager(
-                          child: MiniChatOverlayManager(child: content),
-                        ),
+                        child: MiniChatOverlayManager(child: content),
                       ),
                     ),
                   ),
@@ -1309,14 +1276,6 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
       ),
       Provider<LocationProvider>(create: (_) => LocationProvider()),
       Provider<TranslationProvider>(create: (_) => TranslationProvider()),
-      Provider<ChatBubbleService>(create: (_) => widget.chatBubbleService),
-      // UnifiedBubbleService dùng Provider thường (không phải
-      // ChangeNotifierProvider) — UI của nó cập nhật qua các Stream riêng
-      // (activeBubblesStream, bubbleClickStream...) chứ không qua
-      // notifyListeners(). Provider/InheritedWidget không bị ảnh hưởng bởi
-      // LookupBoundary giống Overlay, nên giữ nguyên ở MultiProvider cấp
-      // cao bên ngoài MaterialApp là đúng và đủ — không cần di chuyển
-      // xuống bên trong `builder` như BubbleManager/MiniChatOverlayManager.
       Provider<UnifiedBubbleService>(
         create: (_) => widget.unifiedBubbleService,
         dispose: (_, s) => s.dispose(),
