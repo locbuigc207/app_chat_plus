@@ -5,7 +5,6 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
@@ -15,17 +14,10 @@ import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_chat_demo/utils/utils.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-
-// ─── Top-level FCM callback ────────────────────────────────────────────────
-@pragma('vm:entry-point')
-void _onNotificationResponse(NotificationResponse response) {
-  debugPrint(
-      '🔔 Notification tapped: id=${response.id}, payload=${response.payload}');
-}
+import 'package:rxdart/rxdart.dart'; // Đã thêm để sửa lỗi Race condition bằng Rx.combineLatest2
 
 // ════════════════════════════════════════════════════════════════════════════
 // DESIGN TOKENS
@@ -62,9 +54,6 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage>
     with TickerProviderStateMixin, WidgetsBindingObserver {
-  // ── Firebase ───────────────────────────────────────────────────────────────
-  final _firebaseMessaging = FirebaseMessaging.instance;
-  final _localNotifications = FlutterLocalNotificationsPlugin();
 
   // ── Controllers ────────────────────────────────────────────────────────────
   final _scrollController = ScrollController();
@@ -93,7 +82,7 @@ class _HomePageState extends State<HomePage>
 
   // ── Friends / stories ──────────────────────────────────────────────────────
   List<String> _myFriendIds = [];
-  StreamSubscription<QuerySnapshot>? _friendIdsSub;
+  StreamSubscription<List<String>>? _friendIdsSub; // Cập nhật type
 
   // ── Stable streams ─────────────────────────────────────────────────────────
   Stream<List<QueryDocumentSnapshot>>? _conversationsStream;
@@ -138,11 +127,9 @@ class _HomePageState extends State<HomePage>
     }
     _currentUserId = _authProvider.userFirebaseId!;
 
-    // Đã chuyển sang dùng instance có sẵn của context (Global) thay vì tạo mới
     _friendProvider = context.read<FriendProvider>();
     _conversationProvider = context.read<ConversationProvider>();
 
-    // Menu — Archive đã chuyển vào đây thay vì AppBar icon riêng lẻ
     _menus = [
       const MenuSetting(title: 'New Chat', icon: Icons.edit_square),
       const MenuSetting(title: 'Friends', icon: Icons.people_outline_rounded),
@@ -165,7 +152,6 @@ class _HomePageState extends State<HomePage>
         .where(FirestoreConstants.status, isEqualTo: 'pending')
         .snapshots();
 
-    // Stream unread count — dùng chung để tránh tạo nhiều listener
     _unreadCountStream = FirebaseFirestore.instance
         .collection(FirestoreConstants.pathConversationCollection)
         .where(FirestoreConstants.participants, arrayContains: _currentUserId)
@@ -173,32 +159,12 @@ class _HomePageState extends State<HomePage>
         .snapshots();
 
     _initAnimations();
-    _registerNotification();
-    _configLocalNotification();
     _scrollController.addListener(_onScroll);
     _searchFocusNode.addListener(_onSearchFocusChanged);
     _listenToFriendIds();
     _initE2EE();
 
     BubbleLifecycleObserver.instance.attach();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await FcmTokenManager.initialize(
-        onTokenAvailable: (token) async {
-          if (!mounted) return;
-          try {
-            await _homeProvider.updateDataFirestore(
-              FirestoreConstants.pathUserCollection,
-              _currentUserId,
-              {'pushToken': token, 'fcmToken': token},
-            );
-            debugPrint('📱 FCM token saved: ${token.substring(0, 20)}…');
-          } catch (e) {
-            debugPrint('⚠️ FCM token save: $e');
-          }
-        },
-      );
-    });
   }
 
   // ── Stream ─────────────────────────────────────────────────────────────────
@@ -206,7 +172,6 @@ class _HomePageState extends State<HomePage>
   void _updateConversationsStream() {
     switch (_activeFilterIndex) {
       case 1:
-      // FIX LỖI PHỤ: Thêm sort cho unread filter
         _conversationsStream = _conversationProvider
             .getUnreadConversations(_currentUserId)
             .map((docs) {
@@ -342,87 +307,29 @@ class _HomePageState extends State<HomePage>
     await E2EEService().generateAndStoreUserKeys(_currentUserId);
   }
 
-  // ── FCM ────────────────────────────────────────────────────────────────────
-
-  void _registerNotification() {
-    _firebaseMessaging.requestPermission(alert: true, badge: true, sound: true);
-    FirebaseMessaging.onMessage.listen((message) {
-      if (message.notification != null)
-        _showLocalNotification(message.notification!);
-    });
-    _firebaseMessaging.getToken().catchError((err) {
-      Fluttertoast.showToast(msg: err.message.toString());
-    });
-  }
-
-  void _configLocalNotification() {
-    const androidSettings = AndroidInitializationSettings('app_icon');
-    const darwinSettings = DarwinInitializationSettings(
-        requestAlertPermission: false,
-        requestBadgePermission: false,
-        requestSoundPermission: false);
-    const linuxSettings =
-    LinuxInitializationSettings(defaultActionName: 'Open notification');
-    _localNotifications.initialize(
-      const InitializationSettings(
-          android: androidSettings,
-          iOS: darwinSettings,
-          macOS: darwinSettings,
-          linux: linuxSettings),
-      onDidReceiveNotificationResponse: _onNotificationResponse,
-      onDidReceiveBackgroundNotificationResponse: _onNotificationResponse,
-    );
-  }
-
-  Future<void> _showLocalNotification(RemoteNotification n) async {
-    final androidDetails = AndroidNotificationDetails(
-      Platform.isAndroid
-          ? 'com.dfa.flutterchatdemo'
-          : 'com.duytq.flutterchatdemo',
-      'Flutter chat demo',
-      channelDescription: 'Chat message notifications',
-      playSound: true,
-      enableVibration: true,
-      importance: Importance.max,
-      priority: Priority.high,
-      ticker: n.title,
-      icon: 'app_icon',
-      largeIcon: const DrawableResourceAndroidBitmap('app_icon'),
-      styleInformation:
-      BigTextStyleInformation(n.body ?? '', contentTitle: n.title),
-    );
-    const darwinDetails = DarwinNotificationDetails(
-        presentAlert: true, presentBadge: true, presentSound: true);
-    await _localNotifications.show(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000 & 0x7FFFFFFF,
-      n.title,
-      n.body,
-      NotificationDetails(
-          android: androidDetails, iOS: darwinDetails, macOS: darwinDetails),
-      payload: n.title,
-    );
-  }
-
   // ── Friends stream ─────────────────────────────────────────────────────────
 
+  // [ĐÃ KHẮC PHỤC BUG 11]: Race condition do dùng .get() bên trong listener snapshot.
+  // Đã gộp 2 stream lại đồng thời xử lý an toàn bằng cách dùng package rxdart.
   void _listenToFriendIds() {
     final fs = _homeProvider.firebaseFirestore
         .collection(FirestoreConstants.pathFriendshipCollection);
-    _friendIdsSub = fs
-        .where(FirestoreConstants.userId1, isEqualTo: _currentUserId)
-        .snapshots()
-        .listen((snap1) async {
-      final ids = <String>{};
-      for (final d in snap1.docs) {
-        ids.add(d[FirestoreConstants.userId2] as String);
-      }
-      final snap2 = await fs
-          .where(FirestoreConstants.userId2, isEqualTo: _currentUserId)
-          .get();
-      for (final d in snap2.docs) {
-        ids.add(d[FirestoreConstants.userId1] as String);
-      }
-      if (mounted) setState(() => _myFriendIds = ids.take(9).toList());
+
+    _friendIdsSub = Rx.combineLatest2(
+      fs.where(FirestoreConstants.userId1, isEqualTo: _currentUserId).snapshots(),
+      fs.where(FirestoreConstants.userId2, isEqualTo: _currentUserId).snapshots(),
+          (snap1, snap2) {
+        final ids = <String>{};
+        for (final d in snap1.docs) {
+          ids.add(d[FirestoreConstants.userId2] as String);
+        }
+        for (final d in snap2.docs) {
+          ids.add(d[FirestoreConstants.userId1] as String);
+        }
+        return ids.take(9).toList();
+      },
+    ).listen((ids) {
+      if (mounted) setState(() => _myFriendIds = ids);
     });
   }
 
@@ -480,7 +387,6 @@ class _HomePageState extends State<HomePage>
         _push(const MyQRCodePage());
       case 'Create Group':
         _push(CreateGroupPage());
-    // Archive đã chuyển vào menu
       case 'Archive':
         _push(const ArchivedChatsPage());
       case 'Bubble Chat':
@@ -498,7 +404,9 @@ class _HomePageState extends State<HomePage>
     }
   }
 
+  // [ĐÃ KHẮC PHỤC]: Thiếu gọi stopListening() khi SignOut
   Future<void> _handleSignOut() async {
+    SyncManager().stopListening(); // Dọn dẹp trước khi thoát
     await _authProvider.handleSignOut();
     if (!mounted) return;
     await Navigator.of(context).pushAndRemoveUntil(
@@ -546,7 +454,7 @@ class _HomePageState extends State<HomePage>
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Icon(Icons.done_all_rounded, color: Colors.white, size: 22),
           const SizedBox(height: 4),
-          Text('Đã đọc',
+          const Text('Đã đọc',
               style: TextStyle(
                   color: Colors.white,
                   fontSize: 11,
@@ -561,20 +469,20 @@ class _HomePageState extends State<HomePage>
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Icon(Icons.archive_rounded, color: Colors.white, size: 22),
           const SizedBox(height: 4),
-          Text('Lưu trữ',
+          const Text('Lưu trữ',
               style: TextStyle(
                   color: Colors.white,
                   fontSize: 11,
                   fontWeight: FontWeight.w600)),
         ]),
       ),
-      // [SỬA LỖI P1]: Chờ tiến trình mạng xử lý xong mới confirm ẩn thẻ để tránh UI nhấp nháy
       confirmDismiss: (direction) async {
         if (direction == DismissDirection.startToEnd) {
           try {
-            await _conversationProvider.markAsRead(conversation.id, _currentUserId);
+            await _conversationProvider.markAsRead(
+                conversation.id, _currentUserId);
             HapticFeedback.lightImpact();
-            return false; // Chỉ thay đổi trạng thái Firebase, thẻ vẫn ở lại
+            return false;
           } catch (e) {
             Fluttertoast.showToast(msg: '❌ Lỗi đánh dấu đã đọc');
             return false;
@@ -584,7 +492,7 @@ class _HomePageState extends State<HomePage>
             await _conversationProvider.toggleArchiveConversation(
                 conversation.id, _currentUserId, true);
             HapticFeedback.mediumImpact();
-            return true; // Lưu trữ thành công, tile biến mất hoàn toàn
+            return true;
           } catch (e) {
             Fluttertoast.showToast(msg: '❌ Lỗi kết nối mạng, vui lòng thử lại');
             return false;
@@ -668,7 +576,6 @@ class _HomePageState extends State<HomePage>
   @override
   void dispose() {
     BubbleLifecycleObserver.instance.detach();
-    FcmTokenManager.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _prefetchDebouncer?.cancel();
     _fabAnimCtrl.dispose();
@@ -808,8 +715,6 @@ class _HomePageState extends State<HomePage>
 
   // ════════════════════════════════════════════════════════════════════════════
   // APP BAR
-  // Gọn hơn: avatar → title + badge → bell → QR → menu
-  // Archive đã chuyển vào More Menu để giảm icon density
   // ════════════════════════════════════════════════════════════════════════════
 
   Widget _buildAppBar(bool isDark) {
@@ -837,7 +742,6 @@ class _HomePageState extends State<HomePage>
                     letterSpacing: -0.6,
                     color: _primary(isDark))),
             const SizedBox(width: 8),
-            // Tái dụng _unreadCountStream đã khởi tạo ở initState
             StreamBuilder<QuerySnapshot>(
               stream: _unreadCountStream,
               builder: (_, snap) {
@@ -891,7 +795,7 @@ class _HomePageState extends State<HomePage>
             onTap: _scanQRCode),
         const SizedBox(width: 4),
 
-        // More menu (kể cả Archive)
+        // More menu
         _buildMenuButton(isDark),
       ]),
     );
@@ -899,7 +803,6 @@ class _HomePageState extends State<HomePage>
 
   // ════════════════════════════════════════════════════════════════════════════
   // SEARCH BAR
-  // Compact 42px pill — always visible below app bar
   // ════════════════════════════════════════════════════════════════════════════
 
   Widget _buildSearchBar(bool isDark) {
@@ -915,7 +818,7 @@ class _HomePageState extends State<HomePage>
               color: _surface2(isDark),
               borderRadius: BorderRadius.circular(11),
               border: _isSearchFocused
-                  ? Border.all(color: _kAccent.withOpacity(0.55), width: 1.5)
+                  ? Border.all(color: _kAccent.withValues(alpha: 0.55), width: 1.5)
                   : Border.all(color: Colors.transparent),
             ),
             child: Row(children: [
@@ -975,7 +878,7 @@ class _HomePageState extends State<HomePage>
                         width: 17,
                         height: 17,
                         decoration: BoxDecoration(
-                            color: _secondary(isDark).withOpacity(0.4),
+                            color: _secondary(isDark).withValues(alpha: 0.4),
                             shape: BoxShape.circle),
                         child: Icon(Icons.close_rounded,
                             size: 10,
@@ -995,7 +898,6 @@ class _HomePageState extends State<HomePage>
 
   // ════════════════════════════════════════════════════════════════════════════
   // FILTER CHIPS
-  // Pill tabs với unread count badge trên chip "Chưa đọc"
   // ════════════════════════════════════════════════════════════════════════════
 
   Widget _buildFilterChips(bool isDark) {
@@ -1010,7 +912,6 @@ class _HomePageState extends State<HomePage>
           child: Row(
             children: List.generate(_filterLabels.length, (i) {
               final active = _activeFilterIndex == i;
-              // Chip "Chưa đọc" hiển thị count nếu > 0
               final label = (i == 1 && unreadCount > 0)
                   ? '${_filterLabels[i]} $unreadCount'
                   : _filterLabels[i];
@@ -1055,7 +956,6 @@ class _HomePageState extends State<HomePage>
 
   // ════════════════════════════════════════════════════════════════════════════
   // STORIES ROW
-  // Compact khi rỗng, đầy đủ khi có story
   // ════════════════════════════════════════════════════════════════════════════
 
   Widget _buildStoriesRow(StoryProvider provider, bool isDark) {
@@ -1069,7 +969,6 @@ class _HomePageState extends State<HomePage>
             final stories = snap.data ?? [];
             final hasStories = stories.isNotEmpty;
 
-            // Empty state compact: chỉ hiển thị "+" button nhỏ + label
             if (!hasStories) {
               return _buildStoriesEmptyCompact(isDark);
             }
@@ -1103,24 +1002,22 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  /// Compact row khi chưa có story nào — tiết kiệm vertical space
   Widget _buildStoriesEmptyCompact(bool isDark) {
     return GestureDetector(
       onTap: _openStoryCreator,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(children: [
-          // Add story button nhỏ
           Container(
             width: 44,
             height: 44,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                  color: _kAccent.withOpacity(0.4),
+                  color: _kAccent.withValues(alpha: 0.4),
                   width: 1.5,
                   strokeAlign: BorderSide.strokeAlignOutside),
-              color: _kAccent.withOpacity(0.08),
+              color: _kAccent.withValues(alpha: 0.08),
             ),
             child: const Icon(Icons.add_rounded, color: _kAccent, size: 20),
           ),
@@ -1144,7 +1041,7 @@ class _HomePageState extends State<HomePage>
                 ]),
           ),
           Icon(Icons.chevron_right_rounded,
-              size: 18, color: _secondary(isDark).withOpacity(0.5)),
+              size: 18, color: _secondary(isDark).withValues(alpha: 0.5)),
         ]),
       ),
     );
@@ -1186,7 +1083,7 @@ class _HomePageState extends State<HomePage>
         return Container(
           color: _surface(isDark),
           child: Column(children: [
-            // AI assistant row — always at position 0
+            // AI assistant row
             _buildAiItem(isDark),
             Divider(height: 0.5, indent: 72, color: _sep(isDark)),
 
@@ -1231,11 +1128,10 @@ class _HomePageState extends State<HomePage>
                     peerNickname: AppConstants.aiAssistantName)));
           }
         },
-        splashColor: const Color(0xFF7B61FF).withOpacity(0.06),
+        splashColor: const Color(0xFF7B61FF).withValues(alpha: 0.06),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(children: [
-            // AI gradient avatar
             Container(
               width: 52,
               height: 52,
@@ -1293,7 +1189,7 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  // ── Conversation Item — với swipe actions ──────────────────────────────────
+  // ── Conversation Item ──────────────────────────────────────────────────────
 
   Widget _buildConversationItem(DocumentSnapshot doc, bool isDark) {
     final conversation = Conversation.fromDocument(doc);
@@ -1453,7 +1349,7 @@ class _HomePageState extends State<HomePage>
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       color: isDark ? const Color(0xFF1C1C22) : Colors.white,
       elevation: 8,
-      shadowColor: Colors.black.withOpacity(0.14),
+      shadowColor: Colors.black.withValues(alpha: 0.14),
       itemBuilder: (_) => _menus.map((m) {
         final isLogout = m.title == 'Log out';
         return PopupMenuItem<MenuSetting>(
@@ -1471,7 +1367,7 @@ class _HomePageState extends State<HomePage>
             borderRadius: BorderRadius.circular(12)),
         child: Icon(Icons.more_vert_rounded,
             color: isDark
-                ? Colors.white.withOpacity(0.75)
+                ? Colors.white.withValues(alpha: 0.75)
                 : const Color(0xFF3C3C43),
             size: 19),
       ),
@@ -1490,7 +1386,7 @@ class _HomePageState extends State<HomePage>
               color: _surface2(isDark), shape: BoxShape.circle),
           child: Icon(Icons.search_off_rounded,
               size: 28,
-              color: _secondary(isDark).withOpacity(0.5))),
+              color: _secondary(isDark).withValues(alpha: 0.5))),
       const SizedBox(height: 16),
       Text('Không tìm thấy "$_textSearch"',
           style: TextStyle(
@@ -1518,7 +1414,7 @@ class _HomePageState extends State<HomePage>
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                    color: _kAccent.withOpacity(0.28),
+                    color: _kAccent.withValues(alpha: 0.28),
                     blurRadius: 24,
                     offset: const Offset(0, 8))
               ]),
@@ -1573,7 +1469,7 @@ class _HomePageState extends State<HomePage>
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// BUBBLE DOCK — VisionOS / Dynamic Island style
+// BUBBLE DOCK
 // ════════════════════════════════════════════════════════════════════════════
 
 class _BubbleDock extends StatelessWidget {
@@ -1593,8 +1489,6 @@ class _BubbleDock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // [SỬA LỖI P2]: Xóa Widget bọc Consumer thừa ở HomePage
-    // Thay vào đó chỉ dùng context.read() và StreamBuilder.
     final unifiedBubbleService = context.read<UnifiedBubbleService>();
 
     return StreamBuilder<Map<String, BubbleData>>(
@@ -1621,21 +1515,21 @@ class _BubbleDock extends StatelessWidget {
                 margin: const EdgeInsets.symmetric(horizontal: 24),
                 decoration: BoxDecoration(
                   color: isDark
-                      ? Colors.white.withOpacity(0.07)
-                      : Colors.white.withOpacity(0.9),
+                      ? Colors.white.withValues(alpha: 0.07)
+                      : Colors.white.withValues(alpha: 0.9),
                   borderRadius: BorderRadius.circular(32),
                   border: Border.all(
                       color: isDark
-                          ? Colors.white.withOpacity(0.1)
-                          : Colors.white.withOpacity(0.9),
+                          ? Colors.white.withValues(alpha: 0.1)
+                          : Colors.white.withValues(alpha: 0.9),
                       width: 1.5),
                   boxShadow: [
                     BoxShadow(
-                        color: Colors.black.withOpacity(0.18),
+                        color: Colors.black.withValues(alpha: 0.18),
                         blurRadius: 28,
                         offset: const Offset(0, 8)),
                     BoxShadow(
-                        color: _kAccent.withOpacity(0.08),
+                        color: _kAccent.withValues(alpha: 0.08),
                         blurRadius: 12,
                         offset: const Offset(0, 3)),
                   ],
@@ -1647,7 +1541,6 @@ class _BubbleDock extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const SizedBox(width: 12),
-                      // Count badge
                       Container(
                         width: 28,
                         height: 28,
@@ -1661,7 +1554,6 @@ class _BubbleDock extends StatelessWidget {
                                     fontWeight: FontWeight.w800))),
                       ),
                       const SizedBox(width: 8),
-                      // Avatar list — mỗi bubble có entrance animation
                       ...bubbles.map((b) => _BubbleAvatar(
                         bubble: b,
                         isDark: isDark,
@@ -1674,7 +1566,6 @@ class _BubbleDock extends StatelessWidget {
                           onBubbleLongPress(b);
                         },
                       )),
-                      // Settings button
                       GestureDetector(
                         onTap: () {
                           HapticFeedback.lightImpact();
@@ -1686,7 +1577,7 @@ class _BubbleDock extends StatelessWidget {
                             margin: const EdgeInsets.only(right: 4),
                             decoration: BoxDecoration(
                                 color: isDark
-                                    ? Colors.white.withOpacity(0.08)
+                                    ? Colors.white.withValues(alpha: 0.08)
                                     : Colors.grey.shade100,
                                 borderRadius:
                                 BorderRadius.circular(9)),
@@ -1709,7 +1600,7 @@ class _BubbleDock extends StatelessWidget {
   }
 }
 
-// ── Bubble avatar với entrance animation ───────────────────────────────────
+// ── Bubble avatar ──────────────────────────────────────────────────────────
 
 class _BubbleAvatar extends StatefulWidget {
   final BubbleData bubble;
@@ -1764,7 +1655,7 @@ class _BubbleAvatarState extends State<_BubbleAvatar>
                 backgroundImage: b.avatarUrl.isNotEmpty
                     ? NetworkImage(b.avatarUrl)
                     : null,
-                backgroundColor: _kAccent.withOpacity(0.2),
+                backgroundColor: _kAccent.withValues(alpha: 0.2),
                 child: b.avatarUrl.isEmpty
                     ? Text(
                     b.userName.isNotEmpty
@@ -1816,7 +1707,7 @@ class _BubbleAvatarState extends State<_BubbleAvatar>
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// COMPOSE BUTTON — minimal single-action FAB
+// COMPOSE BUTTON
 // ════════════════════════════════════════════════════════════════════════════
 
 class _ComposeButton extends StatelessWidget {
@@ -1838,7 +1729,7 @@ class _ComposeButton extends StatelessWidget {
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-                color: _kAccent.withOpacity(0.38),
+                color: _kAccent.withValues(alpha: 0.38),
                 blurRadius: 18,
                 offset: const Offset(0, 6)),
           ],
@@ -1853,7 +1744,7 @@ class _ComposeButton extends StatelessWidget {
 // PRIVATE SUB-WIDGETS
 // ════════════════════════════════════════════════════════════════════════════
 
-// ── Avatar ring (header) ───────────────────────────────────────────────────
+// ── Avatar ring ────────────────────────────────────────────────────────────
 
 class _AvatarRing extends StatelessWidget {
   final String photoUrl, name;
@@ -1868,9 +1759,9 @@ class _AvatarRing extends StatelessWidget {
       height: 38,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: ColorConstants.primaryColor.withOpacity(0.12),
+        color: ColorConstants.primaryColor.withValues(alpha: 0.12),
         border: Border.all(
-            color: ColorConstants.primaryColor.withOpacity(0.3), width: 1.5),
+            color: ColorConstants.primaryColor.withValues(alpha: 0.3), width: 1.5),
       ),
       child: ClipOval(
         child: photoUrl.isNotEmpty
@@ -1893,7 +1784,7 @@ class _AvatarRing extends StatelessWidget {
   );
 }
 
-// ── Nav button (app bar icons) ─────────────────────────────────────────────
+// ── Nav button ─────────────────────────────────────────────────────────────
 
 class _NavBtn extends StatelessWidget {
   final IconData icon;
@@ -1916,7 +1807,7 @@ class _NavBtn extends StatelessWidget {
           color: _surface2(isDark), borderRadius: BorderRadius.circular(12)),
       child: Icon(icon,
           color: isDark
-              ? Colors.white.withOpacity(0.75)
+              ? Colors.white.withValues(alpha: 0.75)
               : const Color(0xFF3C3C43),
           size: 19),
     );
@@ -2008,7 +1899,7 @@ class _MenuItemRow extends StatelessWidget {
           width: 32,
           height: 32,
           decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(9)),
           child: Icon(menu.icon, color: color, size: 16)),
       const SizedBox(width: 12),
@@ -2023,7 +1914,6 @@ class _MenuItemRow extends StatelessWidget {
 
 // ════════════════════════════════════════════════════════════════════════════
 // CONVERSATION TILE
-// Flat row — pin/mute inline, unread chip, read receipt cho 1-1 chat
 // ════════════════════════════════════════════════════════════════════════════
 
 class _ConversationTile extends StatelessWidget {
@@ -2032,7 +1922,6 @@ class _ConversationTile extends StatelessWidget {
   final bool isAi;
   final String? onlineUserId;
   final int unreadCount;
-  // Read receipt — chỉ dùng cho 1-1 chat (isGroup == false)
   final bool isSentByMe;
   final bool isRead;
   final VoidCallback onTap, onLongPress;
@@ -2065,12 +1954,12 @@ class _ConversationTile extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         onLongPress: onLongPress,
-        splashColor: _kAccent.withOpacity(0.05),
-        highlightColor: _kAccent.withOpacity(0.02),
+        splashColor: _kAccent.withValues(alpha: 0.05),
+        highlightColor: _kAccent.withValues(alpha: 0.02),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
           color:
-          isPinned ? _kAccent.withOpacity(isDark ? 0.05 : 0.04) : null,
+          isPinned ? _kAccent.withValues(alpha: isDark ? 0.05 : 0.04) : null,
           child: Row(children: [
             // Avatar
             SizedBox(
@@ -2112,14 +2001,13 @@ class _ConversationTile extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Name row
                       Row(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             if (isPinned) ...[
                               Icon(Icons.push_pin_rounded,
                                   size: 10,
-                                  color: _kAccent.withOpacity(0.7)),
+                                  color: _kAccent.withValues(alpha: 0.7)),
                               const SizedBox(width: 3),
                             ],
                             Expanded(
@@ -2145,9 +2033,7 @@ class _ConversationTile extends StatelessWidget {
                                         : FontWeight.w400)),
                           ]),
                       const SizedBox(height: 3),
-                      // Preview row với read receipt
                       Row(children: [
-                        // Read receipt — chỉ 1-1 chat, tin nhắn do mình gửi
                         if (!isGroup && isSentByMe && !hasUnread) ...[
                           Icon(
                             isRead
@@ -2156,7 +2042,7 @@ class _ConversationTile extends StatelessWidget {
                             size: 14,
                             color: isRead
                                 ? _kAccent
-                                : _secondary(isDark).withOpacity(0.6),
+                                : _secondary(isDark).withValues(alpha: 0.6),
                           ),
                           const SizedBox(width: 4),
                         ],
@@ -2166,7 +2052,7 @@ class _ConversationTile extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                     color: hasUnread
-                                        ? _primary(isDark).withOpacity(0.75)
+                                        ? _primary(isDark).withValues(alpha: 0.75)
                                         : _secondary(isDark),
                                     fontSize: 13.5,
                                     fontWeight: hasUnread
@@ -2182,7 +2068,7 @@ class _ConversationTile extends StatelessWidget {
                               child: Icon(Icons.volume_off_rounded,
                                   size: 13,
                                   color:
-                                  _secondary(isDark).withOpacity(0.5))),
+                                  _secondary(isDark).withValues(alpha: 0.5))),
                       ]),
                     ])),
           ]),
@@ -2252,9 +2138,9 @@ class _Avatar extends StatelessWidget {
         height: size,
         decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: avatarColor.withOpacity(0.12),
+            color: avatarColor.withValues(alpha: 0.12),
             border: Border.all(
-                color: avatarColor.withOpacity(0.18), width: 1.5)),
+                color: avatarColor.withValues(alpha: 0.18), width: 1.5)),
         child: ClipOval(
             child: photoUrl.isNotEmpty
                 ? Image.network(photoUrl,
@@ -2267,12 +2153,12 @@ class _Avatar extends StatelessWidget {
   Widget _fallback(String text, Color color) {
     if (isGroup) {
       return Container(
-          color: color.withOpacity(0.1),
+          color: color.withValues(alpha: 0.1),
           child:
           Icon(Icons.group_rounded, color: color, size: size * 0.42));
     }
     return Container(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         alignment: Alignment.center,
         child: Text(text,
             style: TextStyle(
@@ -2329,7 +2215,7 @@ class _SearchResultTile extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
           onTap: onTap,
-          splashColor: _kAccent.withOpacity(0.05),
+          splashColor: _kAccent.withValues(alpha: 0.05),
           child: Padding(
               padding: const EdgeInsets.symmetric(
                   horizontal: 16, vertical: 12),
@@ -2364,7 +2250,7 @@ class _SearchResultTile extends StatelessWidget {
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
                                         color: _secondary(isDark)
-                                            .withOpacity(0.7),
+                                            .withValues(alpha: 0.7),
                                         fontSize: 12.5))),
                         ])),
                 Container(
@@ -2400,7 +2286,7 @@ class _ScrollToTopButton extends StatelessWidget {
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                    color: _kAccent.withOpacity(0.35),
+                    color: _kAccent.withValues(alpha: 0.35),
                     blurRadius: 12,
                     offset: const Offset(0, 4))
               ]),
@@ -2409,7 +2295,7 @@ class _ScrollToTopButton extends StatelessWidget {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// SKELETON TILE — shimmer loading
+// SKELETON TILE
 // ════════════════════════════════════════════════════════════════════════════
 
 class _SkeletonTile extends StatefulWidget {

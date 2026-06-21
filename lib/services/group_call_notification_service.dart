@@ -7,8 +7,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 
 import '../constants/app_constants.dart';
 import '../models/group_call_model.dart';
@@ -21,7 +21,7 @@ import '../services/group_call_service.dart';
 class GroupCallNotificationService {
   GroupCallNotificationService._();
   static final GroupCallNotificationService instance =
-  GroupCallNotificationService._();
+      GroupCallNotificationService._();
 
   final _db = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
@@ -44,16 +44,24 @@ class GroupCallNotificationService {
     try {
       final directory = await getTemporaryDirectory();
       final filePath = '${directory.path}/$fileName';
-      final response = await http.get(Uri.parse(url));
+
+      // SỬA LỖI P1: Thêm timeout(5s) để không block luồng hiển thị notification
+      // nếu mạng yếu hoặc server ảnh không phản hồi.
+      final response = await http
+          .get(Uri.parse(url))
+          .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         final file = File(filePath);
         await file.writeAsBytes(response.bodyBytes);
         return filePath;
       }
+    } on TimeoutException {
+      debugPrint('⚠️ Avatar download timeout, fallback to no largeIcon');
     } catch (e) {
       debugPrint('⚠️ Error downloading avatar image for notification: $e');
     }
+    // Trả về null an toàn, showIncomingCallNotification đã xử lý fallback.
     return null;
   }
 
@@ -74,8 +82,8 @@ class GroupCallNotificationService {
       String? largeIconPath;
       if (call.groupAvatarUrl.isNotEmpty) {
         largeIconPath = await _downloadAndSaveImage(
-            call.groupAvatarUrl,
-            'group_avatar_${call.callId}.png'
+          call.groupAvatarUrl,
+          'group_avatar_${call.callId}.png',
         );
       }
 
@@ -103,7 +111,6 @@ class GroupCallNotificationService {
           ),
         ],
         styleInformation: BigTextStyleInformation(body),
-        // [FIX L9] Sử dụng FilePathAndroidBitmap sau khi download ảnh từ URL thay vì hàm cũ gây lỗi
         largeIcon: largeIconPath != null
             ? FilePathAndroidBitmap(largeIconPath)
             : null,

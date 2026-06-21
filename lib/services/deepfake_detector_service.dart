@@ -19,6 +19,9 @@ class DeepfakeDetectorService {
 
   String? _activeCallId;
   bool _isActive = false;
+  // SỬA LỖI P1: Thêm cờ _busy để chống chồng frame, giảm tải CPU/RAM
+  bool _busy = false;
+
   int _consecutiveSuspiciousFrames = 0;
   static const int _suspiciousFrameThreshold = 3;
   static const double _localAlertThreshold = 0.55;
@@ -35,6 +38,7 @@ class DeepfakeDetectorService {
   void startAnalysis(String callId) {
     _activeCallId = callId;
     _isActive = true;
+    _busy = false; // Reset trạng thái bận
     _consecutiveSuspiciousFrames = 0;
     _fingerprint.reset();
   }
@@ -42,12 +46,14 @@ class DeepfakeDetectorService {
   void stopAnalysis() {
     _isActive = false;
     _activeCallId = null;
+    _busy = false; // Luôn giải phóng trạng thái bận để tránh kẹt vĩnh viễn
     _fingerprint.reset();
   }
 
   void dispose() {
     stopAnalysis();
-    _resultCtrl.close();
+    // Đã xóa gán _resultCtrl.close() nhằm tránh phá hủy luồng stream
+    // sau khi kết thúc cuộc gọi cho các lần dùng tiếp theo (Sửa Lỗi P0/Bug 3).
   }
 
   Future<DeepfakeAnalysisResult?> analyzeAudioBuffer(
@@ -55,42 +61,51 @@ class DeepfakeDetectorService {
   ) async {
     if (!_isActive || _activeCallId == null) return null;
 
-    final features = await _extractor.extractFromBuffer(audioBuffer);
-    if (features == null) return null;
-    _lastFeatures = features;
+    // SỬA LỖI P1: Bỏ qua frame hiện tại nếu CPU vẫn chưa phân tích xong frame trước đó
+    if (_busy) return null;
+    _busy = true;
 
-    if (_fingerprint.status != EnrollmentStatus.enrolled) {
-      _fingerprint.addEnrollSample(features, _activeCallId!);
-      if (_fingerprint.status == EnrollmentStatus.enrolling) {
-        _emitCalibrating();
-        return null;
+    try {
+      final features = await _extractor.extractFromBuffer(audioBuffer);
+      if (features == null) return null;
+      _lastFeatures = features;
+
+      if (_fingerprint.status != EnrollmentStatus.enrolled) {
+        _fingerprint.addEnrollSample(features, _activeCallId!);
+        if (_fingerprint.status == EnrollmentStatus.enrolling) {
+          _emitCalibrating();
+          return null;
+        }
       }
+
+      final localResult = _runLocalHeuristics(features);
+      final similarity = _fingerprint.compareLive(features);
+      final combinedResult = _combineResults(
+        localResult: localResult,
+        similarityResult: similarity,
+        features: features,
+      );
+
+      if (combinedResult.isLikelyDeepfake) {
+        _consecutiveSuspiciousFrames++;
+      } else if (_consecutiveSuspiciousFrames > 0) {
+        _consecutiveSuspiciousFrames--;
+      }
+
+      final finalResult =
+          _consecutiveSuspiciousFrames >= _suspiciousFrameThreshold
+          ? combinedResult
+          : DeepfakeAnalysisResult.safe();
+
+      // Lưu lại kết quả cuối cùng trước khi đưa vào luồng Stream
+      _lastResult = finalResult;
+
+      if (!_resultCtrl.isClosed) _resultCtrl.add(finalResult);
+      return finalResult;
+    } finally {
+      // SỬA LỖI P1: Đảm bảo luôn giải phóng _busy dù có lỗi ném ra
+      _busy = false;
     }
-
-    final localResult = _runLocalHeuristics(features);
-    final similarity = _fingerprint.compareLive(features);
-    final combinedResult = _combineResults(
-      localResult: localResult,
-      similarityResult: similarity,
-      features: features,
-    );
-
-    if (combinedResult.isLikelyDeepfake) {
-      _consecutiveSuspiciousFrames++;
-    } else if (_consecutiveSuspiciousFrames > 0) {
-      _consecutiveSuspiciousFrames--;
-    }
-
-    final finalResult =
-        _consecutiveSuspiciousFrames >= _suspiciousFrameThreshold
-        ? combinedResult
-        : DeepfakeAnalysisResult.safe();
-
-    // Lưu lại kết quả cuối cùng trước khi đưa vào luồng Stream
-    _lastResult = finalResult;
-
-    if (!_resultCtrl.isClosed) _resultCtrl.add(finalResult);
-    return finalResult;
   }
 
   DeepfakeAnalysisResult _runLocalHeuristics(AudioFeatures features) {

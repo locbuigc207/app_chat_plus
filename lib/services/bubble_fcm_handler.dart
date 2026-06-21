@@ -25,6 +25,9 @@ class BubbleFcmHandler {
   static final StreamController<RemoteMessage> _messageCtrl =
       StreamController<RemoteMessage>.broadcast();
 
+  // SỬA LỖI: Thêm guard chặn đăng ký nhiều listener trùng lặp
+  static bool _initialized = false;
+
   /// Stream of every FCM message handled (for UI / analytics).
   static Stream<RemoteMessage> get messageStream => _messageCtrl.stream;
 
@@ -33,6 +36,10 @@ class BubbleFcmHandler {
   /// Call once from main() after Firebase.initializeApp().
   static Future<void> initialize() async {
     if (kIsWeb || !Platform.isAndroid) return;
+
+    // Đảm bảo chỉ khởi tạo listener ĐÚNG 1 LẦN
+    if (_initialized) return;
+    _initialized = true;
 
     // [FIX 25]: ĐÃ XÓA dòng FirebaseMessaging.onBackgroundMessage(_onBackgroundMessage);
     // Firebase Cloud Messaging chỉ cho phép MỘT background handler duy nhất.
@@ -128,6 +135,7 @@ class BubbleFcmHandler {
   static void dispose() {
     _messageCtrl.close();
     _seen.clear();
+    _initialized = false;
   }
 }
 
@@ -139,12 +147,20 @@ class BubbleFcmHandler {
 /// persists to Firestore so the server can target this device.
 class FcmTokenManager {
   FcmTokenManager._();
+
   static StreamSubscription? _tokenSub;
+  // SỬA LỖI P0: Thêm cờ trạng thái
+  static bool _initialized = false;
 
   static Future<void> initialize({
     required Future<void> Function(String token) onTokenAvailable,
   }) async {
     if (kIsWeb || !Platform.isAndroid) return;
+
+    // SỬA LỖI: Thêm guard chặn gọi nhiều lần để tránh rò rỉ (leak) StreamSubscription
+    // khi home_page.dart cũng gọi hàm này.
+    if (_initialized) return;
+    _initialized = true;
 
     // Get current token
     try {
@@ -175,5 +191,6 @@ class FcmTokenManager {
   static void dispose() {
     _tokenSub?.cancel();
     _tokenSub = null;
+    _initialized = false;
   }
 }

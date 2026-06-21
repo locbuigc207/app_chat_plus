@@ -91,6 +91,30 @@ class BubbleServiceV2 {
     }
   }
 
+  // [SỬA LỖI P1]: Bổ sung 2 hàm kiểm tra và yêu cầu quyền hệ thống thật trên Android Native
+  Future<bool> checkBubblesEnabled() async {
+    if (!Platform.isAndroid) return false;
+    try {
+      return await _method.invokeMethod<bool>('checkBubblesEnabled') ?? false;
+    } catch (e) {
+      debugPrint('❌ checkBubblesEnabled: $e');
+      return false;
+    }
+  }
+
+  Future<bool> openBubbleSettings() async {
+    if (!Platform.isAndroid) return false;
+    try {
+      final opened =
+          await _method.invokeMethod<bool>('openBubbleSettings') ?? false;
+      if (opened) await Future.delayed(const Duration(milliseconds: 600));
+      return opened;
+    } catch (e) {
+      debugPrint('❌ openBubbleSettings: $e');
+      return false;
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // EVENT LISTENER
   // ═══════════════════════════════════════════════════════════════════════════
@@ -214,7 +238,7 @@ class BubbleServiceV2 {
     if (existing == null) return false;
 
     try {
-      // [SỬA LỖI P0]: Truyền toàn bộ thông tin userName và avatarUrl đang có sẵn trong bộ nhớ đệm Dart
+      // Truyền toàn bộ thông tin userName và avatarUrl đang có sẵn trong bộ nhớ đệm Dart
       // ngược lên cho Native Kotlin thay vì để Kotlin hardcode chuỗi rỗng gây lỗi tự tắt.
       final success =
           await _method.invokeMethod<bool>('updateBubble', {
@@ -376,7 +400,7 @@ class BubbleServiceV2 {
         return;
       }
 
-      // [SỬA LỖI P1]: Lấy danh sách shortcut có thật trên Android để kiểm chứng
+      // Lấy danh sách shortcut có thật trên Android để kiểm chứng
       // ngăn chặn hiện tượng khôi phục trạng thái Dart trong khi hệ điều hành
       // đã dọn dẹp các Shortcut (gây bong bóng ảo).
       final activeShortcutCount = await getShortcutCount();

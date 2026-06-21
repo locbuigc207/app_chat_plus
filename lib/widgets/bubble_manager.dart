@@ -9,7 +9,9 @@ import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:flutter_chat_demo/services/unified_bubble_service.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
 
-import '../main.dart' hide MiniChatOverlayWidget;
+// SỬA LỖI: Bỏ hide MiniChatOverlayWidget và import trực tiếp widget chuẩn
+import '../main.dart';
+import 'mini_chat_overlay.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // BUBBLE MANAGER WIDGET
@@ -795,7 +797,8 @@ class _BubbleTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // [SỬA LỖI P2]: Check an toàn tên userName trước khi index chữ cái đầu
-    final String initial = (data.userName.isNotEmpty) ? data.userName[0].toUpperCase() : '?';
+    final String initial =
+    (data.userName.isNotEmpty) ? data.userName[0].toUpperCase() : '?';
 
     return ListTile(
       leading: Stack(
@@ -803,9 +806,7 @@ class _BubbleTile extends StatelessWidget {
           CircleAvatar(
             backgroundImage:
             data.avatarUrl.isNotEmpty ? NetworkImage(data.avatarUrl) : null,
-            child: data.avatarUrl.isEmpty
-                ? Text(initial)
-                : null,
+            child: data.avatarUrl.isEmpty ? Text(initial) : null,
           ),
           if (data.unreadCount > 0)
             Positioned(

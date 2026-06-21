@@ -1,8 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 class CachedData<T> {
   final T data;
@@ -15,7 +14,8 @@ class CachedData<T> {
     required this.key,
   });
 
-  bool isExpired(Duration maxAge) => DateTime.now().difference(timestamp) >= maxAge;
+  bool isExpired(Duration maxAge) =>
+      DateTime.now().difference(timestamp) >= maxAge;
 }
 
 class QueryFilter {
@@ -84,16 +84,17 @@ class CacheStats {
     required this.missCount,
   });
 
-  double get hitRate => (hitCount + missCount) == 0 ? 0 : hitCount / (hitCount + missCount);
+  double get hitRate =>
+      (hitCount + missCount) == 0 ? 0 : hitCount / (hitCount + missCount);
 
   Map<String, dynamic> toMap() => {
-        'total': total,
-        'valid': valid,
-        'expired': expired,
-        'hitCount': hitCount,
-        'missCount': missCount,
-        'hitRate': '${(hitRate * 100).toStringAsFixed(1)}%',
-      };
+    'total': total,
+    'valid': valid,
+    'expired': expired,
+    'hitCount': hitCount,
+    'missCount': missCount,
+    'hitRate': '${(hitRate * 100).toStringAsFixed(1)}%',
+  };
 }
 
 class DatabaseOptimizer {
@@ -121,7 +122,8 @@ class DatabaseOptimizer {
     _collectionTTL[collection] = ttl;
   }
 
-  Duration _getTTL(String collection) => _collectionTTL[collection] ?? _defaultCacheDuration;
+  Duration _getTTL(String collection) =>
+      _collectionTTL[collection] ?? _defaultCacheDuration;
 
   Future<DocumentSnapshot?> getCached({
     required String collection,
@@ -143,7 +145,10 @@ class DatabaseOptimizer {
     debugPrint('🔄 Cache miss: $cacheKey');
 
     try {
-      final doc = await FirebaseFirestore.instance.collection(collection).doc(docId).get();
+      final doc = await FirebaseFirestore.instance
+          .collection(collection)
+          .doc(docId)
+          .get();
 
       if (doc.exists) {
         _cache[cacheKey] = CachedData(
@@ -185,7 +190,10 @@ class DatabaseOptimizer {
 
     if (toFetch.isEmpty) {
       debugPrint('📦 All ${docIds.length} docs from cache');
-      return docIds.map((id) => results[id]!).whereType<DocumentSnapshot>().toList();
+      return docIds
+          .map((id) => results[id]!)
+          .whereType<DocumentSnapshot>()
+          .toList();
     }
 
     debugPrint('🔄 Fetching ${toFetch.length}/${docIds.length} docs');
@@ -220,7 +228,10 @@ class DatabaseOptimizer {
       }
     }
 
-    return docIds.map((id) => results[id]).whereType<DocumentSnapshot>().toList();
+    return docIds
+        .map((id) => results[id])
+        .whereType<DocumentSnapshot>()
+        .toList();
   }
 
   Future<PaginatedResult> queryPaginated({
@@ -231,7 +242,9 @@ class DatabaseOptimizer {
     List<QueryOrder>? orderBy,
   }) async {
     try {
-      Query<Map<String, dynamic>> query = FirebaseFirestore.instance.collection(collection);
+      Query<Map<String, dynamic>> query = FirebaseFirestore.instance.collection(
+        collection,
+      );
 
       if (filters != null) {
         for (final f in filters) {
@@ -245,13 +258,19 @@ class DatabaseOptimizer {
             query = query.where(f.field, isGreaterThan: f.isGreaterThan);
           }
           if (f.isGreaterThanOrEqualTo != null) {
-            query = query.where(f.field, isGreaterThanOrEqualTo: f.isGreaterThanOrEqualTo);
+            query = query.where(
+              f.field,
+              isGreaterThanOrEqualTo: f.isGreaterThanOrEqualTo,
+            );
           }
           if (f.isLessThan != null) {
             query = query.where(f.field, isLessThan: f.isLessThan);
           }
           if (f.isLessThanOrEqualTo != null) {
-            query = query.where(f.field, isLessThanOrEqualTo: f.isLessThanOrEqualTo);
+            query = query.where(
+              f.field,
+              isLessThanOrEqualTo: f.isLessThanOrEqualTo,
+            );
           }
           if (f.arrayContains != null) {
             query = query.where(f.field, arrayContains: f.arrayContains);
@@ -382,18 +401,20 @@ class DatabaseOptimizer {
   }
 
   void clearCollectionCache(String collection) {
-    final keys = _cache.keys.where((k) => k.startsWith('$collection/')).toList();
+    final keys = _cache.keys
+        .where((k) => k.startsWith('$collection/'))
+        .toList();
     for (final k in keys) {
       _cache.remove(k);
     }
-    debugPrint('🗑️ Collection cache cleared: $collection (${keys.length} entries)');
+    debugPrint(
+      '🗑️ Collection cache cleared: $collection (${keys.length} entries)',
+    );
   }
 
   void evictExpired() {
     final keys = _cache.entries
-        .where((e) => e.value.isExpired(_getTTL(
-              e.key.split('/').first,
-            )))
+        .where((e) => e.value.isExpired(_getTTL(e.key.split('/').first)))
         .map((e) => e.key)
         .toList();
     for (final k in keys) {
@@ -431,13 +452,18 @@ class DatabaseOptimizer {
     _missCount = 0;
   }
 
-  void dispose() {
+  // SỬA LỖI P2: Cập nhật hàm thành async và thêm await _flushWriteBehind()
+  // để tránh mất dữ liệu hàng đợi.
+  Future<void> dispose() async {
     for (final t in _debounceTimers.values) {
       t.cancel();
     }
     _debounceTimers.clear();
     _writeBehindFlushTimer?.cancel();
-    _flushWriteBehind();
+
+    // Đảm bảo dữ liệu ghi nền cuối cùng được xử lý xong trước khi hủy
+    await _flushWriteBehind();
+
     clearCache();
     debugPrint('✅ DatabaseOptimizer disposed');
   }

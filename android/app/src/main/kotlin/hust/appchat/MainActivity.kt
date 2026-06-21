@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.content.*
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import androidx.annotation.NonNull
 import io.flutter.embedding.android.FlutterActivity
@@ -119,9 +120,31 @@ class MainActivity : FlutterActivity() {
                 Log.d(TAG, "📞 Legacy: ${call.method}")
                 try {
                     when (call.method) {
-                        // Trả về true luôn do trên Android 11+ với Bubble API không cần quyền overlay
-                        "hasPermission" -> result.success(true)
-                        "requestPermission" -> result.success(true)
+                        // Sửa lỗi: Gọi đúng class NotificationManager của hệ thống
+                        "hasPermission" -> {
+                            val isAllowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                val nm = getSystemService(NotificationManager::class.java)
+                                nm?.areBubblesAllowed() == true
+                            } else {
+                                false
+                            }
+                            result.success(isAllowed)
+                        }
+
+                        // Sửa lỗi: Mở cài đặt thông báo của app để người dùng bật bong bóng
+                        "requestPermission" -> {
+                            try {
+                                val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                    putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                }
+                                startActivity(intent)
+                                result.success(true)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "❌ Cannot open notification settings: $e")
+                                result.success(false)
+                            }
+                        }
 
                         "showBubble" -> {
                             val uid   = call.argument<String>("userId")    ?: return@setMethodCallHandler result.success(false)
@@ -199,8 +222,13 @@ class MainActivity : FlutterActivity() {
 
                         // [SỬA LỖI P1]: Hàm báo cáo trạng thái tắt/mở quyền hiển thị bubble toàn hệ thống
                         "checkBubbleChannelEnabled" -> {
-                            val nm = getSystemService(NotificationManager::class.java)
-                            result.success(nm?.areBubblesAllowed() == true)
+                            val isAllowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                val nm = getSystemService(NotificationManager::class.java)
+                                nm?.areBubblesAllowed() == true
+                            } else {
+                                false
+                            }
+                            result.success(isAllowed)
                         }
 
                         "showBubble" -> {

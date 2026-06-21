@@ -3,41 +3,23 @@
     package="hust.appchat"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- ═══════════════════════════════════════════════════════════════════
-         NETWORK
-    ═══════════════════════════════════════════════════════════════════ -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
 
-    <!-- ═══════════════════════════════════════════════════════════════════
-         NOTIFICATIONS & ALERTS
-    ═══════════════════════════════════════════════════════════════════ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
 
-    <!-- ═══════════════════════════════════════════════════════════════════
-         FOREGROUND SERVICE
-         foregroundServiceType phải khai báo TẤT CẢ type dùng trong app:
-         - microphone    → Agora RTC (deepfake detection, calls)
-         - camera        → Video calls
-         - mediaPlayback → Audio playback trong call
-         - specialUse    → Bubble overlay service
-         - dataSync      → SyncManager background sync
-    ═══════════════════════════════════════════════════════════════════ -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
-    <!-- ═══════════════════════════════════════════════════════════════════
-         AUDIO & CALLS (Agora RTC + Deepfake AI)
-    ═══════════════════════════════════════════════════════════════════ -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.BLUETOOTH" />
@@ -46,9 +28,6 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
 
-    <!-- ═══════════════════════════════════════════════════════════════════
-         CAMERA & MEDIA
-    ═══════════════════════════════════════════════════════════════════ -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
@@ -63,24 +42,15 @@
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
-    <!-- ═══════════════════════════════════════════════════════════════════
-         LOCATION (AI contextual bubble, geo-locked messages)
-    ═══════════════════════════════════════════════════════════════════ -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
-    <!-- ═══════════════════════════════════════════════════════════════════
-         ALARMS & BOOT (Reminder AI notifications)
-    ═══════════════════════════════════════════════════════════════════ -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <!-- ═══════════════════════════════════════════════════════════════════
-         HARDWARE FEATURES (optional — không block install nếu thiếu)
-    ═══════════════════════════════════════════════════════════════════ -->
     <uses-feature android:name="android.hardware.camera"
         android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus"
@@ -98,9 +68,6 @@
     <uses-feature android:glEsVersion="0x00020000"
         android:required="false" />
 
-    <!-- ═══════════════════════════════════════════════════════════════════
-         QUERIES (Android 11+ package visibility)
-    ═══════════════════════════════════════════════════════════════════ -->
     <queries>
         <intent>
             <action android:name="android.intent.action.VIEW" />
@@ -130,9 +97,6 @@
         </intent>
     </queries>
 
-    <!-- ═══════════════════════════════════════════════════════════════════
-         APPLICATION
-    ═══════════════════════════════════════════════════════════════════ -->
     <application
         android:name=".MainApplication"
         android:icon="@mipmap/ic_launcher"
@@ -149,17 +113,14 @@
         android:networkSecurityConfig="@xml/network_security_config"
         tools:replace="android:label">
 
-        <!-- Flutter -->
         <meta-data android:name="flutterEmbedding"
             android:value="2" />
         <meta-data android:name="io.flutter.embedding.android.EnableImpeller"
             android:value="false" />
 
-        <!-- Google Maps -->
         <meta-data android:name="com.google.android.geo.API_KEY"
             android:resource="@string/google_map_api_key" />
 
-        <!-- FCM default config -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@mipmap/ic_launcher" />
@@ -170,7 +131,6 @@
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/notification_color" />
 
-        <!-- ─── MAIN ACTIVITY ──────────────────────────────────────── -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -190,19 +150,16 @@
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
 
-            <!-- App launch -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- FCM notification tap -->
             <intent-filter>
                 <action android:name="FLUTTER_NOTIFICATION_CLICK" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
-            <!-- Deep link: chatapp://reminders/{id} (AI reminder deeplink) -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -211,7 +168,6 @@
             </intent-filter>
         </activity>
 
-        <!-- ─── BUBBLE ACTIVITY (Android 11+ Bubble API) ──────────── -->
         <activity
             android:name=".BubbleActivity"
             android:exported="false"
@@ -227,7 +183,6 @@
                 android:resource="@style/BubbleTheme" />
         </activity>
 
-        <!-- ─── MINI CHAT OVERLAY ACTIVITY ────────────────────────── -->
         <activity
             android:name=".FlutterMiniChatActivity"
             android:exported="false"
@@ -244,7 +199,6 @@
                 android:resource="@style/TransparentFloatingTheme" />
         </activity>
 
-        <!-- ─── INCOMING CALL ACTIVITY (full-screen intent) ────────── -->
         <activity
             android:name=".IncomingCallActivity"
             android:exported="false"
@@ -257,11 +211,6 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:windowSoftInputMode="adjustNothing" />
 
-        <!-- ═══════════════════════════════════════════════════════════
-             SERVICES
-        ═══════════════════════════════════════════════════════════════ -->
-
-        <!-- Agora RTC Call Service (audio + video) -->
         <service
             android:name=".call.AgoraCallService"
             android:exported="false"
@@ -269,7 +218,6 @@
             android:foregroundServiceType="microphone|camera|mediaPlayback"
             android:stopWithTask="false" />
 
-        <!-- Group Call Service -->
         <service
             android:name=".call.GroupCallService"
             android:exported="false"
@@ -277,7 +225,6 @@
             android:foregroundServiceType="microphone|camera|mediaPlayback"
             android:stopWithTask="false" />
 
-        <!-- Background Sync Service (SyncManager) -->
         <service
             android:name=".sync.BackgroundSyncService"
             android:exported="false"
@@ -285,7 +232,6 @@
             android:foregroundServiceType="dataSync"
             android:stopWithTask="false" />
 
-        <!-- FCM Service -->
         <service
             android:name=".notifications.FcmService"
             android:exported="false">
@@ -294,11 +240,6 @@
             </intent-filter>
         </service>
 
-        <!-- ═══════════════════════════════════════════════════════════
-             BROADCAST RECEIVERS
-        ═══════════════════════════════════════════════════════════════ -->
-
-        <!-- Bubble notification actions (reply, mark read, dismiss) -->
         <receiver
             android:name=".notifications.BubbleNotificationActionReceiver"
             android:exported="false">
@@ -309,7 +250,6 @@
             </intent-filter>
         </receiver>
 
-        <!-- Call action receiver (accept, decline) -->
         <receiver
             android:name=".notifications.CallActionReceiver"
             android:exported="false">
@@ -322,7 +262,6 @@
             </intent-filter>
         </receiver>
 
-        <!-- Reminder notification action receiver (AI reminders) -->
         <receiver
             android:name=".notifications.ReminderActionReceiver"
             android:exported="false">
@@ -333,7 +272,6 @@
             </intent-filter>
         </receiver>
 
-        <!-- flutter_local_notifications scheduled receivers -->
         <receiver
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
             android:exported="true">
@@ -349,11 +287,6 @@
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
             android:exported="true" />
 
-        <!-- ═══════════════════════════════════════════════════════════
-             PROVIDERS
-        ═══════════════════════════════════════════════════════════════ -->
-
-        <!-- FileProvider cho camera capture, file sharing -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

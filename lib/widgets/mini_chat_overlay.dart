@@ -91,8 +91,9 @@ class MiniChatOverlayWidget extends StatefulWidget {
   State<MiniChatOverlayWidget> createState() => _MiniChatOverlayWidgetState();
 }
 
+// SỬA LỖI P1: Thêm WidgetsBindingObserver để lắng nghe thay đổi kích thước cửa sổ hệ thống
 class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   // ── Geometry ────────────────────────────────────────────────────────────
   late double _x;
   late double _y;
@@ -165,12 +166,36 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
   @override
   void initState() {
     super.initState();
+    // Đăng ký nhận sự kiện vòng đời hiển thị từ hệ điều hành
+    WidgetsBinding.instance.addObserver(this);
+
     _setupAnimations();
     // Defer geometry init until we have MediaQuery
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _initGeometry();
       _openCtrl.forward();
+    });
+  }
+
+  // SỬA LỖI P1: Ghi đè phương thức didChangeMetrics để tính toán lại tọa độ hiển thị
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    if (!_initialized || !mounted) return;
+
+    // Kẹp (clamp) lại tọa độ/kích thước dựa theo không gian hiển thị mới nhất (ví dụ: bàn phím vừa bật)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final size = MediaQuery.of(context).size;
+      final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+      setState(() {
+        _w = _w.clamp(_K.minW, math.min(_K.maxW, size.width - 2 * _K.edgePad));
+        _h = _h.clamp(_K.minH, math.min(_K.maxH, size.height - bottomInset - 2 * _K.edgePad));
+        _x = _x.clamp(_K.edgePad, size.width - _w - _K.edgePad);
+        _y = _y.clamp(_K.edgePad, size.height - _h - bottomInset - _K.edgePad);
+      });
     });
   }
 
@@ -221,6 +246,9 @@ class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
 
   @override
   void dispose() {
+    // Hủy đăng ký listener hệ thống để tránh memory leak
+    WidgetsBinding.instance.removeObserver(this);
+
     _openCtrl.dispose();
     _closeCtrl.dispose();
     _pipCtrl.dispose();

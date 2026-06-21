@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -32,6 +33,9 @@ class _AICallShieldState extends State<AICallShield>
   late final Animation<Offset> _panelSlide;
   late final Animation<double> _scanAnim;
   late final Animation<double> _expandAnim;
+
+  // ── Stream Subscription (Sửa lỗi P1/Bug 6) ─────────
+  StreamSubscription<SecurityEvent>? _securitySub;
 
   // ── State ──────────────────────────────────────────
   SecurityEvent _event = SecurityEvent.safe();
@@ -90,10 +94,14 @@ class _AICallShieldState extends State<AICallShield>
       parent: _expandCtrl,
       curve: Curves.easeOutCubic,
     );
+
+    // Bắt sự kiện Stream an toàn, KHÔNG gọi trong build method
+    _securitySub = RealtimeAIService().securityStream.listen(_onEvent);
   }
 
   @override
   void dispose() {
+    _securitySub?.cancel();
     _pulseCtrl.dispose();
     _shakeCtrl.dispose();
     _panelCtrl.dispose();
@@ -103,9 +111,6 @@ class _AICallShieldState extends State<AICallShield>
   }
 
   void _onEvent(SecurityEvent event) {
-    // FIX LỖI D-4: Đã xóa lệnh return chặn sự kiện Deepfake để AICallShield
-    // có thể trực tiếp xử lý và hiển thị cảnh báo Deepfake đồng nhất với các cảnh báo khác.
-
     if (event.status == _event.status && event.message == _event.message) {
       return;
     }
@@ -164,63 +169,55 @@ class _AICallShieldState extends State<AICallShield>
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<SecurityEvent>(
-      stream: RealtimeAIService().securityStream,
-      initialData: SecurityEvent.safe(),
-      builder: (ctx, snap) {
-        if (snap.hasData) _onEvent(snap.data!);
+    return AnimatedBuilder(
+      animation: _shakeAnim,
+      builder: (_, child) => Transform.translate(
+        offset: Offset(_shakeAnim.value, 0),
+        child: child,
+      ),
+      child: Column(
+        crossAxisAlignment: widget.alignRight
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Warning panel
+          if (!_dismissed)
+            _WarningPanel(
+              event: _event,
+              theme: _theme,
+              fadeAnim: _panelFade,
+              slideAnim: _panelSlide,
+              onDismiss: _dismiss,
+              onExpand: _toggleExpand,
+              expanded: _expanded,
+            ),
 
-        return AnimatedBuilder(
-          animation: _shakeAnim,
-          builder: (_, child) => Transform.translate(
-            offset: Offset(_shakeAnim.value, 0),
-            child: child,
+          if (!_dismissed && _event.isAlert) const SizedBox(height: 6),
+
+          // Expanded detail card
+          SizeTransition(
+            sizeFactor: _expandAnim,
+            child: _DetailCard(
+              event: _event,
+              theme: _theme,
+              history: List.from(_history),
+              onDismiss: _dismiss,
+            ),
           ),
-          child: Column(
-            crossAxisAlignment: widget.alignRight
-                ? CrossAxisAlignment.end
-                : CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Warning panel
-              if (!_dismissed)
-                _WarningPanel(
-                  event: _event,
-                  theme: _theme,
-                  fadeAnim: _panelFade,
-                  slideAnim: _panelSlide,
-                  onDismiss: _dismiss,
-                  onExpand: _toggleExpand,
-                  expanded: _expanded,
-                ),
 
-              if (!_dismissed && _event.isAlert) const SizedBox(height: 6),
+          if (_expanded) const SizedBox(height: 6),
 
-              // Expanded detail card
-              SizeTransition(
-                sizeFactor: _expandAnim,
-                child: _DetailCard(
-                  event: _event,
-                  theme: _theme,
-                  history: List.from(_history),
-                  onDismiss: _dismiss,
-                ),
-              ),
-
-              if (_expanded) const SizedBox(height: 6),
-
-              // Shield badge
-              _ShieldBadge(
-                theme: _theme,
-                event: _event,
-                pulseAnim: _pulseAnim,
-                scanAnim: _scanAnim,
-                onTap: _event.isAlert ? _toggleExpand : null,
-              ),
-            ],
+          // Shield badge
+          _ShieldBadge(
+            theme: _theme,
+            event: _event,
+            pulseAnim: _pulseAnim,
+            scanAnim: _scanAnim,
+            onTap: _event.isAlert ? _toggleExpand : null,
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 }
@@ -304,23 +301,23 @@ class _WarningPanel extends StatelessWidget {
                             .split('\n')
                             .map(
                               (line) => Text(
-                                line,
-                                style: TextStyle(
-                                  color:
-                                      line.startsWith('⚠️') ||
-                                          line.startsWith('🔍')
-                                      ? theme.primary
-                                      : Colors.white70,
-                                  fontSize: 12,
-                                  fontWeight:
-                                      line.startsWith('⚠️') ||
-                                          line.startsWith('🔍')
-                                      ? FontWeight.w700
-                                      : FontWeight.w400,
-                                  height: 1.45,
-                                ),
-                              ),
+                            line,
+                            style: TextStyle(
+                              color:
+                              line.startsWith('⚠️') ||
+                                  line.startsWith('🔍')
+                                  ? theme.primary
+                                  : Colors.white70,
+                              fontSize: 12,
+                              fontWeight:
+                              line.startsWith('⚠️') ||
+                                  line.startsWith('🔍')
+                                  ? FontWeight.w700
+                                  : FontWeight.w400,
+                              height: 1.45,
                             ),
+                          ),
+                        ),
                         if (event.riskScore > 0) ...[
                           const SizedBox(height: 8),
                           _RiskBar(
@@ -477,42 +474,42 @@ class _DetailCard extends StatelessWidget {
                     .take(3)
                     .map(
                       (e) => Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 6,
-                              height: 6,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: _themeFor(
-                                  e.status,
-                                ).primary.withOpacity(0.8),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                _categoryLabel(e.category),
-                                style: TextStyle(
-                                  color: _themeFor(
-                                    e.status,
-                                  ).primary.withOpacity(0.7),
-                                  fontSize: 10,
-                                ),
-                              ),
-                            ),
-                            Text(
-                              _timeLabel(e.timestamp),
-                              style: const TextStyle(
-                                color: Colors.white24,
-                                fontSize: 9,
-                              ),
-                            ),
-                          ],
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _themeFor(
+                              e.status,
+                            ).primary.withOpacity(0.8),
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            _categoryLabel(e.category),
+                            style: TextStyle(
+                              color: _themeFor(
+                                e.status,
+                              ).primary.withOpacity(0.7),
+                              fontSize: 10,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          _timeLabel(e.timestamp),
+                          style: const TextStyle(
+                            color: Colors.white24,
+                            fontSize: 9,
+                          ),
+                        ),
+                      ],
                     ),
+                  ),
+                ),
               ],
             ],
           ),
@@ -617,7 +614,7 @@ class _RecommendationBox extends StatelessWidget {
           '🚫 Không chuyển tiền theo yêu cầu lạ',
           '✅ Cúp máy và gọi lại số chính thức',
         ].map(
-          (tip) => Padding(
+              (tip) => Padding(
             padding: const EdgeInsets.only(bottom: 2),
             child: Text(
               tip,
@@ -761,14 +758,14 @@ class _ShieldBadge extends StatelessWidget {
                   ),
                   boxShadow: event.isAlert
                       ? [
-                          BoxShadow(
-                            color: theme.primary.withOpacity(
-                              pulseAnim.value * 0.2,
-                            ),
-                            blurRadius: 14,
-                            spreadRadius: 1,
-                          ),
-                        ]
+                    BoxShadow(
+                      color: theme.primary.withOpacity(
+                        pulseAnim.value * 0.2,
+                      ),
+                      blurRadius: 14,
+                      spreadRadius: 1,
+                    ),
+                  ]
                       : null,
                 ),
                 child: Row(

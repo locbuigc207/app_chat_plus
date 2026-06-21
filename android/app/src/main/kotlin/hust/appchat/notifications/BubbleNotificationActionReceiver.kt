@@ -3,11 +3,9 @@ package hust.appchat.notifications
 
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.Person
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.RemoteInput
@@ -15,7 +13,6 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FieldValue
 import hust.appchat.R
-import hust.appchat.shortcuts.AvatarLoader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,33 +21,16 @@ import kotlinx.coroutines.tasks.await
 
 /**
  * BubbleNotificationActionReceiver — handles quick actions from the notification shade.
- *
- * Actions supported
+ * * [SỬA LỖI TUÂN THỦ ANDROID 12+]:
+ * Receiver này ĐÃ ĐƯỢC DỌN DẸP. Tuyệt đối KHÔNG chứa bất kỳ lệnh gọi startActivity() nào
+ * bên trong onReceive() để tránh vi phạm chính sách "Notification Trampoline".
+ * Các action mở UI (ví dụ: "Mở chat") phải được cấu hình bằng PendingIntent.getActivity()
+ * trực tiếp từ lúc build Notification ở BubbleNotificationManager.
+ * * Receiver này chỉ giữ lại các tác vụ chạy ngầm (Background Actions):
  * ──────────────────
- * REPLY      : User typed a reply in the notification inline-reply input.
- * → Sends the message to Firestore.
- * → Updates the MessagingStyle notification with the sent message.
- * → Forwards event to Flutter via broadcast.
- *
- * MARK_READ  : User tapped "Mark as read" action button.
- * → Cancels the notification.
- * → Clears BubbleNotificationManager history.
- * → Broadcasts CHAT_BUBBLE_DISMISS to Flutter EventSink.
- *
- * DISMISS    : User swiped the notification away.
- * → Same as MARK_READ.
- *
- * AndroidManifest registration (add inside <application>):
- * ─────────────────────────────────────────────────────────
- * <receiver
- * android:name=".notifications.BubbleNotificationActionReceiver"
- * android:exported="false">
- * <intent-filter>
- * <action android:name="hust.appchat.BUBBLE_REPLY" />
- * <action android:name="hust.appchat.BUBBLE_MARK_READ" />
- * <action android:name="hust.appchat.BUBBLE_DISMISS" />
- * </intent-filter>
- * </receiver>
+ * REPLY      : Gửi tin nhắn lên Firestore, cập nhật Notification, gửi event về Dart.
+ * MARK_READ  : Hủy notification, xóa lịch sử, gửi event về Dart.
+ * DISMISS    : Xóa notification do user vuốt bỏ, gửi event về Dart.
  */
 class BubbleNotificationActionReceiver : BroadcastReceiver() {
 
@@ -93,7 +73,7 @@ class BubbleNotificationActionReceiver : BroadcastReceiver() {
                 putExtra(EXTRA_NOTIF_ID,   notifId)
             }
 
-            // [SỬA LỖI P2]: Giãn cách Request Code bằng hàm băm để chống va chạm Intent
+            // Giãn cách Request Code bằng hàm băm để chống va chạm Intent
             val reqCode = (ACTION_REPLY + userId).hashCode()
 
             val pi = PendingIntent.getBroadcast(
@@ -195,7 +175,7 @@ class BubbleNotificationActionReceiver : BroadcastReceiver() {
 
         scope.launch {
             try {
-                // [SỬA LỖI P1]: Chờ kết quả ghi Firestore để chắc chắn thành công
+                // Chờ kết quả ghi Firestore để chắc chắn thành công
                 sendMessageToFirestore(ctx, userId, replyText)
 
                 // Update MessagingStyle notification
@@ -211,22 +191,21 @@ class BubbleNotificationActionReceiver : BroadcastReceiver() {
             } catch (e: Exception) {
                 Log.e(TAG, "❌ handleReply failed: $e")
 
-                // [SỬA LỖI P1]: Nếu mất mạng, cập nhật Bubble Notification với dòng lỗi
-                // để người dùng biết tin nhắn chưa đi và giữ lại nội dung để họ copy/nhớ.
+                // Nếu lỗi gửi, cập nhật Bubble Notification với dòng cảnh báo lỗi
+                // để người dùng biết tin nhắn chưa đi.
                 updateNotificationWithReply(
                     ctx = ctx,
                     userId = userId,
                     name = name,
                     avatar = avatar,
-                    reply = "[Lỗi mạng, chưa gửi] $replyText",
+                    reply = "[Lỗi, chưa gửi] $replyText",
                     notifId = notifId
                 )
             }
         }
     }
 
-    // [SỬA LỖI P1]: Sử dụng await() từ thư viện kotlinx-coroutines-play-services
-    // để biến lời gọi async thành exception chặn luồng nếu thất bại.
+    // Sử dụng await() từ thư viện kotlinx-coroutines-play-services
     private suspend fun sendMessageToFirestore(
         ctx    : Context,
         peerId : String,
@@ -274,7 +253,8 @@ class BubbleNotificationActionReceiver : BroadcastReceiver() {
     ) {
         try {
             val auth = FirebaseAuth.getInstance()
-            val myId = auth.currentUser?.uid ?: return
+            // Check auth state just to be safe before updating UI
+            auth.currentUser?.uid ?: return
 
             // Add "Tôi: <reply>" to message history then re-render
             BubbleNotificationManager.addMessage(

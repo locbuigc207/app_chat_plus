@@ -48,7 +48,8 @@ class LocalDbService {
   final _secureStorage = const FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
     iOptions: IOSOptions(
-        accessibility: KeychainAccessibility.first_unlock_this_device),
+      accessibility: KeychainAccessibility.first_unlock_this_device,
+    ),
     webOptions: WebOptions(
       dbName: 'app_chat_secure_db',
       publicKey: 'app_chat_public_key',
@@ -104,17 +105,22 @@ class LocalDbService {
 
     _initialized = true;
     debugPrint(
-        '[LocalDbService] ✅ Initialized — 6 boxes open (Web/Mobile ready)');
+      '[LocalDbService] ✅ Initialized — 6 boxes open (Web/Mobile ready)',
+    );
   }
 
   Future<void> _openAllBoxes(HiveAesCipher? cipher) async {
     _messagesBox = await Hive.openBox(_kMessagesBox, encryptionCipher: cipher);
     _syncQueueBox = await Hive.openBox(_kSyncBox, encryptionCipher: cipher);
-    _conversationsBox =
-        await Hive.openBox(_kConvoBox, encryptionCipher: cipher);
+    _conversationsBox = await Hive.openBox(
+      _kConvoBox,
+      encryptionCipher: cipher,
+    );
     _draftsBox = await Hive.openBox(_kDraftsBox, encryptionCipher: cipher);
-    _reactionsBox =
-        await Hive.openBox(_kReactionsBox, encryptionCipher: cipher);
+    _reactionsBox = await Hive.openBox(
+      _kReactionsBox,
+      encryptionCipher: cipher,
+    );
     _pinnedBox = await Hive.openBox(_kPinnedBox, encryptionCipher: cipher);
   }
 
@@ -153,7 +159,8 @@ class LocalDbService {
     } catch (e) {
       // Nếu secure storage vẫn lỗi → fallback không mã hóa
       debugPrint(
-          '[LocalDbService] ⚠️ Không thể lưu cipher key: $e → không mã hóa.');
+        '[LocalDbService] ⚠️ Không thể lưu cipher key: $e → không mã hóa.',
+      );
       return null;
     }
   }
@@ -187,6 +194,12 @@ class LocalDbService {
     Map<String, dynamic> data,
   ) async {
     _assertInit();
+    // Bắt sớm vi phạm bất biến khóa (dev mode)
+    assert(
+      !messageId.contains('_'),
+      'messageId không được chứa "_" — vi phạm key convention "<convId>_<msgId>"',
+    );
+
     await _messagesBox.put('${conversationId}_$messageId', data);
   }
 
@@ -246,7 +259,8 @@ class LocalDbService {
         .toList();
     await _messagesBox.deleteAll(keys);
     debugPrint(
-        '[LocalDbService] 🗑 Cleared ${keys.length} messages for $conversationId');
+      '[LocalDbService] 🗑 Cleared ${keys.length} messages for $conversationId',
+    );
   }
 
   /// Updates the `status` field of a stored message.
@@ -342,7 +356,9 @@ class LocalDbService {
   }
 
   Future<void> saveConversation(
-      String conversationId, Map<String, dynamic> data) async {
+    String conversationId,
+    Map<String, dynamic> data,
+  ) async {
     _assertInit();
     await _conversationsBox.put(conversationId, data);
   }
@@ -355,10 +371,12 @@ class LocalDbService {
   /// All conversations sorted newest-first by lastMessageTime.
   List<Map<dynamic, dynamic>> getAllConversations() {
     _assertInit();
-    final list =
-        _conversationsBox.values.cast<Map<dynamic, dynamic>>().toList();
-    list.sort((a, b) =>
-        _ts(b['lastMessageTime']).compareTo(_ts(a['lastMessageTime'])));
+    final list = _conversationsBox.values
+        .cast<Map<dynamic, dynamic>>()
+        .toList();
+    list.sort(
+      (a, b) => _ts(b['lastMessageTime']).compareTo(_ts(a['lastMessageTime'])),
+    );
     return list;
   }
 
@@ -479,9 +497,12 @@ class LocalDbService {
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> pinMessage(
-      String conversationId, Map<String, dynamic> message) async {
+    String conversationId,
+    Map<String, dynamic> message,
+  ) async {
     _assertInit();
-    final msgId = message['messageId']?.toString() ??
+    final msgId =
+        message['messageId']?.toString() ??
         message['timestamp']?.toString() ??
         '';
     if (msgId.isEmpty) return;
@@ -509,8 +530,9 @@ class LocalDbService {
 
   Future<void> _clearPinnedForConversation(String conversationId) async {
     final prefix = '${conversationId}_';
-    final keys =
-        _pinnedBox.keys.where((k) => k.toString().startsWith(prefix)).toList();
+    final keys = _pinnedBox.keys
+        .where((k) => k.toString().startsWith(prefix))
+        .toList();
     await _pinnedBox.deleteAll(keys);
   }
 
@@ -569,12 +591,14 @@ class LocalDbService {
 
       final conversationId = keyStr.substring(0, separatorIdx);
 
-      hits.add(_SearchHit(
-        conversationId: conversationId,
-        message: msg as Map<dynamic, dynamic>,
-        matchedContent: msg['content']?.toString() ?? '',
-        timestamp: _ts(msg['timestamp']),
-      ));
+      hits.add(
+        _SearchHit(
+          conversationId: conversationId,
+          message: msg as Map<dynamic, dynamic>,
+          matchedContent: msg['content']?.toString() ?? '',
+          timestamp: _ts(msg['timestamp']),
+        ),
+      );
     }
 
     hits.sort((a, b) => b.timestamp.compareTo(a.timestamp));
@@ -598,7 +622,8 @@ class LocalDbService {
 
     buffer.writeln('── Chat Export ──');
     buffer.writeln(
-        'Exported: ${DateTime.now().toIso8601String().substring(0, 16)}');
+      'Exported: ${DateTime.now().toIso8601String().substring(0, 16)}',
+    );
     buffer.writeln('');
 
     for (final m in msgs) {
@@ -607,10 +632,9 @@ class LocalDbService {
       final content = m['content']?.toString() ?? '';
       final ts = _ts(m['timestamp']);
       final dateStr = ts > 0
-          ? DateTime.fromMillisecondsSinceEpoch(ts)
-              .toIso8601String()
-              .substring(0, 16)
-              .replaceAll('T', ' ')
+          ? DateTime.fromMillisecondsSinceEpoch(
+              ts,
+            ).toIso8601String().substring(0, 16).replaceAll('T', ' ')
           : '';
 
       buffer.writeln('[$dateStr] $sender: $content');
@@ -700,8 +724,9 @@ class LocalDbService {
 
   Future<int> pruneOldMessages({int days = 30}) async {
     _assertInit();
-    final cutoff =
-        DateTime.now().subtract(Duration(days: days)).millisecondsSinceEpoch;
+    final cutoff = DateTime.now()
+        .subtract(Duration(days: days))
+        .millisecondsSinceEpoch;
 
     final toDelete = _messagesBox.keys.where((k) {
       final msg = _messagesBox.get(k) as Map?;
@@ -747,7 +772,8 @@ class LocalDbService {
 
     if (totalPruned > 0) {
       debugPrint(
-          '[LocalDbService] ✂️ pruneByCount removed $totalPruned messages');
+        '[LocalDbService] ✂️ pruneByCount removed $totalPruned messages',
+      );
     }
     return totalPruned;
   }
@@ -766,21 +792,23 @@ class LocalDbService {
   }
 
   Map<String, int> get stats => {
-        'messages': _messagesBox.length,
-        'syncQueue': _syncQueueBox.length,
-        'conversations': _conversationsBox.length,
-        'drafts': _draftsBox.length,
-        'reactions': _reactionsBox.length,
-        'pinned': _pinnedBox.length,
-      };
+    'messages': _messagesBox.length,
+    'syncQueue': _syncQueueBox.length,
+    'conversations': _conversationsBox.length,
+    'drafts': _draftsBox.length,
+    'reactions': _reactionsBox.length,
+    'pinned': _pinnedBox.length,
+  };
 
   // ─────────────────────────────────────────────────────────────────────────
   // HELPERS
   // ─────────────────────────────────────────────────────────────────────────
 
   void _assertInit() {
-    assert(_initialized,
-        'LocalDbService chưa được khởi tạo. Gọi initialize() trước.');
+    assert(
+      _initialized,
+      'LocalDbService chưa được khởi tạo. Gọi initialize() trước.',
+    );
   }
 
   static int _ts(dynamic raw) => int.tryParse(raw?.toString() ?? '0') ?? 0;
@@ -827,11 +855,11 @@ class MessageSearchHit {
   });
 
   factory MessageSearchHit.from(_SearchHit hit) => MessageSearchHit(
-        conversationId: hit.conversationId,
-        message: hit.message,
-        matchedContent: hit.matchedContent,
-        timestamp: hit.timestamp > 0
-            ? DateTime.fromMillisecondsSinceEpoch(hit.timestamp)
-            : DateTime.now(),
-      );
+    conversationId: hit.conversationId,
+    message: hit.message,
+    matchedContent: hit.matchedContent,
+    timestamp: hit.timestamp > 0
+        ? DateTime.fromMillisecondsSinceEpoch(hit.timestamp)
+        : DateTime.now(),
+  );
 }

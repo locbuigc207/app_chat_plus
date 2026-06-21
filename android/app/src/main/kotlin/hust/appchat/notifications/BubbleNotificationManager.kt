@@ -163,9 +163,13 @@ object BubbleNotificationManager {
                 .setAutoCancel(false)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
 
-            // Nếu buildBubble trả về null do thiếu shortcut, bỏ qua setBubbleMetadata
-            // để system vẫn post Notification dạng thường.
-            bubbleMeta?.let { builder.setBubbleMetadata(it) }
+            // [SỬA LỖI]: Log cảnh báo rõ ràng khi bubbleMeta là null do shortcut chưa kịp tạo,
+            // đồng thời vẫn post Notification dạng thường để người dùng không bị mất tin nhắn.
+            if (bubbleMeta != null) {
+                builder.setBubbleMetadata(bubbleMeta)
+            } else {
+                Log.w(TAG, "⚠️ CẢNH BÁO: buildBubble() trả về null cho userId=$userId. Shortcut có thể chưa được tạo kịp. Đang fallback gửi notification thường để tránh mất thông báo!")
+            }
 
             val notif = builder.build()
 

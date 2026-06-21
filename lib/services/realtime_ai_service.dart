@@ -5,9 +5,10 @@ import 'dart:typed_data';
 import 'package:audio_session/audio_session.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt; // Bổ sung package STT
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/services/services.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 // ══════════════════════════════════════════════════════
 // ENUMS & MODELS
@@ -64,11 +65,11 @@ class _Pattern {
   final bool exact; // exact word vs. contains
 
   const _Pattern(
-      this.keyword,
-      this.category,
-      this.weight, {
-        this.exact = false,
-      });
+    this.keyword,
+    this.category,
+    this.weight, {
+    this.exact = false,
+  });
 }
 
 // ══════════════════════════════════════════════════════
@@ -176,15 +177,24 @@ class RealtimeAIService {
   Future<bool> initialize() async {
     if (_initialized) return true;
     try {
+      final micStatus = await Permission.microphone.status;
+      if (!micStatus.isGranted) {
+        final result = await Permission.microphone.request();
+        if (!result.isGranted) {
+          debugPrint('[RealtimeAI] Microphone permission denied');
+          return false;
+        }
+      }
+
       if (!kIsWeb) {
         final session = await AudioSession.instance;
         await session.configure(
           AudioSessionConfiguration(
             avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
             avAudioSessionCategoryOptions:
-            AVAudioSessionCategoryOptions.allowBluetooth |
-            AVAudioSessionCategoryOptions.mixWithOthers |
-            AVAudioSessionCategoryOptions.defaultToSpeaker,
+                AVAudioSessionCategoryOptions.allowBluetooth |
+                AVAudioSessionCategoryOptions.mixWithOthers |
+                AVAudioSessionCategoryOptions.defaultToSpeaker,
             avAudioSessionMode: AVAudioSessionMode.videoChat,
           ),
         );
@@ -281,8 +291,7 @@ class RealtimeAIService {
 
   void dispose() {
     stopProtection();
-    if (!_secCtrl.isClosed) _secCtrl.close();
-    if (!_capCtrl.isClosed) _capCtrl.close();
+    // Đã xóa gán _secCtrl.close() và _capCtrl.close() nhằm tránh phá hủy luồng stream sau khi kết thúc cuộc gọi cho các lần dùng tiếp theo.
   }
 
   // ── Nhận dữ liệu âm thanh từ Agora ─────────────────
@@ -373,7 +382,7 @@ class RealtimeAIService {
     _resetTimer?.cancel();
     _resetTimer = Timer(
       Duration(seconds: status == SecurityStatus.danger ? 12 : 8),
-          () {
+      () {
         if (_isListening) _emit(SecurityEvent.safe());
       },
     );
@@ -439,7 +448,6 @@ class RealtimeAIService {
     final score = rawScore > 1.0 ? rawScore / 100.0 : rawScore;
 
     if (!isSafe || riskLevel == 'HIGH' || riskLevel == 'MEDIUM') {
-
       // Đã sửa: Tự động suy luận Category do server trả thiếu field `threatCategory`
       final isDeepfakeVoice = data['isDeepfakeVoice'] as bool? ?? false;
       final isScam = data['isScam'] as bool? ?? false;
@@ -449,13 +457,20 @@ class RealtimeAIService {
         inferredCat = ThreatCategory.deepfake;
       } else if (isScam) {
         final lowerWarning = warning.toLowerCase();
-        if (lowerWarning.contains('tài chính') || lowerWarning.contains('chuyển tiền') || lowerWarning.contains('ngân hàng')) {
+        if (lowerWarning.contains('tài chính') ||
+            lowerWarning.contains('chuyển tiền') ||
+            lowerWarning.contains('ngân hàng')) {
           inferredCat = ThreatCategory.financialFraud;
-        } else if (lowerWarning.contains('otp') || lowerWarning.contains('mã xác nhận') || lowerWarning.contains('mật khẩu')) {
+        } else if (lowerWarning.contains('otp') ||
+            lowerWarning.contains('mã xác nhận') ||
+            lowerWarning.contains('mật khẩu')) {
           inferredCat = ThreatCategory.otp;
-        } else if (lowerWarning.contains('công an') || lowerWarning.contains('cảnh sát') || lowerWarning.contains('cơ quan')) {
+        } else if (lowerWarning.contains('công an') ||
+            lowerWarning.contains('cảnh sát') ||
+            lowerWarning.contains('cơ quan')) {
           inferredCat = ThreatCategory.phishing;
-        } else if (lowerWarning.contains('khẩn cấp') || lowerWarning.contains('ngay lập tức')) {
+        } else if (lowerWarning.contains('khẩn cấp') ||
+            lowerWarning.contains('ngay lập tức')) {
           inferredCat = ThreatCategory.urgencyTrick;
         } else {
           inferredCat = ThreatCategory.financialFraud; // Default Scam

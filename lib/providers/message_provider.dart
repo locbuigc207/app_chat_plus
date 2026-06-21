@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
-import 'package:flutter_chat_demo/services/services.dart';
 
 enum MessageType { text, image, video, audio, file, location, sticker, gif }
 
@@ -20,10 +19,10 @@ class MessageProvider {
   // ── Streams ───────────────────────────────────────────────────────────────
 
   Stream<QuerySnapshot> getMessages(
-    String groupChatId, {
-    int limit = 30,
-    DocumentSnapshot? startAfter,
-  }) {
+      String groupChatId, {
+        int limit = 30,
+        DocumentSnapshot? startAfter,
+      }) {
     var query = _msgCollection(
       groupChatId,
     ).orderBy(FirestoreConstants.timestamp, descending: true).limit(limit);
@@ -49,10 +48,10 @@ class MessageProvider {
   // ── Mutations ─────────────────────────────────────────────────────────────
 
   Future<bool> editMessage(
-    String groupChatId,
-    String messageId,
-    String newContent,
-  ) async {
+      String groupChatId,
+      String messageId,
+      String newContent,
+      ) async {
     try {
       await _msgCollection(groupChatId).doc(messageId).update({
         FirestoreConstants.content: newContent,
@@ -60,18 +59,14 @@ class MessageProvider {
         'isEdited': true,
       });
 
-      // [SỬA LỖI P1]: Đồng bộ hóa trực tiếp lên Bubble Native.
-      final isLastMsg = await _syncConversationLastMessage(
+      // Cập nhật lastMessage trên node Conversation nếu đây là tin nhắn cuối.
+      // [SỬA LỖI BUG 8]: Đã gỡ bỏ logic gọi ChatBubbleService ra khỏi tầng Provider.
+      await _syncConversationLastMessage(
         groupChatId,
         messageId,
         newContent,
       );
-      if (isLastMsg) {
-        await ChatBubbleService().updateBubbleMessage(
-          userId: _extractPeerId(groupChatId),
-          message: newContent,
-        );
-      }
+
       return true;
     } catch (e) {
       debugPrint('❌ Error editing message: $e');
@@ -80,10 +75,10 @@ class MessageProvider {
   }
 
   Future<bool> deleteMessage(
-    String groupChatId,
-    String messageId, {
-    bool forEveryone = true,
-  }) async {
+      String groupChatId,
+      String messageId, {
+        bool forEveryone = true,
+      }) async {
     try {
       final now = DateTime.now().millisecondsSinceEpoch.toString();
       final deletedText = 'This message was deleted';
@@ -91,7 +86,6 @@ class MessageProvider {
       if (forEveryone) {
         await _msgCollection(groupChatId).doc(messageId).update({
           'isDeleted': true,
-          FirestoreConstants.content: deletedText,
           'deletedAt': now,
           'autoDeleteAt': FieldValue.delete(),
         });
@@ -101,18 +95,13 @@ class MessageProvider {
         ).doc(messageId).update({'deletedBySender': true, 'deletedAt': now});
       }
 
-      // [SỬA LỖI P1]: Đồng bộ hóa bong bóng chat nếu tin nhắn cuối cùng bị xóa
-      final isLastMsg = await _syncConversationLastMessage(
+      // Cập nhật LastMessage nếu tin nhắn vừa xóa là tin cuối cùng
+      // [SỬA LỖI BUG 8]: Đã gỡ bỏ logic gọi ChatBubbleService.
+      await _syncConversationLastMessage(
         groupChatId,
         messageId,
         deletedText,
       );
-      if (isLastMsg) {
-        await ChatBubbleService().updateBubbleMessage(
-          userId: _extractPeerId(groupChatId),
-          message: 'Tin nhắn đã thu hồi',
-        );
-      }
 
       return true;
     } catch (e) {
@@ -122,9 +111,9 @@ class MessageProvider {
   }
 
   Future<int> deleteMultipleMessages(
-    String groupChatId,
-    List<String> messageIds,
-  ) async {
+      String groupChatId,
+      List<String> messageIds,
+      ) async {
     try {
       WriteBatch batch = firebaseFirestore.batch();
       int count = 0;
@@ -135,7 +124,6 @@ class MessageProvider {
       for (final id in messageIds) {
         batch.update(_msgCollection(groupChatId).doc(id), {
           'isDeleted': true,
-          FirestoreConstants.content: deletedText,
           'deletedAt': now,
         });
 
@@ -151,7 +139,6 @@ class MessageProvider {
 
       if (count > 0) await batch.commit();
 
-      // [SỬA LỖI P1]: Đồng bộ hóa nếu trong tập hợp tin bị xóa có tin cuối cùng.
       final latestMsgDoc = await _msgCollection(
         groupChatId,
       ).orderBy(FirestoreConstants.timestamp, descending: true).limit(1).get();
@@ -162,11 +149,7 @@ class MessageProvider {
             .collection(FirestoreConstants.pathConversationCollection)
             .doc(groupChatId)
             .update({FirestoreConstants.lastMessage: deletedText});
-
-        await ChatBubbleService().updateBubbleMessage(
-          userId: _extractPeerId(groupChatId),
-          message: 'Tin nhắn đã thu hồi',
-        );
+        // [SỬA LỖI BUG 8]: Đã gỡ bỏ logic gọi ChatBubbleService.
       }
 
       return deleted;
@@ -177,10 +160,10 @@ class MessageProvider {
   }
 
   Future<bool> togglePinMessage(
-    String groupChatId,
-    String messageId,
-    bool currentPinStatus,
-  ) async {
+      String groupChatId,
+      String messageId,
+      bool currentPinStatus,
+      ) async {
     try {
       final newPinned = !currentPinStatus;
       await _msgCollection(groupChatId).doc(messageId).update({
@@ -197,11 +180,11 @@ class MessageProvider {
   }
 
   Future<bool> toggleStarMessage(
-    String groupChatId,
-    String messageId,
-    String userId,
-    bool isStarred,
-  ) async {
+      String groupChatId,
+      String messageId,
+      String userId,
+      bool isStarred,
+      ) async {
     try {
       await _msgCollection(groupChatId).doc(messageId).update({
         'starredBy': isStarred
@@ -215,11 +198,14 @@ class MessageProvider {
     }
   }
 
+  // [SỬA LỖI BUG 9]: Bổ sung tham số `forwardedContent`. Controller (UI) sẽ chịu trách nhiệm
+  // giải mã từ cuộc hội thoại cũ và mã hóa lại với session key của toGroupChatId trước khi truyền vào đây.
   Future<bool> forwardMessage({
     required String fromGroupChatId,
     required String messageId,
     required String toGroupChatId,
     required String senderId,
+    required String forwardedContent,
   }) async {
     try {
       final original = await _msgCollection(
@@ -242,6 +228,7 @@ class MessageProvider {
           .toString();
       data['isForwarded'] = true;
       data['forwardedFrom'] = fromGroupChatId;
+      data[FirestoreConstants.content] = forwardedContent;
 
       await _msgCollection(toGroupChatId).add(data);
       return true;
@@ -291,10 +278,10 @@ class MessageProvider {
   // ── Read receipts ─────────────────────────────────────────────────────────
 
   Future<void> markMessageRead(
-    String groupChatId,
-    String messageId,
-    String userId,
-  ) async {
+      String groupChatId,
+      String messageId,
+      String userId,
+      ) async {
     try {
       await _msgCollection(groupChatId).doc(messageId).update({
         'readBy': FieldValue.arrayUnion([userId]),
@@ -332,8 +319,7 @@ class MessageProvider {
       }
       if (count > 0) await batch.commit();
 
-      // [SỬA LỖI P1]: Xóa thông báo Unread Badge màu đỏ trên bong bóng.
-      await ChatBubbleService().clearUnread(_extractPeerId(groupChatId));
+      // [SỬA LỖI BUG 8]: Đã gỡ bỏ ChatBubbleService.
     } catch (e) {
       debugPrint('❌ Error marking all messages read: $e');
     }
@@ -342,9 +328,9 @@ class MessageProvider {
   // ── Search ────────────────────────────────────────────────────────────────
 
   Future<List<QueryDocumentSnapshot>> searchMessages(
-    String groupChatId,
-    String query,
-  ) async {
+      String groupChatId,
+      String query,
+      ) async {
     try {
       final trimmed = query.trim().toLowerCase();
       if (trimmed.isEmpty) return [];
@@ -359,7 +345,7 @@ class MessageProvider {
             (doc.data() as Map<String, dynamic>)[FirestoreConstants.content]
                 ?.toString()
                 .toLowerCase() ??
-            '';
+                '';
         return content.contains(trimmed);
       }).toList();
     } catch (e) {
@@ -373,10 +359,10 @@ class MessageProvider {
   /// Cập nhật thông tin Last Message lên Conversation Node và trả về true
   /// nếu document thay đổi vừa rồi thực sự nằm cuối cùng chuỗi.
   Future<bool> _syncConversationLastMessage(
-    String groupChatId,
-    String messageId,
-    String newContent,
-  ) async {
+      String groupChatId,
+      String messageId,
+      String newContent,
+      ) async {
     try {
       final latest = await _msgCollection(
         groupChatId,
@@ -396,14 +382,6 @@ class MessageProvider {
     }
   }
 
-  // Trích xuất lại User Id đích từ format ghép UID
-  String _extractPeerId(String groupChatId) {
-    if (!groupChatId.contains('-'))
-      return groupChatId; // Trường hợp là chat nhóm
-
-    // Nếu là chat 1-1, tìm ID khác với current User ID đang nắm giữ Bubble
-    // (Bằng cách lấy mảng tách ra, sau đó lấy ID cuối cùng)
-    final parts = groupChatId.split('-');
-    return parts.last;
-  }
+// [SỬA LỖI BUG 8]: Đã xóa toàn bộ hàm `_extractPeerId` vì logic tách chuỗi (split)
+// lấy giá trị `last` bị sai ID trong ~50% trường hợp khi currentUserId < peerId.
 }

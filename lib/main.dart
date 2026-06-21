@@ -37,11 +37,7 @@ import 'package:timezone/timezone.dart' as tz;
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
-/// Navigator key dùng cho toàn app. Vì BubbleManager (và mọi widget cần
-/// Overlay) giờ được lồng BÊN TRONG MaterialApp.builder's `child` (tức là
-/// BÊN TRONG Navigator do MaterialApp tạo ra), globalNavigatorKey vẫn được
-/// giữ lại làm fallback an toàn cho các trường hợp gọi từ context không
-/// chắc chắn (ví dụ callback bất đồng bộ chạy sau khi 1 màn hình đã dispose).
+/// Navigator key dùng cho toàn app.
 final GlobalKey<NavigatorState> globalNavigatorKey =
     GlobalKey<NavigatorState>();
 
@@ -55,7 +51,6 @@ Future<void> _onBackgroundMessage(RemoteMessage message) async {
   debugPrint('🔔 Background FCM: ${message.messageId}');
 
   try {
-    // Đã gộp xử lý BubbleFcmHandler vào main.dart để tránh đăng ký 2 background handler
     await BubbleFcmHandler.processMessage(message, fromBackground: true);
   } catch (e) {
     debugPrint('⚠️ BubbleFcmHandler process error in background: $e');
@@ -102,6 +97,7 @@ Future<void> main() async {
   final prefs = await SharedPreferences.getInstance();
 
   if (!kIsWeb) {
+    // Đăng ký Background Message ĐÚNG 1 LẦN
     FirebaseMessaging.onBackgroundMessage(_onBackgroundMessage);
     await _initializeLocalNotifications(flutterLocalNotificationsPlugin);
 
@@ -115,15 +111,26 @@ Future<void> main() async {
     await BubbleLifecycleObserver.instance.initialize();
     await BubbleFcmHandler.initialize();
     await _initializeFcm();
+
+    // SỬA LỖI P0: Đăng ký PushNotificationService TẠI ĐÂY (chạy 1 lần),
+    // cấp quyền routing điều hướng thẳng chat page khi nhấn notification.
+    await PushNotificationService.initialize(
+      onNotificationTap: (payload) {
+        final peerId = payload['senderId'] as String?;
+        final peerName = payload['senderName'] as String?;
+        if (peerId != null && peerName != null) {
+          AppRouter.pushChatFromNotification(
+            peerId: peerId,
+            peerName: peerName,
+            peerAvatar: payload['avatarUrl'] as String? ?? '',
+          );
+        }
+      },
+    );
   }
 
   final unifiedBubbleService = UnifiedBubbleService();
   final notificationService = NotificationService();
-
-  // [SỬA LỖI P1]: KHÔNG KHỞI TẠO `ChatBubbleService` (Legacy WindowManager).
-  // Vì Kotlin minSdk đã là 30, toàn bộ pipeline cũ đã bị xóa. Việc khởi tạo và listen EventChannel cũ
-  // sẽ gây hao phí tài nguyên bộ nhớ và tạo các Dead RPC.
-  // ChatApp bên dưới cũng đã loại bỏ yêu cầu truyền instance này vào.
 
   runApp(
     ChatApp(
@@ -497,371 +504,6 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MiniChatOverlayManager
-// ─────────────────────────────────────────────────────────────────────────────
-
-class MiniChatOverlayManager extends StatefulWidget {
-  final Widget child;
-  const MiniChatOverlayManager({super.key, required this.child});
-
-  @override
-  State<MiniChatOverlayManager> createState() => _MiniChatOverlayManagerState();
-}
-
-class _MiniChatOverlayManagerState extends State<MiniChatOverlayManager> {
-  static const _channel = MethodChannel('mini_chat_channel');
-  OverlayEntry? _overlay;
-  bool _overlayInserted = false;
-
-  @override
-  void initState() {
-    super.initState();
-    if (!kIsWeb) _channel.setMethodCallHandler(_handleCall);
-  }
-
-  @override
-  void dispose() {
-    _removeOverlay();
-    if (!kIsWeb) _channel.setMethodCallHandler(null);
-    super.dispose();
-  }
-
-  Future<dynamic> _handleCall(MethodCall call) async {
-    switch (call.method) {
-      case 'navigateToMiniChat':
-        final peerId = call.arguments['peerId'] as String?;
-        final name = call.arguments['peerNickname'] as String?;
-        final avatar = call.arguments['peerAvatar'] as String? ?? '';
-        if (peerId != null && name != null && mounted) {
-          _showOverlay(peerId, name, avatar);
-        }
-      case 'minimize':
-      case 'close':
-        _removeOverlay();
-      // [SỬA LỖI P1]: Đã gỡ bỏ block "initMiniChat" trống rỗng gây Dead RPC
-    }
-    return null;
-  }
-
-  void _showOverlay(String userId, String userName, String avatarUrl) {
-    _removeOverlay();
-
-    if (!mounted) return;
-
-    _overlay = OverlayEntry(
-      builder: (_) => _MiniChatOverlayScaffold(
-        userId: userId,
-        userName: userName,
-        avatarUrl: avatarUrl,
-        onMinimize: () {
-          _removeOverlay();
-          _channel
-              .invokeMethod('minimize', {'userId': userId})
-              .catchError((_) {});
-        },
-        onClose: () {
-          _removeOverlay();
-          _channel.invokeMethod('close', {'userId': userId}).catchError((_) {});
-        },
-      ),
-    );
-
-    try {
-      final overlayState =
-          Overlay.maybeOf(context) ??
-          Overlay.of(globalNavigatorKey.currentState!.context);
-      overlayState.insert(_overlay!);
-      _overlayInserted = true;
-    } catch (e) {
-      debugPrint('❌ MiniChatOverlayManager: insert failed: $e');
-      _overlay = null;
-      _overlayInserted = false;
-    }
-  }
-
-  void _removeOverlay() {
-    if (_overlay != null && _overlayInserted) {
-      try {
-        _overlay!.remove();
-      } catch (e) {
-        debugPrint('⚠️ MiniChatOverlayManager: remove failed: $e');
-      }
-    }
-    _overlay = null;
-    _overlayInserted = false;
-  }
-
-  @override
-  Widget build(BuildContext context) => widget.child;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// _MiniChatOverlayScaffold & MiniChatOverlayWidget
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _MiniChatOverlayScaffold extends StatelessWidget {
-  final String userId, userName, avatarUrl;
-  final VoidCallback onMinimize, onClose;
-
-  const _MiniChatOverlayScaffold({
-    required this.userId,
-    required this.userName,
-    required this.avatarUrl,
-    required this.onMinimize,
-    required this.onClose,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.black26,
-      child: Stack(
-        children: [
-          GestureDetector(onTap: onMinimize),
-          MiniChatOverlayWidget(
-            userId: userId,
-            userName: userName,
-            avatarUrl: avatarUrl,
-            onMinimize: onMinimize,
-            onClose: onClose,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class MiniChatOverlayWidget extends StatefulWidget {
-  final String userId, userName, avatarUrl;
-  final VoidCallback onMinimize, onClose;
-
-  const MiniChatOverlayWidget({
-    super.key,
-    required this.userId,
-    required this.userName,
-    required this.avatarUrl,
-    required this.onMinimize,
-    required this.onClose,
-  });
-
-  @override
-  State<MiniChatOverlayWidget> createState() => _MiniChatOverlayWidgetState();
-}
-
-class _MiniChatOverlayWidgetState extends State<MiniChatOverlayWidget>
-    with SingleTickerProviderStateMixin {
-  Offset _position = Offset.zero;
-  bool _positionInitialized = false;
-  late final AnimationController _animCtrl;
-  late final Animation<double> _scaleAnim;
-
-  double get _width {
-    final sw = MediaQuery.sizeOf(context).width;
-    return sw > 480 ? 360.0 : sw * 0.88;
-  }
-
-  double get _height {
-    final sh = MediaQuery.sizeOf(context).height;
-    return sh > 750 ? 520.0 : sh * 0.72;
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _animCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 280),
-    );
-    _scaleAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutBack);
-    _animCtrl.forward();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (!_positionInitialized) {
-      final size = MediaQuery.sizeOf(context);
-      _position = Offset(
-        (size.width - _width) / 2,
-        (size.height - _height) / 2,
-      );
-      _positionInitialized = true;
-    }
-  }
-
-  @override
-  void dispose() {
-    _animCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final clampedX = _position.dx.clamp(0.0, size.width - _width);
-    final clampedY = _position.dy.clamp(0.0, size.height - _height);
-
-    return Positioned(
-      left: clampedX,
-      top: clampedY,
-      child: ScaleTransition(
-        scale: _scaleAnim,
-        child: GestureDetector(
-          onPanUpdate: (d) => setState(() => _position += d.delta),
-          child: _buildCard(),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCard() {
-    return Material(
-      elevation: 16,
-      borderRadius: BorderRadius.circular(20),
-      shadowColor: Colors.black38,
-      child: Container(
-        width: _width,
-        height: _height,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: const Color(0xFF1E88E5).withValues(alpha: 0.6),
-            width: 1.5,
-          ),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: Column(
-            children: [
-              _MiniChatHeader(
-                userName: widget.userName,
-                avatarUrl: widget.avatarUrl,
-                onMinimize: widget.onMinimize,
-                onClose: widget.onClose,
-              ),
-              Expanded(
-                child: ChatPage(
-                  arguments: ChatPageArguments(
-                    peerId: widget.userId,
-                    peerNickname: widget.userName,
-                    peerAvatar: widget.avatarUrl,
-                  ),
-                  isMiniChat: true,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MiniChatHeader extends StatelessWidget {
-  final String userName, avatarUrl;
-  final VoidCallback onMinimize, onClose;
-
-  const _MiniChatHeader({
-    required this.userName,
-    required this.avatarUrl,
-    required this.onMinimize,
-    required this.onClose,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFF1E88E5), Color(0xFF1565C0)],
-        ),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 17,
-            backgroundColor: Colors.white24,
-            backgroundImage: avatarUrl.isNotEmpty
-                ? NetworkImage(avatarUrl)
-                : null,
-            child: avatarUrl.isEmpty
-                ? Text(
-                    userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  )
-                : null,
-          ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  userName,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const Text(
-                  'Mini Chat',
-                  style: TextStyle(color: Colors.white60, fontSize: 10),
-                ),
-              ],
-            ),
-          ),
-          _HeaderButton(
-            icon: Icons.remove_rounded,
-            onTap: onMinimize,
-            tooltip: 'Thu nhỏ',
-          ),
-          _HeaderButton(
-            icon: Icons.close_rounded,
-            onTap: onClose,
-            tooltip: 'Đóng',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HeaderButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  final String tooltip;
-
-  const _HeaderButton({
-    required this.icon,
-    required this.onTap,
-    required this.tooltip,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.all(6),
-          child: Icon(icon, color: Colors.white, size: 20),
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // BubbleModeDetector
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -919,6 +561,8 @@ class _AppInitializerState extends State<AppInitializer>
       user,
     ) {
       if (user != null && !_notificationStarted) {
+        // SỬA LỖI P0: Gọi initialize() cho NotificationService ở đây để kích hoạt chuẩn
+        widget.notificationService.initialize();
         widget.notificationService.listenForNewMessages(user.uid);
         _notificationStarted = true;
         ErrorLogger.setUserId(user.uid);
@@ -1135,14 +779,13 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
               );
 
               if (!kIsWeb) {
-                // [SỬA LỖI P1]: Đã xóa bỏ Widget bọc BubbleManager (vốn chứa WindowManager lỗi thời).
-                // Cấu trúc Flutter 3.44 LookupBoundary giờ sạch và nhẹ hơn.
+                // SỬA LỖI P0: Phục hồi lại Widget cấu trúc chuẩn.
+                // Loại bỏ MiniChatOverlayManager (bản lỗi thời hỏng chức năng, dead code),
+                // thay thế bằng lớp BubbleManager chuẩn đã được cấu hình các tính năng PiP/Drag.
                 content = GroupCallMiniManager(
                   child: BubbleChatChannelManager(
                     child: GroupCallListener(
-                      child: CallListener(
-                        child: MiniChatOverlayManager(child: content),
-                      ),
+                      child: CallListener(child: BubbleManager(child: content)),
                     ),
                   ),
                 );

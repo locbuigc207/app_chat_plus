@@ -27,7 +27,8 @@ class NotificationPayload {
 }
 
 class NotificationService {
-  final ChatBubbleService _bubbleService = ChatBubbleService();
+  // SỬA LỖI P1: Sử dụng UnifiedBubbleService thay vì ChatBubbleService (Legacy)
+  final UnifiedBubbleService _bubbleService = UnifiedBubbleService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotifications =
@@ -44,13 +45,15 @@ class NotificationService {
   // Cache lưu trữ mốc thời gian tin nhắn cuối cùng để check biến động
   final Map<String, String> _lastMessageTimes = {};
 
-  void Function(NotificationPayload)? onNotificationTapped;
   void Function(NotificationPayload)? onInAppNotification;
 
   Future<void> initialize() async {
     await _initLocalNotifications();
     await _requestFCMPermissions();
-    _setupFCMHandlers();
+
+    // SỬA LỖI: Đã xóa _setupFCMHandlers(). Việc lắng nghe FCM foreground/background
+    // đã được ủy quyền hoàn toàn cho PushNotificationService và BubbleFcmHandler
+    // trong main.dart để tránh duplicate notification.
   }
 
   Future<void> _initLocalNotifications() async {
@@ -98,53 +101,8 @@ class NotificationService {
       sound: true,
       provisional: false,
     );
-    debugPrint('🔔 FCM permission: ${settings.authorizationStatus}');
-  }
-
-  void _setupFCMHandlers() {
-    FirebaseMessaging.onMessage.listen((message) {
-      _handleFCMMessage(message, isBackground: false);
-    });
-
-    FirebaseMessaging.onMessageOpenedApp.listen((message) {
-      _handleFCMTap(message);
-    });
-  }
-
-  Future<void> _handleFCMMessage(
-    RemoteMessage message, {
-    required bool isBackground,
-  }) async {
-    final data = message.data;
-    if (data.isEmpty) return;
-
-    final senderId = data['senderId'] as String?;
-    if (senderId == null) return;
-    if (_mutedConversations.contains(data['conversationId'])) return;
-
-    if (!isBackground) {
-      await _showLocalNotification(
-        title: data['senderName'] ?? 'New Message',
-        body: data['content'] ?? '',
-        payload: data['conversationId'] ?? '',
-        senderId: senderId,
-      );
-    }
-  }
-
-  void _handleFCMTap(RemoteMessage message) {
-    final data = message.data;
-    if (data.isEmpty) return;
-
-    onNotificationTapped?.call(
-      NotificationPayload(
-        senderId: data['senderId'] ?? '',
-        senderName: data['senderName'] ?? '',
-        avatarUrl: data['avatarUrl'] ?? '',
-        content: data['content'] ?? '',
-        conversationId: data['conversationId'] ?? '',
-        timestamp: int.tryParse(data['timestamp'] ?? '0') ?? 0,
-      ),
+    debugPrint(
+      '🔔 NotificationService FCM permission: ${settings.authorizationStatus}',
     );
   }
 
@@ -153,7 +111,6 @@ class NotificationService {
     debugPrint('🔔 Notification tapped, conversationId: $payload');
   }
 
-  /// [FIX 3] Bỏ collectionGroup do subcollection name là động ({convId}).
   /// Lắng nghe collection 'conversations' nơi user tham gia,
   /// mỗi khi có lastMessageTime mới, sẽ tự động fetch tin nhắn mới về tạo notify.
   void listenForNewMessages(String currentUserId) {
@@ -424,7 +381,7 @@ class NotificationService {
       final token = await getFCMToken();
       if (token == null) return;
 
-      // [FIX 24] Cập nhật song song pushToken cho Node.js Cloud Functions
+      // Cập nhật song song pushToken cho Node.js Cloud Functions
       await _firestore
           .collection(FirestoreConstants.pathUserCollection)
           .doc(userId)

@@ -1,6 +1,3 @@
-// ignore_for_file: avoid_print
-// lib/services/ai_backend_service.dart
-
 import 'dart:async';
 import 'dart:convert';
 
@@ -690,7 +687,12 @@ class AIBackendService {
       return results.asMap().entries.map((entry) {
         final map = entry.value as Map<dynamic, dynamic>;
         return ToxicityResult(
-          id: map['id']?.toString() ?? limitedMessages[entry.key].id,
+          // GUARD CLAUSE (Bug 8): Tránh RangeError khi server trả về nhiều phần tử hơn limitedMessages
+          id:
+              map['id']?.toString() ??
+              (entry.key < limitedMessages.length
+                  ? limitedMessages[entry.key].id
+                  : null),
           index: (map['index'] as num?)?.toInt() ?? entry.key,
           isToxic: map['isToxic'] as bool? ?? false,
           category: map['category'] as String? ?? 'safe',

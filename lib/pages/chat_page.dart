@@ -178,14 +178,12 @@ class ChatPageState extends State<ChatPage>
   String _groupChatId = '';
 
   AutoPilotProvider? _autoPilotProvider;
-  StreamSubscription? _autoPilotMsgSub;
   String _lastAutoPilotRepliedMsgId = '';
 
   // ── Reminder state (AI extraction + badge) ──────────────────────────────────
   List<ExtractedReminder> _pendingExtracted = []; // AI extraction results
   bool _showExtractedPanel = false; // show suggestion panel
   bool _isExtractingReminder = false; // loading indicator
-  StreamSubscription? _reminderCountSub; // badge stream
   int _activeReminderCount = 0;
 
   late final TextEditingController _inputController;
@@ -394,8 +392,6 @@ class ChatPageState extends State<ChatPage>
       if (!resourceManager.isDisposed && mounted) {
         _initProviders(context);
 
-        // [SỬA LỖI P1]: Gửi tín hiệu sẵn sàng lên Native (Kotlin) ngay khi UI đã render
-        // giúp bỏ qua thời gian chờ Fallback (1.5s đối với Bubble và 600ms đối với MiniChat)
         try {
           _bubbleChannel.invokeMethod('flutterReady');
           _miniChatChannel.invokeMethod('flutterReady');
@@ -409,7 +405,6 @@ class ChatPageState extends State<ChatPage>
     super.didChangeAppLifecycleState(state);
     BubbleLifecycleObserver.instance.didChangeAppLifecycleState(state);
 
-    // [SỬA LỖI P1]: Bổ sung guard chống lỗi chưa khởi tạo (LateInitializationError)
     if (resourceManager.isDisposed || _currentUserId.isEmpty) return;
 
     if (state == AppLifecycleState.paused) {
@@ -423,9 +418,7 @@ class ChatPageState extends State<ChatPage>
 
   @override
   void dispose() {
-    _autoPilotMsgSub?.cancel();
     _ctxSub?.cancel();
-    _reminderCountSub?.cancel();
     try {
       context.read<InsightsProvider>().cancelWatcher();
     } catch (_) {}
@@ -482,10 +475,6 @@ class ChatPageState extends State<ChatPage>
     try {
       _chatProvider.attachBubbleService(_bubbleService);
     } catch (_) {}
-
-    PushNotificationService.initialize().catchError(
-          (e) => debugPrint('⚠️ Push: $e'),
-    );
 
     final sub = _bubbleService?.bubbleClickStream.listen((event) {
       if (event.userId == widget.arguments.peerId && mounted) {
@@ -545,7 +534,9 @@ class ChatPageState extends State<ChatPage>
         ? '$_currentUserId-$peerId'
         : '$peerId-$_currentUserId';
 
-    _chatProvider.listenToFirebaseChanges(_groupChatId, _currentUserId, peerId);
+    final chatSub = _chatProvider.listenToFirebaseChanges(_groupChatId, _currentUserId, peerId);
+    resourceManager.addSubscription(chatSub);
+
     _listenIncoming();
     _chatProvider.updateDataFirestore(
       FirestoreConstants.pathUserCollection,
@@ -576,7 +567,6 @@ class ChatPageState extends State<ChatPage>
   // REMINDERS AI EXTRACTION
   // ==========================================================================
 
-  /// Phân tích tin nhắn nhận được để bóc tách tác vụ tự động
   Future<void> _analyzeMessageForReminders(String content) async {
     if (content.isEmpty || content.length < 10) return;
     if (content.startsWith('{"iv":') || content.startsWith('eyJ')) return;
@@ -584,7 +574,6 @@ class ChatPageState extends State<ChatPage>
 
     setState(() => _isExtractingReminder = true);
     try {
-      // Lấy context từ vài tin nhắn gần nhất
       final recentMsgs = LocalDbService()
           .getMessages(_groupChatId)
           .take(5)
@@ -655,8 +644,7 @@ class ChatPageState extends State<ChatPage>
         .listen((snap) async {
       if (snap.docs.isEmpty || resourceManager.isDisposed) return;
       if (!(_autoPilotProvider?.isActiveForConversation(_groupChatId) ??
-          false))
-        return;
+          false)) return;
       final data = snap.docs.first.data();
       final idFrom = data['idFrom'] as String? ?? '';
       final content = data['content'] as String? ?? '';
@@ -690,7 +678,6 @@ class ChatPageState extends State<ChatPage>
       }
     });
     resourceManager.addSubscription(sub);
-    _autoPilotMsgSub = sub;
   }
 
   void _showAutoPilotSheet() {
@@ -928,14 +915,14 @@ class ChatPageState extends State<ChatPage>
   void _listenIncoming() {
     if (resourceManager.isDisposed ||
         _groupChatId.isEmpty ||
-        _currentUserId.isEmpty)
-      return;
+        _currentUserId.isEmpty) return;
+
+    // [SỬA LỖI P0 - BUG 7]: Xóa filter 'isRead' ở Query Firestore để tránh lỗi Index, thực hiện filter ở client-side
     final sub = FirebaseFirestore.instance
         .collection(FirestoreConstants.pathMessageCollection)
         .doc(_groupChatId)
         .collection(_groupChatId)
         .where(FirestoreConstants.idTo, isEqualTo: _currentUserId)
-        .where('isRead', isEqualTo: false)
         .snapshots()
         .listen((snap) async {
       if (resourceManager.isDisposed || _isProcessingMsg) return;
@@ -944,26 +931,33 @@ class ChatPageState extends State<ChatPage>
         for (final change in snap.docChanges) {
           if (resourceManager.isDisposed) break;
           if (change.type != DocumentChangeType.added) continue;
+
+          final data = change.doc.data();
+          if (data == null) continue;
+
+          // CLIENT-SIDE FILTER THAY CHO FIRESTORE INDEX
+          final isRead = data['isRead'] as bool? ?? false;
+          if (isRead) continue;
+
           final id = change.doc.id;
 
           if (_processedIds.contains(id)) continue;
           _processedIds.add(id);
-          // [SỬA LỖI P1]: Giữ lại giới hạn bằng removeFirst thay vì removeAll
           if (_processedIds.length > 200) {
             _processedIds.remove(_processedIds.first);
           }
 
-          final data = change.doc.data();
-          final content =
-              data?[FirestoreConstants.content] as String? ?? '';
-          final type = data?[FirestoreConstants.type] as int? ?? 0;
+          final content = data[FirestoreConstants.content] as String? ?? '';
+          final type = data[FirestoreConstants.type] as int? ?? 0;
 
-          final isFromMe =
-              data?[FirestoreConstants.idFrom] == _currentUserId;
+          final isFromMe = data[FirestoreConstants.idFrom] == _currentUserId;
           final isFromBot =
-              data?[FirestoreConstants.idFrom] == AppConstants.aiAssistantId;
+              data[FirestoreConstants.idFrom] == AppConstants.aiAssistantId;
 
-          if (!isFromMe && !isFromBot && content.isNotEmpty && type == TypeMessage.text) {
+          if (!isFromMe &&
+              !isFromBot &&
+              content.isNotEmpty &&
+              type == TypeMessage.text) {
             unawaited(_analyzeMessageForReminders(content));
           }
 
@@ -1048,7 +1042,6 @@ class ChatPageState extends State<ChatPage>
       }
     }
 
-    // [SỬA LỖI P2]: Đã xóa sự lựa chọn "Mini Chat" qua native ở Bubble Dialog do API bị gỡ bỏ
     final ok = await _bubbleService!.showChatBubble(
       userId: widget.arguments.peerId,
       userName: widget.arguments.peerNickname,
@@ -1320,8 +1313,7 @@ class ChatPageState extends State<ChatPage>
     if (msgs.isEmpty) return;
     final last = msgs.first;
     if (last['idFrom'] == _currentUserId ||
-        (last['type'] as int?) != TypeMessage.text)
-      return;
+        (last['type'] as int?) != TypeMessage.text) return;
     final content = last['content'] as String? ?? '';
     if (content.isEmpty || content.startsWith('{"iv":')) return;
 
@@ -1340,11 +1332,9 @@ class ChatPageState extends State<ChatPage>
       int closeness = 3;
       try {
         if (LocalDbService().isInitialized) {
-          final mem =
-          (LocalDbService().getConversation(
+          final mem = (LocalDbService().getConversation(
             _groupChatId,
-          )?['relationshipMemory']
-          as Map?);
+          )?['relationshipMemory'] as Map?);
           closeness = (mem?['closenessLevel'] as int?)?.clamp(1, 5) ?? 3;
         }
       } catch (_) {}
@@ -1674,12 +1664,41 @@ class ChatPageState extends State<ChatPage>
       builder: (_) => EditMessageDialog(
         originalContent: current,
         onSave: (newContent) async {
+          // [SỬA LỖI P0]: MÃ HÓA TIN NHẮN TRƯỚC KHI EDIT LÊN FIRESTORE
+          String encryptedContent = newContent;
+          try {
+            encryptedContent = await EncryptionService().encryptPayload(
+              newContent,
+              _groupChatId,
+              [_currentUserId, widget.arguments.peerId],
+              _currentUserId,
+            );
+          } catch (e) {
+            _toast('Lỗi mã hóa, không thể sửa');
+            return;
+          }
+
           final ok = await _messageProvider.editMessage(
             _groupChatId,
             id,
-            newContent,
+            encryptedContent,
           );
-          if (ok) _toast('Đã chỉnh sửa', isSuccess: true);
+
+          if (ok) {
+            // Cập nhật lại UI local (nếu không app sẽ render chuỗi mã hóa JSON ra màn hình)
+            try {
+              final localKey = '${_groupChatId}_$id';
+              final existingRaw = LocalDbService().messagesBox.get(localKey);
+              if (existingRaw != null) {
+                final existing = Map<String, dynamic>.from(existingRaw as Map);
+                existing['content'] = newContent; // Hiển thị plain text cho UI
+                existing['isEdited'] = true;
+                await LocalDbService().saveMessage(_groupChatId, id, existing);
+              }
+            } catch (_) {}
+
+            _toast('Đã chỉnh sửa', isSuccess: true);
+          }
         },
       ),
     );
@@ -2431,31 +2450,32 @@ class ChatPageState extends State<ChatPage>
       String label,
       Color color,
       ThemePalette p,
-      ) => PopupMenuItem(
-    value: value,
-    child: Row(
-      children: [
-        Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, color: color, size: 17),
+      ) =>
+      PopupMenuItem(
+        value: value,
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: color, size: 17),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              label,
+              style: TextStyle(
+                color: p.textPrimary,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 10),
-        Text(
-          label,
-          style: TextStyle(
-            color: p.textPrimary,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    ),
-  );
+      );
 
   PopupMenuItem<String> _popItemWithBadge(
       String value,
@@ -2464,49 +2484,50 @@ class ChatPageState extends State<ChatPage>
       Color color,
       ThemePalette p,
       BubbleMode mode,
-      ) => PopupMenuItem(
-    value: value,
-    child: Row(
-      children: [
-        Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, color: color, size: 17),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            label,
-            style: TextStyle(
-              color: p.textPrimary,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
+      ) =>
+      PopupMenuItem(
+        value: value,
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: color, size: 17),
             ),
-          ),
-        ),
-        if (mode != BubbleMode.normal)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              mode.name,
-              style: TextStyle(
-                fontSize: 10,
-                color: color,
-                fontWeight: FontWeight.w700,
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: p.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
-          ),
-      ],
-    ),
-  );
+            if (mode != BubbleMode.normal)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  mode.name,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
 
   // ── BODY ───────────────────────────────────────────────────────────────────
 
@@ -2629,7 +2650,7 @@ class ChatPageState extends State<ChatPage>
               color: p.pinnedBackground,
               borderRadius: BorderRadius.circular(999),
               border: Border.all(
-                color: theme.primaryColor.withOpacity(0.25),
+                color: theme.primaryColor.withValues(alpha: 0.25),
                 width: 0.8,
               ),
             ),
@@ -2803,7 +2824,7 @@ class ChatPageState extends State<ChatPage>
       return AnimatedContainer(
         duration: const Duration(milliseconds: 400),
         decoration: BoxDecoration(
-          color: theme.primaryColor.withOpacity(0.06),
+          color: theme.primaryColor.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(16),
         ),
         child: child,
@@ -2984,14 +3005,12 @@ class ChatPageState extends State<ChatPage>
     return Container(
       margin: EdgeInsets.only(bottom: isLastInGroup ? 12 : 4),
       child: Column(
-        crossAxisAlignment: isMe
-            ? CrossAxisAlignment.end
-            : CrossAxisAlignment.start,
+        crossAxisAlignment:
+        isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: isMe
-                ? MainAxisAlignment.end
-                : MainAxisAlignment.start,
+            mainAxisAlignment:
+            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               if (!isMe && isLastInGroup && theme.showAvatarsInChat) ...[
@@ -3014,8 +3033,7 @@ class ChatPageState extends State<ChatPage>
                 },
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
-                    maxWidth:
-                    MediaQuery.of(context).size.width *
+                    maxWidth: MediaQuery.of(context).size.width *
                         (hasUrl ? 0.82 : theme.bubbleMaxWidthFactor),
                   ),
                   child: AnimatedContainer(
@@ -3034,7 +3052,7 @@ class ChatPageState extends State<ChatPage>
                       boxShadow: [
                         BoxShadow(
                           color: isMe
-                              ? theme.primaryColor.withOpacity(0.20)
+                              ? theme.primaryColor.withValues(alpha: 0.20)
                               : p.shadow,
                           blurRadius: 6,
                           offset: const Offset(0, 2),
@@ -3129,7 +3147,7 @@ class ChatPageState extends State<ChatPage>
                                   '(đã sửa) ',
                                   style: TextStyle(
                                     fontSize: 10,
-                                    color: Colors.white.withOpacity(0.6),
+                                    color: Colors.white.withValues(alpha: 0.6),
                                   ),
                                 ),
                               Icon(
@@ -3344,11 +3362,11 @@ class ChatPageState extends State<ChatPage>
                     width: 54,
                     height: 54,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.92),
+                      color: Colors.white.withValues(alpha: 0.92),
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
+                          color: Colors.black.withValues(alpha: 0.2),
                           blurRadius: 8,
                         ),
                       ],
@@ -3417,7 +3435,7 @@ class ChatPageState extends State<ChatPage>
                   backgroundImage: widget.arguments.peerAvatar.isNotEmpty
                       ? NetworkImage(widget.arguments.peerAvatar)
                       : null,
-                  backgroundColor: theme.primaryColor.withOpacity(0.12),
+                  backgroundColor: theme.primaryColor.withValues(alpha: 0.12),
                   child: widget.arguments.peerAvatar.isEmpty
                       ? Text(
                     widget.arguments.peerNickname.isNotEmpty
@@ -3485,7 +3503,7 @@ class ChatPageState extends State<ChatPage>
       child: Container(
         decoration: BoxDecoration(
           color: p.surface,
-          border: Border(top: BorderSide(color: p.divider.withOpacity(0.5))),
+          border: Border(top: BorderSide(color: p.divider.withValues(alpha: 0.5))),
           boxShadow: [
             BoxShadow(
               color: p.shadowStrong,
@@ -3698,9 +3716,8 @@ class ChatPageState extends State<ChatPage>
   Widget _buildAiZone(ThemePalette p, ThemeProvider theme) {
     final full = !widget.isBubbleMode && !widget.isMiniChat;
     if (!full) return const SizedBox.shrink();
-    final hasSmartReplies =
-        _isLoadingSmartReply ||
-            (_smartReplyResult != null && _smartReplyResult!.isNotEmpty);
+    final hasSmartReplies = _isLoadingSmartReply ||
+        (_smartReplyResult != null && _smartReplyResult!.isNotEmpty);
     final hasAiDock = _aiDockChips.isNotEmpty && _showAiDock;
     if (!hasSmartReplies && !hasAiDock) return const SizedBox.shrink();
     return Column(
@@ -3927,7 +3944,7 @@ class ChatPageState extends State<ChatPage>
                                       shape: BoxShape.circle,
                                       boxShadow: [
                                         BoxShadow(
-                                          color: _CD.aiPurple.withOpacity(0.35),
+                                          color: _CD.aiPurple.withValues(alpha: 0.35),
                                           blurRadius: 8,
                                         ),
                                       ],
@@ -3959,8 +3976,7 @@ class ChatPageState extends State<ChatPage>
                                   _inputController.text,
                                   TypeMessage.text,
                                 );
-                              else if (full)
-                                _startRec();
+                              else if (full) _startRec();
                             },
                             onLongPress: full && !hasText
                                 ? () {
@@ -3981,9 +3997,7 @@ class ChatPageState extends State<ChatPage>
                                 boxShadow: hasText
                                     ? [
                                   BoxShadow(
-                                    color: theme.primaryColor.withOpacity(
-                                      0.35,
-                                    ),
+                                    color: theme.primaryColor.withValues(alpha: 0.35),
                                     blurRadius: 10,
                                     offset: const Offset(0, 3),
                                   ),
@@ -4025,8 +4039,8 @@ class ChatPageState extends State<ChatPage>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: p.dangerColor.withOpacity(0.05),
-        border: Border(top: BorderSide(color: p.dangerColor.withOpacity(0.2))),
+        color: p.dangerColor.withValues(alpha: 0.05),
+        border: Border(top: BorderSide(color: p.dangerColor.withValues(alpha: 0.2))),
       ),
       child: Row(
         children: [
@@ -4138,11 +4152,11 @@ class _AiDock extends StatelessWidget {
           decoration: BoxDecoration(
             color: palette.surface,
             border: Border(
-              top: BorderSide(color: palette.divider.withOpacity(0.4)),
+              top: BorderSide(color: palette.divider.withValues(alpha: 0.4)),
             ),
             boxShadow: [
               BoxShadow(
-                color: _CD.aiPurple.withOpacity(0.06),
+                color: _CD.aiPurple.withValues(alpha: 0.06),
                 blurRadius: 10,
                 offset: const Offset(0, -2),
               ),
@@ -4210,7 +4224,7 @@ class _AiDock extends StatelessWidget {
                               borderRadius: BorderRadius.circular(20),
                               boxShadow: [
                                 BoxShadow(
-                                  color: _CD.aiPurple.withOpacity(0.18),
+                                  color: _CD.aiPurple.withValues(alpha: 0.18),
                                   blurRadius: 6,
                                   offset: const Offset(0, 2),
                                 ),
@@ -4290,10 +4304,10 @@ class _FeatureCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: palette.surface,
         borderRadius: BorderRadius.circular(_CD.rCard),
-        border: Border.all(color: color.withOpacity(0.14), width: 1),
+        border: Border.all(color: color.withValues(alpha: 0.14), width: 1),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.05),
+            color: color.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -4311,7 +4325,7 @@ class _FeatureCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   gradient: isAI
                       ? _CD.aiGradient
-                      : LinearGradient(colors: [color, color.withOpacity(0.7)]),
+                      : LinearGradient(colors: [color, color.withValues(alpha: 0.7)]),
                   borderRadius: BorderRadius.circular(7),
                 ),
                 child: Icon(icon, size: 14, color: Colors.white),
@@ -4343,10 +4357,10 @@ class _FeatureCard extends StatelessWidget {
                 onTap: item.onTap,
                 child: Container(
                   decoration: BoxDecoration(
-                    color: item.color.withOpacity(0.08),
+                    color: item.color.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(9),
                     border: Border.all(
-                      color: item.color.withOpacity(0.16),
+                      color: item.color.withValues(alpha: 0.16),
                       width: 0.8,
                     ),
                   ),
@@ -4459,8 +4473,8 @@ class _EmptyChat extends StatelessWidget {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  primaryColor.withOpacity(0.14),
-                  primaryColor.withOpacity(0.06),
+                  primaryColor.withValues(alpha: 0.14),
+                  primaryColor.withValues(alpha: 0.06),
                 ],
               ),
               shape: BoxShape.circle,
@@ -4495,7 +4509,7 @@ class _EmptyChat extends StatelessWidget {
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: _CD.aiPurple.withOpacity(0.28),
+                    color: _CD.aiPurple.withValues(alpha: 0.28),
                     blurRadius: 10,
                     offset: const Offset(0, 3),
                   ),
@@ -4590,7 +4604,7 @@ class _AppBarTitle extends StatelessWidget {
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
+                          color: Colors.white.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
@@ -4643,7 +4657,7 @@ class _AiOnBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
       decoration: BoxDecoration(
-        color: _CD.aiPurple.withOpacity(0.13),
+        color: _CD.aiPurple.withValues(alpha: 0.13),
         borderRadius: BorderRadius.circular(6),
       ),
       child: const Row(
@@ -4762,7 +4776,7 @@ class _DateDivider extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Divider(color: palette.divider.withOpacity(0.4), height: 1),
+            child: Divider(color: palette.divider.withValues(alpha: 0.4), height: 1),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -4790,7 +4804,7 @@ class _DateDivider extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: Divider(color: palette.divider.withOpacity(0.4), height: 1),
+            child: Divider(color: palette.divider.withValues(alpha: 0.4), height: 1),
           ),
         ],
       ),
@@ -4818,7 +4832,7 @@ class _Avatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => CircleAvatar(
     radius: radius,
-    backgroundColor: primary.withOpacity(0.12),
+    backgroundColor: primary.withValues(alpha: 0.12),
     backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
     child: photoUrl.isEmpty
         ? Icon(Icons.person_rounded, size: radius, color: primary)
@@ -4995,9 +5009,9 @@ class _ScamWarning extends StatelessWidget {
     margin: const EdgeInsets.only(bottom: 8),
     padding: const EdgeInsets.all(8),
     decoration: BoxDecoration(
-      color: palette.dangerColor.withOpacity(0.08),
+      color: palette.dangerColor.withValues(alpha: 0.08),
       borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: palette.dangerColor.withOpacity(0.3)),
+      border: Border.all(color: palette.dangerColor.withValues(alpha: 0.3)),
     ),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -5029,7 +5043,7 @@ class _ReminderHint extends StatelessWidget {
     margin: const EdgeInsets.only(bottom: 8),
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
     decoration: BoxDecoration(
-      color: palette.infoColor.withOpacity(0.08),
+      color: palette.infoColor.withValues(alpha: 0.08),
       borderRadius: BorderRadius.circular(10),
     ),
     child: Row(
@@ -5110,13 +5124,13 @@ class _LocationContent extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
             color: isMe
-                ? Colors.white.withOpacity(0.18)
+                ? Colors.white.withValues(alpha: 0.18)
                 : palette.primaryContainer,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: isMe
-                  ? Colors.white.withOpacity(0.3)
-                  : theme.primaryColor.withOpacity(0.3),
+                  ? Colors.white.withValues(alpha: 0.3)
+                  : theme.primaryColor.withValues(alpha: 0.3),
             ),
           ),
           child: Row(
@@ -5177,10 +5191,10 @@ class _ScamScanWidget extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: palette.successColor.withOpacity(0.08),
+            color: palette.successColor.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: palette.successColor.withOpacity(0.3),
+              color: palette.successColor.withValues(alpha: 0.3),
               width: 0.8,
             ),
           ),
@@ -5289,7 +5303,7 @@ class _ThemedDialog extends StatelessWidget {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: iconColor.withOpacity(0.1),
+                  color: iconColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(icon, color: iconColor, size: 22),

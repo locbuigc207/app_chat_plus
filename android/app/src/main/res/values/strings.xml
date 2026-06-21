@@ -2,8 +2,6 @@
 <resources>
 
     <string name="app_name">flutter_chat</string>
-    <string name="firebase_app_check_debug_token">f47ac10b-58cc-4372-a567-0e02b2c3d479</string>
-
     <string name="google_map_api_key">AIzaSyDtYaEwZPCe7b3wPjCchwwLb4H4p8VDAKk</string>
 
     <string name="user_avatar">Avatar người dùng</string>

@@ -1,10 +1,14 @@
 // android/app/src/main/kotlin/hust/appchat/notifications/BubbleNotificationService.kt
 package hust.appchat.notifications
 
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import hust.appchat.shortcuts.AvatarLoader
 import hust.appchat.shortcuts.ShortcutHelper
 import kotlinx.coroutines.*
@@ -58,7 +62,7 @@ object BubbleNotificationService {
     private fun preloadRecentAvatars(context: Context) {
         scope.launch {
             try {
-                // [SỬA LỖI P0]: Sử dụng activeBubbles thay vì BubbleManager cũ
+                // Sử dụng activeBubbles thay vì BubbleManager cũ
                 val currentKeys = synchronized(activeBubbles) { activeBubbles.toList() }
                 if (currentKeys.isEmpty()) return@launch
 
@@ -121,7 +125,7 @@ object BubbleNotificationService {
                 showModernBubble(context, userId, userName, message, avatarUrl, messageType)
             } catch (e: Exception) {
                 Log.e(TAG, "❌ showBubbleNotificationOnly failed: $e")
-                // Nếu lỗi tạo bubble, fallback về Notification truyền thống để không hụt tin nhắn
+                // Fallback nếu ngoại lệ cấp cao
                 BubbleNotificationManager.addMessage(
                     context = context,
                     userId = userId,
@@ -151,22 +155,38 @@ object BubbleNotificationService {
             Log.w(TAG, "⚠️ Failed to load avatar async, using fallback: $e")
         }
 
-        // 2. Ensure shortcut exists (required for Bubble API)
-        ensureShortcut(context, userId, userName, avatarUrl)
+        try {
+            // 2. Ensure shortcut exists (required for Bubble API)
+            ensureShortcut(context, userId, userName, avatarUrl)
 
-        // 3. Push notification with bubble metadata
-        BubbleNotificationManager.addMessage(
-            context = context,
-            userId = userId,
-            userName = userName,
-            message = message,
-            avatarUrl = avatarUrl,
-            fromUser = false,
-            type = messageType
-        )
+            // 3. Push notification with bubble metadata
+            BubbleNotificationManager.addMessage(
+                context = context,
+                userId = userId,
+                userName = userName,
+                message = message,
+                avatarUrl = avatarUrl,
+                fromUser = false,
+                type = messageType
+            )
 
-        synchronized(activeBubbles) { activeBubbles.add(userId) }
-        Log.d(TAG, "✅ Modern bubble shown: $userName")
+            synchronized(activeBubbles) { activeBubbles.add(userId) }
+            Log.d(TAG, "✅ Modern bubble shown: $userName")
+
+        } catch (e: IllegalStateException) {
+            // [SỬA LỖI]: Bắt lỗi ensureShortcut timeout/thất bại
+            Log.e(TAG, "❌ ensureShortcut failed: ${e.message}. Fallback to normal notification.")
+
+            // Gửi sự kiện lỗi qua Broadcast để MainActivity (hoặc Dart) có thể bắt và báo lỗi lên UI
+            val intent = Intent("CHAT_BUBBLE_ERROR").apply {
+                putExtra("userId", userId)
+                putExtra("error", "Lỗi tạo bong bóng cho $userName: ${e.message}")
+            }
+            context.sendBroadcast(intent)
+
+            // Fallback gửi notification thường
+            postFallbackNotification(context, userId, userName, message)
+        }
     }
 
     fun updateBubbleNotification(
@@ -180,21 +200,69 @@ object BubbleNotificationService {
         scope.launch {
             try {
                 if (isBubbleActive(userId)) {
-                    ensureShortcut(context, userId, userName, avatarUrl)
-                    BubbleNotificationManager.addMessage(
-                        context = context,
-                        userId = userId,
-                        userName = userName,
-                        message = message,
-                        avatarUrl = avatarUrl,
-                        fromUser = false,
-                        type = messageType
-                    )
-                    Log.d(TAG, "✅ Bubble notification updated: $userName")
+                    try {
+                        ensureShortcut(context, userId, userName, avatarUrl)
+                        BubbleNotificationManager.addMessage(
+                            context = context,
+                            userId = userId,
+                            userName = userName,
+                            message = message,
+                            avatarUrl = avatarUrl,
+                            fromUser = false,
+                            type = messageType
+                        )
+                        Log.d(TAG, "✅ Bubble notification updated: $userName")
+                    } catch (e: IllegalStateException) {
+                        Log.e(TAG, "❌ ensureShortcut failed on update: ${e.message}")
+                        postFallbackNotification(context, userId, userName, message)
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Update bubble notification failed: $e")
             }
+        }
+    }
+
+    // ========================================
+    // FALLBACK NOTIFICATION
+    // ========================================
+
+    private fun postFallbackNotification(context: Context, userId: String, userName: String, message: String) {
+        try {
+            val notificationId = userId.hashCode()
+
+            // Intent mở app/mở chat
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra("userId", userId)
+            }
+
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                notificationId,
+                launchIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            // Giả định dùng chung channel với message, khai báo sẵn trong NotificationHelper
+            val channelId = "chat_messages"
+
+            val builder = NotificationCompat.Builder(context, channelId)
+                // Sử dụng icon mặc định có sẵn (có thể đổi thành R.drawable.ic_notification của app bạn)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(userName)
+                .setContentText(message)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .addAction(0, "Mở chat", pendingIntent)
+
+            NotificationManagerCompat.from(context).notify(notificationId, builder.build())
+            Log.d(TAG, "✅ Fallback notification posted for $userName")
+        } catch (e: SecurityException) {
+            Log.e(TAG, "❌ Missing notification permission for fallback: $e")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to post fallback notification: $e")
         }
     }
 
@@ -293,7 +361,7 @@ object BubbleNotificationService {
 
         if (!ShortcutHelper.shortcutExists(context, userId)) {
             Log.e(TAG, "❌ Shortcut creation failed/timeout for $userName")
-            throw IllegalStateException("Shortcut not created")
+            throw IllegalStateException("Shortcut timeout (sau ~2s) - Không thể tạo shortcut kịp thời")
         }
     }
 
@@ -417,7 +485,7 @@ object BubbleNotificationService {
         preloadRecentAvatars(context)
     }
 
-    // [SỬA LỖI P0]: KHÔNG clear activeBubbles. Đồng bộ dựa vào bộ nhớ hiện hành
+    // KHÔNG clear activeBubbles. Đồng bộ dựa vào bộ nhớ hiện hành
     // và lấy Meta Data từ BubbleNotificationManager để tạo lại đúng tên và ảnh.
     private fun syncState(context: Context) {
         scope.launch {

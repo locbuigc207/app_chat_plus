@@ -6,6 +6,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
@@ -192,38 +197,106 @@ object ShortcutHelper {
             evictOldest(context)
         }
 
-        val icon = AvatarLoader.loadAvatarIcon(context, avatarUrl, userName)
+        // [SỬA LỖI P0]: Tạo shortcut NGAY LẬP TỨC với icon mặc định để không chặn luồng bong bóng
+        val defaultIcon = createDefaultIcon(userName)
 
         val person = android.app.Person.Builder()
             .setName(userName)
             .setKey(userId)
-            .setIcon(icon)
+            .setIcon(defaultIcon)
             .setImportant(true)
             .build()
 
         val intent = buildBubbleIntent(context, userId, userName, avatarUrl)
 
-        // [SỬA LỖI P1]: Rank sẽ được hệ thống gán mặc định nếu để 0.
-        // Thay vì setRank(0), không setRank để hệ thống tự động quản lý vòng đời LRU.
+        // Cấu hình ban đầu với defaultIcon
         val shortcut = ShortcutInfo.Builder(context, userId)
             .setShortLabel(userName)
             .setLongLabel("Chat with $userName")
-            .setIcon(icon)
+            .setIcon(defaultIcon)
             .setIntent(intent)
             .setLongLived(true)
             .setPerson(person)
             .setCategories(setOf("android.app.shortcuts.CONVERSATION"))
             .build()
 
+        // 1. Push shortcut tức thì lên hệ thống
         withContext(Dispatchers.Main) {
             try {
                 context.getSystemService(ShortcutManager::class.java)
                     ?.pushDynamicShortcut(shortcut)
-                Log.d(TAG, "✅ Modern shortcut created: $userName")
+                Log.d(TAG, "✅ Fast shortcut created with default icon: $userName")
             } catch (e: Exception) {
                 Log.e(TAG, "❌ pushShortcut failed: $e")
+                return@withContext
             }
         }
+
+        // 2. Tải ảnh thật bất đồng bộ và cập nhật shortcut sau khi tải xong
+        if (avatarUrl.isNotEmpty()) {
+            scope.launch(Dispatchers.IO) {
+                try {
+                    val realIcon = AvatarLoader.loadAvatarIcon(context, avatarUrl, userName)
+
+                    val updatedPerson = android.app.Person.Builder()
+                        .setName(userName)
+                        .setKey(userId)
+                        .setIcon(realIcon)
+                        .setImportant(true)
+                        .build()
+
+                    val updatedShortcut = ShortcutInfo.Builder(context, userId)
+                        .setShortLabel(userName)
+                        .setLongLabel("Chat with $userName")
+                        .setIcon(realIcon)
+                        .setIntent(intent)
+                        .setLongLived(true)
+                        .setPerson(updatedPerson)
+                        .setCategories(setOf("android.app.shortcuts.CONVERSATION"))
+                        .build()
+
+                    context.getSystemService(ShortcutManager::class.java)
+                        ?.updateShortcuts(listOf(updatedShortcut))
+
+                    Log.d(TAG, "✅ Shortcut avatar updated from network: $userName")
+                } catch (e: Exception) {
+                    Log.w(TAG, "⚠️ Failed to load real avatar for shortcut update, keeping default: $e")
+                }
+            }
+        }
+    }
+
+    /**
+     * Tạo avatar mặc định bằng Canvas (chữ cái đầu của tên)
+     * Rất nhanh, không cần mạng, giải quyết triệt để lỗi timeout 2s
+     */
+    private fun createDefaultIcon(name: String): android.graphics.drawable.Icon {
+        val letter = if (name.isNotBlank()) name.first().uppercase() else "?"
+        val size = 108 // Kích thước chuẩn cho icon
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+
+        // Nền tròn
+        val bgPaint = Paint().apply {
+            color = Color.parseColor("#0078FF") // Màu xanh lam chủ đạo
+            isAntiAlias = true
+        }
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f, bgPaint)
+
+        // Chữ cái
+        val textPaint = Paint().apply {
+            color = Color.WHITE
+            textSize = size / 2f
+            isAntiAlias = true
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.DEFAULT_BOLD
+        }
+
+        // Căn giữa chữ theo trục Y
+        val yPos = (size / 2f) - ((textPaint.descent() + textPaint.ascent()) / 2f)
+        canvas.drawText(letter, size / 2f, yPos, textPaint)
+
+        return android.graphics.drawable.Icon.createWithBitmap(bitmap)
     }
 
     private fun evictOldest(context: Context) {

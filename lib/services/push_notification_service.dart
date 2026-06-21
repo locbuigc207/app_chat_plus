@@ -19,9 +19,10 @@ const _kDefaultTitle = 'Tin nhắn mới';
 const _kLockedBody = '🔒 Bạn có một tin nhắn mã hóa mới';
 const _kIcon = '@mipmap/ic_launcher';
 
+// Đổi thành Public function để có thể tái sử dụng gọi từ handler tập trung trong main.dart nếu cần
 @pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // [FIX 26] Bổ sung cấu hình DefaultFirebaseOptions.currentPlatform cho Background Isolate
+Future<void> e2eeBackgroundMessageHandler(RemoteMessage message) async {
+  // Bổ sung cấu hình DefaultFirebaseOptions.currentPlatform cho Background Isolate
   // Isolate của Background chạy độc lập với Main Thread nên cần khởi tạo lại với đủ thông số
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
@@ -136,6 +137,9 @@ class _NotificationData {
 class PushNotificationService {
   PushNotificationService._();
 
+  // SỬA LỖI P0: Thêm biến guard tĩnh để chống re-entry listener nhiều lần
+  static bool _initialized = false;
+
   static final FlutterLocalNotificationsPlugin _localPlugin =
       FlutterLocalNotificationsPlugin();
 
@@ -154,7 +158,12 @@ class PushNotificationService {
   static Future<void> initialize({
     void Function(Map<String, dynamic> payload)? onNotificationTap,
   }) async {
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    // SỬA LỖI: Cắt đứt vòng lặp gọi nhiều lần (mỗi lần mở 1 ChatPage)
+    if (_initialized) return;
+    _initialized = true;
+
+    // SỬA LỖI P0: Gỡ bỏ đăng ký background handler ở đây để tránh đụng độ với main.dart
+    // FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
     await _initLocalNotifications();
 
