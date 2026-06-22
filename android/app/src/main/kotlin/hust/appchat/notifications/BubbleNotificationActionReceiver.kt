@@ -1,14 +1,15 @@
 // android/app/src/main/kotlin/hust/appchat/notifications/BubbleNotificationActionReceiver.kt
 package hust.appchat.notifications
 
+import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.RemoteInput
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.Icon
 import android.util.Log
-import androidx.core.app.NotificationCompat
-import androidx.core.app.RemoteInput
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FieldValue
@@ -60,7 +61,8 @@ class BubbleNotificationActionReceiver : BroadcastReceiver() {
             userName  : String,
             avatarUrl : String,
             notifId   : Int,
-        ): NotificationCompat.Action {
+        ): Notification.Action {
+            // [SỬA LỖI P1]: Chuyển sang Native RemoteInput API
             val remoteInput = RemoteInput.Builder(KEY_REPLY_TEXT)
                 .setLabel("Trả lời $userName…")
                 .build()
@@ -81,8 +83,10 @@ class BubbleNotificationActionReceiver : BroadcastReceiver() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
             )
 
-            return NotificationCompat.Action.Builder(
-                R.drawable.ic_send, "Trả lời", pi)
+            // [SỬA LỖI P1]: Chuyển sang Native Icon và Notification.Action.Builder
+            val icon = Icon.createWithResource(ctx, R.drawable.ic_send)
+
+            return Notification.Action.Builder(icon, "Trả lời", pi)
                 .addRemoteInput(remoteInput)
                 .setAllowGeneratedReplies(true)
                 .build()
@@ -93,7 +97,7 @@ class BubbleNotificationActionReceiver : BroadcastReceiver() {
             ctx    : Context,
             userId : String,
             notifId: Int,
-        ): NotificationCompat.Action {
+        ): Notification.Action {
             val intent = Intent(ACTION_MARK_READ).apply {
                 setPackage(ctx.packageName)
                 putExtra(EXTRA_USER_ID,  userId)
@@ -106,8 +110,11 @@ class BubbleNotificationActionReceiver : BroadcastReceiver() {
                 ctx, reqCode, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            return NotificationCompat.Action.Builder(
-                R.drawable.ic_notification, "Đã đọc", pi).build()
+
+            // [SỬA LỖI P1]: Chuyển sang Native Icon và Notification.Action.Builder
+            val icon = Icon.createWithResource(ctx, R.drawable.ic_notification)
+
+            return Notification.Action.Builder(icon, "Đã đọc", pi).build()
         }
 
         /** Creates a dismiss delete-intent for setDeleteIntent(). */
@@ -165,6 +172,7 @@ class BubbleNotificationActionReceiver : BroadcastReceiver() {
         avatar : String,
         notifId: Int,
     ) {
+        // Native RemoteInput trả về kết quả giống hệt Compat nên luồng này không cần thay đổi
         val replyText = RemoteInput.getResultsFromIntent(intent)
             ?.getCharSequence(KEY_REPLY_TEXT)
             ?.toString()

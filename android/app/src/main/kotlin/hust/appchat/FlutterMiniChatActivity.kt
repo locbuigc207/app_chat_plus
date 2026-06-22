@@ -16,6 +16,7 @@ import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.window.OnBackInvokedDispatcher
 import androidx.window.layout.WindowMetricsCalculator
+import io.flutter.FlutterInjector
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
@@ -49,17 +50,6 @@ class FlutterMiniChatActivity : FlutterActivity() {
         private const val WARMUP_POLL_MS    = 50L
         private const val WARMUP_TIMEOUT_MS = 5_000L
         private const val FALLBACK_NAV_MS   = 600L
-
-        fun createIntent(
-            ctx: Context, userId: String, userName: String, avatarUrl: String,
-        ): Intent = Intent(ctx, FlutterMiniChatActivity::class.java).apply {
-            putExtra(EXTRA_UID,    userId)
-            putExtra(EXTRA_NAME,   userName)
-            putExtra(EXTRA_AVATAR, avatarUrl)
-
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
-        }
     }
 
     // ─── State ────────────────────────────────────────────────────────────
@@ -89,8 +79,12 @@ class FlutterMiniChatActivity : FlutterActivity() {
         if (eng == null) {
             Log.d(TAG, "🔧 Creating mini-chat engine")
             eng = FlutterEngine(ctx.applicationContext)
+
+            // [SỬA LỖI KIẾN TRÚC]: Gọi đúng entry point 'miniChatMain' thay vì chạy lại hàm main()
+            // Giải quyết triệt để vấn đề xung đột khóa tệp tin của Hive gây lỗi trắng màn hình overlay.
+            val bundlePath = FlutterInjector.instance().flutterLoader().findAppBundlePath()
             eng.dartExecutor.executeDartEntrypoint(
-                DartExecutor.DartEntrypoint.createDefault()
+                DartExecutor.DartEntrypoint(bundlePath, "miniChatMain")
             )
             cache.put(MINI_ENGINE_ID, eng)
         }
@@ -125,6 +119,16 @@ class FlutterMiniChatActivity : FlutterActivity() {
 
         applyFloatingWindowStyle()
         Log.d(TAG, "✅ onCreate — $userName")
+    }
+
+    // [SỬA LỖI BỔ SUNG]: Override onBackPressed() để thu nhỏ (minimize) overlay
+    // thay vì đóng cứng cửa sổ trên các dòng máy Android cũ hơn (API < 33).
+    @Suppress("DEPRECATION")
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        Log.d(TAG, "🔙 Legacy Back button pressed — minimizing mini chat")
+        hideKeyboard()
+        moveTaskToBack(true)
     }
 
     override fun configureFlutterEngine(engine: FlutterEngine) {
@@ -163,7 +167,6 @@ class FlutterMiniChatActivity : FlutterActivity() {
 
     private fun applyFloatingWindowStyle() {
         try {
-            // [SỬA LỖI P1]: Sử dụng WindowMetricsCalculator thay vì DisplayMetrics để có kết quả chính xác
             val metrics = WindowMetricsCalculator.getOrCreate().computeCurrentWindowMetrics(this)
             val bounds = metrics.bounds
 
@@ -186,7 +189,6 @@ class FlutterMiniChatActivity : FlutterActivity() {
                         WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
             )
 
-            // [SỬA LỖI P1]: Cấu hình hỗ trợ tiếp cận TalkBack
             window.decorView.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
 
             Log.d(TAG, "✅ Floating window ${w}×${h} applied via Jetpack WindowMetrics")
@@ -289,7 +291,6 @@ class FlutterMiniChatActivity : FlutterActivity() {
     private fun sendNavigation() {
         if (isFinishing) return
         try {
-            // [CẬP NHẬT]: Có thể loại bỏ "initMiniChat" ở bản tiếp theo nếu Flutter side đã clean.
             channel?.invokeMethod("initMiniChat", mapOf(
                 "userId"    to userId,
                 "userName"  to userName,

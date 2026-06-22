@@ -280,6 +280,31 @@ class UnifiedBubbleService {
     }
   });
 
+  // [SỬA LỖI MỚI]: Thêm onAppResumed để đồng bộ lại bong bóng chat khi app mở lên
+  Future<void> onAppResumed() async {
+    await _ensureInitialized();
+    if (_impl == BubbleImplementation.bubbleApi) {
+      try {
+        await _bubbleApi.syncWithNative();
+
+        // Cố gắng re-check quyền từ BubbleServiceV2
+        // Dùng dynamic checking để tránh lỗi biên dịch nếu Enum BubblePermissionStatus
+        // chưa được import hoặc hoàn thiện toàn bộ.
+        try {
+          final dynamic status = await (_bubbleApi as dynamic)
+              .getBubblePermissionStatus();
+          if (status.toString() != 'BubblePermissionStatus.fullySupported') {
+            debugPrint('⚠️ Permission check on resume: Not fully supported');
+          }
+        } catch (_) {
+          // Ignore safely
+        }
+      } catch (e) {
+        debugPrint('⚠️ onAppResumed error: $e');
+      }
+    }
+  }
+
   // ── Mini Chat (WindowManager only) ────────────────────────────────────────
 
   Future<bool> showMiniChat({

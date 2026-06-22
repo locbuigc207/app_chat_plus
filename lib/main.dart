@@ -16,7 +16,7 @@ import 'package:flutter_chat_demo/models/call_model.dart';
 import 'package:flutter_chat_demo/models/group_call_model.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:flutter_chat_demo/providers/phone_auth_provider.dart'
-as custom_auth;
+    as custom_auth;
 import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_chat_demo/utils/utils.dart';
@@ -35,11 +35,11 @@ import 'package:timezone/timezone.dart' as tz;
 // ─────────────────────────────────────────────────────────────────────────────
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-FlutterLocalNotificationsPlugin();
+    FlutterLocalNotificationsPlugin();
 
 /// Navigator key dùng cho toàn app.
 final GlobalKey<NavigatorState> globalNavigatorKey =
-GlobalKey<NavigatorState>();
+    GlobalKey<NavigatorState>();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FCM background handler
@@ -60,6 +60,31 @@ Future<void> _onBackgroundMessage(RemoteMessage message) async {
   if (type == 'group_call_invite') {
     debugPrint('📞 Background group call invite: ${message.data['callId']}');
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [SỬA LỖI P1] Entry Points Độc Lập Cho Bubble & Mini Chat (Tránh Hive Conflict)
+// ─────────────────────────────────────────────────────────────────────────────
+
+@pragma('vm:entry-point')
+Future<void> bubbleMain() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // KHÔNG init Hive, KHÔNG init LocalDbService, KHÔNG init SyncManager
+  final prefs = await SharedPreferences.getInstance();
+
+  runApp(BubbleChatEntryApp(prefs: prefs));
+}
+
+@pragma('vm:entry-point')
+Future<void> miniChatMain() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  final prefs = await SharedPreferences.getInstance();
+
+  runApp(MiniChatEntryApp(prefs: prefs));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -246,8 +271,8 @@ Future<void> _initializeFcm() async {
 // ─────────────────────────────────────────────────────────────────────────────
 
 Future<void> _initializeLocalNotifications(
-    FlutterLocalNotificationsPlugin plugin,
-    ) async {
+  FlutterLocalNotificationsPlugin plugin,
+) async {
   try {
     const androidSettings = AndroidInitializationSettings(
       '@mipmap/ic_launcher',
@@ -276,15 +301,15 @@ Future<void> _initializeLocalNotifications(
       initSettings,
       onDidReceiveNotificationResponse: _onNotificationTapped,
       onDidReceiveBackgroundNotificationResponse:
-      _onBackgroundNotificationTapped,
+          _onBackgroundNotificationTapped,
     );
 
     if (Platform.isAndroid) await _setupAndroidNotificationChannels(plugin);
     if (Platform.isIOS) {
       await plugin
           .resolvePlatformSpecificImplementation<
-          IOSFlutterLocalNotificationsPlugin
-      >()
+            IOSFlutterLocalNotificationsPlugin
+          >()
           ?.requestPermissions(alert: true, badge: true, sound: true);
     }
     debugPrint('✅ Local Notifications khởi tạo xong');
@@ -299,12 +324,12 @@ Future<void> _initializeLocalNotifications(
 }
 
 Future<void> _setupAndroidNotificationChannels(
-    FlutterLocalNotificationsPlugin plugin,
-    ) async {
+  FlutterLocalNotificationsPlugin plugin,
+) async {
   final androidPlugin = plugin
       .resolvePlatformSpecificImplementation<
-      AndroidFlutterLocalNotificationsPlugin
-  >();
+        AndroidFlutterLocalNotificationsPlugin
+      >();
   if (androidPlugin == null) return;
 
   await androidPlugin.requestNotificationsPermission();
@@ -439,8 +464,23 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
         if (globalNavigatorKey.currentState?.canPop() == true) {
           globalNavigatorKey.currentState!.pop();
         }
+        break;
       case 'openApp':
         SystemNavigator.pop();
+        break;
+      // [SỬA LỖI MỚI]: Nhận signal khi Bubble Permission bị chặn từ Android
+      case 'bubble_permission_lost':
+        if (globalNavigatorKey.currentContext != null) {
+          ScaffoldMessenger.of(globalNavigatorKey.currentContext!).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Quyền hiển thị bong bóng đã bị tắt. Vui lòng cấp quyền trong Cài đặt.',
+              ),
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+        break;
     }
     return null;
   }
@@ -459,7 +499,7 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
     _recentNavigations.add(dedupKey);
     Future.delayed(
       const Duration(seconds: 10),
-          () => _recentNavigations.remove(dedupKey),
+      () => _recentNavigations.remove(dedupKey),
     );
 
     await _waitForNavigator();
@@ -558,8 +598,8 @@ class _AppInitializerState extends State<AppInitializer>
 
   void _startNotificationService() {
     _authSub = firebase_auth.FirebaseAuth.instance.authStateChanges().listen((
-        user,
-        ) {
+      user,
+    ) {
       if (user != null && !_notificationStarted) {
         // SỬA LỖI P0: Gọi initialize() cho NotificationService ở đây để kích hoạt chuẩn
         widget.notificationService.initialize();
@@ -692,9 +732,17 @@ class _AppInitializerState extends State<AppInitializer>
     switch (state) {
       case AppLifecycleState.resumed:
         _updatePresence(online: true);
+        // [SỬA LỖI MỚI]: Gọi syncWithNative khi app được resume
+        if (mounted) {
+          try {
+            context.read<UnifiedBubbleService>().onAppResumed();
+          } catch (_) {}
+        }
+        break;
       case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
         _updatePresence(online: false);
+        break;
       case AppLifecycleState.detached:
       case AppLifecycleState.hidden:
         break;
@@ -766,10 +814,10 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
             navigatorKey: AppRouter.navigatorKey,
             themeMode: themeProvider.flutterThemeMode ?? ThemeMode.system,
             theme:
-            themeProvider.lightTheme ??
+                themeProvider.lightTheme ??
                 _buildFallbackTheme(Brightness.light),
             darkTheme:
-            themeProvider.darkTheme ?? _buildFallbackTheme(Brightness.dark),
+                themeProvider.darkTheme ?? _buildFallbackTheme(Brightness.dark),
             initialRoute: AppRouter.splash,
             onGenerateRoute: AppRouter.onGenerateRoute,
             builder: (context, child) {
@@ -958,6 +1006,165 @@ class _AppBuilder extends StatelessWidget {
       ),
       child: child,
     );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Isolated Apps & Pages Cho Các Tác Vụ Engine Nền
+// ─────────────────────────────────────────────────────────────────────────────
+
+class BubbleChatEntryApp extends StatelessWidget {
+  final SharedPreferences prefs;
+
+  const BubbleChatEntryApp({super.key, required this.prefs});
+
+  @override
+  Widget build(BuildContext context) {
+    final firebaseFirestore = FirebaseFirestore.instance;
+    final firebaseStorage = FirebaseStorage.instance;
+    final firebaseAuth = firebase_auth.FirebaseAuth.instance;
+
+    // Các Service truyền vào rỗng để tránh conflict
+    final unifiedBubbleService = UnifiedBubbleService();
+    final notificationService = NotificationService();
+
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeProvider>(
+          create: (_) => ThemeProvider(prefs: prefs),
+        ),
+        ChangeNotifierProvider<AuthProvider>(
+          create: (_) => AuthProvider(
+            firebaseAuth: firebaseAuth,
+            prefs: prefs,
+            firebaseFirestore: firebaseFirestore,
+          ),
+        ),
+        Provider<ChatProvider>(
+          create: (_) => ChatProvider(
+            prefs: prefs,
+            firebaseFirestore: firebaseFirestore,
+            firebaseStorage: firebaseStorage,
+          ),
+        ),
+        Provider<MessageProvider>(
+          create: (_) => MessageProvider(firebaseFirestore: firebaseFirestore),
+        ),
+        Provider<ReactionProvider>(
+          create: (_) => ReactionProvider(firebaseFirestore: firebaseFirestore),
+        ),
+        Provider<UserPresenceProvider>(
+          create: (_) =>
+              UserPresenceProvider(firebaseFirestore: firebaseFirestore),
+        ),
+        Provider<TranslationProvider>(create: (_) => TranslationProvider()),
+        Provider<SmartReplyProvider>(create: (_) => SmartReplyProvider()),
+        Provider<AutoDeleteProvider>(
+          create: (_) =>
+              AutoDeleteProvider(firebaseFirestore: firebaseFirestore),
+        ),
+        Provider<ViewOnceProvider>(
+          create: (_) => ViewOnceProvider(firebaseFirestore: firebaseFirestore),
+        ),
+        Provider<ConversationLockProvider>(
+          create: (_) =>
+              ConversationLockProvider(firebaseFirestore: firebaseFirestore),
+        ),
+        ChangeNotifierProvider<AppModeProvider>(
+          create: (_) => AppModeProvider(),
+        ),
+        Provider<UnifiedBubbleService>(
+          create: (_) => unifiedBubbleService,
+          dispose: (_, s) => s.dispose(),
+        ),
+        Provider<NotificationService>(create: (_) => notificationService),
+        ChangeNotifierProvider<BubbleSettingsService>(
+          create: (_) => BubbleSettingsService(),
+        ),
+        Provider<BubbleSoundService>(create: (_) => BubbleSoundService()),
+        Provider<ContextualBubbleService>(
+          create: (_) => ContextualBubbleService.instance,
+        ),
+      ],
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, _) {
+          final brightness = themeProvider.flutterThemeMode == ThemeMode.dark
+              ? Brightness.dark
+              : Brightness.light;
+          final isDark = brightness == Brightness.dark;
+
+          final defaultTheme = ThemeData(
+            useMaterial3: true,
+            brightness: brightness,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF2979FF),
+              brightness: brightness,
+            ),
+            scaffoldBackgroundColor: isDark
+                ? const Color(0xFF0D0D0D)
+                : const Color(0xFFF4F7FF),
+          );
+
+          return MaterialApp(
+            debugShowCheckedModeBanner: false,
+            navigatorKey: globalNavigatorKey,
+            themeMode: themeProvider.flutterThemeMode ?? ThemeMode.system,
+            theme: themeProvider.lightTheme ?? defaultTheme,
+            darkTheme: themeProvider.darkTheme ?? defaultTheme,
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.linear(
+                  MediaQuery.textScalerOf(context).scale(1.0).clamp(0.8, 1.3),
+                ),
+              ),
+              child: BubbleChatChannelManager(child: child!),
+            ),
+            home: const BubbleEntryPage(),
+            onGenerateRoute: AppRouter.onGenerateRoute,
+          );
+        },
+      ),
+    );
+  }
+}
+
+class BubbleEntryPage extends StatefulWidget {
+  const BubbleEntryPage({super.key});
+
+  @override
+  State<BubbleEntryPage> createState() => _BubbleEntryPageState();
+}
+
+class _BubbleEntryPageState extends State<BubbleEntryPage> {
+  static const _channel = MethodChannel('bubble_chat_channel');
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _channel.invokeMethod('flutterReady');
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: Colors.transparent,
+      body: SizedBox.shrink(), // Chờ Navigate từ Native
+    );
+  }
+}
+
+// Component cho Mini Chat
+class MiniChatEntryApp extends StatelessWidget {
+  final SharedPreferences prefs;
+
+  const MiniChatEntryApp({super.key, required this.prefs});
+
+  @override
+  Widget build(BuildContext context) {
+    // Tương tự BubbleChatEntryApp để chia sẻ state nhưng không đụng bộ nhớ Hive
+    return BubbleChatEntryApp(prefs: prefs);
   }
 }
 

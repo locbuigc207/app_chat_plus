@@ -9,6 +9,7 @@ import android.provider.Settings
 import android.util.Log
 import androidx.annotation.NonNull
 import androidx.lifecycle.lifecycleScope
+import io.flutter.FlutterInjector
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
@@ -18,7 +19,7 @@ import io.flutter.plugin.common.MethodChannel
 import hust.appchat.notifications.BubbleNotificationManager
 import hust.appchat.notifications.BubbleNotificationService
 import hust.appchat.shortcuts.ShortcutHelper
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -48,6 +49,7 @@ class MainActivity : FlutterActivity() {
 
         // ID Engine dùng chung
         const val MINI_ENGINE_ID = "mini_chat_overlay_engine"
+        private const val CHANNEL_MESSAGES = "chat_messages"
     }
 
     // ── State ─────────────────────────────────────────────────────────────
@@ -67,8 +69,10 @@ class MainActivity : FlutterActivity() {
             BubbleNotificationService.init(this)
             Log.d(TAG, "✅ BubbleNotificationService initialized")
 
-            // [FIX P2]: Sử dụng Background Thread để warm-up engine, tránh block Main Thread gây ANR
-            lifecycleScope.launch(Dispatchers.IO) {
+            // [SỬA LỖI P1]: Chạy hoàn toàn trên Main Thread mặc định của lifecycleScope.
+            // Sử dụng delay(500) để nhường quyền ưu tiên vẽ UI trước, tránh gây block Main Thread hay ANR.
+            lifecycleScope.launch {
+                delay(500)
                 EngineWarmer.warmUp(applicationContext, "bubble_chat_engine")
                 EngineWarmer.warmUp(applicationContext, MINI_ENGINE_ID)
             }
@@ -106,6 +110,17 @@ class MainActivity : FlutterActivity() {
 
         // [FIX P2]: Gửi event báo cho Dart biết App đã resume để syncWithNative()
         dispatchEvent(mapOf("event" to "app_resumed"))
+
+        // [SỬA LỖI MỚI]: Thực hiện kiểm tra ngầm (Silent re-check) quyền hiển thị bong bóng chat.
+        // Hỗ trợ sửa lỗi trên một số thiết bị như Samsung One UI 7 tự động reset quyền sau khi cập nhật ứng dụng.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val nm = getSystemService(NotificationManager::class.java)
+            val channel = nm?.getNotificationChannel(CHANNEL_MESSAGES)
+            val channelOk = channel?.canBubble() == true && nm.areNotificationsEnabled()
+            if (!channelOk) {
+                dispatchEvent(mapOf("event" to "bubble_permission_lost"))
+            }
+        }
     }
 
     override fun onPause() {
@@ -131,9 +146,13 @@ class MainActivity : FlutterActivity() {
                 try {
                     when (call.method) {
                         "hasPermission" -> {
-                            val isAllowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            // [SỬA LỖI P2]: Kiểm tra quyền cấp độ Channel chính xác cho Android 12+ (API 31+)
+                            val isAllowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                                 val nm = getSystemService(NotificationManager::class.java)
-                                nm?.areBubblesAllowed() == true
+                                val channel = nm?.getNotificationChannel(CHANNEL_MESSAGES)
+                                channel?.canBubble() == true && nm.areNotificationsEnabled()
+                            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                getSystemService(NotificationManager::class.java)?.areBubblesAllowed() == true
                             } else {
                                 false
                             }
@@ -180,7 +199,6 @@ class MainActivity : FlutterActivity() {
                             val uname = call.argument<String>("userName") ?: ""
                             val av = call.argument<String>("avatarUrl") ?: ""
 
-                            // [FIX P1]: Fallback lấy tên/avatar từ Dart nếu memory meta bị mất
                             val meta = BubbleNotificationManager.getMeta(uid)
                             val finalName = meta?.first ?: uname
                             val finalAvatar = meta?.second ?: av
@@ -232,9 +250,13 @@ class MainActivity : FlutterActivity() {
                         "checkBubbleApiSupport" -> result.success(true)
 
                         "checkBubbleChannelEnabled" -> {
-                            val isAllowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            // [SỬA LỖI P2]: Đồng bộ logic kiểm tra quyền per-channel chuẩn xác
+                            val isAllowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                                 val nm = getSystemService(NotificationManager::class.java)
-                                nm?.areBubblesAllowed() == true
+                                val channel = nm?.getNotificationChannel(CHANNEL_MESSAGES)
+                                channel?.canBubble() == true && nm.areNotificationsEnabled()
+                            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                getSystemService(NotificationManager::class.java)?.areBubblesAllowed() == true
                             } else {
                                 false
                             }
@@ -242,9 +264,16 @@ class MainActivity : FlutterActivity() {
                         }
 
                         "checkBubblesEnabled" -> {
-                            val isAllowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            // [SỬA LỖI P2]: Đồng bộ logic kiểm tra quyền per-channel chuẩn xác
+                            val isAllowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                val nm = getSystemService(NotificationManager::class.java)
+                                val channel = nm?.getNotificationChannel(CHANNEL_MESSAGES)
+                                channel?.canBubble() == true && nm.areNotificationsEnabled()
+                            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                                 getSystemService(NotificationManager::class.java)?.areBubblesAllowed() == true
-                            } else false
+                            } else {
+                                false
+                            }
                             result.success(isAllowed)
                         }
 
@@ -293,7 +322,6 @@ class MainActivity : FlutterActivity() {
                             val uname = call.argument<String>("userName") ?: ""
                             val av = call.argument<String>("avatarUrl") ?: ""
 
-                            // [FIX P1]: Fallback lấy tên/avatar từ Dart nếu memory meta bị mất
                             val meta = BubbleNotificationManager.getMeta(uid)
                             val finalName = meta?.first ?: uname
                             val finalAvatar = meta?.second ?: av
@@ -302,7 +330,6 @@ class MainActivity : FlutterActivity() {
                             result.success(true)
                         }
 
-                        // [FIX P1]: Handler "clearUnread" để xóa history Native và tắt Badge
                         "clearUnread" -> {
                             val uid = call.argument<String>("userId") ?: return@setMethodCallHandler result.success(false)
                             if (uid.isNotEmpty()) {
@@ -484,7 +511,8 @@ object EngineWarmer {
         try {
             val eng = FlutterEngine(context.applicationContext)
 
-            // [FIX P2]: Register Plugins thủ công để Engine background sử dụng được Firebase/Hive
+            // [SỬA LỖI P1]: Do được gọi từ Main Thread của MainActivity nên phần đăng ký plugin và
+            // reflection này sẽ chạy chuẩn xác tuyệt đối mà không lo gây crash ngầm.
             try {
                 val registryClass = Class.forName("io.flutter.plugins.GeneratedPluginRegistrant")
                 val registerMethod = registryClass.getDeclaredMethod("registerWith", FlutterEngine::class.java)
@@ -494,9 +522,16 @@ object EngineWarmer {
                 Log.w(TAG, "⚠️ GeneratedPluginRegistrant setup failed: $e")
             }
 
-            eng.dartExecutor.executeDartEntrypoint(
-                DartExecutor.DartEntrypoint.createDefault()
-            )
+            // [SỬA LỖI P1]: Tách biệt entry points dựa trên định danh engineId để tránh deadlock tệp khóa của Hive
+            val bundlePath = FlutterInjector.instance().flutterLoader().findAppBundlePath()
+            val entrypoint = when (engineId) {
+                "bubble_chat_engine" -> DartExecutor.DartEntrypoint(bundlePath, "bubbleMain")
+                MainActivity.MINI_ENGINE_ID -> DartExecutor.DartEntrypoint(bundlePath, "miniChatMain")
+                else -> DartExecutor.DartEntrypoint.createDefault()
+            }
+
+            eng.dartExecutor.executeDartEntrypoint(entrypoint)
+
             // Đưa engine vào trạng thái standby, ngừng render UI cho đến khi Activity kích hoạt thực sự
             eng.lifecycleChannel.appIsDetached()
             cache.put(engineId, eng)

@@ -8,6 +8,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Trạng thái chi tiết về quyền Bong bóng chat trên Android
+enum BubblePermissionStatus {
+  fullySupported,
+  notificationDisabled,
+  channelDisabled,
+  batteryNotWhitelisted,
+  oemBlocked,
+  unknown,
+}
+
 /// Service that wraps the Android Bubble API (Android 11+ / API 30+).
 /// Uses [MethodChannel] for imperative calls and [EventChannel] for
 /// native → Dart events (bubble click, dismiss, expand, etc.).
@@ -39,9 +49,12 @@ class BubbleServiceV2 {
   StreamController<BubbleClickEvent>.broadcast();
   final StreamController<Map<String, BubbleData>> _bubblesCtrl =
   StreamController<Map<String, BubbleData>>.broadcast();
+  final StreamController<BubblePermissionStatus> _permissionCtrl =
+  StreamController<BubblePermissionStatus>.broadcast();
 
   Stream<BubbleClickEvent> get bubbleClickStream => _clickCtrl.stream;
   Stream<Map<String, BubbleData>> get activeBubblesStream => _bubblesCtrl.stream;
+  Stream<BubblePermissionStatus> get permissionStream => _permissionCtrl.stream;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // INITIALISATION
@@ -88,6 +101,25 @@ class BubbleServiceV2 {
     } catch (e) {
       debugPrint('❌ checkBubblesEnabled: $e');
       return false;
+    }
+  }
+
+  // [SỬA LỖI P2]: Hàm kiểm tra phân định trạng thái quyền chi tiết của Bong bóng chat
+  Future<BubblePermissionStatus> getBubblePermissionStatus() async {
+    if (!Platform.isAndroid) return BubblePermissionStatus.unknown;
+    try {
+      final result = await _method.invokeMethod<String>('getBubblePermissionStatus');
+      if (result == null) return BubblePermissionStatus.unknown;
+
+      // Chuẩn hóa chuỗi Native từ UPPER_CASE về lowercase để khớp với Enum của Dart
+      final normalizedNative = result.toLowerCase().replaceAll('_', '');
+      return BubblePermissionStatus.values.firstWhere(
+            (e) => e.name.toLowerCase() == normalizedNative,
+        orElse: () => BubblePermissionStatus.unknown,
+      );
+    } catch (e) {
+      debugPrint('❌ getBubblePermissionStatus failed: $e');
+      return BubblePermissionStatus.unknown;
     }
   }
 
@@ -194,6 +226,15 @@ class BubbleServiceV2 {
     if (event['event'] == 'app_resumed') {
       debugPrint('▶️ App resumed from Native, syncing bubbles...');
       syncWithNative();
+      return;
+    }
+
+    // [SỬA LỖI MỚI]: Tiếp nhận và đẩy tín hiệu mất quyền hiển thị bong bóng chat lên controller để xử lý UI
+    if (event['event'] == 'bubble_permission_lost') {
+      debugPrint('⚠️ Bubble permission lost signal received in service');
+      if (!_permissionCtrl.isClosed) {
+        _permissionCtrl.add(BubblePermissionStatus.channelDisabled);
+      }
       return;
     }
 
@@ -456,6 +497,10 @@ class BubbleServiceV2 {
 
   Future<void> _restoreBubbles() async {
     try {
+      // [SỬA LỖI MỚI]: Thêm trì hoãn 500ms để đảm bảo luồng MethodChannel giao tiếp với Native Android
+      // đã hoàn toàn sẵn sàng trước khi thực hiện truy vấn kiểm tra Shortcut.
+      await Future.delayed(const Duration(milliseconds: 500));
+
       await _initPrefs();
       final raw = _prefs?.getString(_prefKey);
       if (raw == null || raw.isEmpty) return;

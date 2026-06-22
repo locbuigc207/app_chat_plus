@@ -13,6 +13,8 @@ import android.util.Log
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.window.OnBackInvokedDispatcher
+import hust.appchat.notifications.BubbleNotificationManager
+import io.flutter.FlutterInjector
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
@@ -35,7 +37,7 @@ class BubbleActivity : FlutterActivity() {
 
         private const val RETRY_INTERVAL_MS    = 60L
         private const val MAX_RETRIES          = 60          // ~3.6 s
-        private const val FALLBACK_READY_MS    = 1500L
+        private const val FALLBACK_READY_MS    = 2500L       // [SỬA LỖI MỚI 6]: Tăng lên 2500ms để an toàn hơn
         private const val KEYBOARD_DELAY_MS    = 350L
         private const val MAX_NAV_CACHE        = 50
 
@@ -89,10 +91,18 @@ class BubbleActivity : FlutterActivity() {
         if (savedInstanceState == null) readExtras(intent)
         if (!validateUser()) { Log.e(TAG, "❌ Missing user info"); finish(); return }
 
-        // [SỬA LỖI P1]: Gắn LocusId để hệ thống join đúng task khi mở lại từ Bubble Bar / Recents
+        // Gắn LocusId để hệ thống join đúng task khi mở lại từ Bubble Bar / Recents
         setLocusContext(LocusId(currentUid!!), null)
 
         Log.d(TAG, "✅ onCreate — user: $currentName ($currentUid)")
+    }
+
+    // [SỬA LỖI MỚI 4]: Override onBackPressed() cho các thiết bị API < 33 (Android 11, 12, 12L)
+    @Suppress("DEPRECATION")
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        Log.d(TAG, "🔙 Legacy Back button pressed — minimizing bubble")
+        moveTaskToBack(true)
     }
 
     override fun provideFlutterEngine(ctx: Context): FlutterEngine? {
@@ -107,8 +117,13 @@ class BubbleActivity : FlutterActivity() {
         if (eng == null) {
             Log.d(TAG, "🔧 Creating new bubble engine")
             eng = FlutterEngine(ctx.applicationContext)
+
+            // [SỬA LỖI P1]: Sử dụng entry point bubbleMain thay vì createDefault() để tránh conflict Hive
             eng.dartExecutor.executeDartEntrypoint(
-                DartExecutor.DartEntrypoint.createDefault()
+                DartExecutor.DartEntrypoint(
+                    FlutterInjector.instance().flutterLoader().findAppBundlePath(),
+                    "bubbleMain"
+                )
             )
             cache.put(BUBBLE_ENGINE_ID, eng)
         } else {
@@ -140,7 +155,6 @@ class BubbleActivity : FlutterActivity() {
         }
     }
 
-    // [SỬA LỖI P1]: Báo cáo kích thước cửa sổ ngay cả khi chỉ xoay màn hình hoặc thay đổi configuration
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         Log.d(TAG, "📐 Configuration changed: w=${newConfig.screenWidthDp}, h=${newConfig.screenHeightDp}")
@@ -181,6 +195,10 @@ class BubbleActivity : FlutterActivity() {
         currentUid    = newUid
         currentName   = newName
         currentAvatar = intent.getStringExtra(EXTRA_AVATAR)
+
+        // [SỬA LỖI MỚI 5]: Cập nhật LocusId ngay khi Bubble nhận intent của user khác
+        setLocusContext(LocusId(newUid), null)
+
         setPending()
         scheduleNav(0)
     }
@@ -205,6 +223,9 @@ class BubbleActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        // [SỬA LỖI P1]: Báo cho Manager biết bong bóng đã bị đóng hoàn toàn
+        BubbleNotificationManager.markCollapsed(currentUid ?: "")
+
         mainHandler.removeCallbacksAndMessages(null)
         channel?.setMethodCallHandler(null)
         channel = null
@@ -238,6 +259,10 @@ class BubbleActivity : FlutterActivity() {
                 "flutterReady" -> {
                     Log.d(TAG, "🟢 Flutter ready")
                     isFlutterReady = true
+
+                    // [SỬA LỖI P1]: Đánh dấu trạng thái expanded khi Dart phía Bubble đã sẵn sàng
+                    BubbleNotificationManager.markExpanded(currentUid ?: "")
+
                     scheduleNav(0)
                     result.success(true)
                 }
@@ -255,6 +280,18 @@ class BubbleActivity : FlutterActivity() {
                 }
                 else -> result.notImplemented()
             }
+        }
+
+        // [SỬA LỖI MỚI 6]: Signal cho Flutter biết nếu đây là HyperOS 2 để xử lý resize linh hoạt
+        val isHyperOS2 = System.getProperty("ro.product.build.version.incremental", "").contains("OS2") ||
+                System.getProperty("ro.build.version.hyperos", "").startsWith("2") ||
+                System.getProperty("ro.miui.ui.version.name", "").isNotEmpty() &&
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+
+        if (isHyperOS2) {
+            mainHandler.postDelayed({
+                channel?.invokeMethod("adaptForHyperOS2", mapOf("avoidFixedSize" to true))
+            }, 200L)
         }
 
         mainHandler.postDelayed({

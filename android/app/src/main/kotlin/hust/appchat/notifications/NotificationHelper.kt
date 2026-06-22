@@ -3,8 +3,10 @@ package hust.appchat.notifications
 
 import android.app.Notification
 import android.app.NotificationChannel
+import android.app.NotificationChannelGroup
 import android.app.NotificationManager
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import hust.appchat.shortcuts.AvatarLoader
 import hust.appchat.shortcuts.ShortcutHelper
@@ -29,6 +31,7 @@ object NotificationHelper {
     private const val TAG = "NotificationHelper"
 
     const val CHANNEL_MESSAGES = "chat_messages"
+    private const val GROUP_CONVERSATIONS = "conversations_group"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var channelsCreated = false
@@ -43,25 +46,43 @@ object NotificationHelper {
         try {
             val nm = context.getSystemService(NotificationManager::class.java) ?: return
 
-            // Messages channel — used for Bubble API notifications
-            val msgChannel = NotificationChannel(
-                CHANNEL_MESSAGES,
-                "Tin nhắn",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Thông báo tin nhắn với bong bóng chat"
-                enableLights(true)
-                lightColor = 0xFF2196F3.toInt()
-                enableVibration(true)
-                vibrationPattern = longArrayOf(0, 120, 60, 120)
-                setShowBadge(true)
-                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-                setAllowBubbles(true) // Luôn áp dụng trên Android 11+
+            // [SỬA LỖI FINAL]: Tạo NotificationChannelGroup để gom nhóm trực quan trong Cài đặt
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                nm.createNotificationChannelGroup(
+                    NotificationChannelGroup(GROUP_CONVERSATIONS, "Trò chuyện")
+                )
             }
 
-            nm.createNotificationChannel(msgChannel)
+            // Messages channel — used for Bubble API notifications
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val msgChannel = NotificationChannel(
+                    CHANNEL_MESSAGES,
+                    "Tin nhắn",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Thông báo tin nhắn với bong bóng chat"
+                    enableLights(true)
+                    lightColor = 0xFF2196F3.toInt()
+                    enableVibration(true)
+                    vibrationPattern = longArrayOf(0, 120, 60, 120)
+                    setShowBadge(true)
+                    lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                    group = GROUP_CONVERSATIONS
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        setAllowBubbles(true) // Luôn áp dụng trên Android 10+
+                    }
+
+                    // [SỬA LỖI FINAL]: Bổ sung Conversation Channel để định danh luồng nhắn tin (Yêu cầu cho Android 12+)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        setConversationId(CHANNEL_MESSAGES, "default_conversation")
+                    }
+                }
+                nm.createNotificationChannel(msgChannel)
+            }
+
             channelsCreated = true
-            Log.d(TAG, "✅ Notification channel created")
+            Log.d(TAG, "✅ Notification channel created (Conversation Support: true)")
 
         } catch (e: Exception) {
             Log.e(TAG, "❌ createNotificationChannel: $e")
@@ -94,7 +115,7 @@ object NotificationHelper {
         }
     }
 
-    // [SỬA LỖI P0]: Gộp công thức tính ID về một nguồn duy nhất (Single Source of Truth)
+    // Gộp công thức tính ID về một nguồn duy nhất (Single Source of Truth)
     fun getNotificationId(userId: String): Int {
         return BubbleNotificationManager.notifId(userId)
     }
@@ -141,14 +162,23 @@ object NotificationHelper {
 
     fun isBubbleChannelEnabled(context: Context): Boolean {
         return try {
-            val nm = context.getSystemService(NotificationManager::class.java) ?: return false
-            val channel = nm.getNotificationChannel(CHANNEL_MESSAGES) ?: return false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val nm = context.getSystemService(NotificationManager::class.java) ?: return false
+                val channel = nm.getNotificationChannel(CHANNEL_MESSAGES) ?: return false
 
-            // [SỬA LỖI P2]: Dùng canBubble() kết hợp areNotificationsEnabled() là phương pháp chuẩn
-            // và ổn định nhất để kiểm tra trạng thái Bubble API trên Android 11+.
-            channel.importance >= NotificationManager.IMPORTANCE_DEFAULT &&
-                    nm.areNotificationsEnabled() &&
-                    channel.canBubble()
+                // Dùng canBubble() kết hợp areNotificationsEnabled() là phương pháp chuẩn
+                // và ổn định nhất để kiểm tra trạng thái Bubble API trên Android 11+.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    channel.importance >= NotificationManager.IMPORTANCE_DEFAULT &&
+                            nm.areNotificationsEnabled() &&
+                            channel.canBubble()
+                } else {
+                    channel.importance >= NotificationManager.IMPORTANCE_DEFAULT &&
+                            nm.areNotificationsEnabled()
+                }
+            } else {
+                true
+            }
         } catch (e: Exception) {
             true // Mặc định trả về true để hệ thống tự quyết định việc hiển thị nếu kiểm tra lỗi
         }
@@ -156,7 +186,11 @@ object NotificationHelper {
 
     fun areNotificationsEnabled(context: Context): Boolean {
         return try {
-            context.getSystemService(NotificationManager::class.java)?.areNotificationsEnabled() ?: true
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                context.getSystemService(NotificationManager::class.java)?.areNotificationsEnabled() ?: true
+            } else {
+                true
+            }
         } catch (e: Exception) {
             true
         }

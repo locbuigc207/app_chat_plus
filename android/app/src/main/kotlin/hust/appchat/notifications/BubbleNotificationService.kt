@@ -22,7 +22,7 @@ object BubbleNotificationService {
     // Use IO dispatcher for background operations like shortcut creation and cache access
     internal val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    // [FIX P1]: Thread-safe initialization sử dụng AtomicBoolean thay vì @Volatile
+    // Thread-safe initialization sử dụng AtomicBoolean thay vì @Volatile
     private val _isInitialized = AtomicBoolean(false)
 
     val isInitialized: Boolean
@@ -36,7 +36,7 @@ object BubbleNotificationService {
     // ========================================
 
     fun init(context: Context) {
-        // [FIX P1]: Đảm bảo tính Atomicity (Thread-safe) tuyệt đối khi nhiều thread gọi init() cùng lúc
+        // Đảm bảo tính Atomicity (Thread-safe) tuyệt đối khi nhiều thread gọi init() cùng lúc
         if (!_isInitialized.compareAndSet(false, true)) {
             Log.d(TAG, "ℹ️ Already initialized")
             return
@@ -234,7 +234,9 @@ object BubbleNotificationService {
 
     private fun postFallbackNotification(context: Context, userId: String, userName: String, message: String) {
         try {
-            val notificationId = userId.hashCode()
+            // [SỬA LỖI MỚI 8]: Đồng bộ formula lấy Notification ID với BubbleNotificationManager
+            // để đảm bảo fallback notification và bubble notification có thể được cancel chung một ID.
+            val notificationId = BubbleNotificationManager.notifId(userId)
 
             // Intent mở app/mở chat
             val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
@@ -529,7 +531,7 @@ object BubbleNotificationService {
 
             synchronized(activeBubbles) { activeBubbles.clear() }
 
-            // [FIX P1]: Set lại giá trị AtomicBoolean
+            // Set lại giá trị AtomicBoolean
             _isInitialized.set(false)
 
             Log.d(TAG, "✅ Cleanup complete")
