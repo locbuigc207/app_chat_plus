@@ -4,6 +4,7 @@ package hust.appchat.shortcuts
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.LocusId
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import android.graphics.Bitmap
@@ -216,8 +217,10 @@ object ShortcutHelper {
             .setIcon(defaultIcon)
             .setIntent(intent)
             .setLongLived(true)
+            .setLocusId(LocusId(userId)) // [SỬA LỖI P0]: Thêm LocusId
+            .setRank(0) // [SỬA LỖI P1]: Thêm Rank
             .setPerson(person)
-            .setCategories(setOf("android.app.shortcuts.CONVERSATION"))
+            .setCategories(setOf("android.shortcut.conversation")) // [SỬA LỖI P0]: Đổi thành category chuẩn
             .build()
 
         // 1. Push shortcut tức thì lên hệ thống
@@ -251,14 +254,18 @@ object ShortcutHelper {
                         .setIcon(realIcon)
                         .setIntent(intent)
                         .setLongLived(true)
+                        .setLocusId(LocusId(userId)) // [SỬA LỖI P0]: Thêm LocusId
+                        .setRank(0) // [SỬA LỖI P1]: Thêm Rank
                         .setPerson(updatedPerson)
-                        .setCategories(setOf("android.app.shortcuts.CONVERSATION"))
+                        .setCategories(setOf("android.shortcut.conversation")) // [SỬA LỖI P0]: Đổi thành category chuẩn
                         .build()
 
-                    context.getSystemService(ShortcutManager::class.java)
-                        ?.updateShortcuts(listOf(updatedShortcut))
-
-                    Log.d(TAG, "✅ Shortcut avatar updated from network: $userName")
+                    // [SỬA LỖI MỚI 6]: Bọc trong Main thread khi cập nhật lại hệ thống shortcut
+                    withContext(Dispatchers.Main) {
+                        context.getSystemService(ShortcutManager::class.java)
+                            ?.updateShortcuts(listOf(updatedShortcut))
+                        Log.d(TAG, "✅ Shortcut avatar updated from network: $userName")
+                    }
                 } catch (e: Exception) {
                     Log.w(TAG, "⚠️ Failed to load real avatar for shortcut update, keeping default: $e")
                 }
@@ -303,11 +310,11 @@ object ShortcutHelper {
         try {
             val sm = context.getSystemService(ShortcutManager::class.java) ?: return
 
-            // Xóa theo rank lớn nhất (thường là cũ nhất/ít tương tác nhất theo thuật toán của hệ thống)
-            val oldest = sm.dynamicShortcuts.maxByOrNull { it.rank } ?: return
+            // [SỬA LỖI P1]: Xóa shortcut cũ nhất theo thời gian (minByOrNull theo lastChangedTimestamp) thay vì rank
+            val oldest = sm.dynamicShortcuts.minByOrNull { it.lastChangedTimestamp } ?: return
             sm.removeDynamicShortcuts(listOf(oldest.id))
 
-            Log.d(TAG, "🗑️ Evicted oldest shortcut (rank ${oldest.rank}): ${oldest.id}")
+            Log.d(TAG, "🗑️ Evicted oldest shortcut (ID: ${oldest.id})")
         } catch (e: Exception) {
             Log.e(TAG, "❌ evictOldest failed: $e")
         }
@@ -323,7 +330,7 @@ object ShortcutHelper {
             putExtra("userId", userId)
             putExtra("userName", userName)
             putExtra("avatarUrl", avatarUrl)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT) // [SỬA LỖI MỚI 5]: Đổi thành FLAG_ACTIVITY_NEW_DOCUMENT
             addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
         }
     }

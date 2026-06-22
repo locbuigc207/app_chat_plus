@@ -6,13 +6,17 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Person
 import android.content.Context
+import android.content.Intent
+import android.content.LocusId
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
+import com.google.firebase.auth.FirebaseAuth
 import hust.appchat.BubbleActivity
+import hust.appchat.MainActivity
 import hust.appchat.shortcuts.AvatarLoader
 import hust.appchat.shortcuts.ShortcutHelper
 import java.util.concurrent.ConcurrentHashMap
@@ -48,7 +52,7 @@ object BubbleNotificationManager {
     // PUBLIC API
     // ═════════════════════════════════════════════════════════════════════
 
-    // [GIẢI QUYẾT LỖI P0]: Các hàm truy xuất và lưu trữ Meta Data
+    // Các hàm truy xuất và lưu trữ Meta Data
     fun rememberMeta(userId: String, userName: String, avatarUrl: String) {
         conversationMeta[userId] = Pair(userName, avatarUrl)
     }
@@ -102,7 +106,7 @@ object BubbleNotificationManager {
     fun clearHistory(userId: String) {
         history.remove(userId)
         expandedUsers.remove(userId)
-        conversationMeta.remove(userId) // [GIẢI QUYẾT LỖI P2]: Dọn dẹp metadata để tránh leak memory
+        conversationMeta.remove(userId)
         Log.d(TAG, "🗑️ History cleared: $userId")
     }
 
@@ -129,8 +133,6 @@ object BubbleNotificationManager {
         }
     }
 
-    // [GIẢI QUYẾT LỖI P0]: Đổi thành hàm public để NotificationHelper có thể gọi chung,
-    // loại bỏ tình trạng có 2 công thức tính Notification ID chạy song song
     fun notifId(userId: String): Int =
         BASE_ID + ((userId.hashCode() and 0x7FFFFFFF) % 50_000)
 
@@ -152,23 +154,51 @@ object BubbleNotificationManager {
             val style      = buildStyle(person, userName, messages)
             val bubbleMeta = buildBubble(context, userId, userName, avatarUrl, avatarIcon)
 
+            // [SỬA LỖI P0]: Bắt buộc tạo ContentIntent để Notification hợp lệ trên Android 12+
+            val contentIntent = Intent(context, MainActivity::class.java).apply {
+                putExtra("userId", userId)
+                putExtra("openChat", true)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val contentPendingIntent = PendingIntent.getActivity(
+                context,
+                userId.hashCode(),
+                contentIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
             val builder = Notification.Builder(context, CHANNEL_MESSAGES)
                 .setSmallIcon(notifIconRes(context))
-                .setLargeIcon(iconToBitmap(context, avatarIcon))
                 .setStyle(style)
                 .setShortcutId(userId)
+                .setLocusId(LocusId(userId)) // [SỬA LỖI P0]: Thêm LocusId để link chuỗi shortcut - notification - bubble
+                .setContentIntent(contentPendingIntent) // [SỬA LỖI P0]: Thêm ContentIntent
                 .setCategory(Notification.CATEGORY_MESSAGE)
                 .setPriority(Notification.PRIORITY_HIGH)
                 .setShowWhen(true)
                 .setAutoCancel(false)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
 
-            // [SỬA LỖI]: Log cảnh báo rõ ràng khi bubbleMeta là null do shortcut chưa kịp tạo,
-            // đồng thời vẫn post Notification dạng thường để người dùng không bị mất tin nhắn.
+            // [SỬA LỖI MỚI 7]: Safety check khi setLargeIcon
+            iconToBitmap(context, avatarIcon)?.let { builder.setLargeIcon(it) }
+
+            // [SỬA LỖI P1]: Gắn các Action Reply, MarkRead và DeleteIntent vào Notification
+            builder.addAction(BubbleNotificationActionReceiver.createReplyAction(context, userId, userName, avatarUrl, notifId))
+            builder.addAction(BubbleNotificationActionReceiver.createMarkReadAction(context, userId, notifId))
+            builder.setDeleteIntent(BubbleNotificationActionReceiver.createDismissPendingIntent(context, userId, notifId))
+
+            // [SỬA LỖI MỚI 6]: Guard không setGroup trên Samsung để tránh lỗi chặn Bubble của One UI
+            if (Build.MANUFACTURER.lowercase() == "samsung") {
+                Log.d(TAG, "📱 Samsung device detected — skipping notification grouping")
+            } else {
+                // Có thể setGroup cho các thiết bị khác nếu cần
+                // builder.setGroup("chat_group")
+            }
+
             if (bubbleMeta != null) {
                 builder.setBubbleMetadata(bubbleMeta)
             } else {
-                Log.w(TAG, "⚠️ CẢNH BÁO: buildBubble() trả về null cho userId=$userId. Shortcut có thể chưa được tạo kịp. Đang fallback gửi notification thường để tránh mất thông báo!")
+                Log.w(TAG, "⚠️ CẢNH BÁO: buildBubble() trả về null cho userId=$userId. Shortcut có thể chưa được tạo kịp. Đang fallback gửi notification thường!")
             }
 
             val notif = builder.build()
@@ -191,16 +221,24 @@ object BubbleNotificationManager {
             .build()
 
     private fun buildStyle(
-        person  : Person,
+        peerPerson: Person,
         title   : String,
         messages: List<Message>,
     ): Notification.MessagingStyle {
-        val style = Notification.MessagingStyle(person).setConversationTitle(title)
+        // [SỬA LỖI P1]: Truyền selfPerson dùng Firebase UID để hệ thống nhận diện đúng người gửi/nhận
+        val selfUid = FirebaseAuth.getInstance().currentUser?.uid ?: "self_user"
+        val selfPerson = Person.Builder()
+            .setName("Tôi")
+            .setKey(selfUid)
+            .setImportant(false)
+            .build()
+
+        val style = Notification.MessagingStyle(selfPerson).setConversationTitle(title)
         messages.forEach { m ->
             style.addMessage(
                 formatText(m),
                 m.timestamp,
-                if (!m.fromUser) person else null,
+                if (!m.fromUser) peerPerson else null, // null đại diện cho selfPerson theo doc của Android
             )
         }
         return style
@@ -214,8 +252,6 @@ object BubbleNotificationManager {
         icon     : Icon,
     ): Notification.BubbleMetadata? {
 
-        // Kiểm tra kỹ shortcut trước khi build BubbleMetadata framework API.
-        // Trên Android 15/16, shortcut bắt buộc phải được publish trước.
         if (!ShortcutHelper.shortcutExists(context, userId)) {
             Log.w(TAG, "⚠️ Shortcut missing for $userId — deferring bubble metadata")
             return null
@@ -236,16 +272,19 @@ object BubbleNotificationManager {
             if (bmp != null) Icon.createWithAdaptiveBitmap(bmp) else icon
         } else icon
 
-        // Safety check trước khi build để ngăn crash ngầm nếu Icon fallback thất bại
         if (bubbleIcon == null) {
             Log.e(TAG, "❌ Bubble icon null — abort bubble metadata")
             return null
         }
 
+        // [SỬA LỖI P1]: AutoExpand & SuppressNotification logic động dựa trên lịch sử
+        val msgCount = history[userId]?.size ?: 0
+        val isFirstMessage = msgCount <= 1
+
         return Notification.BubbleMetadata.Builder(pi, bubbleIcon)
             .setDesiredHeight(640)
-            .setAutoExpandBubble(false)
-            .setSuppressNotification(isExpanded(userId))
+            .setAutoExpandBubble(isFirstMessage)
+            .setSuppressNotification(isExpanded(userId) || isFirstMessage)
             .build()
     }
 
@@ -283,8 +322,6 @@ object BubbleNotificationManager {
     private fun fallbackIcon(ctx: Context): Icon =
         Icon.createWithResource(ctx, notifIconRes(ctx))
 
-    // [GIẢI QUYẾT LỖI P1]: Hàm này có thể được tách ra Util chung trong tương lai.
-    // Hiện tại giữ ở dạng private scope để đảm bảo an toàn biên dịch cho file này.
     private fun iconToBitmap(ctx: Context, icon: Icon): Bitmap? {
         return try {
             val drawable = icon.loadDrawable(ctx) ?: return null
