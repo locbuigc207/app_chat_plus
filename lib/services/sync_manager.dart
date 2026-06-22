@@ -9,7 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/services/services.dart';
-import 'package:flutter_chat_demo/utils/utils.dart'; // Sử dụng DataMaskingUtils
+import 'package:flutter_chat_demo/utils/utils.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC CONSTANTS
@@ -33,11 +33,11 @@ abstract class SyncJobType {
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum SyncStatus {
-  idle, // Không có gì cần đồng bộ
-  syncing, // Đang chạy đồng bộ các tác vụ trong hàng đợi
-  paused, // Có kết nối mạng nhưng tạm dừng để chờ hồi phục (backoff) sau lỗi
-  offline, // Mất kết nối mạng hoàn toàn
-  error, // Lỗi nghiêm trọng kéo dài (đã cạn số lần thử lại)
+  idle,
+  syncing,
+  paused,
+  offline,
+  error,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -45,9 +45,9 @@ enum SyncStatus {
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum JobPriority {
-  high, // Tin nhắn bị lỗi cần được gửi lại khẩn cấp
-  normal, // Tin nhắn gửi đi thông thường của người dùng
-  low, // Phản hồi tự động hoặc nội dung từ AI
+  high,
+  normal,
+  low,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -79,7 +79,6 @@ class SyncManager {
   // ── Status stream ──────────────────────────────────────────────────────────
   final _statusCtrl = StreamController<SyncStatus>.broadcast();
 
-  /// Đăng ký lắng nghe biến động trạng thái đồng bộ trong thời gian thực.
   Stream<SyncStatus> get statusStream => _statusCtrl.stream;
 
   SyncStatus _status = SyncStatus.idle;
@@ -97,7 +96,6 @@ class SyncManager {
   static const int _maxBatchSize = 20;
   static const Duration _heartbeatInterval = Duration(seconds: 30);
 
-  /// Exponential backoff: 2s, 4s, 8s, 16s … giới hạn trần tại 60s.
   static Duration _backoff(int retries) =>
       Duration(seconds: min(60, pow(2, retries + 1).toInt()));
 
@@ -111,7 +109,6 @@ class SyncManager {
   // PUBLIC API
   // ═════════════════════════════════════════════════════════════════════════
 
-  /// Bắt đầu lắng nghe thay đổi trạng thái kết nối và kích hoạt đồng bộ đợt đầu.
   void startListening() {
     if (!_isStarted) {
       _isStarted = true;
@@ -120,7 +117,6 @@ class SyncManager {
         _onConnectivity,
       );
 
-      // Heartbeat định kỳ phòng trường hợp bỏ sót sự kiện thay đổi kết nối của hệ thống
       _heartbeatTimer = Timer.periodic(_heartbeatInterval, (_) {
         if (_isOnline) _trySync();
       });
@@ -128,7 +124,6 @@ class SyncManager {
     _trySync();
   }
 
-  /// Dừng toàn bộ hoạt động chạy nền — thường gọi khi người dùng đăng xuất.
   void stopListening() {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = null;
@@ -136,13 +131,10 @@ class SyncManager {
     _connectivitySub = null;
     _isStarted = false;
 
-    // [ĐÃ SỬA LỖI P0]: KHÔNG close _statusCtrl tại đây — đây là singleton,
-    // cần giữ stream mở để có thể restart mượt mà sau khi user login lại.
     _emit(SyncStatus.idle);
     debugPrint('[SyncManager] 🛑 Stopped');
   }
 
-  /// Đưa tác vụ gửi tin nhắn vào hàng đợi đồng bộ với độ ưu tiên chỉ định.
   Future<void> enqueueMessage({
     required String conversationId,
     required String messageId,
@@ -166,10 +158,9 @@ class SyncManager {
         'timestamp': timestamp,
       },
     });
-    _trySync(); // Kích hoạt đồng bộ ngay lập tức
+    _trySync();
   }
 
-  /// Đưa tác vụ sinh câu trả lời của AI trợ lý vào hàng đợi.
   Future<void> enqueueAiResponse({
     required String conversationId,
     required String currentUserId,
@@ -187,7 +178,6 @@ class SyncManager {
     _trySync();
   }
 
-  /// Trả về số lượng tác vụ hiện đang xếp hàng chờ xử lý.
   int get pendingJobCount => _localDb.syncQueueLength;
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -196,8 +186,8 @@ class SyncManager {
 
   void _onConnectivity(List<ConnectivityResult> results) {
     final online = results.any(
-      (r) =>
-          r == ConnectivityResult.mobile ||
+          (r) =>
+      r == ConnectivityResult.mobile ||
           r == ConnectivityResult.wifi ||
           r == ConnectivityResult.ethernet,
     );
@@ -338,6 +328,30 @@ class SyncManager {
   }
 
   // ═════════════════════════════════════════════════════════════════════════
+  // HELPERS
+  // ═════════════════════════════════════════════════════════════════════════
+
+  // Đã vô hiệu hóa _previewFor để cập nhật lastMessage trên Firestore
+  // (Fix A3: Luôn lưu chuỗi đã mã hóa thay vì preview plaintext).
+  // Có thể giữ lại hàm này cho Push Notification client-side nếu cần trong tương lai.
+  static String _previewFor(String content, int type) {
+    switch (type) {
+      case 1:
+        return '📷 Ảnh';
+      case 3: // [SỬA LỖI D]: Map chuẩn case 3 -> Voice (theo ChatPage)
+        return '🎤 Tin nhắn thoại';
+      case 2: // [SỬA LỖI D]: Map chuẩn case 2 -> Sticker
+        return '😊 Sticker';
+      case 4:
+        return '🎬 Video';
+      case 7:
+        return '📄 Tài liệu';
+      default:
+        return content.length > 100 ? '${content.substring(0, 100)}…' : content;
+    }
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
   // JOB HANDLERS IMPLEMENTATION
   // ═════════════════════════════════════════════════════════════════════════
 
@@ -373,33 +387,59 @@ class SyncManager {
         .collection(conversationId)
         .doc(messageId)
         .set({
-          'idFrom': idFrom,
-          'idTo': idTo,
-          'timestamp': timestamp,
-          'content': encryptedContent,
-          'type': messageType,
-          'status': MessageStatus.sent,
-        });
+      'idFrom': idFrom,
+      'idTo': idTo,
+      'timestamp': timestamp,
+      'content': encryptedContent,
+      'type': messageType,
+      'status': MessageStatus.sent,
+    });
 
-    // 3. Cập nhật dữ liệu hội thoại trực tiếp (Xóa bỏ khối query tốn quota)
-    // [ĐÃ ĐỒNG BỘ LOGIC BUG 7]: Kiểm tra tránh add nhầm groupChatId vào participants mảng đối với Group Chat.
+    // 3. Cập nhật dữ liệu hội thoại trực tiếp bằng Transaction an toàn (Chống out-of-order)
     try {
       final isGroupChat = idTo == conversationId;
-
-      await FirebaseFirestore.instance
+      final convRef = FirebaseFirestore.instance
           .collection(FirestoreConstants.pathConversationCollection)
-          .doc(conversationId)
-          .set({
-            'lastMessage': plainContent.length > 100
-                ? plainContent.substring(0, 100)
-                : plainContent,
-            'lastMessageTime': timestamp,
-            'lastMessageType': messageType,
-            if (!isGroupChat)
-              'participants': FieldValue.arrayUnion([idFrom, idTo]),
-          }, SetOptions(merge: true));
+          .doc(conversationId);
+
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final snapshot = await transaction.get(convRef);
+        final data = snapshot.data() ?? {};
+
+        // Lấy thời gian ghi nhận cuối cùng để so sánh (Lỗi A2)
+        final currentLastTimeStr = data['lastMessageTime']?.toString() ?? '0';
+        final currentLastTime = int.tryParse(currentLastTimeStr) ?? 0;
+        final newTime = int.tryParse(timestamp) ?? 0;
+
+        final updates = <String, dynamic>{};
+
+        // Chỉ cập nhật hiển thị dòng tin mới nhất nếu tin nhắn này gửi sau tin hiện tại
+        if (newTime >= currentLastTime || !snapshot.exists) {
+          // Lỗi A3: Ghi giá trị đã MÃ HÓA thay vì preview trần
+          updates['lastMessage'] = encryptedContent;
+          updates['lastMessageTime'] = timestamp;
+          updates['lastMessageType'] = messageType;
+        }
+
+        // Lỗi B: Tạo cấu trúc Schema bộ đếm chưa đọc mới (Map cho từng user)
+        List<dynamic> participants = List.from(data['participants'] ?? []);
+        if (!participants.contains(idFrom)) participants.add(idFrom);
+        if (!isGroupChat && !participants.contains(idTo)) participants.add(idTo);
+
+        updates['participants'] = participants;
+
+        // Tăng unreadCount cho mọi người trong nhóm TRỪ người gửi
+        for (final p in participants) {
+          if (p != idFrom) {
+            updates['unreadCount.$p'] = FieldValue.increment(1);
+          }
+        }
+
+        transaction.set(convRef, updates, SetOptions(merge: true));
+      });
     } catch (err) {
       debugPrint('[SyncManager] convo update error: $err');
+      return false;
     }
 
     // 4. Cập nhật trạng thái database cục bộ: pending → sent
@@ -444,13 +484,13 @@ class SyncManager {
         .reversed
         .map(
           (m) => <String, dynamic>{
-            'idFrom': m['idFrom'],
-            'content': DataMaskingUtils.maskText(
-              m['content']?.toString() ?? '',
-              config: MaskingConfig.piiOnly,
-            ),
-          },
-        )
+        'idFrom': m['idFrom'],
+        'content': DataMaskingUtils.maskText(
+          m['content']?.toString() ?? '',
+          config: MaskingConfig.piiOnly,
+        ),
+      },
+    )
         .toList();
 
     final response = await _gemini.sendMessageDetailed(
@@ -468,17 +508,31 @@ class SyncManager {
         ? 'Trợ lý AI hiện không phản hồi được, vui lòng thử lại sau.'
         : response.text;
 
-    // SỬA LỖI P0: Tạo aiMessageId ghép liền không dấu gạch dưới để không phá vỡ LocalDb Key Convention
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-    final aiMessageId = '$nowMs${(1000 + Random().nextInt(9000))}';
+    // [SỬA LỖI D]: Loại bỏ dấu gạch dưới "_" vi phạm assert trong localDb
+    final aiMessageId = '$nowMs-${1000 + Random().nextInt(9000)}';
     final aiTimestampStr = nowMs.toString();
+
+    // Mã hóa phản hồi AI đồng bộ với cách nhắn tin thông thường
+    String encryptedAiText;
+    try {
+      encryptedAiText = await _encryption.encryptPayload(
+        aiText,
+        conversationId,
+        [AppConstants.aiAssistantId, currentUserId],
+        AppConstants.aiAssistantId,
+      );
+    } catch (e) {
+      debugPrint('[SyncManager] ❌ AI Encrypt failed: $e');
+      encryptedAiText = aiText; // Fallback
+    }
 
     final aiMessage = <String, dynamic>{
       'messageId': aiMessageId,
       'idFrom': AppConstants.aiAssistantId,
       'idTo': currentUserId,
       'timestamp': aiTimestampStr,
-      'content': aiText,
+      'content': encryptedAiText,
       'type': TypeMessage.text,
       'status': MessageStatus.sent,
     };
@@ -486,36 +540,49 @@ class SyncManager {
     // Lưu trữ xuống local cache
     await _localDb.saveMessage(conversationId, aiMessageId, aiMessage);
 
-    // Ghi tài liệu lên Firestore Collection (Dùng subcollection động conversationId)
+    // Ghi tài liệu lên Firestore Collection
     await FirebaseFirestore.instance
-        .collection(FirestoreConstants.pathMessageCollection) // 'messages'
+        .collection(FirestoreConstants.pathMessageCollection)
         .doc(conversationId)
         .collection(conversationId)
         .doc(aiMessageId)
-        .set({
-          'idFrom': AppConstants.aiAssistantId,
-          'idTo': currentUserId,
-          'timestamp': aiTimestampStr,
-          'content': aiText,
-          'type': TypeMessage.text,
-          'status': MessageStatus.sent,
-        });
+        .set(aiMessage);
 
-    // Cập nhật lại khung tin nhắn cuối cùng hiển thị ngoài danh sách chat
-    await FirebaseFirestore.instance
-        .collection(FirestoreConstants.pathConversationCollection)
-        .doc(conversationId)
-        .set({
-          'lastMessage': aiText.length > 80
-              ? '${aiText.substring(0, 80)}…'
-              : aiText,
-          'lastMessageTime': aiTimestampStr,
-          'lastMessageType': TypeMessage.text,
-          'participants': FieldValue.arrayUnion([
-            currentUserId,
-            AppConstants.aiAssistantId,
-          ]),
-        }, SetOptions(merge: true));
+    // Cập nhật lại khung tin nhắn AI sử dụng Transaction
+    try {
+      final convRef = FirebaseFirestore.instance
+          .collection(FirestoreConstants.pathConversationCollection)
+          .doc(conversationId);
+
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final snapshot = await transaction.get(convRef);
+        final data = snapshot.data() ?? {};
+
+        final currentLastTimeStr = data['lastMessageTime']?.toString() ?? '0';
+        final currentLastTime = int.tryParse(currentLastTimeStr) ?? 0;
+        final newTime = int.tryParse(aiTimestampStr) ?? 0;
+
+        final updates = <String, dynamic>{};
+
+        if (newTime >= currentLastTime || !snapshot.exists) {
+          updates['lastMessage'] = encryptedAiText; // Lưu giá trị đã mã hóa
+          updates['lastMessageTime'] = aiTimestampStr;
+          updates['lastMessageType'] = TypeMessage.text;
+        }
+
+        List<dynamic> participants = List.from(data['participants'] ?? []);
+        if (!participants.contains(currentUserId)) participants.add(currentUserId);
+        if (!participants.contains(AppConstants.aiAssistantId)) participants.add(AppConstants.aiAssistantId);
+
+        updates['participants'] = participants;
+        updates['unreadCount.$currentUserId'] = FieldValue.increment(1);
+
+        transaction.set(convRef, updates, SetOptions(merge: true));
+      });
+    } catch (e) {
+      debugPrint('[SyncManager] ❌ AI conv update error: $e');
+      return false;
+    }
 
     debugPrint('[SyncManager] 🤖 AI response synced for $conversationId');
     return true;
@@ -536,39 +603,38 @@ class SyncManager {
         .doc(conversationId)
         .get()
         .then((doc) {
-          final isGroup = doc.data()?['isGroup'] as bool? ?? false;
-          _aiContent
-              .pushAiContentWithRetry(
-                conversationId: conversationId,
-                messageId: messageId,
-                plainText: plainContent,
-                idFrom: idFrom,
-                messageType: TypeMessage.text,
-                groupId: isGroup ? conversationId : null,
-              )
-              .catchError((e) {
-                debugPrint('[SyncManager] AiContent retry push failed: $e');
-              });
-        })
-        .catchError((e) {
-          _aiContent
-              .pushAiContentWithRetry(
-                conversationId: conversationId,
-                messageId: messageId,
-                plainText: plainContent,
-                idFrom: idFrom,
-                messageType: TypeMessage.text,
-                groupId: null,
-              )
-              .catchError((err) {
-                debugPrint(
-                  '[SyncManager] AiContent fallback retry push failed: $err',
-                );
-              });
-          debugPrint(
-            ('[SyncManager] AiContent conv fetch error (non-critical): $e'),
-          );
-        });
+      final isGroup = doc.data()?['isGroup'] as bool? ?? false;
+      _aiContent
+          .pushAiContentWithRetry(
+        conversationId: conversationId,
+        messageId: messageId,
+        plainText: plainContent,
+        idFrom: idFrom,
+        messageType: TypeMessage.text,
+        groupId: isGroup ? conversationId : null,
+      )
+          .catchError((e) {
+        debugPrint('[SyncManager] AiContent retry push failed: $e');
+      });
+    }).catchError((e) {
+      _aiContent
+          .pushAiContentWithRetry(
+        conversationId: conversationId,
+        messageId: messageId,
+        plainText: plainContent,
+        idFrom: idFrom,
+        messageType: TypeMessage.text,
+        groupId: null,
+      )
+          .catchError((err) {
+        debugPrint(
+          '[SyncManager] AiContent fallback retry push failed: $err',
+        );
+      });
+      debugPrint(
+        ('[SyncManager] AiContent conv fetch error (non-critical): $e'),
+      );
+    });
   }
 
   // ═════════════════════════════════════════════════════════════════════════

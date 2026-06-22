@@ -53,47 +53,47 @@ class BubbleData {
     bool? isOnline,
     BubbleState? state,
     String? lastMessageType,
-  }) =>
-      BubbleData(
-        userId: userId ?? this.userId,
-        userName: userName ?? this.userName,
-        avatarUrl: avatarUrl ?? this.avatarUrl,
-        lastMessage: lastMessage ?? this.lastMessage,
-        timestamp: timestamp ?? this.timestamp,
-        unreadCount: unreadCount ?? this.unreadCount,
-        isOnline: isOnline ?? this.isOnline,
-        state: state ?? this.state,
-        lastMessageType: lastMessageType ?? this.lastMessageType,
-      );
+  }) => BubbleData(
+    userId: userId ?? this.userId,
+    userName: userName ?? this.userName,
+    avatarUrl: avatarUrl ?? this.avatarUrl,
+    lastMessage: lastMessage ?? this.lastMessage,
+    timestamp: timestamp ?? this.timestamp,
+    unreadCount: unreadCount ?? this.unreadCount,
+    isOnline: isOnline ?? this.isOnline,
+    state: state ?? this.state,
+    lastMessageType: lastMessageType ?? this.lastMessageType,
+  );
 
   Map<String, dynamic> toJson() => {
-        'userId': userId,
-        'userName': userName,
-        'avatarUrl': avatarUrl,
-        'lastMessage': lastMessage,
-        'timestamp': timestamp.millisecondsSinceEpoch,
-        'unreadCount': unreadCount,
-        'isOnline': isOnline,
-        'state': state.name,
-        'lastMessageType': lastMessageType,
-      };
+    'userId': userId,
+    'userName': userName,
+    'avatarUrl': avatarUrl,
+    'lastMessage': lastMessage,
+    'timestamp': timestamp.millisecondsSinceEpoch,
+    'unreadCount': unreadCount,
+    'isOnline': isOnline,
+    'state': state.name,
+    'lastMessageType': lastMessageType,
+  };
 
   factory BubbleData.fromJson(Map<String, dynamic> json) => BubbleData(
-        userId: json['userId'] as String? ?? '',
-        userName: json['userName'] as String? ?? '',
-        avatarUrl: json['avatarUrl'] as String? ?? '',
-        lastMessage: json['lastMessage'] as String?,
-        timestamp: DateTime.fromMillisecondsSinceEpoch(
-          json['timestamp'] as int? ?? DateTime.now().millisecondsSinceEpoch,
-        ),
-        unreadCount: json['unreadCount'] as int? ?? 0,
-        isOnline: json['isOnline'] as bool? ?? false,
-        state: BubbleState.values.firstWhere(
-          (e) => e.name == (json['state'] as String?),
-          orElse: () => BubbleState.active,
-        ),
-        lastMessageType: json['lastMessageType'] as String?,
-      );
+    userId: json['userId'] as String? ?? '',
+    userName: json['userName'] as String? ?? '',
+    avatarUrl: json['avatarUrl'] as String? ?? '',
+    lastMessage: json['lastMessage'] as String?,
+    timestamp: DateTime.fromMillisecondsSinceEpoch(
+      json['timestamp'] as int? ?? DateTime.now().millisecondsSinceEpoch,
+    ),
+    // unreadCount ở tầng UI hiển thị Bubble vẫn là int (đã được bóc tách từ Map unreadCount trên Firestore)
+    unreadCount: json['unreadCount'] as int? ?? 0,
+    isOnline: json['isOnline'] as bool? ?? false,
+    state: BubbleState.values.firstWhere(
+      (e) => e.name == (json['state'] as String?),
+      orElse: () => BubbleState.active,
+    ),
+    lastMessageType: json['lastMessageType'] as String?,
+  );
 
   bool get isValid => userId.isNotEmpty && userName.isNotEmpty;
 
@@ -179,13 +179,12 @@ class BubbleContext {
     String? detectedTopic,
     Map<String, dynamic>? extraData,
     DateTime? updatedAt,
-  }) =>
-      BubbleContext(
-        mode: mode ?? this.mode,
-        detectedTopic: detectedTopic ?? this.detectedTopic,
-        extraData: extraData ?? this.extraData,
-        updatedAt: updatedAt ?? this.updatedAt,
-      );
+  }) => BubbleContext(
+    mode: mode ?? this.mode,
+    detectedTopic: detectedTopic ?? this.detectedTopic,
+    extraData: extraData ?? this.extraData,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
 
   static BubbleContext detectFromMessage(String message) {
     final lower = message.toLowerCase();
@@ -208,15 +207,9 @@ class BubbleContext {
       );
     }
     if (lower.contains('🔒') || lower.contains('secret')) {
-      return BubbleContext(
-        mode: BubbleMode.secure,
-        updatedAt: DateTime.now(),
-      );
+      return BubbleContext(mode: BubbleMode.secure, updatedAt: DateTime.now());
     }
-    return BubbleContext(
-      mode: BubbleMode.normal,
-      updatedAt: DateTime.now(),
-    );
+    return BubbleContext(mode: BubbleMode.normal, updatedAt: DateTime.now());
   }
 
   @override
@@ -270,14 +263,14 @@ class BubbleReaction {
       );
 
   Map<String, dynamic> toJson() => {
-        'emoji': emoji,
-        'count': count,
-        'userIds': userIds,
-      };
+    'emoji': emoji,
+    'count': count,
+    'userIds': userIds,
+  };
 
   factory BubbleReaction.fromJson(Map<String, dynamic> json) => BubbleReaction(
-        emoji: json['emoji'] as String,
-        count: json['count'] as int? ?? 0,
-        userIds: (json['userIds'] as List?)?.cast<String>() ?? [],
-      );
+    emoji: json['emoji'] as String,
+    count: json['count'] as int? ?? 0,
+    userIds: (json['userIds'] as List?)?.cast<String>() ?? [],
+  );
 }

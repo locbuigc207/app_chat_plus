@@ -12,6 +12,7 @@ import androidx.core.app.NotificationManagerCompat
 import hust.appchat.shortcuts.AvatarLoader
 import hust.appchat.shortcuts.ShortcutHelper
 import kotlinx.coroutines.*
+import java.util.concurrent.atomic.AtomicBoolean
 
 @RequiresApi(Build.VERSION_CODES.R)
 object BubbleNotificationService {
@@ -21,9 +22,11 @@ object BubbleNotificationService {
     // Use IO dispatcher for background operations like shortcut creation and cache access
     internal val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    @Volatile
-    var isInitialized = false
-        private set
+    // [FIX P1]: Thread-safe initialization sử dụng AtomicBoolean thay vì @Volatile
+    private val _isInitialized = AtomicBoolean(false)
+
+    val isInitialized: Boolean
+        get() = _isInitialized.get()
 
     // userId -> true means a Bubble-API notification exists for that user.
     internal val activeBubbles = LinkedHashSet<String>()
@@ -33,7 +36,8 @@ object BubbleNotificationService {
     // ========================================
 
     fun init(context: Context) {
-        if (isInitialized) {
+        // [FIX P1]: Đảm bảo tính Atomicity (Thread-safe) tuyệt đối khi nhiều thread gọi init() cùng lúc
+        if (!_isInitialized.compareAndSet(false, true)) {
             Log.d(TAG, "ℹ️ Already initialized")
             return
         }
@@ -48,9 +52,10 @@ object BubbleNotificationService {
                 Log.w(TAG, "⚠️ Shortcuts not supported on this device")
             }
 
-            isInitialized = true
             Log.d(TAG, "✅ BubbleNotificationService initialized")
         } catch (e: Exception) {
+            // Revert lại trạng thái nếu khởi tạo thất bại
+            _isInitialized.set(false)
             Log.e(TAG, "❌ Initialization failed: $e")
         }
     }
@@ -174,7 +179,7 @@ object BubbleNotificationService {
             Log.d(TAG, "✅ Modern bubble shown: $userName")
 
         } catch (e: IllegalStateException) {
-            // [SỬA LỖI]: Bắt lỗi ensureShortcut timeout/thất bại
+            // Bắt lỗi ensureShortcut timeout/thất bại
             Log.e(TAG, "❌ ensureShortcut failed: ${e.message}. Fallback to normal notification.")
 
             // Gửi sự kiện lỗi qua Broadcast để MainActivity (hoặc Dart) có thể bắt và báo lỗi lên UI
@@ -523,7 +528,9 @@ object BubbleNotificationService {
             ShortcutHelper.cleanup()
 
             synchronized(activeBubbles) { activeBubbles.clear() }
-            isInitialized = false
+
+            // [FIX P1]: Set lại giá trị AtomicBoolean
+            _isInitialized.set(false)
 
             Log.d(TAG, "✅ Cleanup complete")
         } catch (e: Exception) {

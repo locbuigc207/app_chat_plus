@@ -380,7 +380,6 @@ function periodMs(period) {
   return (map[period] || 7) * 24 * 60 * 60 * 1000;
 }
 
-// [FIX 4] Hàm enrichWithAI phục vụ quá trình làm giàu dữ liệu tính năng AI Insights
 async function enrichWithAI(stats, messages, period, apiKey) {
   if (!messages || messages.length === 0) return stats;
   const model = createGeminiModel(
@@ -744,10 +743,10 @@ exports.analyzeDecryptedClientMessage = onCall(
 
       const batch = db.batch();
       if (analysis.isScam && conversationId && messageId) {
-        // [ĐÃ SỬA] Thay thế subcollection động thành "messages"
+        // [FIX P0]: Sửa path lỗi cứng bị lặp "messages" -> sử dụng conversationId làm subcollection
         const msgRef = db
           .collection("messages").doc(conversationId)
-          .collection("messages").doc(messageId);
+          .collection(conversationId).doc(messageId);
         batch.set(msgRef, {
           scamWarning: true,
           scamReason: analysis.scamReason ?? "",
@@ -1660,7 +1659,6 @@ exports.generateMessageTone = onCall(
     const targetDesc = toneMap[toTone] ?? toTone;
     const emojiNote = keepEmoji ? "Giữ nguyên emoji." : "Bỏ tất cả emoji.";
 
-    // Lỗi getFirestore() đã được fix thành geminiApiKey.value()
     const model = createGeminiModel(
       geminiApiKey.value(),
       "Chuyên gia viết lại nội dung với giọng điệu phù hợp.",
@@ -1867,11 +1865,11 @@ exports.triggerInsightsRefresh = onCall(
     }
 
     const cutoff90 = Date.now() - 90 * 24 * 60 * 60 * 1000;
-    // [ĐÃ SỬA] Thay thế subcollection động thành "ai_content"
+    // [FIX P0]: Sửa thay thế hardcode collection "ai_content" lỗi -> dùng subcollection convId đúng
     const snap = await db
       .collection("ai_content")
       .doc(convId)
-      .collection("ai_content")
+      .collection(convId)
       .where("timestamp", ">=", cutoff90)
       .orderBy("timestamp", "desc")
       .limit(500)
@@ -2094,7 +2092,8 @@ exports.healthCheck = onRequest(
 
 // ─── 31. scheduleMessageDeletion ─────────────────────────────────────────────
 exports.scheduleMessageDeletion = onDocumentCreated(
-  "messages/{conversationId}/{messageId}",
+  // [FIX P0]: Sử dụng trigger path chuẩn 4-segments (cho subcollection động theo conversationId)
+  "messages/{conversationId}/{subId}/{messageId}",
   async (event) => {
     const {conversationId} = event.params;
     const messageData = event.data?.data();
@@ -2116,11 +2115,11 @@ exports.scheduleMessageDeletion = onDocumentCreated(
 
 // ─── 32. sendMessageNotification ─────────────────────────────────────────────
 exports.sendMessageNotification = onDocumentCreated(
-  "messages/{conversationId}/{messageId}",
+  // [FIX P0]: Cập nhật trigger path thành 4-segments (messages/{id}/{id}/{msgId})
+  "messages/{conversationId}/{subId}/{messageId}",
   async (event) => {
     const {conversationId} = event.params;
     const msgData = event.data?.data();
-    // Đã thay thế AI_BOT bằng hằng số hợp lệ của AI Assistant
     if (!msgData || msgData.idFrom === AI_ASSISTANT_ID) return;
 
     const idFrom       = msgData.idFrom     ?? "";
@@ -2181,7 +2180,10 @@ exports.sendMessageNotification = onDocumentCreated(
 
       if (!receiverSnap.exists) return;
       const receiverData = receiverSnap.data();
-      if (receiverData?.isOnline) return;
+
+      // [FIX P2]: Đổi kiểm tra isOnline lỏng lẻo sang chattingWith chuẩn xác
+      // Giúp Bubble Notification có thể hiển thị nếu người dùng không mở đúng đoạn chat
+      if (receiverData?.chattingWith === idFrom) return;
 
       const pushToken = receiverData?.pushToken ?? receiverData?.fcmToken;
       if (!pushToken) return;
@@ -2366,9 +2368,9 @@ exports.cleanupExpiredMessages = onSchedule(
       let totalDeleted = 0;
       for (const conv of conversations.docs) {
         if (!conv.data().autoDeleteDuration) continue;
-        // [ĐÃ SỬA] Thay thế subcollection động thành "messages"
+        // [FIX P0]: Sửa path lỗi cứng -> Sử dụng subcollection đúng là conv.id thay vì "messages"
         const expired = await db
-          .collection("messages").doc(conv.id).collection("messages")
+          .collection("messages").doc(conv.id).collection(conv.id)
           .where("autoDeleteAt", "<=", now)
           .where("isDeleted",    "==", false)
           .limit(500)
@@ -2533,9 +2535,9 @@ exports.cleanupExpiredAiContent = onSchedule(
       for (const convRef of convDocs) {
         try {
           const convId = convRef.id;
-          // [ĐÃ SỬA] Thay thế subcollection động thành "ai_content"
+          // [FIX P0]: Sử dụng path động subcollection `convId`
           const expiredDocs = await db
-            .collection("ai_content").doc(convId).collection("ai_content")
+            .collection("ai_content").doc(convId).collection(convId)
             .where("expireAt", "<=", now)
             .limit(500)
             .get();
@@ -2576,9 +2578,9 @@ exports.weeklyAiRecap = onSchedule(
       let recapped = 0;
       for (const groupDoc of groups.docs) {
         const groupId = groupDoc.id;
-        // [ĐÃ SỬA] Thay thế subcollection động thành "ai_content"
+        // [FIX P0]: Truy cập nhánh động chuẩn của ai_content
         const msgsSnap = await db
-          .collection("ai_content").doc(groupId).collection("ai_content")
+          .collection("ai_content").doc(groupId).collection(groupId)
           .where("timestamp", ">=", sevenDaysAgo)
           .orderBy("timestamp", "asc")
           .limit(200)
@@ -2588,7 +2590,6 @@ exports.weeklyAiRecap = onSchedule(
         const chatHistory = msgsSnap.docs
           .map((d) => {
             const content = d.data().content ?? "";
-            // Đã thay thế AI_BOT bằng hằng số hợp lệ của AI Assistant
             if (d.data().idFrom === AI_ASSISTANT_ID) return null;
             if (content.startsWith("{\"iv\":") || content.startsWith("eyJ")) return null;
             if (content.trim().length < 5) return null;
@@ -2627,8 +2628,8 @@ exports.weeklyAiRecap = onSchedule(
           const recapText = `🔥 BẢN TIN BÓC PHỐT TUẦN 🔥\n\n${recap.trim()}`;
           const msgId     = Date.now().toString();
           const batch     = db.batch();
-          // [ĐÃ SỬA] Thay thế subcollection động thành "messages"
-          const msgRef    = db.collection("messages").doc(groupId).collection("messages").doc(msgId);
+          // [FIX P0]: Viết vào subcollection động theo conversationId cho message recap
+          const msgRef    = db.collection("messages").doc(groupId).collection(groupId).doc(msgId);
 
           batch.set(msgRef, {
             idFrom: AI_ASSISTANT_ID,
@@ -2956,9 +2957,9 @@ exports.generateWeeklyRecap = onCall(
     const cutoff = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
 
     try {
-      // [ĐÃ SỬA] Thay thế subcollection động thành "ai_content"
+      // [FIX P0]: Đổi path thành format subcollection chuẩn của hệ thống
       const msgsSnap = await db
-        .collection("ai_content").doc(conversationId).collection("ai_content")
+        .collection("ai_content").doc(conversationId).collection(conversationId)
         .where("timestamp", ">=", cutoff)
         .orderBy("timestamp", "asc")
         .limit(200)

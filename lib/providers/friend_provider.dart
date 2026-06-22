@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
+import 'package:rxdart/rxdart.dart'; // [SỬA LỖI BUG #11]: Thêm rxdart để xử lý combine stream
 
 enum FriendRequestStatus { none, sent, received, friends }
 
@@ -50,10 +50,10 @@ class FriendProvider {
   }
 
   Future<bool> acceptFriendRequest(
-    String requestId,
-    String userId1,
-    String userId2,
-  ) async {
+      String requestId,
+      String userId1,
+      String userId2,
+      ) async {
     try {
       final batch = firebaseFirestore.batch();
 
@@ -215,27 +215,29 @@ class FriendProvider {
         .snapshots();
   }
 
+  // [SỬA LỖI BUG #11]: Đồng bộ stream bằng Rx.combineLatest2 để lấy real-time toàn vẹn
   Stream<List<String>> getFriendIds(String userId) {
-    final s1 = firebaseFirestore
-        .collection(FirestoreConstants.pathFriendshipCollection)
-        .where(FirestoreConstants.userId1, isEqualTo: userId)
-        .snapshots()
-        .map((s) => s.docs.map((d) => d.data()[FirestoreConstants.userId2] as String).toList());
+    final fs = firebaseFirestore.collection(FirestoreConstants.pathFriendshipCollection);
 
-    final s2 = firebaseFirestore
-        .collection(FirestoreConstants.pathFriendshipCollection)
-        .where(FirestoreConstants.userId2, isEqualTo: userId)
-        .snapshots()
-        .map((s) => s.docs.map((d) => d.data()[FirestoreConstants.userId1] as String).toList());
+    return Rx.combineLatest2(
+      fs.where(FirestoreConstants.userId1, isEqualTo: userId).snapshots(),
+      fs.where(FirestoreConstants.userId2, isEqualTo: userId).snapshots(),
+          (QuerySnapshot snap1, QuerySnapshot snap2) {
+        final ids = <String>{};
 
-    return s1.asyncMap((ids1) async {
-      final snap2 = await firebaseFirestore
-          .collection(FirestoreConstants.pathFriendshipCollection)
-          .where(FirestoreConstants.userId2, isEqualTo: userId)
-          .get();
-      final ids2 = snap2.docs.map((d) => d.data()[FirestoreConstants.userId1] as String).toList();
-      return [...ids1, ...ids2];
-    });
+        for (final doc in snap1.docs) {
+          final data = doc.data() as Map<String, dynamic>;
+          ids.add(data[FirestoreConstants.userId2] as String);
+        }
+
+        for (final doc in snap2.docs) {
+          final data = doc.data() as Map<String, dynamic>;
+          ids.add(data[FirestoreConstants.userId1] as String);
+        }
+
+        return ids.toList();
+      },
+    );
   }
 
   Stream<QuerySnapshot> getPendingRequestsReceived(String userId) {
@@ -264,10 +266,10 @@ class FriendProvider {
   }
 
   Future<void> updateConversationLastMessage(
-    String conversationId,
-    String message,
-    int messageType,
-  ) async {
+      String conversationId,
+      String message,
+      int messageType,
+      ) async {
     try {
       await firebaseFirestore
           .collection(FirestoreConstants.pathConversationCollection)
@@ -283,10 +285,10 @@ class FriendProvider {
   }
 
   Future<String> getOrCreateConversation(
-    String userId1,
-    String userId2,
-    bool isGroup,
-  ) async {
+      String userId1,
+      String userId2,
+      bool isGroup,
+      ) async {
     try {
       if (isGroup) return '';
 

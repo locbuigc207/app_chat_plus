@@ -42,10 +42,16 @@ class EncryptionService {
 
   // ── Legacy key derivation ─────────────────────────────────────────────────
 
-  static const String _legacySalt = 'APP_CHAT_PLUS_SECURE_SALT_2026';
+  // SỬA LỖI BẢO MẬT: Loại bỏ chuỗi khóa bí mật công khai, chuyển đổi sang
+  // việc nạp thông số biến môi trường tại thời điểm biên dịch (--dart-define).
+  static const String _legacySalt = String.fromEnvironment(
+    'LEGACY_SALT',
+    defaultValue: 'FALLBACK_APP_CHAT_SECURE_SALT',
+  );
 
-  static final _legacyPayloadRegex =
-      RegExp(r'^[A-Za-z0-9+/=]+=*:[A-Za-z0-9+/=]+=*$');
+  static final _legacyPayloadRegex = RegExp(
+    r'^[A-Za-z0-9+/=]+=*:[A-Za-z0-9+/=]+=*$',
+  );
 
   enc.Key _generateLegacyKey(String conversationId) {
     final bytes = utf8.encode(conversationId + _legacySalt);
@@ -62,6 +68,12 @@ class EncryptionService {
       final iv = enc.IV.fromSecureRandom(16);
       final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
       final encrypted = encrypter.encrypt(plainText, iv: iv);
+
+      // SỬA LỖI LOG: Cảnh báo mỗi khi hệ thống kích hoạt luồng fallback này
+      debugPrint(
+        '[EncryptionService] ⚠️ WARNING: Encrypting fallback CBC used for: $conversationId',
+      );
+
       return '${iv.base64}:${encrypted.base64}';
     } catch (e) {
       debugPrint('[EncryptionService] ❌ Legacy encrypt error: $e');
@@ -104,13 +116,19 @@ class EncryptionService {
     if (_e2ee.isInitialized) {
       try {
         return await _e2ee.encryptPayload(
-            plainText, conversationId, participantIds, currentUserId);
+          plainText,
+          conversationId,
+          participantIds,
+          currentUserId,
+        );
       } on E2EEException catch (e) {
         debugPrint(
-            '[EncryptionService] ⚠️ E2EE encrypt failed (${e.type.name}), falling back: $e');
+          '[EncryptionService] ⚠️ E2EE encrypt failed (${e.type.name}), falling back: $e',
+        );
       } catch (e) {
         debugPrint(
-            '[EncryptionService] ⚠️ E2EE encrypt unexpected error, falling back: $e');
+          '[EncryptionService] ⚠️ E2EE encrypt unexpected error, falling back: $e',
+        );
       }
     }
 
@@ -139,7 +157,11 @@ class EncryptionService {
 
       case PayloadType.e2eeGcm:
         return _decryptE2EE(
-            encryptedText, conversationId, participantIds, currentUserId);
+          encryptedText,
+          conversationId,
+          participantIds,
+          currentUserId,
+        );
 
       case PayloadType.legacyCbc:
         return decryptMessageLegacy(encryptedText, conversationId);
@@ -162,18 +184,25 @@ class EncryptionService {
 
     try {
       return await _e2ee.decryptPayload(
-          encryptedText, conversationId, participantIds, currentUserId);
+        encryptedText,
+        conversationId,
+        participantIds,
+        currentUserId,
+      );
     } on E2EEException catch (e) {
       debugPrint(
-          '[EncryptionService] ❌ E2EE decrypt error (${e.type.name}): $e');
+        '[EncryptionService] ❌ E2EE decrypt error (${e.type.name}): $e',
+      );
       switch (e.type) {
         case E2EEErrorType.keyNotInitialized:
           return '🔒 [Thiết bị chưa có khóa — không thể giải mã]';
 
         case E2EEErrorType.invalidPayload:
           // Might be a legacy payload mis-detected as GCM; try legacy
-          final legacyResult =
-              decryptMessageLegacy(encryptedText, conversationId);
+          final legacyResult = decryptMessageLegacy(
+            encryptedText,
+            conversationId,
+          );
           if (legacyResult.startsWith('🔒')) {
             return '⚠️ [Dữ liệu tin nhắn bị hỏng]';
           }
@@ -184,7 +213,11 @@ class EncryptionService {
           _e2ee.evictSessionKey(conversationId);
           try {
             return await _e2ee.decryptPayload(
-                encryptedText, conversationId, participantIds, currentUserId);
+              encryptedText,
+              conversationId,
+              participantIds,
+              currentUserId,
+            );
           } catch (_) {
             return '🔒 [Tin nhắn được mã hóa — không thể giải mã]';
           }
@@ -211,8 +244,16 @@ class EncryptionService {
     for (int i = 0; i < encryptedMessages.length; i += maxConcurrent) {
       final end = (i + maxConcurrent).clamp(0, encryptedMessages.length);
       final batch = encryptedMessages.sublist(i, end);
-      final batchResults = await Future.wait(batch.map((msg) =>
-          decryptPayload(msg, conversationId, participantIds, currentUserId)));
+      final batchResults = await Future.wait(
+        batch.map(
+          (msg) => decryptPayload(
+            msg,
+            conversationId,
+            participantIds,
+            currentUserId,
+          ),
+        ),
+      );
       for (int j = 0; j < batchResults.length; j++) {
         results[i + j] = batchResults[j];
       }
@@ -288,8 +329,9 @@ class EncryptionService {
           if ((decoded.containsKey('question') &&
                   decoded.containsKey('options')) || // Dấu hiệu của Poll
               (decoded.containsKey('matchId') &&
-                  decoded
-                      .containsKey('gameType')) || // Dấu hiệu của Game Center
+                  decoded.containsKey(
+                    'gameType',
+                  )) || // Dấu hiệu của Game Center
               (decoded.containsKey('lat') && decoded.containsKey('lng'))) {
             // Dấu hiệu của GeoLocked
             return true;

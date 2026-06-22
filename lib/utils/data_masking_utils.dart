@@ -125,6 +125,17 @@ class DataMaskingUtils {
       ),
       replacement: '[EMAIL_ĐÃ_ẨN]',
     ),
+    // SỬA LỖI D: Đưa ưu tiên CMND/CCCD và Hộ chiếu lên trên Tài khoản ngân hàng
+    _MaskingRule(
+      type: SensitiveDataType.nationalId,
+      pattern: RegExp(r'(?<!\d)(?:\d{9}|\d{12})(?!\d)'),
+      replacement: '[CMND_ĐÃ_ẨN]',
+    ),
+    _MaskingRule(
+      type: SensitiveDataType.passport,
+      pattern: RegExp(r'\b[A-Z]{1,2}\d{7}\b'),
+      replacement: '[HỘ_CHIẾU_ĐÃ_ẨN]',
+    ),
     _MaskingRule(
       type: SensitiveDataType.creditCard,
       pattern: RegExp(
@@ -137,16 +148,6 @@ class DataMaskingUtils {
       type: SensitiveDataType.bankAccount,
       pattern: RegExp(r'(?<!\d)\d{9,14}(?!\d)'),
       replacement: '[STK_ĐÃ_ẨN]',
-    ),
-    _MaskingRule(
-      type: SensitiveDataType.nationalId,
-      pattern: RegExp(r'(?<!\d)(?:\d{9}|\d{12})(?!\d)'),
-      replacement: '[CMND_ĐÃ_ẨN]',
-    ),
-    _MaskingRule(
-      type: SensitiveDataType.passport,
-      pattern: RegExp(r'\b[A-Z]{1,2}\d{7}\b'),
-      replacement: '[HỘ_CHIẾU_ĐÃ_ẨN]',
     ),
     _MaskingRule(
       type: SensitiveDataType.ipAddress,
@@ -308,7 +309,6 @@ class DataMaskingUtils {
     final digits = account.replaceAll(RegExp(r'\D'), '');
     if (digits.length < 8) return '[STK_ĐÃ_ẨN]';
     final visibleEnd = 4;
-    // Fix logic hiển thị để giữ phần số cuối (VD: **** **** 1234)
     return '${'*' * (digits.length - visibleEnd)}${digits.substring(digits.length - visibleEnd)}';
   }
 

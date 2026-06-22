@@ -35,9 +35,6 @@ class ChatProvider {
     required this.firebaseStorage,
   });
 
-  // [SỬA LỖI P0/P1]: Đã xóa bỏ hàm attachBubbleService và _bubbleService.
-  // Giao lại toàn bộ việc xử lý UI (âm thanh, hiển thị bong bóng, cập nhật bong bóng)
-  // cho các lớp Controller (ChatPage, GroupChatPage).
   void attachBubbleService(dynamic svc) {
     // Để trống nhằm giữ khả năng tương thích ngược nếu các file cũ vẫn đang gọi hàm này.
     // Logic thực tế đã bị gỡ bỏ.
@@ -151,9 +148,6 @@ class ChatProvider {
   // CONVERSATION FALLBACK UPDATE
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // [SỬA LỖI P1]: Tránh quét toàn bộ DB chỉ để cập nhật một conversation.
-  // Dùng thẳng doc(groupChatId).set() để tăng hiệu năng và tiết kiệm chi phí.
-  // ĐÃ SỬA LỖI BUG 7: Kiểm tra isGroupChat để tránh lưu groupChatId vào danh sách participants.
   Future<void> _updateConversationLastMessage({
     required String groupChatId,
     required String currentUserId,
@@ -185,7 +179,8 @@ class ChatProvider {
   // SEND MESSAGE
   // ═══════════════════════════════════════════════════════════════════════════
 
-  Future<void> sendMessage(
+  // SỬA LỖI ĐỂ TƯƠNG THÍCH CHAT PAGE: Đổi Future<void> thành Future<String>
+  Future<String> sendMessage(
       String content,
       int type,
       String groupChatId,
@@ -246,6 +241,9 @@ class ChatProvider {
     }
 
     _syncManager.startListening();
+
+    // Trả về timestamp/ID để UI có thể thiết lập auto-delete
+    return timestamp;
   }
 
   String _previewFor(String content, int type) {
@@ -262,7 +260,7 @@ class ChatProvider {
         return '📊 Cuộc khảo sát';
       case TypeMessage.geoLocked:
         return '🔐 Tin nhắn ẩn địa điểm';
-      case 3:
+      case 3: // Cập nhật sau bằng hằng số TypeMessage.voice nếu cần
         return '🎤 Tin nhắn thoại';
       default:
         return content;
@@ -465,8 +463,6 @@ class ChatProvider {
   // FIREBASE LISTENER — INCOMING MESSAGES
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // [SỬA LỖI P0]: Trả về StreamSubscription để Controller (Page) nắm giữ và hủy bỏ
-  // khi màn hình Dispose, ngăn ngừa rò rỉ bộ nhớ (memory leak).
   StreamSubscription<QuerySnapshot> listenToFirebaseChanges(
       String groupChatId,
       String currentUserId,
@@ -481,7 +477,6 @@ class ChatProvider {
         .snapshots()
         .listen(
           (snapshot) async {
-        // [SỬA LỖI P0]: Chỉ xử lý các thay đổi dựa trên docChanges thay vì quét lại toàn bộ snapshot.docs
         for (final change in snapshot.docChanges) {
           try {
             await _processIncomingDocChange(
@@ -556,7 +551,6 @@ class ChatProvider {
     } else if (type == TypeMessage.text &&
         content.isNotEmpty &&
         data['isDeleted'] != true) {
-      // CẬP NHẬT ĐIỀU KIỆN Ở ĐÂY
       try {
         content = await EncryptionService().decryptPayload(
           content,
@@ -628,9 +622,6 @@ class ChatProvider {
     // AI Auto-Analysis (parallel, non-blocking)
     // ════════════════════════════════════════════════════════════════════════
 
-    // [SỬA LỖI P0]: Chỉ thực hiện Cloud AI Check (phát sinh chi phí API)
-    // khi đây là tin nhắn MỚI ĐƯỢC THÊM (DocumentChangeType.added).
-    // Bỏ qua khi có các sự kiện modified (như đổi status isRead, vote poll).
     if (change.type == DocumentChangeType.added &&
         type == TypeMessage.text &&
         content.isNotEmpty &&
@@ -859,9 +850,6 @@ class ChatProvider {
         lastMessageType: TypeMessage.gameInvite,
       );
 
-      // [SỬA LỖI P0]: Xóa logic gọi RPC native cũ của ChatBubbleService vì đã dọn dẹp khỏi Kotlin.
-      // Firebase Cloud Functions sẽ lo nhiệm vụ gửi Notification thay thế.
-
       _log('🎮 Game invite sent: ${payload.matchId} → $groupChatId');
       return timestamp;
     } catch (e) {
@@ -944,7 +932,6 @@ class ChatProvider {
 
       await firebaseFirestore.runTransaction((tx) async {
         final doc = await tx.get(docRef);
-        // Ngăn chặn lỗi khi document messageId không tồn tại trên Firestore
         if (!doc.exists) {
           _log(
             '⚠️ [updateGameMessageStatus] Document messageId: $messageId không tồn tại trên Firestore.',

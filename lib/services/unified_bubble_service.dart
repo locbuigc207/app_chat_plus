@@ -189,7 +189,6 @@ class UnifiedBubbleService {
 
   Future<bool> hasOverlayPermission() async {
     await _ensureInitialized();
-    // SỬA LỖI P1: Gọi quyền kiểm tra thật từ Android Native thay vì return true cố định
     if (_impl == BubbleImplementation.bubbleApi) {
       return _bubbleApi.checkBubblesEnabled();
     }
@@ -198,7 +197,6 @@ class UnifiedBubbleService {
 
   Future<bool> requestOverlayPermission() async {
     await _ensureInitialized();
-    // SỬA LỖI P1: Mở màn hình cài đặt quyền của Android Native thay vì return true cố định
     if (_impl == BubbleImplementation.bubbleApi) {
       return _bubbleApi.openBubbleSettings();
     }
@@ -241,9 +239,6 @@ class UnifiedBubbleService {
     required String message,
   }) => _queue(() async {
     if (_impl == BubbleImplementation.bubbleApi) {
-      // SỬA LỖI: Đã dọn dẹp đoạn comment lỗi thời. Hàm updateBubble() phía dưới
-      // hiện đã tự động đồng bộ hóa đầy đủ thông tin userName/avatarUrl
-      // có sẵn từ cache Dart lên hệ điều hành.
       await _bubbleApi.updateBubble(userId: userId, message: message);
     } else if (_impl == BubbleImplementation.windowManager) {
       await _windowMgr.updateBubbleMessage(userId: userId, message: message);
@@ -492,11 +487,12 @@ class UnifiedBubbleService {
   // HELPERS
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // [FIX P1]: Sửa logic map TypeMessage để khớp chính xác dữ liệu đẩy lên Native.
   String _resolveType(String content, int typeCode) => switch (typeCode) {
     1 => 'image',
-    2 => 'text',
+    2 => 'video', // Sửa từ 'text' -> 'video' (TypeMessage.video = 2)
     3 => 'voice',
-    4 => 'location',
+    5 => 'location', // Sửa từ 4 -> 5 (TypeMessage.geoLocked = 5)
     _ when content.contains('maps.google') || content.contains('📍') =>
       'location',
     _ => 'text',
@@ -522,11 +518,16 @@ class UnifiedBubbleService {
     _opQueue.clear();
     _processingQueue = false;
 
-    _bubbleApi.dispose();
-    _windowMgr.dispose();
+    // [FIX P2]: KHÔNG dispose _bubbleApi và _windowMgr vì đây là Singleton.
+    // Nếu app/provider khởi tạo lại, _bubbleApi.initialize() sẽ bị lỗi do
+    // đã bị tiêu hủy trước đó. Ta chỉ dọn dẹp Stream và Queue là đủ an toàn.
+    // _bubbleApi.dispose();
+    // _windowMgr.dispose();
 
     _isInitialized = false;
-    debugPrint('✅ UnifiedBubbleService disposed');
+    debugPrint(
+      '✅ UnifiedBubbleService subscriptions disposed (Singleton kept alive)',
+    );
   }
 }
 

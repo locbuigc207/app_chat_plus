@@ -1,3 +1,4 @@
+// lib/services/bubble_service_v2.dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -31,30 +32,16 @@ class BubbleServiceV2 {
   final Map<String, BubbleData> _activeBubbles = {};
 
   // ── Stream controllers ────────────────────────────────────────────────────
-  StreamController<BubbleClickEvent>? _clickCtrl;
-  StreamController<Map<String, BubbleData>>? _bubblesCtrl;
+  // [FIX P2]: Sử dụng StreamController duy nhất xuyên suốt vòng đời Singleton.
+  // Không đóng các luồng này khi Provider gọi dispose() vì nó sẽ giết chết Stream
+  // đối với bất kỳ Widget/Service nào đang subscribe.
+  final StreamController<BubbleClickEvent> _clickCtrl =
+  StreamController<BubbleClickEvent>.broadcast();
+  final StreamController<Map<String, BubbleData>> _bubblesCtrl =
+  StreamController<Map<String, BubbleData>>.broadcast();
 
-  Stream<BubbleClickEvent> get bubbleClickStream {
-    _ensureClickCtrl();
-    return _clickCtrl!.stream;
-  }
-
-  Stream<Map<String, BubbleData>> get activeBubblesStream {
-    _ensureBubblesCtrl();
-    return _bubblesCtrl!.stream;
-  }
-
-  void _ensureClickCtrl() {
-    if (_clickCtrl == null || _clickCtrl!.isClosed) {
-      _clickCtrl = StreamController<BubbleClickEvent>.broadcast();
-    }
-  }
-
-  void _ensureBubblesCtrl() {
-    if (_bubblesCtrl == null || _bubblesCtrl!.isClosed) {
-      _bubblesCtrl = StreamController<Map<String, BubbleData>>.broadcast();
-    }
-  }
+  Stream<BubbleClickEvent> get bubbleClickStream => _clickCtrl.stream;
+  Stream<Map<String, BubbleData>> get activeBubblesStream => _bubblesCtrl.stream;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // INITIALISATION
@@ -69,11 +56,14 @@ class BubbleServiceV2 {
         debugPrint('⚠️ BubbleServiceV2: Bubble API not supported on device');
         return;
       }
-      _ensureClickCtrl();
-      _ensureBubblesCtrl();
       _setupEventListener();
       _prefs = await SharedPreferences.getInstance();
       await _restoreBubbles();
+
+      // Kéo state thật từ Native ngay khi khởi tạo để Dart không bị mù
+      // thông tin nếu bong bóng được FCM tạo ngầm trước khi mở app.
+      await syncWithNative();
+
       _isInitialized = true;
       debugPrint('✅ BubbleServiceV2 initialized');
     } catch (e, st) {
@@ -91,7 +81,6 @@ class BubbleServiceV2 {
     }
   }
 
-  // [SỬA LỖI P1]: Bổ sung 2 hàm kiểm tra và yêu cầu quyền hệ thống thật trên Android Native
   Future<bool> checkBubblesEnabled() async {
     if (!Platform.isAndroid) return false;
     try {
@@ -116,6 +105,69 @@ class BubbleServiceV2 {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // BUBBLE STATE SYNCHRONIZATION
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Hàm đồng bộ trạng thái bong bóng từ Native -> Dart
+  /// Gọi hàm này khi khởi tạo app và mỗi khi App Resumed.
+  Future<void> syncWithNative() async {
+    if (!_isBubbleApiSupported) return;
+    try {
+      final List<dynamic>? activeList = await _method.invokeListMethod<dynamic>(
+        'getActiveBubbles',
+      );
+      if (activeList == null) return;
+
+      bool changed = false;
+      final Set<String> currentNativeIds = {};
+
+      for (final item in activeList) {
+        if (item is! Map) continue;
+        final map = Map<String, dynamic>.from(item);
+        final uid = map['userId'] as String?;
+        final uname = map['userName'] as String? ?? '';
+        final avatar = map['avatarUrl'] as String? ?? '';
+
+        if (uid == null || uid.isEmpty) continue;
+        currentNativeIds.add(uid);
+
+        // Nếu Native có mà Dart chưa có (bong bóng tạo ngầm từ FCM background)
+        if (!_activeBubbles.containsKey(uid)) {
+          _activeBubbles[uid] = BubbleData(
+            userId: uid,
+            userName: uname,
+            avatarUrl: avatar,
+            lastMessage: '',
+            timestamp: DateTime.now(),
+            isOnline: false,
+          );
+          changed = true;
+          debugPrint('🔄 Synced new bubble from Native: $uid');
+        }
+      }
+
+      // Xoá những bong bóng Dart đang lưu nhưng Native thực tế đã đóng
+      // (VD: User tự vuốt tắt bong bóng ngoài màn hình chính khi app đang ở background).
+      final keysToRemove = _activeBubbles.keys
+          .where((k) => !currentNativeIds.contains(k))
+          .toList();
+
+      for (final k in keysToRemove) {
+        _activeBubbles.remove(k);
+        changed = true;
+        debugPrint('🧹 Cleaned up inactive bubble from Dart: $k');
+      }
+
+      if (changed) {
+        _emitActiveBubbles();
+        await _saveBubbles();
+      }
+    } catch (e) {
+      debugPrint('❌ syncWithNative: $e');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // EVENT LISTENER
   // ═══════════════════════════════════════════════════════════════════════════
 
@@ -123,7 +175,7 @@ class BubbleServiceV2 {
     _eventSubscription?.cancel();
     try {
       _eventSubscription = _event.receiveBroadcastStream().listen(
-        (raw) {
+            (raw) {
           if (_isDisposing || raw is! Map) return;
           _handleEvent(Map<String, dynamic>.from(raw as Map));
         },
@@ -138,6 +190,13 @@ class BubbleServiceV2 {
   }
 
   void _handleEvent(Map<String, dynamic> event) {
+    // Nếu event là map("event" -> "app_resumed") (Từ fix P2 của Native MainActivity)
+    if (event['event'] == 'app_resumed') {
+      debugPrint('▶️ App resumed from Native, syncing bubbles...');
+      syncWithNative();
+      return;
+    }
+
     final type = event['type'] as String?;
     switch (type) {
       case 'click':
@@ -157,9 +216,8 @@ class BubbleServiceV2 {
   void _onBubbleClick(Map<String, dynamic> event) {
     final userId = event['userId'] as String?;
     if (userId == null) return;
-    _ensureClickCtrl();
-    if (!(_clickCtrl?.isClosed ?? true)) {
-      _clickCtrl!.add(
+    if (!_clickCtrl.isClosed) {
+      _clickCtrl.add(
         BubbleClickEvent(
           userId: userId,
           userName: event['userName'] as String? ?? '',
@@ -206,7 +264,7 @@ class BubbleServiceV2 {
             'avatarUrl': avatarUrl ?? '',
             'isOnline': isOnline,
           }) ??
-          false;
+              false;
 
       if (success) {
         _activeBubbles[userId] = BubbleData(
@@ -234,29 +292,30 @@ class BubbleServiceV2 {
     bool incrementUnread = true,
   }) async {
     if (!_isBubbleApiSupported) return false;
-    final existing = _activeBubbles[userId];
-    if (existing == null) return false;
 
     try {
-      // Truyền toàn bộ thông tin userName và avatarUrl đang có sẵn trong bộ nhớ đệm Dart
-      // ngược lên cho Native Kotlin thay vì để Kotlin hardcode chuỗi rỗng gây lỗi tự tắt.
       final success =
           await _method.invokeMethod<bool>('updateBubble', {
             'userId': userId,
             'message': message,
-            'userName': existing.userName,
-            'avatarUrl': existing.avatarUrl,
           }) ??
-          false;
+              false;
 
       if (success) {
-        _activeBubbles[userId] = existing.copyWith(
-          lastMessage: message,
-          timestamp: DateTime.now(),
-          unreadCount: incrementUnread
-              ? existing.unreadCount + 1
-              : existing.unreadCount,
-        );
+        final existing = _activeBubbles[userId];
+        if (existing != null) {
+          _activeBubbles[userId] = existing.copyWith(
+            lastMessage: message,
+            timestamp: DateTime.now(),
+            unreadCount: incrementUnread
+                ? existing.unreadCount + 1
+                : existing.unreadCount,
+          );
+        } else {
+          // Thành công nhưng Dart chưa có state -> Bubble được tạo từ background
+          // Gọi hàm đồng bộ để kéo tên và avatar từ Native về
+          await syncWithNative();
+        }
         _emitActiveBubbles();
         await _saveBubbles();
       }
@@ -272,7 +331,7 @@ class BubbleServiceV2 {
     try {
       final success =
           await _method.invokeMethod<bool>('hideBubble', {'userId': userId}) ??
-          false;
+              false;
       if (success) {
         _activeBubbles.remove(userId);
         _emitActiveBubbles();
@@ -300,6 +359,15 @@ class BubbleServiceV2 {
   Future<bool> clearUnread(String userId) async {
     final existing = _activeBubbles[userId];
     if (existing == null) return false;
+
+    try {
+      // [FIX P1]: Gửi tín hiệu xuống Native để xóa Notification History thực sự,
+      // tắt Badge bong bóng chat giống Messenger/Zalo.
+      await _method.invokeMethod('clearUnread', {'userId': userId});
+    } on PlatformException catch (e) {
+      debugPrint('⚠️ clearUnread Native: ${e.message}');
+    }
+
     _activeBubbles[userId] = existing.copyWith(unreadCount: 0);
     _emitActiveBubbles();
     await _saveBubbles();
@@ -319,12 +387,12 @@ class BubbleServiceV2 {
   }) async {
     try {
       return await _method.invokeMethod<bool>('sendMessage', {
-            'userId': userId,
-            'userName': userName,
-            'message': message,
-            'avatarUrl': avatarUrl,
-            'messageType': messageType,
-          }) ??
+        'userId': userId,
+        'userName': userName,
+        'message': message,
+        'avatarUrl': avatarUrl,
+        'messageType': messageType,
+      }) ??
           false;
     } catch (e) {
       debugPrint('❌ sendMessage: $e');
@@ -343,8 +411,8 @@ class BubbleServiceV2 {
   Future<bool> verifyShortcut(String userId) async {
     try {
       return await _method.invokeMethod<bool>('verifyShortcut', {
-            'userId': userId,
-          }) ??
+        'userId': userId,
+      }) ??
           false;
     } catch (_) {
       return false;
@@ -400,9 +468,6 @@ class BubbleServiceV2 {
         return;
       }
 
-      // Lấy danh sách shortcut có thật trên Android để kiểm chứng
-      // ngăn chặn hiện tượng khôi phục trạng thái Dart trong khi hệ điều hành
-      // đã dọn dẹp các Shortcut (gây bong bóng ảo).
       final activeShortcutCount = await getShortcutCount();
       if (activeShortcutCount == 0) {
         debugPrint(
@@ -427,7 +492,6 @@ class BubbleServiceV2 {
 
           if (!data.isValid || data.isStale) continue;
 
-          // Kiểm tra chéo với Native Shortcut Manager
           final isShortcutAlive = await verifyShortcut(data.userId);
           if (!isShortcutAlive) {
             debugPrint(
@@ -473,9 +537,8 @@ class BubbleServiceV2 {
   // ═══════════════════════════════════════════════════════════════════════════
 
   void _emitActiveBubbles() {
-    _ensureBubblesCtrl();
-    if (!(_bubblesCtrl?.isClosed ?? true)) {
-      _bubblesCtrl!.add(Map.unmodifiable(_activeBubbles));
+    if (!_bubblesCtrl.isClosed) {
+      _bubblesCtrl.add(Map.unmodifiable(_activeBubbles));
     }
   }
 
@@ -497,19 +560,17 @@ class BubbleServiceV2 {
   void dispose() {
     if (_isDisposing) return;
     _isDisposing = true;
-    debugPrint('🗑️ BubbleServiceV2 disposing...');
+    debugPrint('🗑️ BubbleServiceV2 disposing EventChannel...');
 
+    // [FIX P2]: Chỉ hủy Subscription lắng nghe MethodChannel.
+    // KHÔNG gọi _clickCtrl.close() hay _bubblesCtrl.close() vì sẽ gây đứt gãy
+    // liên kết với Provider.
     _eventSubscription?.cancel();
     _eventSubscription = null;
 
-    if (!(_clickCtrl?.isClosed ?? true)) _clickCtrl!.close();
-    if (!(_bubblesCtrl?.isClosed ?? true)) _bubblesCtrl!.close();
-    _clickCtrl = null;
-    _bubblesCtrl = null;
-
     _isInitialized = false;
     _isDisposing = false;
-    debugPrint('✅ BubbleServiceV2 disposed');
+    debugPrint('✅ BubbleServiceV2 EventChannel disposed (Singleton streams kept alive)');
   }
 
   Future<void> reinitialize() async {

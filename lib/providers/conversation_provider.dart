@@ -19,87 +19,57 @@ class ConversationProvider {
     return firebaseFirestore
         .collection(FirestoreConstants.pathConversationCollection)
         .where(FirestoreConstants.participants, arrayContains: userId)
+        // SỬA LỖI A1: Đưa orderBy lên trước limit để lấy chính xác 50 hội thoại mới nhất
+        .orderBy('isPinned', descending: true)
+        .orderBy('lastMessageTime', descending: true)
+        .limit(50)
         .snapshots()
         .map((snapshot) {
-          final docs = snapshot.docs.where((doc) {
+          // Lọc archivedBy ở client để tránh xung đột composite index trên Firestore
+          return snapshot.docs.where((doc) {
             final archivedBy = List<String>.from(
-              doc.data()['archivedBy'] as List? ?? [],
+              (doc.data() as Map<String, dynamic>)['archivedBy'] as List? ?? [],
             );
             return !archivedBy.contains(userId);
           }).toList();
-
-          docs.sort((a, b) {
-            final aData = a.data();
-            final bData = b.data();
-            final aPinned = aData['isPinned'] as bool? ?? false;
-            final bPinned = bData['isPinned'] as bool? ?? false;
-
-            // Ưu tiên hội thoại được ghim lên đầu
-            if (aPinned != bPinned) return aPinned ? -1 : 1;
-
-            // Sắp xếp theo thời gian tin nhắn mới nhất
-            final aTime =
-                int.tryParse(aData['lastMessageTime']?.toString() ?? '0') ?? 0;
-            final bTime =
-                int.tryParse(bData['lastMessageTime']?.toString() ?? '0') ?? 0;
-            return bTime.compareTo(aTime);
-          });
-
-          return docs;
         });
   }
 
   Stream<List<QueryDocumentSnapshot>> getArchivedConversations(String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathConversationCollection)
-        // Đã xóa .where(participants, arrayContains: userId) để fix lỗi double arrayContains
         .where('archivedBy', arrayContains: userId)
+        // SỬA LỖI A1: Sắp xếp danh sách lưu trữ trước khi cắt limit
+        // Lưu ý: Cần thêm index (archivedBy ARRAY_CONTAINS, lastMessageTime DESC) trên Firebase
+        .orderBy('lastMessageTime', descending: true)
+        .limit(50)
         .snapshots()
-        .map((snapshot) {
-          // Dùng .toList() để tạo bản sao có thể thay đổi (mutable), tránh lỗi khi gọi .sort()
-          final docs = snapshot.docs.toList();
-
-          // Bổ sung sắp xếp cho danh sách lưu trữ
-          docs.sort((a, b) {
-            final aData = a.data() as Map<String, dynamic>? ?? {};
-            final bData = b.data() as Map<String, dynamic>? ?? {};
-
-            final aTime =
-                int.tryParse(aData['lastMessageTime']?.toString() ?? '0') ?? 0;
-            final bTime =
-                int.tryParse(bData['lastMessageTime']?.toString() ?? '0') ?? 0;
-
-            return bTime.compareTo(aTime);
-          });
-
-          return docs;
-        });
+        .map((snapshot) => snapshot.docs);
   }
 
   Stream<List<QueryDocumentSnapshot>> getUnreadConversations(String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathConversationCollection)
         .where(FirestoreConstants.participants, arrayContains: userId)
-        .where('unreadCount', isGreaterThan: 0)
+        // SỬA LỖI A1: Dùng chung luồng query chính để lấy 50 hội thoại mới nhất
+        .orderBy('isPinned', descending: true)
+        .orderBy('lastMessageTime', descending: true)
+        .limit(50)
         .snapshots()
         .map((snapshot) {
-          // Dùng .toList() để tránh lỗi danh sách unmodifiable khi sort
-          final docs = snapshot.docs.toList();
+          // SỬA LỖI B: Lọc unreadCount client-side để đồng bộ, hỗ trợ schema mới (Map)
+          return snapshot.docs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>? ?? {};
+            final unreadData = data['unreadCount'];
 
-          // Bổ sung sắp xếp cho danh sách chưa đọc
-          docs.sort((a, b) {
-            final aData = a.data() as Map<String, dynamic>? ?? {};
-            final bData = b.data() as Map<String, dynamic>? ?? {};
-
-            final aTime =
-                int.tryParse(aData['lastMessageTime']?.toString() ?? '0') ?? 0;
-            final bTime =
-                int.tryParse(bData['lastMessageTime']?.toString() ?? '0') ?? 0;
-
-            return bTime.compareTo(aTime);
-          });
-
-          return docs;
+            if (unreadData is Map) {
+              return (unreadData[userId] as int? ?? 0) > 0;
+            } else if (unreadData is int) {
+              // Giữ fallback cho schema cũ tránh crash
+              return unreadData > 0;
+            }
+            return false;
+          }).toList();
         });
   }
 
@@ -197,7 +167,8 @@ class ConversationProvider {
           .collection(FirestoreConstants.pathConversationCollection)
           .doc(conversationId)
           .update({
-            'unreadCount': 0,
+            // SỬA LỖI B: Cập nhật unreadCount thành 0 cụ thể cho người đọc hiện tại (Schema Map)
+            'unreadCount.$userId': 0,
             'lastReadBy.$userId': DateTime.now().millisecondsSinceEpoch
                 .toString(),
           });
@@ -208,15 +179,23 @@ class ConversationProvider {
     }
   }
 
+  // SỬA LỖI B: Đổi tham số từ excludeUserIds thành targetUserIds để cập nhật map dễ dàng hơn
   Future<bool> incrementUnreadCount(
     String conversationId,
-    List<String> excludeUserIds,
+    List<String> targetUserIds,
   ) async {
     try {
+      if (targetUserIds.isEmpty) return true;
+
+      final updates = <String, dynamic>{};
+      for (final uid in targetUserIds) {
+        updates['unreadCount.$uid'] = FieldValue.increment(1);
+      }
+
       await firebaseFirestore
           .collection(FirestoreConstants.pathConversationCollection)
           .doc(conversationId)
-          .update({'unreadCount': FieldValue.increment(1)});
+          .update(updates);
       return true;
     } catch (e) {
       debugPrint('❌ Error incrementing unread: $e');
@@ -255,7 +234,8 @@ class ConversationProvider {
             FirestoreConstants.lastMessage: '',
             FirestoreConstants.lastMessageTime: '0',
             FirestoreConstants.lastMessageType: 0,
-            'unreadCount': 0,
+            // Xóa việc set 'unreadCount': 0 ở đây để tránh phá vỡ schema Map,
+            // có thể xử lý riêng việc đánh dấu đã đọc sau khi xóa nếu cần.
             'clearedAt': DateTime.now().millisecondsSinceEpoch.toString(),
           });
 

@@ -118,7 +118,7 @@ class E2EEService {
   final Map<String, _CachedKey> _sessionKeyCache = {};
   final Map<String, Completer<String>> _pendingKeys = {};
 
-  /// Cooldown sau nhiều lần decrypt thất bại liên tiếp
+  /// Cooldown sau nhiều lần decrypt thất bại liên tiếp (Để chống brute-force / infinite loop)
   final Map<String, int> _resolveFailCount = {};
   final Map<String, DateTime> _resolveCooldownUntil = {};
 

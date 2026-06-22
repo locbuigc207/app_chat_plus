@@ -1,7 +1,6 @@
 // ignore_for_file: use_build_context_synchronously
 
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -17,7 +16,7 @@ import 'package:flutter_chat_demo/widgets/widgets.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'package:rxdart/rxdart.dart'; // Đã thêm để sửa lỗi Race condition bằng Rx.combineLatest2
+import 'package:rxdart/rxdart.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 // DESIGN TOKENS
@@ -54,7 +53,6 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage>
     with TickerProviderStateMixin, WidgetsBindingObserver {
-
   // ── Controllers ────────────────────────────────────────────────────────────
   final _scrollController = ScrollController();
   final _searchController = TextEditingController();
@@ -82,14 +80,14 @@ class _HomePageState extends State<HomePage>
 
   // ── Friends / stories ──────────────────────────────────────────────────────
   List<String> _myFriendIds = [];
-  StreamSubscription<List<String>>? _friendIdsSub; // Cập nhật type
+  StreamSubscription<List<String>>? _friendIdsSub;
 
   // ── Stable streams ─────────────────────────────────────────────────────────
   Stream<List<QueryDocumentSnapshot>>? _conversationsStream;
   late final Stream<QuerySnapshot> _friendRequestsStream;
 
   // ── Unread count stream (dùng chung cho badge + filter chip) ──────────────
-  late final Stream<QuerySnapshot> _unreadCountStream;
+  late final Stream<int> _unreadCountStream;
 
   // ── Profile cache ──────────────────────────────────────────────────────────
   final Map<String, UserChat> _userProfileCache = {};
@@ -152,11 +150,10 @@ class _HomePageState extends State<HomePage>
         .where(FirestoreConstants.status, isEqualTo: 'pending')
         .snapshots();
 
-    _unreadCountStream = FirebaseFirestore.instance
-        .collection(FirestoreConstants.pathConversationCollection)
-        .where(FirestoreConstants.participants, arrayContains: _currentUserId)
-        .where('unreadCount', isGreaterThan: 0)
-        .snapshots();
+    // SỬA LỖI B: Dùng luồng đếm chưa đọc client-side tương thích với Schema Map mới
+    _unreadCountStream = _conversationProvider
+        .getUnreadConversations(_currentUserId)
+        .map((docs) => docs.length);
 
     _initAnimations();
     _scrollController.addListener(_onScroll);
@@ -170,33 +167,27 @@ class _HomePageState extends State<HomePage>
   // ── Stream ─────────────────────────────────────────────────────────────────
 
   void _updateConversationsStream() {
+    // SỬA LỖI A1: Các hàm này trong ConversationProvider đã được sửa để hoạt động đúng với orderBy
     switch (_activeFilterIndex) {
       case 1:
-        _conversationsStream = _conversationProvider
-            .getUnreadConversations(_currentUserId)
-            .map((docs) {
-          final sorted = List<QueryDocumentSnapshot>.from(docs);
-          sorted.sort((a, b) {
-            final aData = a.data() as Map<String, dynamic>;
-            final bData = b.data() as Map<String, dynamic>;
-            final aTime =
-                int.tryParse(aData['lastMessageTime']?.toString() ?? '0') ?? 0;
-            final bTime =
-                int.tryParse(bData['lastMessageTime']?.toString() ?? '0') ?? 0;
-            return bTime.compareTo(aTime);
-          });
-          return sorted;
-        });
+        _conversationsStream = _conversationProvider.getUnreadConversations(
+          _currentUserId,
+        );
       case 2:
         _conversationsStream = _conversationProvider
             .getConversationsWithPinned(_currentUserId)
-            .map((docs) => docs
-            .where((d) =>
-        (d.data() as Map<String, dynamic>)['isGroup'] == true)
-            .toList());
+            .map(
+              (docs) => docs
+                  .where(
+                    (d) =>
+                        (d.data() as Map<String, dynamic>)['isGroup'] == true,
+                  )
+                  .toList(),
+            );
       default:
-        _conversationsStream =
-            _conversationProvider.getConversationsWithPinned(_currentUserId);
+        _conversationsStream = _conversationProvider.getConversationsWithPinned(
+          _currentUserId,
+        );
     }
   }
 
@@ -210,7 +201,8 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _prefetchConversationPeers(
-      List<QueryDocumentSnapshot> docs) async {
+    List<QueryDocumentSnapshot> docs,
+  ) async {
     if (_isPrefetching) return;
     _isPrefetching = true;
     try {
@@ -222,10 +214,13 @@ class _HomePageState extends State<HomePage>
         if (isGroup) {
           if (!_groupCache.containsKey(doc.id)) missingGroupIds.add(doc.id);
         } else {
-          final participants =
-          List<String>.from(data['participants'] as List? ?? []);
-          final otherId = participants.firstWhere((id) => id != _currentUserId,
-              orElse: () => '');
+          final participants = List<String>.from(
+            data['participants'] as List? ?? [],
+          );
+          final otherId = participants.firstWhere(
+            (id) => id != _currentUserId,
+            orElse: () => '',
+          );
           if (otherId.isNotEmpty && !_userProfileCache.containsKey(otherId)) {
             missingUserIds.add(otherId);
           }
@@ -255,23 +250,35 @@ class _HomePageState extends State<HomePage>
 
   void _initAnimations() {
     _fabAnimCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 550));
-    _fabScaleAnim =
-        CurvedAnimation(parent: _fabAnimCtrl, curve: Curves.elasticOut);
+      vsync: this,
+      duration: const Duration(milliseconds: 550),
+    );
+    _fabScaleAnim = CurvedAnimation(
+      parent: _fabAnimCtrl,
+      curve: Curves.elasticOut,
+    );
 
     _filterAnimCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 300));
-    _filterAnim =
-        CurvedAnimation(parent: _filterAnimCtrl, curve: Curves.easeOut);
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _filterAnim = CurvedAnimation(
+      parent: _filterAnimCtrl,
+      curve: Curves.easeOut,
+    );
 
     _headerAnimCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 480));
-    _headerFadeAnim =
-        CurvedAnimation(parent: _headerAnimCtrl, curve: Curves.easeOut);
+      vsync: this,
+      duration: const Duration(milliseconds: 480),
+    );
+    _headerFadeAnim = CurvedAnimation(
+      parent: _headerAnimCtrl,
+      curve: Curves.easeOut,
+    );
     _headerSlideAnim =
         Tween<Offset>(begin: const Offset(0, -0.12), end: Offset.zero).animate(
-            CurvedAnimation(
-                parent: _headerAnimCtrl, curve: Curves.easeOutCubic));
+          CurvedAnimation(parent: _headerAnimCtrl, curve: Curves.easeOutCubic),
+        );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -290,13 +297,19 @@ class _HomePageState extends State<HomePage>
     BubbleLifecycleObserver.instance.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
       if (_authProvider.userFirebaseId?.isNotEmpty == true) {
-        _homeProvider.updateDataFirestore(FirestoreConstants.pathUserCollection,
-            _currentUserId, {'isOnline': 'true'});
+        _homeProvider.updateDataFirestore(
+          FirestoreConstants.pathUserCollection,
+          _currentUserId,
+          {'isOnline': 'true'},
+        );
       }
     } else if (state == AppLifecycleState.paused) {
       if (_authProvider.userFirebaseId?.isNotEmpty == true) {
-        _homeProvider.updateDataFirestore(FirestoreConstants.pathUserCollection,
-            _currentUserId, {'isOnline': 'false'});
+        _homeProvider.updateDataFirestore(
+          FirestoreConstants.pathUserCollection,
+          _currentUserId,
+          {'isOnline': 'false'},
+        );
       }
     }
   }
@@ -309,28 +322,32 @@ class _HomePageState extends State<HomePage>
 
   // ── Friends stream ─────────────────────────────────────────────────────────
 
-  // [ĐÃ KHẮC PHỤC BUG 11]: Race condition do dùng .get() bên trong listener snapshot.
-  // Đã gộp 2 stream lại đồng thời xử lý an toàn bằng cách dùng package rxdart.
   void _listenToFriendIds() {
-    final fs = _homeProvider.firebaseFirestore
-        .collection(FirestoreConstants.pathFriendshipCollection);
+    final fs = _homeProvider.firebaseFirestore.collection(
+      FirestoreConstants.pathFriendshipCollection,
+    );
 
-    _friendIdsSub = Rx.combineLatest2(
-      fs.where(FirestoreConstants.userId1, isEqualTo: _currentUserId).snapshots(),
-      fs.where(FirestoreConstants.userId2, isEqualTo: _currentUserId).snapshots(),
+    _friendIdsSub =
+        Rx.combineLatest2(
+          fs
+              .where(FirestoreConstants.userId1, isEqualTo: _currentUserId)
+              .snapshots(),
+          fs
+              .where(FirestoreConstants.userId2, isEqualTo: _currentUserId)
+              .snapshots(),
           (snap1, snap2) {
-        final ids = <String>{};
-        for (final d in snap1.docs) {
-          ids.add(d[FirestoreConstants.userId2] as String);
-        }
-        for (final d in snap2.docs) {
-          ids.add(d[FirestoreConstants.userId1] as String);
-        }
-        return ids.take(9).toList();
-      },
-    ).listen((ids) {
-      if (mounted) setState(() => _myFriendIds = ids);
-    });
+            final ids = <String>{};
+            for (final d in snap1.docs) {
+              ids.add(d[FirestoreConstants.userId2] as String);
+            }
+            for (final d in snap2.docs) {
+              ids.add(d[FirestoreConstants.userId1] as String);
+            }
+            return ids.take(9).toList();
+          },
+        ).listen((ids) {
+          if (mounted) setState(() => _myFriendIds = ids);
+        });
   }
 
   // ── Scroll ─────────────────────────────────────────────────────────────────
@@ -354,9 +371,11 @@ class _HomePageState extends State<HomePage>
 
   void _scrollToTop() {
     HapticFeedback.lightImpact();
-    _scrollController.animateTo(0,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeOutCubic);
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   void _onSearchFocusChanged() {
@@ -369,7 +388,9 @@ class _HomePageState extends State<HomePage>
 
   void _redirectToLogin() {
     Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => LoginPage()), (_) => false);
+      MaterialPageRoute(builder: (_) => LoginPage()),
+      (_) => false,
+    );
   }
 
   void _onMenuSelected(MenuSetting choice) {
@@ -394,29 +415,34 @@ class _HomePageState extends State<HomePage>
       case 'Theme':
         _push(const ThemeSettingsPage());
       case 'My Status':
-        _push(MyStoriesPage(
-          userId: _currentUserId,
-          userName: prefs.getString(FirestoreConstants.nickname) ?? '',
-          userPhotoUrl: prefs.getString(FirestoreConstants.photoUrl) ?? '',
-        ));
+        _push(
+          MyStoriesPage(
+            userId: _currentUserId,
+            userName: prefs.getString(FirestoreConstants.nickname) ?? '',
+            userPhotoUrl: prefs.getString(FirestoreConstants.photoUrl) ?? '',
+          ),
+        );
       default:
         _push(const SettingsPage());
     }
   }
 
-  // [ĐÃ KHẮC PHỤC]: Thiếu gọi stopListening() khi SignOut
   Future<void> _handleSignOut() async {
-    SyncManager().stopListening(); // Dọn dẹp trước khi thoát
+    SyncManager().stopListening();
     await _authProvider.handleSignOut();
     if (!mounted) return;
     await Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => LoginPage()), (_) => false);
+      MaterialPageRoute(builder: (_) => LoginPage()),
+      (_) => false,
+    );
   }
 
   void _scanQRCode() async {
     _closeFab();
     final result = await Navigator.push(
-        context, MaterialPageRoute(builder: (_) => const QRScannerPage()));
+      context,
+      MaterialPageRoute(builder: (_) => const QRScannerPage()),
+    );
     if (result is String) {
       setState(() => _isLoading = true);
       final userDoc = await _homeProvider.searchByQRCode(result);
@@ -439,48 +465,59 @@ class _HomePageState extends State<HomePage>
 
   // ── Conversation swipe actions ─────────────────────────────────────────────
 
-  /// Swipe phải → Mark as read. Swipe trái → Archive.
   Widget _wrapWithSwipe({
     required Widget child,
     required Conversation conversation,
   }) {
     return Dismissible(
       key: ValueKey('swipe_${conversation.id}'),
-      // Swipe phải → Mark as read (xanh lam)
       background: Container(
         color: _kAccent,
         alignment: Alignment.centerLeft,
         padding: const EdgeInsets.only(left: 24),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.done_all_rounded, color: Colors.white, size: 22),
-          const SizedBox(height: 4),
-          const Text('Đã đọc',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.done_all_rounded, color: Colors.white, size: 22),
+            const SizedBox(height: 4),
+            const Text(
+              'Đã đọc',
               style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600)),
-        ]),
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
-      // Swipe trái → Archive (cam)
       secondaryBackground: Container(
         color: _kOrange,
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 24),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.archive_rounded, color: Colors.white, size: 22),
-          const SizedBox(height: 4),
-          const Text('Lưu trữ',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.archive_rounded, color: Colors.white, size: 22),
+            const SizedBox(height: 4),
+            const Text(
+              'Lưu trữ',
               style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600)),
-        ]),
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
       confirmDismiss: (direction) async {
         if (direction == DismissDirection.startToEnd) {
           try {
             await _conversationProvider.markAsRead(
-                conversation.id, _currentUserId);
+              conversation.id,
+              _currentUserId,
+            );
             HapticFeedback.lightImpact();
             return false;
           } catch (e) {
@@ -490,9 +527,13 @@ class _HomePageState extends State<HomePage>
         } else {
           try {
             await _conversationProvider.toggleArchiveConversation(
-                conversation.id, _currentUserId, true);
+              conversation.id,
+              _currentUserId,
+              true,
+            );
             HapticFeedback.mediumImpact();
-            return true;
+            // SỬA LỖI D: Trả về false để tránh xung đột Widget Tree khi Dismissible tự remove trong khi Stream vẫn gọi rebuild
+            return false;
           } catch (e) {
             Fluttertoast.showToast(msg: '❌ Lỗi kết nối mạng, vui lòng thử lại');
             return false;
@@ -516,17 +557,22 @@ class _HomePageState extends State<HomePage>
         isMuted: conversation.isMuted,
         isArchived: conversation.archivedBy.contains(_currentUserId),
         onPin: () => _conversationProvider.togglePinConversation(
-            conversation.id, conversation.isPinned),
+          conversation.id,
+          conversation.isPinned,
+        ),
         onMute: () => _conversationProvider.toggleMuteConversation(
-            conversation.id, conversation.isMuted),
+          conversation.id,
+          conversation.isMuted,
+        ),
         onClearHistory: () =>
             _conversationProvider.clearConversationHistory(conversation.id),
         onMarkAsRead: () =>
             _conversationProvider.markAsRead(conversation.id, _currentUserId),
         onArchive: () => _conversationProvider.toggleArchiveConversation(
-            conversation.id,
-            _currentUserId,
-            !conversation.archivedBy.contains(_currentUserId)),
+          conversation.id,
+          _currentUserId,
+          !conversation.archivedBy.contains(_currentUserId),
+        ),
       ),
     );
   }
@@ -539,11 +585,14 @@ class _HomePageState extends State<HomePage>
     if (type == TypeMessage.video) return '🎥 Video';
     if (type == TypeMessage.voice) return '🎵 Tin nhắn thoại';
     if (type == TypeMessage.document) return '📄 Tài liệu';
+    if (type == TypeMessage.poll) return '📊 Bình chọn';
     if (msg.isEmpty) return 'Bắt đầu cuộc trò chuyện';
-    return msg.length > 44 ? '${msg.substring(0, 44)}…' : msg;
+
+    return msg;
   }
 
   String _timeAgo(String timestamp) {
+    if (timestamp.isEmpty || timestamp == '0') return '';
     try {
       final t = DateTime.fromMillisecondsSinceEpoch(int.parse(timestamp));
       final diff = DateTime.now().difference(t);
@@ -564,12 +613,16 @@ class _HomePageState extends State<HomePage>
       _authProvider.prefs.getString(FirestoreConstants.photoUrl) ?? '';
 
   PageRoute _slideRoute(Widget page) => PageRouteBuilder(
-      pageBuilder: (_, a, __) => page,
-      transitionsBuilder: (_, a, __, child) => SlideTransition(
-          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
-              .animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
-          child: child),
-      transitionDuration: const Duration(milliseconds: 280));
+    pageBuilder: (_, a, __) => page,
+    transitionsBuilder: (_, a, __, child) => SlideTransition(
+      position: Tween<Offset>(
+        begin: const Offset(1, 0),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
+      child: child,
+    ),
+    transitionDuration: const Duration(milliseconds: 280),
+  );
 
   // ── Dispose ────────────────────────────────────────────────────────────────
 
@@ -605,111 +658,123 @@ class _HomePageState extends State<HomePage>
 
     return Scaffold(
       backgroundColor: _bg(isDark),
-      body: Stack(children: [
-        // ── Main layout ──────────────────────────────────────────────────────
-        SafeArea(
-          bottom: false,
-          child: Column(children: [
-            // App bar — slide in from top
-            SlideTransition(
-              position: _headerSlideAnim,
-              child: FadeTransition(
-                opacity: _headerFadeAnim,
-                child: _buildAppBar(isDark),
-              ),
-            ),
-
-            // Search bar — always pinned
-            _buildSearchBar(isDark),
-
-            // Scrollable body
-            Expanded(
-              child: CustomScrollView(
-                controller: _scrollController,
-                physics: const BouncingScrollPhysics(
-                    parent: AlwaysScrollableScrollPhysics()),
-                slivers: [
-                  if (_textSearch.isEmpty) ...[
-                    // Stories row
-                    SliverToBoxAdapter(
-                      child: FadeTransition(
-                        opacity: _filterAnim,
-                        child: _buildStoriesRow(storyProvider, isDark),
-                      ),
-                    ),
-                    // Filter chips với unread count
-                    SliverToBoxAdapter(
-                      child: FadeTransition(
-                        opacity: _filterAnim,
-                        child: _buildFilterChips(isDark),
-                      ),
-                    ),
-                  ],
-
-                  // Chat list hoặc search results
-                  SliverToBoxAdapter(
-                    child: _textSearch.isEmpty
-                        ? _buildChatList(isDark)
-                        : Container(
-                        color: _surface(isDark),
-                        child: _buildSearchResults(isDark)),
+      body: Stack(
+        children: [
+          // ── Main layout ──────────────────────────────────────────────────────
+          SafeArea(
+            bottom: false,
+            child: Column(
+              children: [
+                // App bar — slide in from top
+                SlideTransition(
+                  position: _headerSlideAnim,
+                  child: FadeTransition(
+                    opacity: _headerFadeAnim,
+                    child: _buildAppBar(isDark),
                   ),
+                ),
 
-                  // Bottom padding for FAB + dock
-                  SliverToBoxAdapter(child: SizedBox(height: bottomPad + 130)),
-                ],
-              ),
+                // Search bar — always pinned
+                _buildSearchBar(isDark),
+
+                // Scrollable body
+                Expanded(
+                  child: CustomScrollView(
+                    controller: _scrollController,
+                    physics: const BouncingScrollPhysics(
+                      parent: AlwaysScrollableScrollPhysics(),
+                    ),
+                    slivers: [
+                      if (_textSearch.isEmpty) ...[
+                        // Stories row
+                        SliverToBoxAdapter(
+                          child: FadeTransition(
+                            opacity: _filterAnim,
+                            child: _buildStoriesRow(storyProvider, isDark),
+                          ),
+                        ),
+                        // Filter chips với unread count
+                        SliverToBoxAdapter(
+                          child: FadeTransition(
+                            opacity: _filterAnim,
+                            child: _buildFilterChips(isDark),
+                          ),
+                        ),
+                      ],
+
+                      // Chat list hoặc search results
+                      SliverToBoxAdapter(
+                        child: _textSearch.isEmpty
+                            ? _buildChatList(isDark)
+                            : Container(
+                                color: _surface(isDark),
+                                child: _buildSearchResults(isDark),
+                              ),
+                      ),
+
+                      // Bottom padding for FAB + dock
+                      SliverToBoxAdapter(
+                        child: SizedBox(height: bottomPad + 130),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ]),
-        ),
+          ),
 
-        // ── Loading overlay ──────────────────────────────────────────────────
-        if (_isLoading) const LoadingView(),
+          // ── Loading overlay ──────────────────────────────────────────────────
+          if (_isLoading) const LoadingView(),
 
-        // ── Bubble Dock ──────────────────────────────────────────────────────
-        _BubbleDock(
-          currentUserId: _currentUserId,
-          isDark: isDark,
-          onBubbleTap: (bubble) {
-            final ctrl = BubbleManager.of(context);
-            ctrl?.showMiniChat(
+          // ── Bubble Dock ──────────────────────────────────────────────────────
+          _BubbleDock(
+            currentUserId: _currentUserId,
+            isDark: isDark,
+            onBubbleTap: (bubble) {
+              final ctrl = BubbleManager.of(context);
+              ctrl?.showMiniChat(
                 userId: bubble.userId,
                 userName: bubble.userName,
-                avatarUrl: bubble.avatarUrl);
-          },
-          onBubbleLongPress: (bubble) async {
-            final ctrl = BubbleManager.of(context);
-            await ctrl?.hideBubble(bubble.userId);
-            if (mounted) {
-              Fluttertoast.showToast(
+                avatarUrl: bubble.avatarUrl,
+              );
+            },
+            onBubbleLongPress: (bubble) async {
+              final ctrl = BubbleManager.of(context);
+              await ctrl?.hideBubble(bubble.userId);
+              if (mounted) {
+                Fluttertoast.showToast(
                   msg: '💬 Bubble off — ${bubble.userName}',
                   backgroundColor: Colors.grey.shade700,
-                  textColor: Colors.white);
-            }
-          },
-          onSettingsTap: () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => const BubbleSettingsPage())),
-        ),
-
-        // ── Compose FAB ──────────────────────────────────────────────────────
-        Positioned(
-          right: 16,
-          bottom: bottomPad + 80,
-          child: ScaleTransition(
-            scale: _fabScaleAnim,
-            child: _ComposeButton(onTap: () => _push(FriendsPage())),
+                  textColor: Colors.white,
+                );
+              }
+            },
+            onSettingsTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const BubbleSettingsPage()),
+            ),
           ),
-        ),
 
-        // ── Scroll-to-top ────────────────────────────────────────────────────
-        AnimatedPositioned(
-          duration: const Duration(milliseconds: 260),
-          curve: Curves.easeOut,
-          bottom: _showScrollToTop ? (bottomPad + 148) : -60,
-          right: 20,
-          child: _ScrollToTopButton(onTap: _scrollToTop),
-        ),
-      ]),
+          // ── Compose FAB ──────────────────────────────────────────────────────
+          Positioned(
+            right: 16,
+            bottom: bottomPad + 80,
+            child: ScaleTransition(
+              scale: _fabScaleAnim,
+              child: _ComposeButton(onTap: () => _push(FriendsPage())),
+            ),
+          ),
+
+          // ── Scroll-to-top ────────────────────────────────────────────────────
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOut,
+            bottom: _showScrollToTop ? (bottomPad + 148) : -60,
+            right: 20,
+            child: _ScrollToTopButton(onTap: _scrollToTop),
+          ),
+        ],
+      ),
     );
   }
 
@@ -724,80 +789,102 @@ class _HomePageState extends State<HomePage>
     return Container(
       color: _surface(isDark),
       padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-        // User avatar → settings
-        GestureDetector(
-          onTap: () => _push(const SettingsPage()),
-          child: _AvatarRing(photoUrl: photoUrl, name: name, isDark: isDark),
-        ),
-        const SizedBox(width: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // User avatar → settings
+          GestureDetector(
+            onTap: () => _push(const SettingsPage()),
+            child: _AvatarRing(photoUrl: photoUrl, name: name, isDark: isDark),
+          ),
+          const SizedBox(width: 12),
 
-        // Title + unread badge
-        Expanded(
-          child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-            Text('Tin nhắn',
-                style: TextStyle(
+          // Title + unread badge
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  'Tin nhắn',
+                  style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.6,
-                    color: _primary(isDark))),
-            const SizedBox(width: 8),
-            StreamBuilder<QuerySnapshot>(
-              stream: _unreadCountStream,
-              builder: (_, snap) {
-                final count = snap.hasData ? snap.data!.docs.length : 0;
-                if (count == 0) return const SizedBox.shrink();
-                return AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: Container(
-                      key: ValueKey(count),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(
+                    color: _primary(isDark),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                StreamBuilder<int>(
+                  stream: _unreadCountStream,
+                  builder: (_, snap) {
+                    final count = snap.data ?? 0;
+                    if (count == 0) return const SizedBox.shrink();
+                    return AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child: Container(
+                        key: ValueKey(count),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
                           color: _kAccent,
-                          borderRadius: BorderRadius.circular(10)),
-                      child: Text(count > 99 ? '99+' : '$count',
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          count > 99 ? '99+' : '$count',
                           style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700))),
-                );
-              },
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
-          ]),
-        ),
+          ),
 
-        // Notification bell
-        StreamBuilder<QuerySnapshot>(
-          stream: _friendRequestsStream,
-          builder: (_, snap) {
-            final count = snap.hasData ? snap.data!.docs.length : 0;
-            return Stack(clipBehavior: Clip.none, children: [
-              _NavBtn(
-                  icon: Icons.notifications_outlined,
-                  isDark: isDark,
-                  onTap: () => _push(const NotificationsPage())),
-              if (count > 0)
-                Positioned(
-                    right: 5,
-                    top: 5,
-                    child: _AnimatedBadge(count: count, isDark: isDark)),
-            ]);
-          },
-        ),
-        const SizedBox(width: 4),
+          // Notification bell
+          StreamBuilder<QuerySnapshot>(
+            stream: _friendRequestsStream,
+            builder: (_, snap) {
+              final count = snap.hasData ? snap.data!.docs.length : 0;
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  _NavBtn(
+                    icon: Icons.notifications_outlined,
+                    isDark: isDark,
+                    onTap: () => _push(const NotificationsPage()),
+                  ),
+                  if (count > 0)
+                    Positioned(
+                      right: 5,
+                      top: 5,
+                      child: _AnimatedBadge(count: count, isDark: isDark),
+                    ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(width: 4),
 
-        // QR scan
-        _NavBtn(
+          // QR scan
+          _NavBtn(
             icon: Icons.qr_code_scanner_rounded,
             isDark: isDark,
             tooltip: 'Quét QR',
-            onTap: _scanQRCode),
-        const SizedBox(width: 4),
+            onTap: _scanQRCode,
+          ),
+          const SizedBox(width: 4),
 
-        // More menu
-        _buildMenuButton(isDark),
-      ]),
+          // More menu
+          _buildMenuButton(isDark),
+        ],
+      ),
     );
   }
 
@@ -808,91 +895,107 @@ class _HomePageState extends State<HomePage>
   Widget _buildSearchBar(bool isDark) {
     return Container(
       color: _surface(isDark),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            height: 42,
-            decoration: BoxDecoration(
-              color: _surface2(isDark),
-              borderRadius: BorderRadius.circular(11),
-              border: _isSearchFocused
-                  ? Border.all(color: _kAccent.withValues(alpha: 0.55), width: 1.5)
-                  : Border.all(color: Colors.transparent),
-            ),
-            child: Row(children: [
-              const SizedBox(width: 11),
-              Icon(Icons.search_rounded,
-                  size: 18,
-                  color: _isSearchFocused ? _kAccent : _secondary(isDark)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _searchController,
-                  focusNode: _searchFocusNode,
-                  style: TextStyle(
-                      fontSize: 14.5,
-                      color: _primary(isDark),
-                      fontWeight: FontWeight.w400),
-                  decoration: InputDecoration(
-                      hintText: 'Tìm người, nhóm chat…',
-                      hintStyle: TextStyle(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              height: 42,
+              decoration: BoxDecoration(
+                color: _surface2(isDark),
+                borderRadius: BorderRadius.circular(11),
+                border: _isSearchFocused
+                    ? Border.all(
+                        color: _kAccent.withValues(alpha: 0.55),
+                        width: 1.5,
+                      )
+                    : Border.all(color: Colors.transparent),
+              ),
+              child: Row(
+                children: [
+                  const SizedBox(width: 11),
+                  Icon(
+                    Icons.search_rounded,
+                    size: 18,
+                    color: _isSearchFocused ? _kAccent : _secondary(isDark),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      focusNode: _searchFocusNode,
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        color: _primary(isDark),
+                        fontWeight: FontWeight.w400,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'Tìm người, nhóm chat…',
+                        hintStyle: TextStyle(
                           color: _secondary(isDark),
                           fontSize: 14.5,
-                          fontWeight: FontWeight.w400),
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      isDense: true,
-                      contentPadding: EdgeInsets.zero),
-                  onChanged: (v) {
-                    _searchDebouncer.run(() {
-                      if (!mounted) return;
-                      _btnClearController.add(v.isNotEmpty);
-                      setState(() {
-                        _textSearch = v;
-                        _searchLimit = 20;
-                      });
-                    });
-                  },
-                ),
-              ),
-              StreamBuilder<bool>(
-                stream: _btnClearController.stream,
-                builder: (_, snap) {
-                  if (snap.data != true) return const SizedBox(width: 12);
-                  return GestureDetector(
-                    onTap: () {
-                      _searchController.clear();
-                      _btnClearController.add(false);
-                      setState(() {
-                        _textSearch = '';
-                        _searchLimit = 20;
-                      });
-                      _searchFocusNode.unfocus();
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 10),
-                      child: Container(
-                        width: 17,
-                        height: 17,
-                        decoration: BoxDecoration(
-                            color: _secondary(isDark).withValues(alpha: 0.4),
-                            shape: BoxShape.circle),
-                        child: Icon(Icons.close_rounded,
-                            size: 10,
-                            color: isDark ? Colors.black : Colors.white),
+                          fontWeight: FontWeight.w400,
+                        ),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
                       ),
+                      onChanged: (v) {
+                        _searchDebouncer.run(() {
+                          if (!mounted) return;
+                          _btnClearController.add(v.isNotEmpty);
+                          setState(() {
+                            _textSearch = v;
+                            _searchLimit = 20;
+                          });
+                        });
+                      },
                     ),
-                  );
-                },
+                  ),
+                  StreamBuilder<bool>(
+                    stream: _btnClearController.stream,
+                    builder: (_, snap) {
+                      if (snap.data != true) return const SizedBox(width: 12);
+                      return GestureDetector(
+                        onTap: () {
+                          _searchController.clear();
+                          _btnClearController.add(false);
+                          setState(() {
+                            _textSearch = '';
+                            _searchLimit = 20;
+                          });
+                          _searchFocusNode.unfocus();
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 10),
+                          child: Container(
+                            width: 17,
+                            height: 17,
+                            decoration: BoxDecoration(
+                              color: _secondary(isDark).withValues(alpha: 0.4),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.close_rounded,
+                              size: 10,
+                              color: isDark ? Colors.black : Colors.white,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
-            ]),
+            ),
           ),
-        ),
-        Divider(height: 1, thickness: 0.5, color: _sep(isDark)),
-      ]),
+          Divider(height: 1, thickness: 0.5, color: _sep(isDark)),
+        ],
+      ),
     );
   }
 
@@ -901,10 +1004,10 @@ class _HomePageState extends State<HomePage>
   // ════════════════════════════════════════════════════════════════════════════
 
   Widget _buildFilterChips(bool isDark) {
-    return StreamBuilder<QuerySnapshot>(
+    return StreamBuilder<int>(
       stream: _unreadCountStream,
       builder: (_, snap) {
-        final unreadCount = snap.hasData ? snap.data!.docs.length : 0;
+        final unreadCount = snap.data ?? 0;
 
         return Container(
           color: _bg(isDark),
@@ -929,8 +1032,10 @@ class _HomePageState extends State<HomePage>
                   },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
-                    padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: active ? _kAccent : _surface2(isDark),
                       borderRadius: BorderRadius.circular(20),
@@ -939,8 +1044,7 @@ class _HomePageState extends State<HomePage>
                       label,
                       style: TextStyle(
                         fontSize: 13.5,
-                        fontWeight:
-                        active ? FontWeight.w600 : FontWeight.w500,
+                        fontWeight: active ? FontWeight.w600 : FontWeight.w500,
                         color: active ? Colors.white : _secondary(isDark),
                       ),
                     ),
@@ -961,44 +1065,56 @@ class _HomePageState extends State<HomePage>
   Widget _buildStoriesRow(StoryProvider provider, bool isDark) {
     return Container(
       color: _surface(isDark),
-      child: Column(children: [
-        StreamBuilder<List<UserStories>>(
-          stream: provider.getStoriesStream(
-              currentUserId: _currentUserId, friendIds: _myFriendIds),
-          builder: (ctx, snap) {
-            final stories = snap.data ?? [];
-            final hasStories = stories.isNotEmpty;
-
-            if (!hasStories) {
-              return _buildStoriesEmptyCompact(isDark);
-            }
-
-            return StoriesBar(
-              storiesList: stories,
+      child: Column(
+        children: [
+          StreamBuilder<List<UserStories>>(
+            stream: provider.getStoriesStream(
               currentUserId: _currentUserId,
-              onAddStory: _openStoryCreator,
-              onViewStories: (userStories) {
-                final others = stories
-                    .where((s) => s.userId != _currentUserId)
-                    .toList();
-                final idx = others
-                    .indexWhere((s) => s.userId == userStories.userId);
-                _push(StoryViewerPage(
-                    allUserStories: others.isNotEmpty ? others : stories,
-                    initialUserIndex: idx < 0 ? 0 : idx,
-                    currentUserId: _currentUserId,
-                    currentUserName: _authProvider.prefs
-                        .getString(FirestoreConstants.nickname) ??
-                        '',
-                    currentUserPhotoUrl: _authProvider.prefs
-                        .getString(FirestoreConstants.photoUrl) ??
-                        ''));
-              },
-            );
-          },
-        ),
-        Divider(height: 1, thickness: 0.5, color: _sep(isDark)),
-      ]),
+              friendIds: _myFriendIds,
+            ),
+            builder: (ctx, snap) {
+              final stories = snap.data ?? [];
+              final hasStories = stories.isNotEmpty;
+
+              if (!hasStories) {
+                return _buildStoriesEmptyCompact(isDark);
+              }
+
+              return StoriesBar(
+                storiesList: stories,
+                currentUserId: _currentUserId,
+                onAddStory: _openStoryCreator,
+                onViewStories: (userStories) {
+                  final others = stories
+                      .where((s) => s.userId != _currentUserId)
+                      .toList();
+                  final idx = others.indexWhere(
+                    (s) => s.userId == userStories.userId,
+                  );
+                  _push(
+                    StoryViewerPage(
+                      allUserStories: others.isNotEmpty ? others : stories,
+                      initialUserIndex: idx < 0 ? 0 : idx,
+                      currentUserId: _currentUserId,
+                      currentUserName:
+                          _authProvider.prefs.getString(
+                            FirestoreConstants.nickname,
+                          ) ??
+                          '',
+                      currentUserPhotoUrl:
+                          _authProvider.prefs.getString(
+                            FirestoreConstants.photoUrl,
+                          ) ??
+                          '',
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+          Divider(height: 1, thickness: 0.5, color: _sep(isDark)),
+        ],
+      ),
     );
   }
 
@@ -1007,53 +1123,68 @@ class _HomePageState extends State<HomePage>
       onTap: _openStoryCreator,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: Row(children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
                   color: _kAccent.withValues(alpha: 0.4),
                   width: 1.5,
-                  strokeAlign: BorderSide.strokeAlignOutside),
-              color: _kAccent.withValues(alpha: 0.08),
+                  strokeAlign: BorderSide.strokeAlignOutside,
+                ),
+                color: _kAccent.withValues(alpha: 0.08),
+              ),
+              child: const Icon(Icons.add_rounded, color: _kAccent, size: 20),
             ),
-            child: const Icon(Icons.add_rounded, color: _kAccent, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Thêm story của bạn',
-                      style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: _primary(isDark))),
+                  Text(
+                    'Thêm story của bạn',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: _primary(isDark),
+                    ),
+                  ),
                   const SizedBox(height: 2),
-                  Text('Chia sẻ khoảnh khắc với bạn bè',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: _secondary(isDark),
-                          fontWeight: FontWeight.w400)),
-                ]),
-          ),
-          Icon(Icons.chevron_right_rounded,
-              size: 18, color: _secondary(isDark).withValues(alpha: 0.5)),
-        ]),
+                  Text(
+                    'Chia sẻ khoảnh khắc với bạn bè',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _secondary(isDark),
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 18,
+              color: _secondary(isDark).withValues(alpha: 0.5),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   void _openStoryCreator() {
     final prefs = _authProvider.prefs;
-    _push(StoryCreatorPage(
-      userId: _currentUserId,
-      userName: prefs.getString(FirestoreConstants.nickname) ?? '',
-      userPhotoUrl: prefs.getString(FirestoreConstants.photoUrl) ?? '',
-    ));
+    _push(
+      StoryCreatorPage(
+        userId: _currentUserId,
+        userName: prefs.getString(FirestoreConstants.nickname) ?? '',
+        userPhotoUrl: prefs.getString(FirestoreConstants.photoUrl) ?? '',
+      ),
+    );
   }
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -1069,37 +1200,45 @@ class _HomePageState extends State<HomePage>
       builder: (_, snap) {
         if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
           return Container(
-              color: _surface(isDark), child: _buildSkeleton(isDark));
+            color: _surface(isDark),
+            child: _buildSkeleton(isDark),
+          );
         }
         final allDocs = snap.data ?? [];
+
         final activeDocs = allDocs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
-          final archived =
-          List<String>.from(data['archivedBy'] as List? ?? []);
-          return !archived.contains(_currentUserId);
+          final participants = List<String>.from(
+            data['participants'] as List? ?? [],
+          );
+          if (participants.contains(AppConstants.aiAssistantId)) return false;
+          return true;
         }).toList();
+
         _schedulePrefetch(activeDocs);
 
         return Container(
           color: _surface(isDark),
-          child: Column(children: [
-            // AI assistant row
-            _buildAiItem(isDark),
-            Divider(height: 0.5, indent: 72, color: _sep(isDark)),
+          child: Column(
+            children: [
+              // AI assistant row
+              _buildAiItem(isDark),
+              Divider(height: 0.5, indent: 72, color: _sep(isDark)),
 
-            if (activeDocs.isEmpty)
-              _buildEmptyState(isDark)
-            else
-              ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: activeDocs.length,
-                separatorBuilder: (_, __) =>
-                    Divider(height: 0.5, indent: 72, color: _sep(isDark)),
-                itemBuilder: (_, i) =>
-                    _buildConversationItem(activeDocs[i], isDark),
-              ),
-          ]),
+              if (activeDocs.isEmpty)
+                _buildEmptyState(isDark)
+              else
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: activeDocs.length,
+                  separatorBuilder: (_, __) =>
+                      Divider(height: 0.5, indent: 72, color: _sep(isDark)),
+                  itemBuilder: (_, i) =>
+                      _buildConversationItem(activeDocs[i], isDark),
+                ),
+            ],
+          ),
         );
       },
     );
@@ -1121,69 +1260,95 @@ class _HomePageState extends State<HomePage>
           if (widget.isWebSidebar && widget.onChatSelected != null) {
             widget.onChatSelected!(args);
           } else {
-            _push(ChatPage(
+            _push(
+              ChatPage(
                 arguments: ChatPageArguments(
-                    peerId: AppConstants.aiAssistantId,
-                    peerAvatar: AppConstants.aiAssistantAvatar,
-                    peerNickname: AppConstants.aiAssistantName)));
+                  peerId: AppConstants.aiAssistantId,
+                  peerAvatar: AppConstants.aiAssistantAvatar,
+                  peerNickname: AppConstants.aiAssistantName,
+                ),
+              ),
+            );
           }
         },
         splashColor: const Color(0xFF7B61FF).withValues(alpha: 0.06),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: const BoxDecoration(
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: const BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: LinearGradient(
-                      colors: _kAiGradient,
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight)),
-              child: const Icon(Icons.auto_awesome_rounded,
-                  color: Colors.white, size: 22),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
+                    colors: _kAiGradient,
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Text(AppConstants.aiAssistantName,
-                              style: TextStyle(
-                                  fontSize: 15.5,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: -0.2,
-                                  color: _primary(isDark))),
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                    colors: _kAiGradient),
-                                borderRadius: BorderRadius.circular(5)),
-                            child: const Text('AI',
-                                style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w800)),
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          AppConstants.aiAssistantName,
+                          style: TextStyle(
+                            fontSize: 15.5,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: -0.2,
+                            color: _primary(isDark),
                           ),
-                        ]),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: _kAiGradient,
+                            ),
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                          child: const Text(
+                            'AI',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 3),
-                    Text('Được hỗ trợ bởi Gemini · Hỏi tôi bất cứ điều gì',
-                        style: TextStyle(
-                            fontSize: 13.5,
-                            color: _secondary(isDark),
-                            fontWeight: FontWeight.w400),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
-                  ]),
-            ),
-          ]),
+                    Text(
+                      'Được hỗ trợ bởi Gemini · Hỏi tôi bất cứ điều gì',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        color: _secondary(isDark),
+                        fontWeight: FontWeight.w400,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1193,24 +1358,37 @@ class _HomePageState extends State<HomePage>
 
   Widget _buildConversationItem(DocumentSnapshot doc, bool isDark) {
     final conversation = Conversation.fromDocument(doc);
+    final data = doc.data() as Map<String, dynamic>;
+
+    // SỬA LỖI B: Xử lý an toàn bộ đếm chưa đọc (unreadCount) để tương thích cấu trúc Map mới theo từng User.
+    int actualUnread = 0;
+    if (data['unreadCount'] is Map) {
+      actualUnread = data['unreadCount'][_currentUserId] as int? ?? 0;
+    } else if (data['unreadCount'] is int) {
+      actualUnread = data['unreadCount'] as int;
+    }
 
     if (conversation.isGroup) {
       final group = _groupCache[conversation.id];
-      if (group == null) return _SkeletonTile(isDark: isDark);
+      if (group == null && _isPrefetching) return _SkeletonTile(isDark: isDark);
+      if (group == null) return const SizedBox.shrink();
 
       final tile = _ConversationTile(
         id: conversation.id,
         name: group.groupName,
         photoUrl: group.groupPhotoUrl,
         lastMessage: _lastMessagePreview(
-            conversation.lastMessage ?? '',
-            conversation.lastMessageType ?? 0),
+          conversation.lastMessage ?? '',
+          conversation.lastMessageType ?? 0,
+        ),
         timeLabel: _timeAgo(conversation.lastMessageTime ?? ''),
         isPinned: conversation.isPinned,
         isMuted: conversation.isMuted,
         isGroup: true,
         isDark: isDark,
-        unreadCount: conversation.unreadCount ?? 0,
+        unreadCount: actualUnread,
+        participants: conversation.participants,
+        currentUserId: _currentUserId,
         onTap: () {
           HapticFeedback.lightImpact();
           if (widget.isWebSidebar && widget.onChatSelected != null) {
@@ -1230,28 +1408,36 @@ class _HomePageState extends State<HomePage>
       return _wrapWithSwipe(child: tile, conversation: conversation);
     }
 
-    final otherId = conversation.participants
-        .firstWhere((id) => id != _currentUserId, orElse: () => '');
+    final otherId = conversation.participants.firstWhere(
+      (id) => id != _currentUserId,
+      orElse: () => '',
+    );
     if (otherId.isEmpty) return const SizedBox.shrink();
+
     final userChat = _userProfileCache[otherId];
-    if (userChat == null) return _SkeletonTile(isDark: isDark);
+    if (userChat == null && _isPrefetching)
+      return _SkeletonTile(isDark: isDark);
+    if (userChat == null) return const SizedBox.shrink();
 
     final tile = _ConversationTile(
       id: conversation.id,
       name: userChat.nickname,
       photoUrl: userChat.photoUrl,
       lastMessage: _lastMessagePreview(
-          conversation.lastMessage ?? '',
-          conversation.lastMessageType ?? 0),
+        conversation.lastMessage ?? '',
+        conversation.lastMessageType ?? 0,
+      ),
       timeLabel: _timeAgo(conversation.lastMessageTime ?? ''),
       isPinned: conversation.isPinned,
       isMuted: conversation.isMuted,
       isGroup: false,
       isDark: isDark,
       onlineUserId: otherId,
-      unreadCount: conversation.unreadCount ?? 0,
+      unreadCount: actualUnread,
       isSentByMe: conversation.isSentByMe ?? false,
       isRead: conversation.isRead ?? false,
+      participants: conversation.participants,
+      currentUserId: _currentUserId,
       onTap: () {
         HapticFeedback.lightImpact();
         if (widget.isWebSidebar && widget.onChatSelected != null) {
@@ -1261,11 +1447,15 @@ class _HomePageState extends State<HomePage>
             'peerNickname': userChat.nickname,
           });
         } else {
-          _push(ChatPage(
+          _push(
+            ChatPage(
               arguments: ChatPageArguments(
-                  peerId: userChat.id,
-                  peerAvatar: userChat.photoUrl,
-                  peerNickname: userChat.nickname)));
+                peerId: userChat.id,
+                peerAvatar: userChat.photoUrl,
+                peerNickname: userChat.nickname,
+              ),
+            ),
+          );
         }
       },
       onLongPress: () => _showConversationOptions(conversation),
@@ -1281,41 +1471,44 @@ class _HomePageState extends State<HomePage>
     final isPhone = RegExp(r'^[+\d][\d\s-]*$').hasMatch(query);
     final stream = isPhone
         ? _homeProvider.firebaseFirestore
-        .collection(FirestoreConstants.pathUserCollection)
-        .where(FirestoreConstants.phoneNumber, isEqualTo: query)
-        .limit(_searchLimit)
-        .snapshots()
+              .collection(FirestoreConstants.pathUserCollection)
+              .where(FirestoreConstants.phoneNumber, isEqualTo: query)
+              .limit(_searchLimit)
+              .snapshots()
         : _homeProvider.firebaseFirestore
-        .collection(FirestoreConstants.pathUserCollection)
-        .where(FirestoreConstants.nickname, isGreaterThanOrEqualTo: query)
-        .where(FirestoreConstants.nickname,
-        isLessThanOrEqualTo: '$query\uf8ff')
-        .limit(_searchLimit)
-        .snapshots();
+              .collection(FirestoreConstants.pathUserCollection)
+              .where(FirestoreConstants.nickname, isGreaterThanOrEqualTo: query)
+              .where(
+                FirestoreConstants.nickname,
+                isLessThanOrEqualTo: '$query\uf8ff',
+              )
+              .limit(_searchLimit)
+              .snapshots();
 
     return StreamBuilder<QuerySnapshot>(
       stream: stream,
       builder: (_, snap) {
         if (!snap.hasData) return _buildSkeleton(isDark);
-        final docs =
-        snap.data!.docs.where((d) => d.id != _currentUserId).toList();
+        final docs = snap.data!.docs
+            .where((d) => d.id != _currentUserId)
+            .toList();
         if (docs.isEmpty) return _buildSearchEmpty(isDark);
-        return Column(children: [
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: docs.length,
-            separatorBuilder: (_, __) =>
-                Divider(height: 0.5, indent: 72, color: _sep(isDark)),
-            itemBuilder: (_, i) {
-              final user = UserChat.fromDocument(docs[i]);
-              return _SearchResultTile(
+        return Column(
+          children: [
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: docs.length,
+              separatorBuilder: (_, __) =>
+                  Divider(height: 0.5, indent: 72, color: _sep(isDark)),
+              itemBuilder: (_, i) {
+                final user = UserChat.fromDocument(docs[i]);
+                return _SearchResultTile(
                   userChat: user,
                   isDark: isDark,
                   onTap: () {
                     HapticFeedback.lightImpact();
-                    if (widget.isWebSidebar &&
-                        widget.onChatSelected != null) {
+                    if (widget.isWebSidebar && widget.onChatSelected != null) {
                       widget.onChatSelected!({
                         'peerId': user.id,
                         'peerAvatar': user.photoUrl,
@@ -1324,18 +1517,24 @@ class _HomePageState extends State<HomePage>
                     } else {
                       _push(UserProfilePage(userChat: user));
                     }
-                  });
-            },
-          ),
-          if (_isLoadingMore)
-            Padding(
+                  },
+                );
+              },
+            ),
+            if (_isLoadingMore)
+              Padding(
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 child: SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: _kAccent))),
-        ]);
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: _kAccent,
+                  ),
+                ),
+              ),
+          ],
+        );
       },
     );
   }
@@ -1353,23 +1552,25 @@ class _HomePageState extends State<HomePage>
       itemBuilder: (_) => _menus.map((m) {
         final isLogout = m.title == 'Log out';
         return PopupMenuItem<MenuSetting>(
-            value: m,
-            padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-            child:
-            _MenuItemRow(menu: m, isLogout: isLogout, isDark: isDark));
+          value: m,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+          child: _MenuItemRow(menu: m, isLogout: isLogout, isDark: isDark),
+        );
       }).toList(),
       child: Container(
         width: 38,
         height: 38,
         decoration: BoxDecoration(
-            color: _surface2(isDark),
-            borderRadius: BorderRadius.circular(12)),
-        child: Icon(Icons.more_vert_rounded,
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.75)
-                : const Color(0xFF3C3C43),
-            size: 19),
+          color: _surface2(isDark),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(
+          Icons.more_vert_rounded,
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.75)
+              : const Color(0xFF3C3C43),
+          size: 19,
+        ),
       ),
     );
   }
@@ -1378,94 +1579,133 @@ class _HomePageState extends State<HomePage>
 
   Widget _buildSearchEmpty(bool isDark) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 56),
-    child: Column(mainAxisSize: MainAxisSize.min, children: [
-      Container(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
           width: 64,
           height: 64,
           decoration: BoxDecoration(
-              color: _surface2(isDark), shape: BoxShape.circle),
-          child: Icon(Icons.search_off_rounded,
-              size: 28,
-              color: _secondary(isDark).withValues(alpha: 0.5))),
-      const SizedBox(height: 16),
-      Text('Không tìm thấy "$_textSearch"',
+            color: _surface2(isDark),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            Icons.search_off_rounded,
+            size: 28,
+            color: _secondary(isDark).withValues(alpha: 0.5),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Không tìm thấy "$_textSearch"',
           style: TextStyle(
-              color: _primary(isDark),
-              fontSize: 15,
-              fontWeight: FontWeight.w600)),
-      const SizedBox(height: 6),
-      Text('Thử tìm kiếm bằng tên hoặc số điện thoại khác',
-          style:
-          TextStyle(color: _secondary(isDark), fontSize: 13.5)),
-    ]),
+            color: _primary(isDark),
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Thử tìm kiếm bằng tên hoặc số điện thoại khác',
+          style: TextStyle(color: _secondary(isDark), fontSize: 13.5),
+        ),
+      ],
+    ),
   );
 
   Widget _buildEmptyState(bool isDark) => Padding(
     padding: const EdgeInsets.fromLTRB(32, 44, 32, 48),
-    child: Column(children: [
-      Container(
+    child: Column(
+      children: [
+        Container(
           width: 80,
           height: 80,
           decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                  colors: [_kAccent, _kGreen],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight),
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                    color: _kAccent.withValues(alpha: 0.28),
-                    blurRadius: 24,
-                    offset: const Offset(0, 8))
-              ]),
-          child: const Icon(Icons.chat_bubble_outline_rounded,
-              size: 36, color: Colors.white)),
-      const SizedBox(height: 20),
-      Text('Chưa có cuộc trò chuyện nào',
+            gradient: const LinearGradient(
+              colors: [_kAccent, _kGreen],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: _kAccent.withValues(alpha: 0.28),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: const Icon(
+            Icons.chat_bubble_outline_rounded,
+            size: 36,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 20),
+        Text(
+          'Chưa có cuộc trò chuyện nào',
           style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.4,
-              color: _primary(isDark))),
-      const SizedBox(height: 8),
-      Text('Quét QR hoặc tìm kiếm theo tên\nđể bắt đầu trò chuyện',
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.4,
+            color: _primary(isDark),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Quét QR hoặc tìm kiếm theo tên\nđể bắt đầu trò chuyện',
           textAlign: TextAlign.center,
           style: TextStyle(
-              color: _secondary(isDark), fontSize: 14, height: 1.5)),
-      const SizedBox(height: 24),
-      GestureDetector(
-        onTap: () {
-          HapticFeedback.lightImpact();
-          _scanQRCode();
-        },
-        child: Container(
-          padding:
-          const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
-          decoration: BoxDecoration(
+            color: _secondary(isDark),
+            fontSize: 14,
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 24),
+        GestureDetector(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            _scanQRCode();
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
+            decoration: BoxDecoration(
               color: _kAccent,
-              borderRadius: BorderRadius.circular(14)),
-          child: const Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.qr_code_scanner_rounded,
-                color: Colors.white, size: 17),
-            SizedBox(width: 8),
-            Text('Quét mã QR',
-                style: TextStyle(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.qr_code_scanner_rounded,
+                  color: Colors.white,
+                  size: 17,
+                ),
+                SizedBox(width: 8),
+                Text(
+                  'Quét mã QR',
+                  style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
-                    fontSize: 14)),
-          ]),
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
-      ),
-    ]),
+      ],
+    ),
   );
 
   Widget _buildSkeleton(bool isDark) => ListView.separated(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: 8,
-      separatorBuilder: (_, __) =>
-          Divider(height: 0.5, indent: 72, color: _sep(isDark)),
-      itemBuilder: (_, __) => _SkeletonTile(isDark: isDark));
+    shrinkWrap: true,
+    physics: const NeverScrollableScrollPhysics(),
+    itemCount: 8,
+    separatorBuilder: (_, __) =>
+        Divider(height: 0.5, indent: 72, color: _sep(isDark)),
+    itemBuilder: (_, __) => _SkeletonTile(isDark: isDark),
+  );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1510,8 +1750,8 @@ class _BubbleDock extends StatelessWidget {
                 curve: Curves.easeOutBack,
                 height: 58,
                 constraints: BoxConstraints(
-                    maxWidth:
-                    math.min(64.0 * bubbles.length + 96, 340)),
+                  maxWidth: math.min(64.0 * bubbles.length + 96, 340),
+                ),
                 margin: const EdgeInsets.symmetric(horizontal: 24),
                 decoration: BoxDecoration(
                   color: isDark
@@ -1519,19 +1759,22 @@ class _BubbleDock extends StatelessWidget {
                       : Colors.white.withValues(alpha: 0.9),
                   borderRadius: BorderRadius.circular(32),
                   border: Border.all(
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.1)
-                          : Colors.white.withValues(alpha: 0.9),
-                      width: 1.5),
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.1)
+                        : Colors.white.withValues(alpha: 0.9),
+                    width: 1.5,
+                  ),
                   boxShadow: [
                     BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.18),
-                        blurRadius: 28,
-                        offset: const Offset(0, 8)),
+                      color: Colors.black.withValues(alpha: 0.18),
+                      blurRadius: 28,
+                      offset: const Offset(0, 8),
+                    ),
                     BoxShadow(
-                        color: _kAccent.withValues(alpha: 0.08),
-                        blurRadius: 12,
-                        offset: const Offset(0, 3)),
+                      color: _kAccent.withValues(alpha: 0.08),
+                      blurRadius: 12,
+                      offset: const Offset(0, 3),
+                    ),
                   ],
                 ),
                 child: ClipRRect(
@@ -1545,47 +1788,58 @@ class _BubbleDock extends StatelessWidget {
                         width: 28,
                         height: 28,
                         decoration: const BoxDecoration(
-                            color: _kAccent, shape: BoxShape.circle),
+                          color: _kAccent,
+                          shape: BoxShape.circle,
+                        ),
                         child: Center(
-                            child: Text('${bubbles.length}',
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w800))),
+                          child: Text(
+                            '${bubbles.length}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
                       ),
                       const SizedBox(width: 8),
-                      ...bubbles.map((b) => _BubbleAvatar(
-                        bubble: b,
-                        isDark: isDark,
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          onBubbleTap(b);
-                        },
-                        onLongPress: () {
-                          HapticFeedback.mediumImpact();
-                          onBubbleLongPress(b);
-                        },
-                      )),
+                      ...bubbles.map(
+                        (b) => _BubbleAvatar(
+                          bubble: b,
+                          isDark: isDark,
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            onBubbleTap(b);
+                          },
+                          onLongPress: () {
+                            HapticFeedback.mediumImpact();
+                            onBubbleLongPress(b);
+                          },
+                        ),
+                      ),
                       GestureDetector(
                         onTap: () {
                           HapticFeedback.lightImpact();
                           onSettingsTap();
                         },
                         child: Container(
-                            width: 30,
-                            height: 30,
-                            margin: const EdgeInsets.only(right: 4),
-                            decoration: BoxDecoration(
-                                color: isDark
-                                    ? Colors.white.withValues(alpha: 0.08)
-                                    : Colors.grey.shade100,
-                                borderRadius:
-                                BorderRadius.circular(9)),
-                            child: Icon(Icons.settings_rounded,
-                                color: isDark
-                                    ? Colors.white38
-                                    : Colors.grey.shade500,
-                                size: 14)),
+                          width: 30,
+                          height: 30,
+                          margin: const EdgeInsets.only(right: 4),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.08)
+                                : Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                          child: Icon(
+                            Icons.settings_rounded,
+                            color: isDark
+                                ? Colors.white38
+                                : Colors.grey.shade500,
+                            size: 14,
+                          ),
+                        ),
                       ),
                       const SizedBox(width: 4),
                     ],
@@ -1628,8 +1882,9 @@ class _BubbleAvatarState extends State<_BubbleAvatar>
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 420))
-      ..forward();
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    )..forward();
     _scale = CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut);
   }
 
@@ -1649,8 +1904,10 @@ class _BubbleAvatarState extends State<_BubbleAvatar>
         onLongPress: widget.onLongPress,
         child: Container(
           margin: const EdgeInsets.only(right: 6),
-          child: Stack(clipBehavior: Clip.none, children: [
-            CircleAvatar(
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              CircleAvatar(
                 radius: 19,
                 backgroundImage: b.avatarUrl.isNotEmpty
                     ? NetworkImage(b.avatarUrl)
@@ -1658,48 +1915,62 @@ class _BubbleAvatarState extends State<_BubbleAvatar>
                 backgroundColor: _kAccent.withValues(alpha: 0.2),
                 child: b.avatarUrl.isEmpty
                     ? Text(
-                    b.userName.isNotEmpty
-                        ? b.userName[0].toUpperCase()
-                        : '?',
-                    style: const TextStyle(
-                        color: _kAccent,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 13))
-                    : null),
-            if (b.unreadCount > 0)
-              Positioned(
+                        b.userName.isNotEmpty
+                            ? b.userName[0].toUpperCase()
+                            : '?',
+                        style: const TextStyle(
+                          color: _kAccent,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                        ),
+                      )
+                    : null,
+              ),
+              if (b.unreadCount > 0)
+                Positioned(
                   top: -4,
                   right: -4,
                   child: Container(
                     padding: const EdgeInsets.all(2),
-                    constraints:
-                    const BoxConstraints(minWidth: 15, minHeight: 15),
+                    constraints: const BoxConstraints(
+                      minWidth: 15,
+                      minHeight: 15,
+                    ),
                     decoration: const BoxDecoration(
-                        color: Colors.red, shape: BoxShape.circle),
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
                     child: Text(
-                        b.unreadCount > 9 ? '9+' : '${b.unreadCount}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 8,
-                            fontWeight: FontWeight.w900)),
-                  )),
-            Positioned(
+                      b.unreadCount > 9 ? '9+' : '${b.unreadCount}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 8,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+              Positioned(
                 bottom: -1,
                 right: -1,
                 child: Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: b.isOnline ? _kGreen : Colors.grey.shade400,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                          color: widget.isDark
-                              ? const Color(0xFF000000)
-                              : Colors.white,
-                          width: 1.5),
-                    ))),
-          ]),
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: b.isOnline ? _kGreen : Colors.grey.shade400,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: widget.isDark
+                          ? const Color(0xFF000000)
+                          : Colors.white,
+                      width: 1.5,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1729,9 +2000,10 @@ class _ComposeButton extends StatelessWidget {
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-                color: _kAccent.withValues(alpha: 0.38),
-                blurRadius: 18,
-                offset: const Offset(0, 6)),
+              color: _kAccent.withValues(alpha: 0.38),
+              blurRadius: 18,
+              offset: const Offset(0, 6),
+            ),
           ],
         ),
         child: const Icon(Icons.edit_rounded, color: Colors.white, size: 22),
@@ -1749,8 +2021,11 @@ class _ComposeButton extends StatelessWidget {
 class _AvatarRing extends StatelessWidget {
   final String photoUrl, name;
   final bool isDark;
-  const _AvatarRing(
-      {required this.photoUrl, required this.name, required this.isDark});
+  const _AvatarRing({
+    required this.photoUrl,
+    required this.name,
+    required this.isDark,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1761,13 +2036,17 @@ class _AvatarRing extends StatelessWidget {
         shape: BoxShape.circle,
         color: ColorConstants.primaryColor.withValues(alpha: 0.12),
         border: Border.all(
-            color: ColorConstants.primaryColor.withValues(alpha: 0.3), width: 1.5),
+          color: ColorConstants.primaryColor.withValues(alpha: 0.3),
+          width: 1.5,
+        ),
       ),
       child: ClipOval(
         child: photoUrl.isNotEmpty
-            ? Image.network(photoUrl,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _initials())
+            ? Image.network(
+                photoUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _initials(),
+              )
             : _initials(),
       ),
     );
@@ -1777,9 +2056,10 @@ class _AvatarRing extends StatelessWidget {
     child: Text(
       name.isNotEmpty ? name[0].toUpperCase() : '?',
       style: TextStyle(
-          color: ColorConstants.primaryColor,
-          fontWeight: FontWeight.w700,
-          fontSize: 15),
+        color: ColorConstants.primaryColor,
+        fontWeight: FontWeight.w700,
+        fontSize: 15,
+      ),
     ),
   );
 }
@@ -1792,11 +2072,12 @@ class _NavBtn extends StatelessWidget {
   final VoidCallback? onTap;
   final String? tooltip;
 
-  const _NavBtn(
-      {required this.icon,
-        required this.isDark,
-        this.onTap,
-        this.tooltip});
+  const _NavBtn({
+    required this.icon,
+    required this.isDark,
+    this.onTap,
+    this.tooltip,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1804,17 +2085,19 @@ class _NavBtn extends StatelessWidget {
       width: 38,
       height: 38,
       decoration: BoxDecoration(
-          color: _surface2(isDark), borderRadius: BorderRadius.circular(12)),
-      child: Icon(icon,
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.75)
-              : const Color(0xFF3C3C43),
-          size: 19),
+        color: _surface2(isDark),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Icon(
+        icon,
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.75)
+            : const Color(0xFF3C3C43),
+        size: 19,
+      ),
     );
     if (onTap == null) {
-      return tooltip != null
-          ? Tooltip(message: tooltip!, child: child)
-          : child;
+      return tooltip != null ? Tooltip(message: tooltip!, child: child) : child;
     }
     return Tooltip(
       message: tooltip ?? '',
@@ -1843,8 +2126,9 @@ class _AnimatedBadgeState extends State<_AnimatedBadge>
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 420))
-      ..forward();
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    )..forward();
     _scale = CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut);
   }
 
@@ -1856,21 +2140,27 @@ class _AnimatedBadgeState extends State<_AnimatedBadge>
 
   @override
   Widget build(BuildContext context) => ScaleTransition(
-      scale: _scale,
-      child: Container(
-          width: 17,
-          height: 17,
-          decoration: BoxDecoration(
-              color: Colors.red.shade600,
-              shape: BoxShape.circle,
-              border:
-              Border.all(color: _surface(widget.isDark), width: 2)),
-          child: Center(
-              child: Text(widget.count > 9 ? '9+' : '${widget.count}',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 8,
-                      fontWeight: FontWeight.w800)))));
+    scale: _scale,
+    child: Container(
+      width: 17,
+      height: 17,
+      decoration: BoxDecoration(
+        color: Colors.red.shade600,
+        shape: BoxShape.circle,
+        border: Border.all(color: _surface(widget.isDark), width: 2),
+      ),
+      child: Center(
+        child: Text(
+          widget.count > 9 ? '9+' : '${widget.count}',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 8,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 // ── Menu item row ──────────────────────────────────────────────────────────
@@ -1878,10 +2168,11 @@ class _AnimatedBadgeState extends State<_AnimatedBadge>
 class _MenuItemRow extends StatelessWidget {
   final MenuSetting menu;
   final bool isLogout, isDark;
-  const _MenuItemRow(
-      {required this.menu,
-        required this.isLogout,
-        required this.isDark});
+  const _MenuItemRow({
+    required this.menu,
+    required this.isLogout,
+    required this.isDark,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1894,29 +2185,36 @@ class _MenuItemRow extends StatelessWidget {
         : isArchive
         ? _kOrange
         : _kAccent;
-    return Row(children: [
-      Container(
+    return Row(
+      children: [
+        Container(
           width: 32,
           height: 32,
           decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(9)),
-          child: Icon(menu.icon, color: color, size: 16)),
-      const SizedBox(width: 12),
-      Text(menu.title,
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Icon(menu.icon, color: color, size: 16),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          menu.title,
           style: TextStyle(
-              color: isLogout ? Colors.red.shade500 : _primary(isDark),
-              fontSize: 14,
-              fontWeight: FontWeight.w500)),
-    ]);
+            color: isLogout ? Colors.red.shade500 : _primary(isDark),
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
   }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// CONVERSATION TILE
+// CONVERSATION TILE (SỬA LỖI A3: Chuyển sang StatefulWidget để cache giải mã)
 // ════════════════════════════════════════════════════════════════════════════
 
-class _ConversationTile extends StatelessWidget {
+class _ConversationTile extends StatefulWidget {
   final String id, name, photoUrl, lastMessage, timeLabel;
   final bool isPinned, isMuted, isGroup, isDark;
   final bool isAi;
@@ -1925,6 +2223,8 @@ class _ConversationTile extends StatelessWidget {
   final bool isSentByMe;
   final bool isRead;
   final VoidCallback onTap, onLongPress;
+  final List<String> participants;
+  final String currentUserId;
 
   const _ConversationTile({
     required this.id,
@@ -1938,6 +2238,8 @@ class _ConversationTile extends StatelessWidget {
     required this.isDark,
     required this.onTap,
     required this.onLongPress,
+    required this.participants,
+    required this.currentUserId,
     this.onlineUserId,
     this.unreadCount = 0,
     this.isAi = false,
@@ -1946,132 +2248,253 @@ class _ConversationTile extends StatelessWidget {
   });
 
   @override
+  State<_ConversationTile> createState() => _ConversationTileState();
+}
+
+class _ConversationTileState extends State<_ConversationTile> {
+  String _decryptedText = '';
+  bool _isDecrypting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _decryptIfNeeded();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ConversationTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.lastMessage != widget.lastMessage) {
+      _decryptIfNeeded();
+    }
+  }
+
+  void _decryptIfNeeded() {
+    final msg = widget.lastMessage;
+
+    if (msg.isEmpty ||
+        msg.startsWith('📷') ||
+        msg.startsWith('😊') ||
+        msg.startsWith('🎥') ||
+        msg.startsWith('🎵') ||
+        msg.startsWith('📄') ||
+        msg.startsWith('📊')) {
+      _decryptedText = msg;
+      return;
+    }
+
+    if (EncryptionService().isEncrypted(msg)) {
+      setState(() => _isDecrypting = true);
+      EncryptionService()
+          .decryptPayload(
+            msg,
+            widget.id,
+            widget.participants,
+            widget.currentUserId,
+          )
+          .then((decrypted) {
+            if (mounted) {
+              setState(() {
+                _decryptedText = decrypted;
+                _isDecrypting = false;
+              });
+            }
+          });
+    } else {
+      _decryptedText = msg;
+    }
+  }
+
+  Widget _buildLastMessage(bool hasUnread) {
+    final style = TextStyle(
+      color: hasUnread
+          ? _primary(widget.isDark).withValues(alpha: 0.75)
+          : _secondary(widget.isDark),
+      fontSize: 13.5,
+      fontWeight: hasUnread ? FontWeight.w500 : FontWeight.w400,
+    );
+
+    String display = _isDecrypting ? '🔒 Đang giải mã...' : _decryptedText;
+
+    if (display.startsWith('{"iv":') || display.startsWith('eyJ')) {
+      display = '🔒 Tin nhắn bảo mật';
+    } else if (display.startsWith('{"type":"group_call_') ||
+        display.startsWith('{"type":"call_')) {
+      if (display.contains('ended')) {
+        display = '📞 Cuộc gọi đã kết thúc';
+      } else if (display.contains('missed')) {
+        display = '📞 Cuộc gọi nhỡ';
+      } else {
+        display = '📞 Cuộc gọi';
+      }
+    } else if (display.startsWith('{"board":')) {
+      display = '🎮 Lời mời game Caro';
+    } else if (display.startsWith('{"question":')) {
+      display = '📊 Bình chọn';
+    }
+
+    return Text(
+      display.length > 44 ? '${display.substring(0, 44)}…' : display,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: style,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final hasUnread = unreadCount > 0 && !isMuted;
+    final hasUnread = widget.unreadCount > 0 && !widget.isMuted;
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
+        onTap: widget.onTap,
+        onLongPress: widget.onLongPress,
         splashColor: _kAccent.withValues(alpha: 0.05),
         highlightColor: _kAccent.withValues(alpha: 0.02),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-          color:
-          isPinned ? _kAccent.withValues(alpha: isDark ? 0.05 : 0.04) : null,
-          child: Row(children: [
-            // Avatar
-            SizedBox(
-              width: 52,
-              height: 52,
-              child: Stack(clipBehavior: Clip.none, children: [
-                _Avatar(
-                    photoUrl: photoUrl,
-                    name: name,
-                    size: 52,
-                    isDark: isDark,
-                    isGroup: isGroup,
-                    isAi: isAi),
-                if (onlineUserId != null)
-                  Positioned(
-                      right: 1,
-                      bottom: 1,
-                      child: _OnlineDot(userId: onlineUserId!)),
-                if (isMuted)
-                  Positioned(
-                      right: -2,
-                      top: -2,
-                      child: Container(
+          color: widget.isPinned
+              ? _kAccent.withValues(alpha: widget.isDark ? 0.05 : 0.04)
+              : null,
+          child: Row(
+            children: [
+              // Avatar
+              SizedBox(
+                width: 52,
+                height: 52,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    _Avatar(
+                      photoUrl: widget.photoUrl,
+                      name: widget.name,
+                      size: 52,
+                      isDark: widget.isDark,
+                      isGroup: widget.isGroup,
+                      isAi: widget.isAi,
+                    ),
+                    if (widget.onlineUserId != null)
+                      Positioned(
+                        right: 1,
+                        bottom: 1,
+                        child: _OnlineDot(userId: widget.onlineUserId!),
+                      ),
+                    if (widget.isMuted)
+                      Positioned(
+                        right: -2,
+                        top: -2,
+                        child: Container(
                           width: 16,
                           height: 16,
                           decoration: BoxDecoration(
-                              color: _surface(isDark),
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                  color: _surface(isDark), width: 1.5)),
-                          child: const Icon(Icons.volume_off_rounded,
-                              size: 9, color: Colors.grey))),
-              ]),
-            ),
-            const SizedBox(width: 12),
-            // Text block
-            Expanded(
+                            color: _surface(widget.isDark),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: _surface(widget.isDark),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.volume_off_rounded,
+                            size: 9,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Text block
+              Expanded(
                 child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            if (isPinned) ...[
-                              Icon(Icons.push_pin_rounded,
-                                  size: 10,
-                                  color: _kAccent.withValues(alpha: 0.7)),
-                              const SizedBox(width: 3),
-                            ],
-                            Expanded(
-                                child: Text(name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                        color: _primary(isDark),
-                                        fontWeight: hasUnread
-                                            ? FontWeight.w700
-                                            : FontWeight.w600,
-                                        fontSize: 15.5,
-                                        letterSpacing: -0.2))),
-                            const SizedBox(width: 8),
-                            Text(timeLabel,
-                                style: TextStyle(
-                                    color: hasUnread
-                                        ? _kAccent
-                                        : _secondary(isDark),
-                                    fontSize: 11.5,
-                                    fontWeight: hasUnread
-                                        ? FontWeight.w600
-                                        : FontWeight.w400)),
-                          ]),
-                      const SizedBox(height: 3),
-                      Row(children: [
-                        if (!isGroup && isSentByMe && !hasUnread) ...[
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        if (widget.isPinned) ...[
                           Icon(
-                            isRead
+                            Icons.push_pin_rounded,
+                            size: 10,
+                            color: _kAccent.withValues(alpha: 0.7),
+                          ),
+                          const SizedBox(width: 3),
+                        ],
+                        Expanded(
+                          child: Text(
+                            widget.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: _primary(widget.isDark),
+                              fontWeight: hasUnread
+                                  ? FontWeight.w700
+                                  : FontWeight.w600,
+                              fontSize: 15.5,
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          widget.timeLabel,
+                          style: TextStyle(
+                            color: hasUnread
+                                ? _kAccent
+                                : _secondary(widget.isDark),
+                            fontSize: 11.5,
+                            fontWeight: hasUnread
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        if (!widget.isGroup &&
+                            widget.isSentByMe &&
+                            !hasUnread) ...[
+                          Icon(
+                            widget.isRead
                                 ? Icons.done_all_rounded
                                 : Icons.done_rounded,
                             size: 14,
-                            color: isRead
+                            color: widget.isRead
                                 ? _kAccent
-                                : _secondary(isDark).withValues(alpha: 0.6),
+                                : _secondary(
+                                    widget.isDark,
+                                  ).withValues(alpha: 0.6),
                           ),
                           const SizedBox(width: 4),
                         ],
-                        Expanded(
-                            child: Text(lastMessage,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                    color: hasUnread
-                                        ? _primary(isDark).withValues(alpha: 0.75)
-                                        : _secondary(isDark),
-                                    fontSize: 13.5,
-                                    fontWeight: hasUnread
-                                        ? FontWeight.w500
-                                        : FontWeight.w400))),
+                        Expanded(child: _buildLastMessage(hasUnread)),
                         if (hasUnread) ...[
                           const SizedBox(width: 8),
-                          _UnreadChip(count: unreadCount),
+                          _UnreadChip(count: widget.unreadCount),
                         ],
-                        if (isMuted && !hasUnread)
+                        if (widget.isMuted && !hasUnread)
                           Padding(
-                              padding: const EdgeInsets.only(left: 6),
-                              child: Icon(Icons.volume_off_rounded,
-                                  size: 13,
-                                  color:
-                                  _secondary(isDark).withValues(alpha: 0.5))),
-                      ]),
-                    ])),
-          ]),
+                            padding: const EdgeInsets.only(left: 6),
+                            child: Icon(
+                              Icons.volume_off_rounded,
+                              size: 13,
+                              color: _secondary(
+                                widget.isDark,
+                              ).withValues(alpha: 0.5),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2086,14 +2509,20 @@ class _UnreadChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-          color: _kAccent, borderRadius: BorderRadius.circular(10)),
-      child: Text(count > 99 ? '99+' : '$count',
-          style: const TextStyle(
-              color: Colors.white,
-              fontSize: 11,
-              fontWeight: FontWeight.w700)));
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+    decoration: BoxDecoration(
+      color: _kAccent,
+      borderRadius: BorderRadius.circular(10),
+    ),
+    child: Text(
+      count > 99 ? '99+' : '$count',
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2105,28 +2534,35 @@ class _Avatar extends StatelessWidget {
   final double size;
   final bool isDark, isGroup, isAi;
 
-  const _Avatar(
-      {required this.photoUrl,
-        required this.name,
-        required this.size,
-        required this.isDark,
-        this.isGroup = false,
-        this.isAi = false});
+  const _Avatar({
+    required this.photoUrl,
+    required this.name,
+    required this.size,
+    required this.isDark,
+    this.isGroup = false,
+    this.isAi = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     if (isAi) {
       return Container(
-          width: size,
-          height: size,
-          decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                  colors: _kAiGradient,
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight)),
-          child: const Icon(Icons.auto_awesome_rounded,
-              color: Colors.white, size: 24));
+        width: size,
+        height: size,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            colors: _kAiGradient,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: const Icon(
+          Icons.auto_awesome_rounded,
+          color: Colors.white,
+          size: 24,
+        ),
+      );
     }
     final colorIdx = name.isEmpty
         ? 0
@@ -2134,37 +2570,47 @@ class _Avatar extends StatelessWidget {
     final avatarColor = ColorConstants.avatarColors[colorIdx];
     final initials = name.isNotEmpty ? name[0].toUpperCase() : '?';
     return Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: avatarColor.withValues(alpha: 0.12),
-            border: Border.all(
-                color: avatarColor.withValues(alpha: 0.18), width: 1.5)),
-        child: ClipOval(
-            child: photoUrl.isNotEmpty
-                ? Image.network(photoUrl,
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: avatarColor.withValues(alpha: 0.12),
+        border: Border.all(
+          color: avatarColor.withValues(alpha: 0.18),
+          width: 1.5,
+        ),
+      ),
+      child: ClipOval(
+        child: photoUrl.isNotEmpty
+            ? Image.network(
+                photoUrl,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) =>
-                    _fallback(initials, avatarColor))
-                : _fallback(initials, avatarColor)));
+                errorBuilder: (_, __, ___) => _fallback(initials, avatarColor),
+              )
+            : _fallback(initials, avatarColor),
+      ),
+    );
   }
 
   Widget _fallback(String text, Color color) {
     if (isGroup) {
       return Container(
-          color: color.withValues(alpha: 0.1),
-          child:
-          Icon(Icons.group_rounded, color: color, size: size * 0.42));
+        color: color.withValues(alpha: 0.1),
+        child: Icon(Icons.group_rounded, color: color, size: size * 0.42),
+      );
     }
     return Container(
-        color: color.withValues(alpha: 0.1),
-        alignment: Alignment.center,
-        child: Text(text,
-            style: TextStyle(
-                color: color,
-                fontWeight: FontWeight.w700,
-                fontSize: size * 0.36)));
+      color: color.withValues(alpha: 0.1),
+      alignment: Alignment.center,
+      child: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w700,
+          fontSize: size * 0.36,
+        ),
+      ),
+    );
   }
 }
 
@@ -2180,19 +2626,23 @@ class _OnlineDot extends StatelessWidget {
   Widget build(BuildContext context) {
     final presenceProvider = context.read<UserPresenceProvider>();
     return StreamBuilder<UserPresence>(
-        stream: presenceProvider.getUserPresenceStream(userId),
-        builder: (_, snap) {
-          if (snap.data?.isOnline != true) return const SizedBox.shrink();
-          return Container(
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(
-                  color: _kGreen,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                      color: Theme.of(context).scaffoldBackgroundColor,
-                      width: 2)));
-        });
+      stream: presenceProvider.getUserPresenceStream(userId),
+      builder: (_, snap) {
+        if (snap.data?.isOnline != true) return const SizedBox.shrink();
+        return Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: _kGreen,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              width: 2,
+            ),
+          ),
+        );
+      },
+    );
   }
 }
 
@@ -2205,66 +2655,88 @@ class _SearchResultTile extends StatelessWidget {
   final bool isDark;
   final VoidCallback onTap;
 
-  const _SearchResultTile(
-      {required this.userChat,
-        required this.isDark,
-        required this.onTap});
+  const _SearchResultTile({
+    required this.userChat,
+    required this.isDark,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) => Material(
-      color: Colors.transparent,
-      child: InkWell(
-          onTap: onTap,
-          splashColor: _kAccent.withValues(alpha: 0.05),
-          child: Padding(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 12),
-              child: Row(children: [
-                _Avatar(
-                    photoUrl: userChat.photoUrl,
-                    name: userChat.nickname,
-                    size: 48,
-                    isDark: isDark),
-                const SizedBox(width: 12),
-                Expanded(
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(userChat.nickname,
-                              style: TextStyle(
-                                  color: _primary(isDark),
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 15)),
-                          if (userChat.phoneNumber.isNotEmpty)
-                            Padding(
-                                padding: const EdgeInsets.only(top: 2),
-                                child: Text('📱 ${userChat.phoneNumber}',
-                                    style: TextStyle(
-                                        color: _secondary(isDark),
-                                        fontSize: 12.5))),
-                          if (userChat.aboutMe.isNotEmpty)
-                            Padding(
-                                padding: const EdgeInsets.only(top: 2),
-                                child: Text(userChat.aboutMe,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                        color: _secondary(isDark)
-                                            .withValues(alpha: 0.7),
-                                        fontSize: 12.5))),
-                        ])),
-                Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 7),
-                    decoration: BoxDecoration(
-                        color: _kAccent,
-                        borderRadius: BorderRadius.circular(20)),
-                    child: const Text('Xem',
+    color: Colors.transparent,
+    child: InkWell(
+      onTap: onTap,
+      splashColor: _kAccent.withValues(alpha: 0.05),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            _Avatar(
+              photoUrl: userChat.photoUrl,
+              name: userChat.nickname,
+              size: 48,
+              isDark: isDark,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    userChat.nickname,
+                    style: TextStyle(
+                      color: _primary(isDark),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
+                  ),
+                  if (userChat.phoneNumber.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        '📱 ${userChat.phoneNumber}',
                         style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600))),
-              ]))));
+                          color: _secondary(isDark),
+                          fontSize: 12.5,
+                        ),
+                      ),
+                    ),
+                  if (userChat.aboutMe.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        userChat.aboutMe,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: _secondary(isDark).withValues(alpha: 0.7),
+                          fontSize: 12.5,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(
+                color: _kAccent,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Text(
+                'Xem',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2277,21 +2749,28 @@ class _ScrollToTopButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-      onTap: onTap,
-      child: Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-              color: _kAccent,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                    color: _kAccent.withValues(alpha: 0.35),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4))
-              ]),
-          child: const Icon(Icons.keyboard_arrow_up_rounded,
-              color: Colors.white, size: 22)));
+    onTap: onTap,
+    child: Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: _kAccent,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: _kAccent.withValues(alpha: 0.35),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: const Icon(
+        Icons.keyboard_arrow_up_rounded,
+        color: Colors.white,
+        size: 22,
+      ),
+    ),
+  );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2315,8 +2794,9 @@ class _SkeletonTileState extends State<_SkeletonTile>
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1100))
-      ..repeat(reverse: true);
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..repeat(reverse: true);
     _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
   }
 
@@ -2328,48 +2808,65 @@ class _SkeletonTileState extends State<_SkeletonTile>
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-      animation: _anim,
-      builder: (_, __) {
-        final base = widget.isDark
-            ? Color.lerp(const Color(0xFF1C1C22), const Color(0xFF2C2C34),
-            _anim.value)!
-            : Color.lerp(const Color(0xFFF2F2F7), const Color(0xFFE5E5EA),
-            _anim.value)!;
-        return Padding(
-            padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-            child: Row(children: [
-              Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                      color: base, shape: BoxShape.circle)),
-              const SizedBox(width: 12),
-              Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                            height: 13,
-                            width: 110 + (_anim.value * 30),
-                            decoration: BoxDecoration(
-                                color: base,
-                                borderRadius: BorderRadius.circular(7))),
-                        const SizedBox(height: 8),
-                        Container(
-                            height: 11,
-                            width: 160 + (_anim.value * 20),
-                            decoration: BoxDecoration(
-                                color: base,
-                                borderRadius: BorderRadius.circular(6))),
-                      ])),
-              const SizedBox(width: 12),
-              Container(
-                  height: 10,
-                  width: 26,
-                  decoration: BoxDecoration(
+    animation: _anim,
+    builder: (_, __) {
+      final base = widget.isDark
+          ? Color.lerp(
+              const Color(0xFF1C1C22),
+              const Color(0xFF2C2C34),
+              _anim.value,
+            )!
+          : Color.lerp(
+              const Color(0xFFF2F2F7),
+              const Color(0xFFE5E5EA),
+              _anim.value,
+            )!;
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+        child: Row(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(color: base, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    height: 13,
+                    width: 110 + (_anim.value * 30),
+                    decoration: BoxDecoration(
                       color: base,
-                      borderRadius: BorderRadius.circular(5))),
-            ]));
-      });
+                      borderRadius: BorderRadius.circular(7),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    height: 11,
+                    width: 160 + (_anim.value * 20),
+                    decoration: BoxDecoration(
+                      color: base,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Container(
+              height: 10,
+              width: 26,
+              decoration: BoxDecoration(
+                color: base,
+                borderRadius: BorderRadius.circular(5),
+              ),
+            ),
+          ],
+        ),
+      );
+    },
+  );
 }

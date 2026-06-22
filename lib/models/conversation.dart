@@ -15,7 +15,11 @@ class Conversation {
   final List<String> archivedBy;
   final String contextType;
 
-  final int? unreadCount;
+  // SỬA LỖI B: Đổi kiểu dữ liệu sang dynamic để tương thích với cả schema cũ (int)
+  // và schema mới (Map<String, dynamic>) cho group chat, tránh lỗi parse type.
+  final dynamic unreadCount;
+  final Map<String, dynamic>? lastReadBy;
+
   final String? peerPhotoUrl;
   final bool? isOnline;
   final String? peerName;
@@ -37,6 +41,7 @@ class Conversation {
     this.archivedBy = const [],
     this.contextType = 'default',
     this.unreadCount = 0,
+    this.lastReadBy,
     this.peerPhotoUrl,
     this.isOnline = false,
     this.peerName,
@@ -58,6 +63,8 @@ class Conversation {
       'isMuted': isMuted,
       'archivedBy': archivedBy,
       'contextType': contextType,
+      'unreadCount': unreadCount,
+      'lastReadBy': lastReadBy,
     };
   }
 
@@ -65,7 +72,6 @@ class Conversation {
     final data = doc.data() as Map<String, dynamic>?;
 
     if (data == null) {
-      // Cảnh báo thay vì throw Exception để tránh làm crash toàn bộ StreamBuilder
       debugPrint(
         '⚠️ Warning: Conversation document data is null for ID: ${doc.id}',
       );
@@ -136,10 +142,12 @@ class Conversation {
         archivedBy: getListString(data['archivedBy']),
         contextType: data['contextType'] ?? 'default',
         unreadCount: data['unreadCount'] ?? 0,
+        lastReadBy: data['lastReadBy'] != null
+            ? Map<String, dynamic>.from(data['lastReadBy'] as Map)
+            : null,
         isArchived: data['isArchived'] ?? false,
       );
     } catch (e, stackTrace) {
-      // Đã thêm log chi tiết để bắt chính xác lỗi parse type từ Firestore
       debugPrint('❌ Error parsing Conversation ${doc.id}: $e');
       debugPrint('Stacktrace: $stackTrace');
 

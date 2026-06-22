@@ -163,10 +163,11 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
+  // [SỬA LỖI D]: Thay thế số ma thuật 3 bằng hằng số TypeMessage.voice chuẩn
   String _typeToString(int type) => switch (type) {
     TypeMessage.image => 'image',
     TypeMessage.video => 'video',
-    3 => 'voice',
+    TypeMessage.voice => 'voice',
     TypeMessage.geoLocked => 'location',
     TypeMessage.sticker => 'sticker',
     TypeMessage.document => 'file',
@@ -833,8 +834,11 @@ class ChatPageState extends State<ChatPage>
       });
       _replyAnim.reverse();
     }
+
+    // [SỬA LỖI D]: Chờ kết quả ID trả về để đồng bộ tính năng tự xóa, tránh sai lệch ID khi ghi document.
+    dynamic sentMsgId;
     try {
-      await _chatProvider.sendMessage(
+      sentMsgId = await _chatProvider.sendMessage(
         finalContent,
         type,
         _groupChatId,
@@ -852,14 +856,19 @@ class ChatPageState extends State<ChatPage>
       _toast('Lỗi gửi tin nhắn');
       return;
     }
+
     try {
-      final msgId = DateTime.now().millisecondsSinceEpoch.toString();
+      final msgId = (sentMsgId is String && sentMsgId.isNotEmpty)
+          ? sentMsgId
+          : DateTime.now().millisecondsSinceEpoch.toString();
+
       await _autoDeleteProvider.scheduleMessageDeletion(
         groupChatId: _groupChatId,
         messageId: msgId,
         conversationId: _groupChatId,
       );
     } catch (_) {}
+
     if (!resourceManager.isDisposed) {
       unawaited(_loadSmartReplies());
       _refreshAiDock();
@@ -917,7 +926,6 @@ class ChatPageState extends State<ChatPage>
         _groupChatId.isEmpty ||
         _currentUserId.isEmpty) return;
 
-    // [SỬA LỖI P0 - BUG 7]: Xóa filter 'isRead' ở Query Firestore để tránh lỗi Index, thực hiện filter ở client-side
     final sub = FirebaseFirestore.instance
         .collection(FirestoreConstants.pathMessageCollection)
         .doc(_groupChatId)
@@ -935,7 +943,6 @@ class ChatPageState extends State<ChatPage>
           final data = change.doc.data();
           if (data == null) continue;
 
-          // CLIENT-SIDE FILTER THAY CHO FIRESTORE INDEX
           final isRead = data['isRead'] as bool? ?? false;
           if (isRead) continue;
 
@@ -1032,14 +1039,6 @@ class ChatPageState extends State<ChatPage>
           MaterialPageRoute(builder: (_) => const BubbleSettingsPage()),
         );
       return;
-    }
-    final hasPermission = await _bubbleService!.hasOverlayPermission();
-    if (!hasPermission) {
-      final granted = await _bubbleService!.requestOverlayPermission();
-      if (!granted) {
-        _toast('Cần quyền hiển thị');
-        return;
-      }
     }
 
     final ok = await _bubbleService!.showChatBubble(
@@ -1185,7 +1184,8 @@ class ChatPageState extends State<ChatPage>
     if (mounted) setState(() => _isLoading = false);
     final url = result?.url;
     if (url != null && !resourceManager.isDisposed) {
-      await _onSend(url, 3);
+      // [SỬA LỖI D]: Sử dụng hằng số chuẩn
+      await _onSend(url, TypeMessage.voice);
       _toast('🎤 Đã gửi tin nhắn thoại', isSuccess: true);
     } else {
       _toast('Gửi thoại thất bại');
@@ -1664,7 +1664,6 @@ class ChatPageState extends State<ChatPage>
       builder: (_) => EditMessageDialog(
         originalContent: current,
         onSave: (newContent) async {
-          // [SỬA LỖI P0]: MÃ HÓA TIN NHẮN TRƯỚC KHI EDIT LÊN FIRESTORE
           String encryptedContent = newContent;
           try {
             encryptedContent = await EncryptionService().encryptPayload(
@@ -1685,13 +1684,12 @@ class ChatPageState extends State<ChatPage>
           );
 
           if (ok) {
-            // Cập nhật lại UI local (nếu không app sẽ render chuỗi mã hóa JSON ra màn hình)
             try {
               final localKey = '${_groupChatId}_$id';
               final existingRaw = LocalDbService().messagesBox.get(localKey);
               if (existingRaw != null) {
                 final existing = Map<String, dynamic>.from(existingRaw as Map);
-                existing['content'] = newContent; // Hiển thị plain text cho UI
+                existing['content'] = newContent;
                 existing['isEdited'] = true;
                 await LocalDbService().saveMessage(_groupChatId, id, existing);
               }
@@ -2493,7 +2491,7 @@ class ChatPageState extends State<ChatPage>
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
+                color: color.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(icon, color: color, size: 17),
@@ -2894,7 +2892,9 @@ class ChatPageState extends State<ChatPage>
         ),
       );
     }
-    if (msg.type == 3 && _voiceProvider != null) {
+
+    // [SỬA LỖI D]: Sử dụng hằng số chuẩn
+    if (msg.type == TypeMessage.voice && _voiceProvider != null) {
       return wrap(
         Align(
           alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,

@@ -39,7 +39,8 @@ class HomeProvider {
   /// possible (chunks of 10 to stay under the `whereIn` limit on older SDKs).
   /// Returns a Map keyed by userId so callers can do O(1) cache lookups.
   Future<Map<String, UserChat>> batchFetchUserChats(
-      List<String> userIds) async {
+    List<String> userIds,
+  ) async {
     if (userIds.isEmpty) return {};
 
     final result = <String, UserChat>{};
@@ -47,8 +48,10 @@ class HomeProvider {
 
     try {
       for (int i = 0; i < userIds.length; i += chunkSize) {
-        final chunk =
-            userIds.sublist(i, (i + chunkSize).clamp(0, userIds.length));
+        final chunk = userIds.sublist(
+          i,
+          (i + chunkSize).clamp(0, userIds.length),
+        );
         final snap = await firebaseFirestore
             .collection(FirestoreConstants.pathUserCollection)
             .where(FieldPath.documentId, whereIn: chunk)
@@ -74,8 +77,10 @@ class HomeProvider {
 
     try {
       for (int i = 0; i < groupIds.length; i += chunkSize) {
-        final chunk =
-            groupIds.sublist(i, (i + chunkSize).clamp(0, groupIds.length));
+        final chunk = groupIds.sublist(
+          i,
+          (i + chunkSize).clamp(0, groupIds.length),
+        );
         final snap = await firebaseFirestore
             .collection(FirestoreConstants.pathGroupCollection)
             .where(FieldPath.documentId, whereIn: chunk)
@@ -180,8 +185,10 @@ class HomeProvider {
     return firebaseFirestore
         .collection(FirestoreConstants.pathUserCollection)
         .where(FirestoreConstants.nickname, isGreaterThanOrEqualTo: trimmed)
-        .where(FirestoreConstants.nickname,
-            isLessThanOrEqualTo: '$trimmed\uf8ff')
+        .where(
+          FirestoreConstants.nickname,
+          isLessThanOrEqualTo: '$trimmed\uf8ff',
+        )
         .orderBy(FirestoreConstants.nickname)
         .limit(limit)
         .snapshots();
@@ -216,8 +223,10 @@ class HomeProvider {
       final nickSnap = await firebaseFirestore
           .collection(FirestoreConstants.pathUserCollection)
           .where(FirestoreConstants.nickname, isGreaterThanOrEqualTo: trimmed)
-          .where(FirestoreConstants.nickname,
-              isLessThanOrEqualTo: '$trimmed\uf8ff')
+          .where(
+            FirestoreConstants.nickname,
+            isLessThanOrEqualTo: '$trimmed\uf8ff',
+          )
           .limit(limit)
           .get();
 
@@ -260,15 +269,17 @@ class HomeProvider {
   }
 
   Future<void> updateUserProfile(
-      String userId, Map<String, dynamic> data) async {
+    String userId,
+    Map<String, dynamic> data,
+  ) async {
     try {
       await firebaseFirestore
           .collection(FirestoreConstants.pathUserCollection)
           .doc(userId)
           .update({
-        ...data,
-        'updatedAt': DateTime.now().millisecondsSinceEpoch.toString(),
-      });
+            ...data,
+            'updatedAt': DateTime.now().millisecondsSinceEpoch.toString(),
+          });
     } catch (e) {
       debugPrint('❌ [HomeProvider] updateUserProfile: $e');
       rethrow;
@@ -277,7 +288,8 @@ class HomeProvider {
 
   /// Batch-fetch raw DocumentSnapshots — kept for legacy callers.
   Future<Map<String, DocumentSnapshot>> batchGetUserProfiles(
-      List<String> userIds) async {
+    List<String> userIds,
+  ) async {
     if (userIds.isEmpty) return {};
 
     try {
@@ -364,6 +376,14 @@ class HomeProvider {
   // ─── Conversations ────────────────────────────────────────────────────────
 
   /// Real-time paginated conversation stream ordered by pinned then recency.
+  ///
+  /// LƯU Ý BẮT BUỘC: Query này ĐÒI HỎI phải tạo Composite Index trong Firestore.
+  /// Mở Firebase Console -> Firestore -> Indexes -> Composite, rồi thêm:
+  /// Collection: `conversations`
+  /// Fields:
+  ///   - `participants` (Arrays)
+  ///   - `isPinned` (Descending)
+  ///   - `lastMessageTime` (Descending)
   Stream<List<QueryDocumentSnapshot>> getConversationsOptimized(
     String userId, {
     int limit = 20,
@@ -378,14 +398,25 @@ class HomeProvider {
         .map((s) => s.docs);
   }
 
-  /// Returns the total number of unread conversations for a user.
+  /// SỬA LỖI B: Returns the total number of unread conversations for a user.
+  /// Chuyển sang lọc client-side để tương thích ngược với Schema unreadCount Map
   Stream<int> watchUnreadConversationCount(String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathConversationCollection)
         .where('participants', arrayContains: userId)
-        .where('unreadCount', isGreaterThan: 0)
         .snapshots()
-        .map((s) => s.docs.length);
+        .map((s) {
+          return s.docs.where((doc) {
+            final data = doc.data();
+            final unreadData = data['unreadCount'];
+            if (unreadData is Map) {
+              return (unreadData[userId] as int? ?? 0) > 0;
+            } else if (unreadData is int) {
+              return unreadData > 0;
+            }
+            return false;
+          }).length;
+        });
   }
 
   // ─── Groups ───────────────────────────────────────────────────────────────

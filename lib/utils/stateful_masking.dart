@@ -34,6 +34,7 @@ class MaskingSession {
   });
 
   // ── Thứ tự ưu tiên của luật Regex (Rules Priority) ─────────────────────────
+  // SỬA LỖI D: Đưa ID và PASSPORT lên trước ACCOUNT để tránh lỗi nuốt chuỗi.
   // Card đứng trước Account để tránh nhận diện sai (Card number luôn dài hơn)
   static const _rules = [
     _Rule(
@@ -44,22 +45,10 @@ class MaskingSession {
       r'(?<!\d)(\+84|0)(3[2-9]|5[6-9]|7[06-9]|8[0-9]|9[0-9])\d{7}(?!\d)',
       'PHONE',
     ),
-    _Rule(
-      r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}',
-      'EMAIL',
-    ),
-    _Rule(
-      r'(?<!\d)\d{9,14}(?!\d)',
-      'ACCOUNT',
-    ),
-    _Rule(
-      r'(?<!\d)(?:\d{9}|\d{12})(?!\d)',
-      'ID',
-    ),
-    _Rule(
-      r'\b[A-Z]{1,2}\d{7}\b',
-      'PASSPORT',
-    ),
+    _Rule(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}', 'EMAIL'),
+    _Rule(r'(?<!\d)(?:\d{9}|\d{12})(?!\d)', 'ID'),
+    _Rule(r'\b[A-Z]{1,2}\d{7}\b', 'PASSPORT'),
+    _Rule(r'(?<!\d)\d{9,14}(?!\d)', 'ACCOUNT'),
   ];
 
   /// Tạo một MaskingSession từ text gốc — mask PII và ghi nhớ mapping để restore.
@@ -176,7 +165,8 @@ class MaskingSession {
   static bool containsPII(String input) {
     if (input.isEmpty) return false;
     return _rules.any(
-        (rule) => RegExp(rule.pattern, caseSensitive: false).hasMatch(input));
+      (rule) => RegExp(rule.pattern, caseSensitive: false).hasMatch(input),
+    );
   }
 
   @override
