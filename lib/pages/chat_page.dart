@@ -163,11 +163,10 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // [SỬA LỖI D]: Thay thế số ma thuật 3 bằng hằng số TypeMessage.voice chuẩn
   String _typeToString(int type) => switch (type) {
     TypeMessage.image => 'image',
     TypeMessage.video => 'video',
-    TypeMessage.voice => 'voice',
+    3 => 'voice',
     TypeMessage.geoLocked => 'location',
     TypeMessage.sticker => 'sticker',
     TypeMessage.document => 'file',
@@ -834,11 +833,8 @@ class ChatPageState extends State<ChatPage>
       });
       _replyAnim.reverse();
     }
-
-    // [SỬA LỖI D]: Chờ kết quả ID trả về để đồng bộ tính năng tự xóa, tránh sai lệch ID khi ghi document.
-    dynamic sentMsgId;
     try {
-      sentMsgId = await _chatProvider.sendMessage(
+      await _chatProvider.sendMessage(
         finalContent,
         type,
         _groupChatId,
@@ -856,19 +852,14 @@ class ChatPageState extends State<ChatPage>
       _toast('Lỗi gửi tin nhắn');
       return;
     }
-
     try {
-      final msgId = (sentMsgId is String && sentMsgId.isNotEmpty)
-          ? sentMsgId
-          : DateTime.now().millisecondsSinceEpoch.toString();
-
+      final msgId = DateTime.now().millisecondsSinceEpoch.toString();
       await _autoDeleteProvider.scheduleMessageDeletion(
         groupChatId: _groupChatId,
         messageId: msgId,
         conversationId: _groupChatId,
       );
     } catch (_) {}
-
     if (!resourceManager.isDisposed) {
       unawaited(_loadSmartReplies());
       _refreshAiDock();
@@ -1041,6 +1032,9 @@ class ChatPageState extends State<ChatPage>
       return;
     }
 
+    // [SỬA LỖI P3]: Bỏ gate cứng chặn showChatBubble.
+    // Native Android 11+ sẽ tự động degrade (hạ cấp) xuống Notification thường
+    // nếu user chưa cấp quyền bong bóng, không cần check Overlay Permission kiểu legacy nữa.
     final ok = await _bubbleService!.showChatBubble(
       userId: widget.arguments.peerId,
       userName: widget.arguments.peerNickname,
@@ -1184,8 +1178,7 @@ class ChatPageState extends State<ChatPage>
     if (mounted) setState(() => _isLoading = false);
     final url = result?.url;
     if (url != null && !resourceManager.isDisposed) {
-      // [SỬA LỖI D]: Sử dụng hằng số chuẩn
-      await _onSend(url, TypeMessage.voice);
+      await _onSend(url, 3);
       _toast('🎤 Đã gửi tin nhắn thoại', isSuccess: true);
     } else {
       _toast('Gửi thoại thất bại');
@@ -1664,6 +1657,7 @@ class ChatPageState extends State<ChatPage>
       builder: (_) => EditMessageDialog(
         originalContent: current,
         onSave: (newContent) async {
+          // MÃ HÓA TIN NHẮN TRƯỚC KHI EDIT LÊN FIRESTORE
           String encryptedContent = newContent;
           try {
             encryptedContent = await EncryptionService().encryptPayload(
@@ -1684,12 +1678,13 @@ class ChatPageState extends State<ChatPage>
           );
 
           if (ok) {
+            // Cập nhật lại UI local
             try {
               final localKey = '${_groupChatId}_$id';
               final existingRaw = LocalDbService().messagesBox.get(localKey);
               if (existingRaw != null) {
                 final existing = Map<String, dynamic>.from(existingRaw as Map);
-                existing['content'] = newContent;
+                existing['content'] = newContent; // Hiển thị plain text cho UI
                 existing['isEdited'] = true;
                 await LocalDbService().saveMessage(_groupChatId, id, existing);
               }
@@ -2892,9 +2887,7 @@ class ChatPageState extends State<ChatPage>
         ),
       );
     }
-
-    // [SỬA LỖI D]: Sử dụng hằng số chuẩn
-    if (msg.type == TypeMessage.voice && _voiceProvider != null) {
+    if (msg.type == 3 && _voiceProvider != null) {
       return wrap(
         Align(
           alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,

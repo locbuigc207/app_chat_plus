@@ -19,10 +19,10 @@ class MessageProvider {
   // ── Streams ───────────────────────────────────────────────────────────────
 
   Stream<QuerySnapshot> getMessages(
-      String groupChatId, {
-        int limit = 30,
-        DocumentSnapshot? startAfter,
-      }) {
+    String groupChatId, {
+    int limit = 30,
+    DocumentSnapshot? startAfter,
+  }) {
     var query = _msgCollection(
       groupChatId,
     ).orderBy(FirestoreConstants.timestamp, descending: true).limit(limit);
@@ -48,10 +48,10 @@ class MessageProvider {
   // ── Mutations ─────────────────────────────────────────────────────────────
 
   Future<bool> editMessage(
-      String groupChatId,
-      String messageId,
-      String newContent,
-      ) async {
+    String groupChatId,
+    String messageId,
+    String newContent,
+  ) async {
     try {
       await _msgCollection(groupChatId).doc(messageId).update({
         FirestoreConstants.content: newContent,
@@ -61,11 +61,7 @@ class MessageProvider {
 
       // Cập nhật lastMessage trên node Conversation nếu đây là tin nhắn cuối.
       // [SỬA LỖI BUG 8]: Đã gỡ bỏ logic gọi ChatBubbleService ra khỏi tầng Provider.
-      await _syncConversationLastMessage(
-        groupChatId,
-        messageId,
-        newContent,
-      );
+      await _syncConversationLastMessage(groupChatId, messageId, newContent);
 
       return true;
     } catch (e) {
@@ -75,10 +71,10 @@ class MessageProvider {
   }
 
   Future<bool> deleteMessage(
-      String groupChatId,
-      String messageId, {
-        bool forEveryone = true,
-      }) async {
+    String groupChatId,
+    String messageId, {
+    bool forEveryone = true,
+  }) async {
     try {
       final now = DateTime.now().millisecondsSinceEpoch.toString();
       final deletedText = 'This message was deleted';
@@ -97,11 +93,7 @@ class MessageProvider {
 
       // Cập nhật LastMessage nếu tin nhắn vừa xóa là tin cuối cùng
       // [SỬA LỖI BUG 8]: Đã gỡ bỏ logic gọi ChatBubbleService.
-      await _syncConversationLastMessage(
-        groupChatId,
-        messageId,
-        deletedText,
-      );
+      await _syncConversationLastMessage(groupChatId, messageId, deletedText);
 
       return true;
     } catch (e) {
@@ -111,9 +103,9 @@ class MessageProvider {
   }
 
   Future<int> deleteMultipleMessages(
-      String groupChatId,
-      List<String> messageIds,
-      ) async {
+    String groupChatId,
+    List<String> messageIds,
+  ) async {
     try {
       WriteBatch batch = firebaseFirestore.batch();
       int count = 0;
@@ -160,10 +152,10 @@ class MessageProvider {
   }
 
   Future<bool> togglePinMessage(
-      String groupChatId,
-      String messageId,
-      bool currentPinStatus,
-      ) async {
+    String groupChatId,
+    String messageId,
+    bool currentPinStatus,
+  ) async {
     try {
       final newPinned = !currentPinStatus;
       await _msgCollection(groupChatId).doc(messageId).update({
@@ -180,11 +172,11 @@ class MessageProvider {
   }
 
   Future<bool> toggleStarMessage(
-      String groupChatId,
-      String messageId,
-      String userId,
-      bool isStarred,
-      ) async {
+    String groupChatId,
+    String messageId,
+    String userId,
+    bool isStarred,
+  ) async {
     try {
       await _msgCollection(groupChatId).doc(messageId).update({
         'starredBy': isStarred
@@ -278,10 +270,10 @@ class MessageProvider {
   // ── Read receipts ─────────────────────────────────────────────────────────
 
   Future<void> markMessageRead(
-      String groupChatId,
-      String messageId,
-      String userId,
-      ) async {
+    String groupChatId,
+    String messageId,
+    String userId,
+  ) async {
     try {
       await _msgCollection(groupChatId).doc(messageId).update({
         'readBy': FieldValue.arrayUnion([userId]),
@@ -328,9 +320,9 @@ class MessageProvider {
   // ── Search ────────────────────────────────────────────────────────────────
 
   Future<List<QueryDocumentSnapshot>> searchMessages(
-      String groupChatId,
-      String query,
-      ) async {
+    String groupChatId,
+    String query,
+  ) async {
     try {
       final trimmed = query.trim().toLowerCase();
       if (trimmed.isEmpty) return [];
@@ -345,7 +337,7 @@ class MessageProvider {
             (doc.data() as Map<String, dynamic>)[FirestoreConstants.content]
                 ?.toString()
                 .toLowerCase() ??
-                '';
+            '';
         return content.contains(trimmed);
       }).toList();
     } catch (e) {
@@ -359,10 +351,10 @@ class MessageProvider {
   /// Cập nhật thông tin Last Message lên Conversation Node và trả về true
   /// nếu document thay đổi vừa rồi thực sự nằm cuối cùng chuỗi.
   Future<bool> _syncConversationLastMessage(
-      String groupChatId,
-      String messageId,
-      String newContent,
-      ) async {
+    String groupChatId,
+    String messageId,
+    String newContent,
+  ) async {
     try {
       final latest = await _msgCollection(
         groupChatId,
@@ -382,6 +374,6 @@ class MessageProvider {
     }
   }
 
-// [SỬA LỖI BUG 8]: Đã xóa toàn bộ hàm `_extractPeerId` vì logic tách chuỗi (split)
-// lấy giá trị `last` bị sai ID trong ~50% trường hợp khi currentUserId < peerId.
+  // [SỬA LỖI BUG 8]: Đã xóa toàn bộ hàm `_extractPeerId` vì logic tách chuỗi (split)
+  // lấy giá trị `last` bị sai ID trong ~50% trường hợp khi currentUserId < peerId.
 }

@@ -41,10 +41,7 @@ class GroupChatPageState extends State<GroupChatPage>
         ResourceManagerMixin,
         TickerProviderStateMixin {
   // ── Core state ───────────────────────────────────────────────────────────
-
-  // [FIX P1]: Xóa 'late' và khởi tạo chuỗi rỗng để tránh LateInitializationError
-  String _currentUserId = '';
-
+  late String _currentUserId;
   String get _currentUserName => _memberNames[_currentUserId] ?? 'Bạn';
   int _limit = 30;
   static const int _limitIncrement = 20;
@@ -117,9 +114,8 @@ class GroupChatPageState extends State<GroupChatPage>
   late AuthProvider _authProvider;
   late MessageProvider _messageProvider;
   late ReactionProvider _reactionProvider;
-  late ReminderProvider _autoDeleteProvider;
   late ReminderProvider _reminderProvider;
-  late AutoDeleteProvider _autoDeleteProviderReal;
+  late AutoDeleteProvider _autoDeleteProvider;
   late ViewOnceProvider _viewOnceProvider;
   late SmartReplyProvider _smartReplyProvider;
   late TelemetryProvider _telemetryProvider;
@@ -200,6 +196,7 @@ class GroupChatPageState extends State<GroupChatPage>
       if (!resourceManager.isDisposed && mounted) {
         _initializeProviders(context);
 
+        // Gọi flutterReady để giải phóng chờ timeout của Kotlin khi mở từ bong bóng
         MethodChannel(
           'bubble_chat_channel',
         ).invokeMethod('flutterReady').catchError((_) {});
@@ -217,7 +214,7 @@ class GroupChatPageState extends State<GroupChatPage>
     _messageProvider = context.read<MessageProvider>();
     _reactionProvider = context.read<ReactionProvider>();
     _reminderProvider = context.read<ReminderProvider>();
-    _autoDeleteProviderReal = context.read<AutoDeleteProvider>();
+    _autoDeleteProvider = context.read<AutoDeleteProvider>();
     _viewOnceProvider = context.read<ViewOnceProvider>();
     _smartReplyProvider = context.read<SmartReplyProvider>();
     _presenceProvider = context.read<UserPresenceProvider>();
@@ -259,11 +256,6 @@ class GroupChatPageState extends State<GroupChatPage>
     });
 
     _readLocal();
-
-    // [FIX P1]: Ngắt luồng khởi tạo nếu người dùng chưa đăng nhập
-    // (lúc này _readLocal() đã Navigator.push về LoginPage). Tránh LateInitializationError.
-    if (!mounted || _currentUserId.isEmpty) return;
-
     _loadPinnedMessages();
     _loadMemberNames();
     _startToxicityMonitor();
@@ -493,8 +485,7 @@ class GroupChatPageState extends State<GroupChatPage>
     final preview = switch (type) {
       TypeMessage.image => '📷 Hình ảnh',
       TypeMessage.video => '🎬 Video',
-      TypeMessage.voice =>
-      '🎤 Tin nhắn thoại', // SỬA LỖI D: Sử dụng hằng số chuẩn
+      3 => '🎤 Tin nhắn thoại',
       TypeMessage.geoLocked => '📍 Vị trí',
       TypeMessage.sticker => '😊 Sticker',
       TypeMessage.document => '📎 Tệp đính kèm',
@@ -510,7 +501,7 @@ class GroupChatPageState extends State<GroupChatPage>
         avatarUrl: widget.group.groupPhotoUrl,
         messageType: switch (type) {
           TypeMessage.image => 'image',
-          TypeMessage.voice => 'voice', // SỬA LỖI D: Sử dụng hằng số chuẩn
+          3 => 'voice',
           TypeMessage.video => 'video',
           _ => 'text',
         },
@@ -612,6 +603,7 @@ class GroupChatPageState extends State<GroupChatPage>
 
     if (choice != 'bubble' || resourceManager.isDisposed) return;
 
+    // [FIX P3]: Bỏ gate cứng chặn requestPermission/hasPermission
     final ok = await _bubbleService!.showChatBubble(
       userId: groupChatId,
       userName: widget.group.groupName,
@@ -644,12 +636,8 @@ class GroupChatPageState extends State<GroupChatPage>
 
         final data = change.doc.data() as Map<String, dynamic>? ?? {};
 
-        // SỬA LỖI B: Kiểm tra mảng readBy
-        final readBy = List<String>.from(data['readBy'] ?? []);
-        if (readBy.contains(_currentUserId)) continue;
-
-        final isReadBooleanLegacy = data['isRead'] as bool? ?? false;
-        if (isReadBooleanLegacy && readBy.isEmpty) continue;
+        final isRead = data['isRead'] as bool? ?? false;
+        if (isRead) continue;
 
         _processedMsgIds.add(msgId);
         if (_processedMsgIds.length > 200) {
@@ -963,6 +951,7 @@ class GroupChatPageState extends State<GroupChatPage>
   // MEMBERS
   // ══════════════════════════════════════════════════════════════════════════
 
+  // Phục hồi lại code Future.wait để tăng tốc độ load thành viên
   Future<void> _loadMemberNames() async {
     try {
       final docs = await Future.wait(
@@ -1106,29 +1095,21 @@ class GroupChatPageState extends State<GroupChatPage>
   Future<void> _markMessagesAsRead() async {
     if (resourceManager.isDisposed) return;
     try {
-      // SỬA LỖI B: Lấy các thư CHƯA có ID người dùng trong mảng readBy
       final unread = await FirebaseFirestore.instance
           .collection(FirestoreConstants.pathMessageCollection)
           .doc(groupChatId)
           .collection(groupChatId)
-          .get()
-          .then(
-            (snap) => snap.docs.where((doc) {
-          final readBy = List<String>.from(doc.data()['readBy'] ?? []);
-          return !readBy.contains(_currentUserId);
-        }).toList(),
-      );
-
-      if (unread.isEmpty) return;
-
+          .where('isRead', isEqualTo: false)
+          .get();
+      if (unread.docs.isEmpty) return;
       final batch = FirebaseFirestore.instance.batch();
-      for (final doc in unread) {
+      for (final doc in unread.docs) {
         batch.update(doc.reference, {
-          'readBy': FieldValue.arrayUnion([_currentUserId]),
+          'isRead': true,
+          'readAt': FieldValue.serverTimestamp(),
         });
       }
       await batch.commit();
-
       // Clear bubble badge for this group
       BubbleManager.of(context)?.clearUnread(groupChatId);
     } catch (_) {}
@@ -1145,43 +1126,12 @@ class GroupChatPageState extends State<GroupChatPage>
       return;
     }
     HapticFeedback.mediumImpact();
-
-    // SỬA LỖI A3: Mã hóa nội dung tin nhắn gửi đi
-    String encryptedContent = content;
-    try {
-      encryptedContent = await EncryptionService().encryptPayload(
-        content,
-        groupChatId,
-        widget.group.memberIds,
-        _currentUserId,
-      );
-    } catch (e) {
-      _showToast('Lỗi mã hóa tin nhắn');
-      return;
-    }
-
-    String plainReplyContent =
-        content; // Để gửi vào chatProvider (nó sẽ tự mã hóa lên messages)
-    String finalLastMessageContent =
-        encryptedContent; // Lưu lên document conversation
-
+    String finalContent = content;
     if (_replyingTo != null) {
       final senderName = _getSenderName(_replyingTo!.idFrom);
-      plainReplyContent = '↪ [$senderName]: ${_replyingTo!.content}\n$content';
-
-      // Mã hóa lại toàn bộ khối tin nhắn reply để set lastMessage an toàn
-      try {
-        finalLastMessageContent = await EncryptionService().encryptPayload(
-          plainReplyContent,
-          groupChatId,
-          widget.group.memberIds,
-          _currentUserId,
-        );
-      } catch (e) {}
+      finalContent = '↪ [$senderName]: ${_replyingTo!.content}\n$finalContent';
     }
-
     _chatInputController.clear();
-
     if (mounted && !resourceManager.isDisposed) {
       setState(() {
         _replyingTo = null;
@@ -1192,21 +1142,20 @@ class GroupChatPageState extends State<GroupChatPage>
       });
       _replyAnim.reverse();
     }
-
-    // [SỬA LỖI D]: Chờ messageId trả về để set schedule delete
-    dynamic sentMsgId;
     try {
-      sentMsgId = await _chatProvider.sendMessage(
-        plainReplyContent, // Hàm này đã có encryption nội bộ đẩy lên subcollection 'messages'
+      await _chatProvider.sendMessage(
+        finalContent,
         type,
         groupChatId,
         _currentUserId,
         groupChatId,
       );
 
+      // Ghi system message khi type là group call
       if (type == GroupCallMessageTypes.groupCallInvite ||
           type == GroupCallMessageTypes.groupCallEnded) {
         // Đây là system message từ GroupCallService, không cần làm gì thêm
+        // GroupCallService.initiateCall() tự ghi vào messages collection
       }
 
       await FirebaseFirestore.instance
@@ -1215,29 +1164,24 @@ class GroupChatPageState extends State<GroupChatPage>
           .set({
         FirestoreConstants.isGroup: true,
         FirestoreConstants.participants: widget.group.memberIds,
-        FirestoreConstants.lastMessage:
-        finalLastMessageContent, // Payload ĐÃ mã hóa
+        FirestoreConstants.lastMessage: finalContent,
         FirestoreConstants.lastMessageTime: DateTime.now()
             .millisecondsSinceEpoch
             .toString(),
         FirestoreConstants.lastMessageType: type,
       }, SetOptions(merge: true));
-
-      final msgId = (sentMsgId is String && sentMsgId.isNotEmpty)
-          ? sentMsgId
-          : DateTime.now().millisecondsSinceEpoch.toString();
-
-      await _autoDeleteProviderReal.scheduleMessageDeletion(
+      await _autoDeleteProvider.scheduleMessageDeletion(
         groupChatId: groupChatId,
-        messageId: msgId,
+        messageId: DateTime.now().millisecondsSinceEpoch.toString(),
         conversationId: groupChatId,
       );
 
+      // ── Bubble: update context + bubble message ──────────────────────
       ContextualBubbleService.instance.updateContext(
         conversationId: groupChatId,
-        message: plainReplyContent,
+        message: finalContent,
       );
-      await _updateGroupBubble(plainReplyContent, type, fromUser: true);
+      await _updateGroupBubble(finalContent, type, fromUser: true);
     } catch (_) {
       _showToast('Gửi thất bại');
     }
@@ -1472,7 +1416,7 @@ class GroupChatPageState extends State<GroupChatPage>
     }
     final url = uploadResult?.url;
     if (url != null && !resourceManager.isDisposed) {
-      await _onSendMessage(url, TypeMessage.voice); // SỬA LỖI D
+      await _onSendMessage(url, 3);
       _showToast('🎤 Thoại đã gửi', isSuccess: true);
     } else {
       _showToast('Gửi thoại thất bại');
@@ -2114,7 +2058,7 @@ class GroupChatPageState extends State<GroupChatPage>
           context: context,
           builder: (_) => AutoDeleteSettingsDialog(
             conversationId: groupChatId,
-            provider: _autoDeleteProviderReal,
+            provider: _autoDeleteProvider,
           ),
         );
         break;
@@ -2215,9 +2159,9 @@ class GroupChatPageState extends State<GroupChatPage>
                 ActiveGroupCallBanner(
                   groupId: groupChatId,
                   currentUserId: _currentUserId,
-                  currentUserName: _currentUserName,
+                  currentUserName: _currentUserName, // <-- ADD THIS
                   memberIds: widget.group.memberIds,
-                  groupName: widget.group.groupName,
+                  groupName: widget.group.groupName, // Keep this
                 ),
                 if (_showMentionSuggestions) _buildMentionSuggestions(p, theme),
                 Expanded(child: _buildChatContent(p, theme)),
@@ -3350,8 +3294,7 @@ class GroupChatPageState extends State<GroupChatPage>
     }
 
     Widget bubble;
-    if (msg.type == TypeMessage.voice && _voiceProvider != null) {
-      // SỬA LỖI D
+    if (msg.type == 3 && _voiceProvider != null) {
       bubble = _buildVoiceMessage(msg, isMe, p, theme);
     } else if (msg.type == TypeMessage.image) {
       bubble = _buildImageMessage(
@@ -4544,7 +4487,7 @@ class GroupChatPageState extends State<GroupChatPage>
           context: context,
           builder: (_) => AutoDeleteSettingsDialog(
             conversationId: groupChatId,
-            provider: _autoDeleteProviderReal,
+            provider: _autoDeleteProvider,
           ),
         );
       }, p.textSecondary),

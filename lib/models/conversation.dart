@@ -15,8 +15,6 @@ class Conversation {
   final List<String> archivedBy;
   final String contextType;
 
-  // SỬA LỖI B: Đổi kiểu dữ liệu sang dynamic để tương thích với cả schema cũ (int)
-  // và schema mới (Map<String, dynamic>) cho group chat, tránh lỗi parse type.
   final dynamic unreadCount;
   final Map<String, dynamic>? lastReadBy;
 

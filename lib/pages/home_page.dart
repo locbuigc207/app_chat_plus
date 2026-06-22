@@ -87,7 +87,7 @@ class _HomePageState extends State<HomePage>
   late final Stream<QuerySnapshot> _friendRequestsStream;
 
   // ── Unread count stream (dùng chung cho badge + filter chip) ──────────────
-  late final Stream<int> _unreadCountStream;
+  late final Stream<QuerySnapshot> _unreadCountStream;
 
   // ── Profile cache ──────────────────────────────────────────────────────────
   final Map<String, UserChat> _userProfileCache = {};
@@ -150,10 +150,11 @@ class _HomePageState extends State<HomePage>
         .where(FirestoreConstants.status, isEqualTo: 'pending')
         .snapshots();
 
-    // SỬA LỖI B: Dùng luồng đếm chưa đọc client-side tương thích với Schema Map mới
-    _unreadCountStream = _conversationProvider
-        .getUnreadConversations(_currentUserId)
-        .map((docs) => docs.length);
+    _unreadCountStream = FirebaseFirestore.instance
+        .collection(FirestoreConstants.pathConversationCollection)
+        .where(FirestoreConstants.participants, arrayContains: _currentUserId)
+        .where('unreadCount', isGreaterThan: 0)
+        .snapshots();
 
     _initAnimations();
     _scrollController.addListener(_onScroll);
@@ -167,7 +168,6 @@ class _HomePageState extends State<HomePage>
   // ── Stream ─────────────────────────────────────────────────────────────────
 
   void _updateConversationsStream() {
-    // SỬA LỖI A1: Các hàm này trong ConversationProvider đã được sửa để hoạt động đúng với orderBy
     switch (_activeFilterIndex) {
       case 1:
         _conversationsStream = _conversationProvider.getUnreadConversations(
@@ -178,12 +178,12 @@ class _HomePageState extends State<HomePage>
             .getConversationsWithPinned(_currentUserId)
             .map(
               (docs) => docs
-                  .where(
-                    (d) =>
-                        (d.data() as Map<String, dynamic>)['isGroup'] == true,
-                  )
-                  .toList(),
-            );
+              .where(
+                (d) =>
+            (d.data() as Map<String, dynamic>)['isGroup'] == true,
+          )
+              .toList(),
+        );
       default:
         _conversationsStream = _conversationProvider.getConversationsWithPinned(
           _currentUserId,
@@ -201,8 +201,8 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _prefetchConversationPeers(
-    List<QueryDocumentSnapshot> docs,
-  ) async {
+      List<QueryDocumentSnapshot> docs,
+      ) async {
     if (_isPrefetching) return;
     _isPrefetching = true;
     try {
@@ -218,7 +218,7 @@ class _HomePageState extends State<HomePage>
             data['participants'] as List? ?? [],
           );
           final otherId = participants.firstWhere(
-            (id) => id != _currentUserId,
+                (id) => id != _currentUserId,
             orElse: () => '',
           );
           if (otherId.isNotEmpty && !_userProfileCache.containsKey(otherId)) {
@@ -335,7 +335,7 @@ class _HomePageState extends State<HomePage>
           fs
               .where(FirestoreConstants.userId2, isEqualTo: _currentUserId)
               .snapshots(),
-          (snap1, snap2) {
+              (snap1, snap2) {
             final ids = <String>{};
             for (final d in snap1.docs) {
               ids.add(d[FirestoreConstants.userId2] as String);
@@ -389,7 +389,7 @@ class _HomePageState extends State<HomePage>
   void _redirectToLogin() {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => LoginPage()),
-      (_) => false,
+          (_) => false,
     );
   }
 
@@ -433,7 +433,7 @@ class _HomePageState extends State<HomePage>
     if (!mounted) return;
     await Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => LoginPage()),
-      (_) => false,
+          (_) => false,
     );
   }
 
@@ -532,8 +532,7 @@ class _HomePageState extends State<HomePage>
               true,
             );
             HapticFeedback.mediumImpact();
-            // SỬA LỖI D: Trả về false để tránh xung đột Widget Tree khi Dismissible tự remove trong khi Stream vẫn gọi rebuild
-            return false;
+            return true;
           } catch (e) {
             Fluttertoast.showToast(msg: '❌ Lỗi kết nối mạng, vui lòng thử lại');
             return false;
@@ -588,6 +587,7 @@ class _HomePageState extends State<HomePage>
     if (type == TypeMessage.poll) return '📊 Bình chọn';
     if (msg.isEmpty) return 'Bắt đầu cuộc trò chuyện';
 
+    // Trả về thẳng msg để _ConversationTile sẽ tự xử lý logic dịch/giải mã ở UI
     return msg;
   }
 
@@ -707,9 +707,9 @@ class _HomePageState extends State<HomePage>
                         child: _textSearch.isEmpty
                             ? _buildChatList(isDark)
                             : Container(
-                                color: _surface(isDark),
-                                child: _buildSearchResults(isDark),
-                              ),
+                          color: _surface(isDark),
+                          child: _buildSearchResults(isDark),
+                        ),
                       ),
 
                       // Bottom padding for FAB + dock
@@ -814,10 +814,10 @@ class _HomePageState extends State<HomePage>
                   ),
                 ),
                 const SizedBox(width: 8),
-                StreamBuilder<int>(
+                StreamBuilder<QuerySnapshot>(
                   stream: _unreadCountStream,
                   builder: (_, snap) {
-                    final count = snap.data ?? 0;
+                    final count = snap.hasData ? snap.data!.docs.length : 0;
                     if (count == 0) return const SizedBox.shrink();
                     return AnimatedSwitcher(
                       duration: const Duration(milliseconds: 200),
@@ -908,9 +908,9 @@ class _HomePageState extends State<HomePage>
                 borderRadius: BorderRadius.circular(11),
                 border: _isSearchFocused
                     ? Border.all(
-                        color: _kAccent.withValues(alpha: 0.55),
-                        width: 1.5,
-                      )
+                  color: _kAccent.withValues(alpha: 0.55),
+                  width: 1.5,
+                )
                     : Border.all(color: Colors.transparent),
               ),
               child: Row(
@@ -1004,10 +1004,10 @@ class _HomePageState extends State<HomePage>
   // ════════════════════════════════════════════════════════════════════════════
 
   Widget _buildFilterChips(bool isDark) {
-    return StreamBuilder<int>(
+    return StreamBuilder<QuerySnapshot>(
       stream: _unreadCountStream,
       builder: (_, snap) {
-        final unreadCount = snap.data ?? 0;
+        final unreadCount = snap.hasData ? snap.data!.docs.length : 0;
 
         return Container(
           color: _bg(isDark),
@@ -1089,7 +1089,7 @@ class _HomePageState extends State<HomePage>
                       .where((s) => s.userId != _currentUserId)
                       .toList();
                   final idx = others.indexWhere(
-                    (s) => s.userId == userStories.userId,
+                        (s) => s.userId == userStories.userId,
                   );
                   _push(
                     StoryViewerPage(
@@ -1097,14 +1097,14 @@ class _HomePageState extends State<HomePage>
                       initialUserIndex: idx < 0 ? 0 : idx,
                       currentUserId: _currentUserId,
                       currentUserName:
-                          _authProvider.prefs.getString(
-                            FirestoreConstants.nickname,
-                          ) ??
+                      _authProvider.prefs.getString(
+                        FirestoreConstants.nickname,
+                      ) ??
                           '',
                       currentUserPhotoUrl:
-                          _authProvider.prefs.getString(
-                            FirestoreConstants.photoUrl,
-                          ) ??
+                      _authProvider.prefs.getString(
+                        FirestoreConstants.photoUrl,
+                      ) ??
                           '',
                     ),
                   );
@@ -1358,15 +1358,6 @@ class _HomePageState extends State<HomePage>
 
   Widget _buildConversationItem(DocumentSnapshot doc, bool isDark) {
     final conversation = Conversation.fromDocument(doc);
-    final data = doc.data() as Map<String, dynamic>;
-
-    // SỬA LỖI B: Xử lý an toàn bộ đếm chưa đọc (unreadCount) để tương thích cấu trúc Map mới theo từng User.
-    int actualUnread = 0;
-    if (data['unreadCount'] is Map) {
-      actualUnread = data['unreadCount'][_currentUserId] as int? ?? 0;
-    } else if (data['unreadCount'] is int) {
-      actualUnread = data['unreadCount'] as int;
-    }
 
     if (conversation.isGroup) {
       final group = _groupCache[conversation.id];
@@ -1386,7 +1377,7 @@ class _HomePageState extends State<HomePage>
         isMuted: conversation.isMuted,
         isGroup: true,
         isDark: isDark,
-        unreadCount: actualUnread,
+        unreadCount: conversation.unreadCount ?? 0,
         participants: conversation.participants,
         currentUserId: _currentUserId,
         onTap: () {
@@ -1409,7 +1400,7 @@ class _HomePageState extends State<HomePage>
     }
 
     final otherId = conversation.participants.firstWhere(
-      (id) => id != _currentUserId,
+          (id) => id != _currentUserId,
       orElse: () => '',
     );
     if (otherId.isEmpty) return const SizedBox.shrink();
@@ -1433,7 +1424,7 @@ class _HomePageState extends State<HomePage>
       isGroup: false,
       isDark: isDark,
       onlineUserId: otherId,
-      unreadCount: actualUnread,
+      unreadCount: conversation.unreadCount ?? 0,
       isSentByMe: conversation.isSentByMe ?? false,
       isRead: conversation.isRead ?? false,
       participants: conversation.participants,
@@ -1471,19 +1462,19 @@ class _HomePageState extends State<HomePage>
     final isPhone = RegExp(r'^[+\d][\d\s-]*$').hasMatch(query);
     final stream = isPhone
         ? _homeProvider.firebaseFirestore
-              .collection(FirestoreConstants.pathUserCollection)
-              .where(FirestoreConstants.phoneNumber, isEqualTo: query)
-              .limit(_searchLimit)
-              .snapshots()
+        .collection(FirestoreConstants.pathUserCollection)
+        .where(FirestoreConstants.phoneNumber, isEqualTo: query)
+        .limit(_searchLimit)
+        .snapshots()
         : _homeProvider.firebaseFirestore
-              .collection(FirestoreConstants.pathUserCollection)
-              .where(FirestoreConstants.nickname, isGreaterThanOrEqualTo: query)
-              .where(
-                FirestoreConstants.nickname,
-                isLessThanOrEqualTo: '$query\uf8ff',
-              )
-              .limit(_searchLimit)
-              .snapshots();
+        .collection(FirestoreConstants.pathUserCollection)
+        .where(FirestoreConstants.nickname, isGreaterThanOrEqualTo: query)
+        .where(
+      FirestoreConstants.nickname,
+      isLessThanOrEqualTo: '$query\uf8ff',
+    )
+        .limit(_searchLimit)
+        .snapshots();
 
     return StreamBuilder<QuerySnapshot>(
       stream: stream,
@@ -1804,7 +1795,7 @@ class _BubbleDock extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       ...bubbles.map(
-                        (b) => _BubbleAvatar(
+                            (b) => _BubbleAvatar(
                           bubble: b,
                           isDark: isDark,
                           onTap: () {
@@ -1915,15 +1906,15 @@ class _BubbleAvatarState extends State<_BubbleAvatar>
                 backgroundColor: _kAccent.withValues(alpha: 0.2),
                 child: b.avatarUrl.isEmpty
                     ? Text(
-                        b.userName.isNotEmpty
-                            ? b.userName[0].toUpperCase()
-                            : '?',
-                        style: const TextStyle(
-                          color: _kAccent,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 13,
-                        ),
-                      )
+                  b.userName.isNotEmpty
+                      ? b.userName[0].toUpperCase()
+                      : '?',
+                  style: const TextStyle(
+                    color: _kAccent,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
+                )
                     : null,
               ),
               if (b.unreadCount > 0)
@@ -2043,10 +2034,10 @@ class _AvatarRing extends StatelessWidget {
       child: ClipOval(
         child: photoUrl.isNotEmpty
             ? Image.network(
-                photoUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _initials(),
-              )
+          photoUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _initials(),
+        )
             : _initials(),
       ),
     );
@@ -2211,10 +2202,10 @@ class _MenuItemRow extends StatelessWidget {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// CONVERSATION TILE (SỬA LỖI A3: Chuyển sang StatefulWidget để cache giải mã)
+// CONVERSATION TILE
 // ════════════════════════════════════════════════════════════════════════════
 
-class _ConversationTile extends StatefulWidget {
+class _ConversationTile extends StatelessWidget {
   final String id, name, photoUrl, lastMessage, timeLabel;
   final bool isPinned, isMuted, isGroup, isDark;
   final bool isAi;
@@ -2247,94 +2238,76 @@ class _ConversationTile extends StatefulWidget {
     this.isRead = false,
   });
 
-  @override
-  State<_ConversationTile> createState() => _ConversationTileState();
-}
-
-class _ConversationTileState extends State<_ConversationTile> {
-  String _decryptedText = '';
-  bool _isDecrypting = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _decryptIfNeeded();
-  }
-
-  @override
-  void didUpdateWidget(covariant _ConversationTile oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.lastMessage != widget.lastMessage) {
-      _decryptIfNeeded();
-    }
-  }
-
-  void _decryptIfNeeded() {
-    final msg = widget.lastMessage;
-
-    if (msg.isEmpty ||
-        msg.startsWith('📷') ||
-        msg.startsWith('😊') ||
-        msg.startsWith('🎥') ||
-        msg.startsWith('🎵') ||
-        msg.startsWith('📄') ||
-        msg.startsWith('📊')) {
-      _decryptedText = msg;
-      return;
-    }
-
-    if (EncryptionService().isEncrypted(msg)) {
-      setState(() => _isDecrypting = true);
-      EncryptionService()
-          .decryptPayload(
-            msg,
-            widget.id,
-            widget.participants,
-            widget.currentUserId,
-          )
-          .then((decrypted) {
-            if (mounted) {
-              setState(() {
-                _decryptedText = decrypted;
-                _isDecrypting = false;
-              });
-            }
-          });
-    } else {
-      _decryptedText = msg;
-    }
-  }
-
   Widget _buildLastMessage(bool hasUnread) {
     final style = TextStyle(
       color: hasUnread
-          ? _primary(widget.isDark).withValues(alpha: 0.75)
-          : _secondary(widget.isDark),
+          ? _primary(isDark).withValues(alpha: 0.75)
+          : _secondary(isDark),
       fontSize: 13.5,
       fontWeight: hasUnread ? FontWeight.w500 : FontWeight.w400,
     );
 
-    String display = _isDecrypting ? '🔒 Đang giải mã...' : _decryptedText;
+    if (lastMessage.startsWith('📷') ||
+        lastMessage.startsWith('😊') ||
+        lastMessage.startsWith('🎥') ||
+        lastMessage.startsWith('🎵') ||
+        lastMessage.startsWith('📄') ||
+        lastMessage.startsWith('📊')) {
+      return Text(lastMessage, style: style);
+    }
 
-    if (display.startsWith('{"iv":') || display.startsWith('eyJ')) {
-      display = '🔒 Tin nhắn bảo mật';
-    } else if (display.startsWith('{"type":"group_call_') ||
-        display.startsWith('{"type":"call_')) {
-      if (display.contains('ended')) {
-        display = '📞 Cuộc gọi đã kết thúc';
-      } else if (display.contains('missed')) {
-        display = '📞 Cuộc gọi nhỡ';
+    if (EncryptionService().isEncrypted(lastMessage)) {
+      return FutureBuilder<String>(
+        future: EncryptionService().decryptPayload(
+          lastMessage,
+          id,
+          participants,
+          currentUserId,
+        ),
+        builder: (context, snapshot) {
+          String display = '🔒 Đang giải mã...';
+          if (snapshot.connectionState == ConnectionState.done) {
+            if (snapshot.hasData) {
+              display = snapshot.data!;
+              if (display.startsWith('{"iv":')) {
+                display = '🔒 Tin nhắn bảo mật';
+              }
+            } else {
+              display = '🔒 Tin nhắn bảo mật';
+            }
+          }
+          return Text(
+            display.length > 44 ? '${display.substring(0, 44)}…' : display,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: style,
+          );
+        },
+      );
+    }
+
+    String displayText = lastMessage;
+    if (displayText.startsWith('{"iv":') || displayText.startsWith('eyJ')) {
+      displayText = '🔒 Tin nhắn bảo mật';
+    } else if (displayText.startsWith('{"type":"group_call_') ||
+        displayText.startsWith('{"type":"call_')) {
+      if (displayText.contains('ended')) {
+        displayText = '📞 Cuộc gọi đã kết thúc';
+      } else if (displayText.contains('missed')) {
+        displayText = '📞 Cuộc gọi nhỡ';
       } else {
-        display = '📞 Cuộc gọi';
+        displayText = '📞 Cuộc gọi';
       }
-    } else if (display.startsWith('{"board":')) {
-      display = '🎮 Lời mời game Caro';
-    } else if (display.startsWith('{"question":')) {
-      display = '📊 Bình chọn';
+    } else if (displayText.startsWith('{"board":')) {
+      displayText = '🎮 Lời mời game Caro';
+    } else if (displayText.startsWith('{"question":')) {
+      displayText = '📊 Bình chọn';
     }
 
     return Text(
-      display.length > 44 ? '${display.substring(0, 44)}…' : display,
+      displayText.length > 44
+          ? '${displayText.substring(0, 44)}…'
+          : displayText,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: style,
@@ -2343,19 +2316,19 @@ class _ConversationTileState extends State<_ConversationTile> {
 
   @override
   Widget build(BuildContext context) {
-    final hasUnread = widget.unreadCount > 0 && !widget.isMuted;
+    final hasUnread = unreadCount > 0 && !isMuted;
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: widget.onTap,
-        onLongPress: widget.onLongPress,
+        onTap: onTap,
+        onLongPress: onLongPress,
         splashColor: _kAccent.withValues(alpha: 0.05),
         highlightColor: _kAccent.withValues(alpha: 0.02),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-          color: widget.isPinned
-              ? _kAccent.withValues(alpha: widget.isDark ? 0.05 : 0.04)
+          color: isPinned
+              ? _kAccent.withValues(alpha: isDark ? 0.05 : 0.04)
               : null,
           child: Row(
             children: [
@@ -2367,20 +2340,20 @@ class _ConversationTileState extends State<_ConversationTile> {
                   clipBehavior: Clip.none,
                   children: [
                     _Avatar(
-                      photoUrl: widget.photoUrl,
-                      name: widget.name,
+                      photoUrl: photoUrl,
+                      name: name,
                       size: 52,
-                      isDark: widget.isDark,
-                      isGroup: widget.isGroup,
-                      isAi: widget.isAi,
+                      isDark: isDark,
+                      isGroup: isGroup,
+                      isAi: isAi,
                     ),
-                    if (widget.onlineUserId != null)
+                    if (onlineUserId != null)
                       Positioned(
                         right: 1,
                         bottom: 1,
-                        child: _OnlineDot(userId: widget.onlineUserId!),
+                        child: _OnlineDot(userId: onlineUserId!),
                       ),
-                    if (widget.isMuted)
+                    if (isMuted)
                       Positioned(
                         right: -2,
                         top: -2,
@@ -2388,10 +2361,10 @@ class _ConversationTileState extends State<_ConversationTile> {
                           width: 16,
                           height: 16,
                           decoration: BoxDecoration(
-                            color: _surface(widget.isDark),
+                            color: _surface(isDark),
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: _surface(widget.isDark),
+                              color: _surface(isDark),
                               width: 1.5,
                             ),
                           ),
@@ -2415,7 +2388,7 @@ class _ConversationTileState extends State<_ConversationTile> {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        if (widget.isPinned) ...[
+                        if (isPinned) ...[
                           Icon(
                             Icons.push_pin_rounded,
                             size: 10,
@@ -2425,11 +2398,11 @@ class _ConversationTileState extends State<_ConversationTile> {
                         ],
                         Expanded(
                           child: Text(
-                            widget.name,
+                            name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: _primary(widget.isDark),
+                              color: _primary(isDark),
                               fontWeight: hasUnread
                                   ? FontWeight.w700
                                   : FontWeight.w600,
@@ -2440,11 +2413,9 @@ class _ConversationTileState extends State<_ConversationTile> {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          widget.timeLabel,
+                          timeLabel,
                           style: TextStyle(
-                            color: hasUnread
-                                ? _kAccent
-                                : _secondary(widget.isDark),
+                            color: hasUnread ? _kAccent : _secondary(isDark),
                             fontSize: 11.5,
                             fontWeight: hasUnread
                                 ? FontWeight.w600
@@ -2456,36 +2427,30 @@ class _ConversationTileState extends State<_ConversationTile> {
                     const SizedBox(height: 3),
                     Row(
                       children: [
-                        if (!widget.isGroup &&
-                            widget.isSentByMe &&
-                            !hasUnread) ...[
+                        if (!isGroup && isSentByMe && !hasUnread) ...[
                           Icon(
-                            widget.isRead
+                            isRead
                                 ? Icons.done_all_rounded
                                 : Icons.done_rounded,
                             size: 14,
-                            color: widget.isRead
+                            color: isRead
                                 ? _kAccent
-                                : _secondary(
-                                    widget.isDark,
-                                  ).withValues(alpha: 0.6),
+                                : _secondary(isDark).withValues(alpha: 0.6),
                           ),
                           const SizedBox(width: 4),
                         ],
                         Expanded(child: _buildLastMessage(hasUnread)),
                         if (hasUnread) ...[
                           const SizedBox(width: 8),
-                          _UnreadChip(count: widget.unreadCount),
+                          _UnreadChip(count: unreadCount),
                         ],
-                        if (widget.isMuted && !hasUnread)
+                        if (isMuted && !hasUnread)
                           Padding(
                             padding: const EdgeInsets.only(left: 6),
                             child: Icon(
                               Icons.volume_off_rounded,
                               size: 13,
-                              color: _secondary(
-                                widget.isDark,
-                              ).withValues(alpha: 0.5),
+                              color: _secondary(isDark).withValues(alpha: 0.5),
                             ),
                           ),
                       ],
@@ -2583,10 +2548,10 @@ class _Avatar extends StatelessWidget {
       child: ClipOval(
         child: photoUrl.isNotEmpty
             ? Image.network(
-                photoUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _fallback(initials, avatarColor),
-              )
+          photoUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _fallback(initials, avatarColor),
+        )
             : _fallback(initials, avatarColor),
       ),
     );
@@ -2812,15 +2777,15 @@ class _SkeletonTileState extends State<_SkeletonTile>
     builder: (_, __) {
       final base = widget.isDark
           ? Color.lerp(
-              const Color(0xFF1C1C22),
-              const Color(0xFF2C2C34),
-              _anim.value,
-            )!
+        const Color(0xFF1C1C22),
+        const Color(0xFF2C2C34),
+        _anim.value,
+      )!
           : Color.lerp(
-              const Color(0xFFF2F2F7),
-              const Color(0xFFE5E5EA),
-              _anim.value,
-            )!;
+        const Color(0xFFF2F2F7),
+        const Color(0xFFE5E5EA),
+        _anim.value,
+      )!;
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
         child: Row(

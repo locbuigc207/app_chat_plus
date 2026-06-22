@@ -377,6 +377,7 @@ class HomeProvider {
 
   /// Real-time paginated conversation stream ordered by pinned then recency.
   ///
+  /// [SỬA LỖI BUG #12]:
   /// LƯU Ý BẮT BUỘC: Query này ĐÒI HỎI phải tạo Composite Index trong Firestore.
   /// Mở Firebase Console -> Firestore -> Indexes -> Composite, rồi thêm:
   /// Collection: `conversations`
@@ -384,6 +385,8 @@ class HomeProvider {
   ///   - `participants` (Arrays)
   ///   - `isPinned` (Descending)
   ///   - `lastMessageTime` (Descending)
+  ///
+  /// Hoặc click vào link đính kèm trong Firebase log console báo lỗi `FAILED_PRECONDITION`.
   Stream<List<QueryDocumentSnapshot>> getConversationsOptimized(
     String userId, {
     int limit = 20,
@@ -398,25 +401,14 @@ class HomeProvider {
         .map((s) => s.docs);
   }
 
-  /// SỬA LỖI B: Returns the total number of unread conversations for a user.
-  /// Chuyển sang lọc client-side để tương thích ngược với Schema unreadCount Map
+  /// Returns the total number of unread conversations for a user.
   Stream<int> watchUnreadConversationCount(String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathConversationCollection)
         .where('participants', arrayContains: userId)
+        .where('unreadCount', isGreaterThan: 0)
         .snapshots()
-        .map((s) {
-          return s.docs.where((doc) {
-            final data = doc.data();
-            final unreadData = data['unreadCount'];
-            if (unreadData is Map) {
-              return (unreadData[userId] as int? ?? 0) > 0;
-            } else if (unreadData is int) {
-              return unreadData > 0;
-            }
-            return false;
-          }).length;
-        });
+        .map((s) => s.docs.length);
   }
 
   // ─── Groups ───────────────────────────────────────────────────────────────

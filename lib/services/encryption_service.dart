@@ -42,12 +42,7 @@ class EncryptionService {
 
   // ── Legacy key derivation ─────────────────────────────────────────────────
 
-  // SỬA LỖI BẢO MẬT: Loại bỏ chuỗi khóa bí mật công khai, chuyển đổi sang
-  // việc nạp thông số biến môi trường tại thời điểm biên dịch (--dart-define).
-  static const String _legacySalt = String.fromEnvironment(
-    'LEGACY_SALT',
-    defaultValue: 'FALLBACK_APP_CHAT_SECURE_SALT',
-  );
+  static const String _legacySalt = 'APP_CHAT_PLUS_SECURE_SALT_2026';
 
   static final _legacyPayloadRegex = RegExp(
     r'^[A-Za-z0-9+/=]+=*:[A-Za-z0-9+/=]+=*$',
@@ -68,12 +63,6 @@ class EncryptionService {
       final iv = enc.IV.fromSecureRandom(16);
       final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
       final encrypted = encrypter.encrypt(plainText, iv: iv);
-
-      // SỬA LỖI LOG: Cảnh báo mỗi khi hệ thống kích hoạt luồng fallback này
-      debugPrint(
-        '[EncryptionService] ⚠️ WARNING: Encrypting fallback CBC used for: $conversationId',
-      );
-
       return '${iv.base64}:${encrypted.base64}';
     } catch (e) {
       debugPrint('[EncryptionService] ❌ Legacy encrypt error: $e');

@@ -13,6 +13,22 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 // =============================================================================
+// CONSTANTS
+// =============================================================================
+
+abstract class MessageStatus {
+  static const String pending = 'pending';
+  static const String sent = 'sent';
+  static const String delivered = 'delivered';
+  static const String failed = 'failed';
+}
+
+abstract class SyncJobType {
+  static const String sendMessage = 'send_message';
+  static const String aiResponse = 'ai_response';
+}
+
+// =============================================================================
 // ChatProvider — Decoupled Data & Service Layer
 // * Đã loại bỏ hoàn toàn các liên kết cứng với UI/Bubble (Decoupling)
 // * Chỉ chuyên trách việc tương tác dữ liệu Firebase Firestore/Storage và LocalDb
@@ -35,6 +51,9 @@ class ChatProvider {
     required this.firebaseStorage,
   });
 
+  // [SỬA LỖI P0/P1]: Đã xóa bỏ hàm attachBubbleService và _bubbleService.
+  // Giao lại toàn bộ việc xử lý UI (âm thanh, hiển thị bong bóng, cập nhật bong bóng)
+  // cho các lớp Controller (ChatPage, GroupChatPage).
   void attachBubbleService(dynamic svc) {
     // Để trống nhằm giữ khả năng tương thích ngược nếu các file cũ vẫn đang gọi hàm này.
     // Logic thực tế đã bị gỡ bỏ.
@@ -80,9 +99,9 @@ class ChatProvider {
           .ref()
           .child(storagePath)
           .putFile(
-        file,
-        SettableMetadata(contentType: _resolveContentType(originalName)),
-      );
+            file,
+            SettableMetadata(contentType: _resolveContentType(originalName)),
+          );
       final snapshot = await uploadTask.whenComplete(() {});
       return await snapshot.ref.getDownloadURL();
     } catch (e) {
@@ -97,13 +116,13 @@ class ChatProvider {
       'pdf': 'application/pdf',
       'doc': 'application/msword',
       'docx':
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'xls': 'application/vnd.ms-excel',
       'xlsx':
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'ppt': 'application/vnd.ms-powerpoint',
       'pptx':
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       'txt': 'text/plain',
     };
     return mimeMap[ext] ?? 'application/octet-stream';
@@ -121,10 +140,10 @@ class ChatProvider {
           .snapshots();
 
   Future<void> updateDataFirestore(
-      String collectionPath,
-      String docPath,
-      Map<String, dynamic> dataNeedUpdate,
-      ) => firebaseFirestore
+    String collectionPath,
+    String docPath,
+    Map<String, dynamic> dataNeedUpdate,
+  ) => firebaseFirestore
       .collection(collectionPath)
       .doc(docPath)
       .update(dataNeedUpdate);
@@ -148,6 +167,8 @@ class ChatProvider {
   // CONVERSATION FALLBACK UPDATE
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // [SỬA LỖI P1]: Tránh quét toàn bộ DB chỉ để cập nhật một conversation.
+  // Dùng thẳng doc(groupChatId).set() để tăng hiệu năng và tiết kiệm chi phí.
   Future<void> _updateConversationLastMessage({
     required String groupChatId,
     required String currentUserId,
@@ -161,11 +182,9 @@ class ChatProvider {
           .collection(FirestoreConstants.pathConversationCollection)
           .doc(groupChatId);
 
-      final isGroupChat = peerId == groupChatId;
-
       await docRef.set({
-        if (!isGroupChat)
-          'participants': FieldValue.arrayUnion([currentUserId, peerId]),
+        // Nếu đây là hội thoại mới, thiết lập luôn array participants
+        'participants': FieldValue.arrayUnion([currentUserId, peerId]),
         'lastMessage': _previewFor(content, type),
         'lastMessageTime': timestamp,
         'lastMessageType': type,
@@ -179,14 +198,13 @@ class ChatProvider {
   // SEND MESSAGE
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // SỬA LỖI ĐỂ TƯƠNG THÍCH CHAT PAGE: Đổi Future<void> thành Future<String>
-  Future<String> sendMessage(
-      String content,
-      int type,
-      String groupChatId,
-      String currentUserId,
-      String peerId,
-      ) async {
+  Future<void> sendMessage(
+    String content,
+    int type,
+    String groupChatId,
+    String currentUserId,
+    String peerId,
+  ) async {
     final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
 
     // Extract URL for link preview
@@ -241,9 +259,6 @@ class ChatProvider {
     }
 
     _syncManager.startListening();
-
-    // Trả về timestamp/ID để UI có thể thiết lập auto-delete
-    return timestamp;
   }
 
   String _previewFor(String content, int type) {
@@ -260,7 +275,7 @@ class ChatProvider {
         return '📊 Cuộc khảo sát';
       case TypeMessage.geoLocked:
         return '🔐 Tin nhắn ẩn địa điểm';
-      case 3: // Cập nhật sau bằng hằng số TypeMessage.voice nếu cần
+      case 3:
         return '🎤 Tin nhắn thoại';
       default:
         return content;
@@ -287,11 +302,11 @@ class ChatProvider {
     final options = optionTexts
         .map(
           (text) => <String, dynamic>{
-        'id': _uuid.v4(),
-        'text': text.trim(),
-        'votes': <String>[],
-      },
-    )
+            'id': _uuid.v4(),
+            'text': text.trim(),
+            'votes': <String>[],
+          },
+        )
         .toList();
 
     final pollJson = jsonEncode(<String, dynamic>{
@@ -382,14 +397,14 @@ class ChatProvider {
         }
 
         final targetIndex = options.indexWhere(
-              (o) => o['id'].toString() == optionId,
+          (o) => o['id'].toString() == optionId,
         );
         if (targetIndex == -1)
           throw Exception('Option $optionId không tồn tại.');
 
         final isMultipleChoice =
-        (pollData['isMultipleChoice'] ?? data['isMultipleChoice'] ?? false)
-        as bool;
+            (pollData['isMultipleChoice'] ?? data['isMultipleChoice'] ?? false)
+                as bool;
         if (!isMultipleChoice) {
           for (final opt in options) {
             final votes = List<dynamic>.from(opt['votes'] as List? ?? []);
@@ -432,7 +447,7 @@ class ChatProvider {
             String updatedContent = existing['content'] as String? ?? '{}';
             try {
               final pollMap =
-              jsonDecode(updatedContent) as Map<String, dynamic>;
+                  jsonDecode(updatedContent) as Map<String, dynamic>;
               pollMap['options'] = newOptions;
               updatedContent = jsonEncode(pollMap);
             } catch (_) {}
@@ -463,11 +478,13 @@ class ChatProvider {
   // FIREBASE LISTENER — INCOMING MESSAGES
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // [SỬA LỖI P0]: Trả về StreamSubscription để Controller (Page) nắm giữ và hủy bỏ
+  // khi màn hình Dispose, ngăn ngừa rò rỉ bộ nhớ (memory leak).
   StreamSubscription<QuerySnapshot> listenToFirebaseChanges(
-      String groupChatId,
-      String currentUserId,
-      String peerId,
-      ) {
+    String groupChatId,
+    String currentUserId,
+    String peerId,
+  ) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathMessageCollection)
         .doc(groupChatId)
@@ -477,25 +494,26 @@ class ChatProvider {
         .snapshots()
         .listen(
           (snapshot) async {
-        for (final change in snapshot.docChanges) {
-          try {
-            await _processIncomingDocChange(
-              change: change,
-              groupChatId: groupChatId,
-              currentUserId: currentUserId,
-              peerId: peerId,
-            );
-          } catch (e) {
-            _log(
-              '❌ _processIncomingDocChange error [${change.doc.id}]: $e',
-            );
-          }
-        }
-      },
-      onError: (Object e, StackTrace st) {
-        _log('❌ listenToFirebaseChanges stream error: $e');
-      },
-    );
+            // [SỬA LỖI P0]: Chỉ xử lý các thay đổi dựa trên docChanges thay vì quét lại toàn bộ snapshot.docs
+            for (final change in snapshot.docChanges) {
+              try {
+                await _processIncomingDocChange(
+                  change: change,
+                  groupChatId: groupChatId,
+                  currentUserId: currentUserId,
+                  peerId: peerId,
+                );
+              } catch (e) {
+                _log(
+                  '❌ _processIncomingDocChange error [${change.doc.id}]: $e',
+                );
+              }
+            }
+          },
+          onError: (Object e, StackTrace st) {
+            _log('❌ listenToFirebaseChanges stream error: $e');
+          },
+        );
   }
 
   Future<void> _processIncomingDocChange({
@@ -551,6 +569,7 @@ class ChatProvider {
     } else if (type == TypeMessage.text &&
         content.isNotEmpty &&
         data['isDeleted'] != true) {
+      // CẬP NHẬT ĐIỀU KIỆN Ở ĐÂY
       try {
         content = await EncryptionService().decryptPayload(
           content,
@@ -612,7 +631,7 @@ class ChatProvider {
           content: content,
           type: type,
           timestamp:
-          data['timestamp']?.toString() ??
+              data['timestamp']?.toString() ??
               DateTime.now().millisecondsSinceEpoch.toString(),
         ),
       );
@@ -622,6 +641,9 @@ class ChatProvider {
     // AI Auto-Analysis (parallel, non-blocking)
     // ════════════════════════════════════════════════════════════════════════
 
+    // [SỬA LỖI P0]: Chỉ thực hiện Cloud AI Check (phát sinh chi phí API)
+    // khi đây là tin nhắn MỚI ĐƯỢC THÊM (DocumentChangeType.added).
+    // Bỏ qua khi có các sự kiện modified (như đổi status isRead, vote poll).
     if (change.type == DocumentChangeType.added &&
         type == TypeMessage.text &&
         content.isNotEmpty &&
@@ -631,11 +653,11 @@ class ChatProvider {
       unawaited(
         AIBackendService()
             .analyzeDecryptedClientMessage(
-          plainTextContent: content,
-          conversationId: groupChatId,
-          messageId: messageId,
-          idTo: currentUserId,
-        )
+              plainTextContent: content,
+              conversationId: groupChatId,
+              messageId: messageId,
+              idTo: currentUserId,
+            )
             .catchError((e) => _log('AI analysis skipped: $e')),
       );
 
@@ -644,24 +666,24 @@ class ChatProvider {
         AIBackendService()
             .detectHateSpeech(content)
             .then((isHateful) async {
-          if (!isHateful) return;
-          final key = '${groupChatId}_$messageId';
-          final existing = _localDb.messagesBox.get(key);
-          if (existing != null) {
-            await _localDb.saveMessage(groupChatId, messageId, {
-              ...Map<String, dynamic>.from(existing as Map),
-              'isHateful': true,
-              'hateSpeechCategory': 'hate',
-            });
-          }
-          firebaseFirestore
-              .collection(FirestoreConstants.pathMessageCollection)
-              .doc(groupChatId)
-              .collection(groupChatId)
-              .doc(messageId)
-              .update({'isHateful': true})
-              .catchError((_) {});
-        })
+              if (!isHateful) return;
+              final key = '${groupChatId}_$messageId';
+              final existing = _localDb.messagesBox.get(key);
+              if (existing != null) {
+                await _localDb.saveMessage(groupChatId, messageId, {
+                  ...Map<String, dynamic>.from(existing as Map),
+                  'isHateful': true,
+                  'hateSpeechCategory': 'hate',
+                });
+              }
+              firebaseFirestore
+                  .collection(FirestoreConstants.pathMessageCollection)
+                  .doc(groupChatId)
+                  .collection(groupChatId)
+                  .doc(messageId)
+                  .update({'isHateful': true})
+                  .catchError((_) {});
+            })
             .catchError((e) => _log('HateSpeech check skipped: $e')),
       );
     }
@@ -736,7 +758,7 @@ class ChatProvider {
     } finally {
       onLoadingStatusChanged(false);
       _compressionService.clearCache().catchError(
-            (e) => _log('⚠️ clearCache error: $e'),
+        (e) => _log('⚠️ clearCache error: $e'),
       );
     }
   }
@@ -788,7 +810,7 @@ class ChatProvider {
     } finally {
       onLoadingStatusChanged(false);
       _compressionService.clearCache().catchError(
-            (e) => _log('⚠️ clearCache error: $e'),
+        (e) => _log('⚠️ clearCache error: $e'),
       );
     }
     return successCount;
@@ -849,6 +871,9 @@ class ChatProvider {
         lastMessageTime: timestamp,
         lastMessageType: TypeMessage.gameInvite,
       );
+
+      // [SỬA LỖI P0]: Xóa logic gọi RPC native cũ của ChatBubbleService vì đã dọn dẹp khỏi Kotlin.
+      // Firebase Cloud Functions sẽ lo nhiệm vụ gửi Notification thay thế.
 
       _log('🎮 Game invite sent: ${payload.matchId} → $groupChatId');
       return timestamp;
@@ -932,6 +957,7 @@ class ChatProvider {
 
       await firebaseFirestore.runTransaction((tx) async {
         final doc = await tx.get(docRef);
+        // Ngăn chặn lỗi khi document messageId không tồn tại trên Firestore
         if (!doc.exists) {
           _log(
             '⚠️ [updateGameMessageStatus] Document messageId: $messageId không tồn tại trên Firestore.',

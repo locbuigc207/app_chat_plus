@@ -16,7 +16,7 @@ import 'package:flutter_chat_demo/models/call_model.dart';
 import 'package:flutter_chat_demo/models/group_call_model.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:flutter_chat_demo/providers/phone_auth_provider.dart'
-    as custom_auth;
+as custom_auth;
 import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_chat_demo/utils/utils.dart';
@@ -35,11 +35,11 @@ import 'package:timezone/timezone.dart' as tz;
 // ─────────────────────────────────────────────────────────────────────────────
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-    FlutterLocalNotificationsPlugin();
+FlutterLocalNotificationsPlugin();
 
 /// Navigator key dùng cho toàn app.
 final GlobalKey<NavigatorState> globalNavigatorKey =
-    GlobalKey<NavigatorState>();
+GlobalKey<NavigatorState>();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FCM background handler
@@ -246,8 +246,8 @@ Future<void> _initializeFcm() async {
 // ─────────────────────────────────────────────────────────────────────────────
 
 Future<void> _initializeLocalNotifications(
-  FlutterLocalNotificationsPlugin plugin,
-) async {
+    FlutterLocalNotificationsPlugin plugin,
+    ) async {
   try {
     const androidSettings = AndroidInitializationSettings(
       '@mipmap/ic_launcher',
@@ -276,15 +276,15 @@ Future<void> _initializeLocalNotifications(
       initSettings,
       onDidReceiveNotificationResponse: _onNotificationTapped,
       onDidReceiveBackgroundNotificationResponse:
-          _onBackgroundNotificationTapped,
+      _onBackgroundNotificationTapped,
     );
 
     if (Platform.isAndroid) await _setupAndroidNotificationChannels(plugin);
     if (Platform.isIOS) {
       await plugin
           .resolvePlatformSpecificImplementation<
-            IOSFlutterLocalNotificationsPlugin
-          >()
+          IOSFlutterLocalNotificationsPlugin
+      >()
           ?.requestPermissions(alert: true, badge: true, sound: true);
     }
     debugPrint('✅ Local Notifications khởi tạo xong');
@@ -299,12 +299,12 @@ Future<void> _initializeLocalNotifications(
 }
 
 Future<void> _setupAndroidNotificationChannels(
-  FlutterLocalNotificationsPlugin plugin,
-) async {
+    FlutterLocalNotificationsPlugin plugin,
+    ) async {
   final androidPlugin = plugin
       .resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin
-      >();
+      AndroidFlutterLocalNotificationsPlugin
+  >();
   if (androidPlugin == null) return;
 
   await androidPlugin.requestNotificationsPermission();
@@ -459,7 +459,7 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
     _recentNavigations.add(dedupKey);
     Future.delayed(
       const Duration(seconds: 10),
-      () => _recentNavigations.remove(dedupKey),
+          () => _recentNavigations.remove(dedupKey),
     );
 
     await _waitForNavigator();
@@ -558,8 +558,8 @@ class _AppInitializerState extends State<AppInitializer>
 
   void _startNotificationService() {
     _authSub = firebase_auth.FirebaseAuth.instance.authStateChanges().listen((
-      user,
-    ) {
+        user,
+        ) {
       if (user != null && !_notificationStarted) {
         // SỬA LỖI P0: Gọi initialize() cho NotificationService ở đây để kích hoạt chuẩn
         widget.notificationService.initialize();
@@ -766,10 +766,10 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
             navigatorKey: AppRouter.navigatorKey,
             themeMode: themeProvider.flutterThemeMode ?? ThemeMode.system,
             theme:
-                themeProvider.lightTheme ??
+            themeProvider.lightTheme ??
                 _buildFallbackTheme(Brightness.light),
             darkTheme:
-                themeProvider.darkTheme ?? _buildFallbackTheme(Brightness.dark),
+            themeProvider.darkTheme ?? _buildFallbackTheme(Brightness.dark),
             initialRoute: AppRouter.splash,
             onGenerateRoute: AppRouter.onGenerateRoute,
             builder: (context, child) {
