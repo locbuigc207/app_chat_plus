@@ -76,8 +76,8 @@ class GeminiService {
   static final GeminiService _instance = GeminiService._internal();
   factory GeminiService() => _instance;
 
-  static const String _modelIdFull = 'gemini-3.5-flash';
-  static const String _modelIdLite = 'gemini-3.1-flash-lite';
+  static const String _modelIdFull = 'gemini-2.5-flash';
+  static const String _modelIdLite = 'gemini-2.5-flash-lite';
 
   static const int _maxRetries = 3;
   static const Duration _baseRetryDelay = Duration(seconds: 2);
@@ -173,6 +173,20 @@ class GeminiService {
       );
     }
 
+    // ✅ Thêm cơ chế Fast-fail: Trả về lỗi ngay nếu đã biết hệ thống không khả dụng
+    if (_availability == GeminiAvailability.keyExpired) {
+      return GeminiResponse.error(
+        '🔑 Gemini configuration error.',
+        isRetryable: false,
+      );
+    }
+    if (_availability == GeminiAvailability.rateLimited) {
+      return GeminiResponse.error(
+        '⚠️ Rate limited, thử lại sau.',
+        isRetryable: true,
+      );
+    }
+
     try {
       final model = _getModel(taskType);
       final history = _buildValidHistory(
@@ -180,8 +194,13 @@ class GeminiService {
         maxMessages: _maxHistoryMessages,
       );
       return await _sendWithRetry(model, history, message);
-    } on GeminiKeyExpiredException {
-      rethrow;
+    } on GeminiKeyExpiredException catch (e) {
+      // ✅ Không rethrow nữa, chuyển thành lỗi có thể xử lý và gửi cảnh báo
+      await _handleAuthError(e);
+      return GeminiResponse.error(
+        '🔑 Gemini configuration error.',
+        isRetryable: false,
+      );
     } catch (e) {
       return GeminiResponse.error(_handleError(e), isRetryable: true);
     }
@@ -296,7 +315,7 @@ Tin nhắn cần phân tích:
         {
           'friendly': 'thân thiện, tự nhiên',
           'formal': 'lịch sự, trang trọng',
-          'casual': 'vui vẻ, hài hước', // Đã sửa lỗi chính tả tại đây
+          'casual': 'vui vẻ, hài hước',
         }[tone] ??
         'thân thiện';
 

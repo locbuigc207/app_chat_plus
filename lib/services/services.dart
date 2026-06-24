@@ -3,6 +3,7 @@ export 'ai_backend_service.dart';
 export 'ai_content_service.dart';
 export 'bubble_fcm_handler.dart';
 export 'bubble_lifecycle_observer.dart';
+export 'bubble_permission_service.dart';
 export 'bubble_reaction_service.dart';
 export 'bubble_service_v2.dart';
 export 'bubble_settings_service.dart';

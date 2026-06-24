@@ -19,6 +19,8 @@ import io.flutter.plugin.common.MethodChannel
 import hust.appchat.notifications.BubbleNotificationManager
 import hust.appchat.notifications.BubbleNotificationService
 import hust.appchat.shortcuts.ShortcutHelper
+import hust.appchat.utils.BubblePermissionChecker
+import hust.appchat.utils.OemCompatHelper
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -69,7 +71,7 @@ class MainActivity : FlutterActivity() {
             BubbleNotificationService.init(this)
             Log.d(TAG, "✅ BubbleNotificationService initialized")
 
-            // [SỬA LỖI P1]: Chạy hoàn toàn trên Main Thread mặc định của lifecycleScope.
+            // Chạy hoàn toàn trên Main Thread mặc định của lifecycleScope.
             // Sử dụng delay(500) để nhường quyền ưu tiên vẽ UI trước, tránh gây block Main Thread hay ANR.
             lifecycleScope.launch {
                 delay(500)
@@ -91,7 +93,6 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(engine)
         Log.d(TAG, "🔧 Configuring Flutter Engine...")
 
-        // [FIX P3]: Đăng ký receiver sớm ngay khi Flutter Engine khởi tạo để không lỡ event dismiss/click
         registerBubbleReceivers()
 
         setupLegacyMethodChannel(engine)
@@ -108,18 +109,13 @@ class MainActivity : FlutterActivity() {
         if (!isFlutterReady) return
         BubbleNotificationService.onAppResumed(this)
 
-        // [FIX P2]: Gửi event báo cho Dart biết App đã resume để syncWithNative()
         dispatchEvent(mapOf("event" to "app_resumed"))
 
-        // [SỬA LỖI MỚI]: Thực hiện kiểm tra ngầm (Silent re-check) quyền hiển thị bong bóng chat.
-        // Hỗ trợ sửa lỗi trên một số thiết bị như Samsung One UI 7 tự động reset quyền sau khi cập nhật ứng dụng.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val nm = getSystemService(NotificationManager::class.java)
-            val channel = nm?.getNotificationChannel(CHANNEL_MESSAGES)
-            val channelOk = channel?.canBubble() == true && nm.areNotificationsEnabled()
-            if (!channelOk) {
-                dispatchEvent(mapOf("event" to "bubble_permission_lost"))
-            }
+        // [SỬA LỖI P2]: Thực hiện kiểm tra ngầm (Silent re-check) quyền bong bóng chat
+        // Chỉ chạy trên các hệ thống OEM (như Samsung One UI 7) có tiểu sử tự reset quyền sau update
+        if (isFlutterReady && OemCompatHelper.needsResumePermissionCheck()) {
+            val ok = BubblePermissionChecker.isChannelBubbleEnabled(this)
+            if (!ok) dispatchEvent(mapOf("event" to "bubble_permission_lost"))
         }
     }
 
@@ -146,7 +142,6 @@ class MainActivity : FlutterActivity() {
                 try {
                     when (call.method) {
                         "hasPermission" -> {
-                            // [SỬA LỖI P2]: Kiểm tra quyền cấp độ Channel chính xác cho Android 12+ (API 31+)
                             val isAllowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                                 val nm = getSystemService(NotificationManager::class.java)
                                 val channel = nm?.getNotificationChannel(CHANNEL_MESSAGES)
@@ -247,10 +242,42 @@ class MainActivity : FlutterActivity() {
                 try {
                     when (call.method) {
 
+                        // ==========================================
+                        // OEM & PERMISSION INTEGRATION (TÍCH HỢP MỚI)
+                        // ==========================================
+                        "getBubblePermissionStatus" -> {
+                            result.success(BubblePermissionChecker.check(this).dartName)
+                        }
+
+                        "getOemName" -> {
+                            result.success(OemCompatHelper.getOemName())
+                        }
+
+                        "getBubbleSetupSteps" -> {
+                            result.success(OemCompatHelper.getBubbleSetupSteps(this))
+                        }
+
+                        "openBubbleSettings" -> {
+                            OemCompatHelper.openBubbleSettings(this)
+                            result.success(true)
+                        }
+
+                        "openBatteryWhitelist" -> {
+                            OemCompatHelper.openBatteryWhitelist(this)
+                            result.success(true)
+                        }
+
+                        "openAutoStartSettings" -> {
+                            OemCompatHelper.openAutoStartSettings(this)
+                            result.success(true)
+                        }
+
+                        // ==========================================
+                        // EXISTING BUBBLE METHODS
+                        // ==========================================
                         "checkBubbleApiSupport" -> result.success(true)
 
                         "checkBubbleChannelEnabled" -> {
-                            // [SỬA LỖI P2]: Đồng bộ logic kiểm tra quyền per-channel chuẩn xác
                             val isAllowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                                 val nm = getSystemService(NotificationManager::class.java)
                                 val channel = nm?.getNotificationChannel(CHANNEL_MESSAGES)
@@ -264,7 +291,6 @@ class MainActivity : FlutterActivity() {
                         }
 
                         "checkBubblesEnabled" -> {
-                            // [SỬA LỖI P2]: Đồng bộ logic kiểm tra quyền per-channel chuẩn xác
                             val isAllowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                                 val nm = getSystemService(NotificationManager::class.java)
                                 val channel = nm?.getNotificationChannel(CHANNEL_MESSAGES)
@@ -275,19 +301,6 @@ class MainActivity : FlutterActivity() {
                                 false
                             }
                             result.success(isAllowed)
-                        }
-
-                        "openBubbleSettings" -> {
-                            try {
-                                startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_BUBBLE_SETTINGS).apply {
-                                    putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                })
-                                result.success(true)
-                            } catch (e: Exception) {
-                                Log.e(TAG, "❌ openBubbleSettings: $e")
-                                result.success(false)
-                            }
                         }
 
                         "getActiveBubbles" -> {
@@ -511,8 +524,6 @@ object EngineWarmer {
         try {
             val eng = FlutterEngine(context.applicationContext)
 
-            // [SỬA LỖI P1]: Do được gọi từ Main Thread của MainActivity nên phần đăng ký plugin và
-            // reflection này sẽ chạy chuẩn xác tuyệt đối mà không lo gây crash ngầm.
             try {
                 val registryClass = Class.forName("io.flutter.plugins.GeneratedPluginRegistrant")
                 val registerMethod = registryClass.getDeclaredMethod("registerWith", FlutterEngine::class.java)
@@ -522,7 +533,6 @@ object EngineWarmer {
                 Log.w(TAG, "⚠️ GeneratedPluginRegistrant setup failed: $e")
             }
 
-            // [SỬA LỖI P1]: Tách biệt entry points dựa trên định danh engineId để tránh deadlock tệp khóa của Hive
             val bundlePath = FlutterInjector.instance().flutterLoader().findAppBundlePath()
             val entrypoint = when (engineId) {
                 "bubble_chat_engine" -> DartExecutor.DartEntrypoint(bundlePath, "bubbleMain")

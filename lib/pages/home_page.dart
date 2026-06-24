@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart'; // [+] listEquals
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
@@ -95,6 +96,16 @@ class _HomePageState extends State<HomePage>
   bool _isPrefetching = false;
   Timer? _prefetchDebouncer;
 
+  // [+] Prefetch de-dupe: only schedule when doc list actually changes
+  List<String>? _lastPrefetchDocIds;
+
+  // [+] Time-string cache: safe to cache day-and-older formats; keeps fresh for recent
+  final Map<String, String> _timeAgoCache = {};
+
+  // [+] Search stream cache: prevents creating a new Firestore listener on every rebuild
+  Stream<QuerySnapshot>? _activeSearchStream;
+  String _activeSearchKey = '';
+
   // ── Animations ─────────────────────────────────────────────────────────────
   late AnimationController _fabAnimCtrl;
   late Animation<double> _fabScaleAnim;
@@ -178,12 +189,12 @@ class _HomePageState extends State<HomePage>
             .getConversationsWithPinned(_currentUserId)
             .map(
               (docs) => docs
-              .where(
-                (d) =>
-            (d.data() as Map<String, dynamic>)['isGroup'] == true,
-          )
-              .toList(),
-        );
+                  .where(
+                    (d) =>
+                        (d.data() as Map<String, dynamic>)['isGroup'] == true,
+                  )
+                  .toList(),
+            );
       default:
         _conversationsStream = _conversationProvider.getConversationsWithPinned(
           _currentUserId,
@@ -201,8 +212,8 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _prefetchConversationPeers(
-      List<QueryDocumentSnapshot> docs,
-      ) async {
+    List<QueryDocumentSnapshot> docs,
+  ) async {
     if (_isPrefetching) return;
     _isPrefetching = true;
     try {
@@ -218,7 +229,7 @@ class _HomePageState extends State<HomePage>
             data['participants'] as List? ?? [],
           );
           final otherId = participants.firstWhere(
-                (id) => id != _currentUserId,
+            (id) => id != _currentUserId,
             orElse: () => '',
           );
           if (otherId.isNotEmpty && !_userProfileCache.containsKey(otherId)) {
@@ -227,14 +238,18 @@ class _HomePageState extends State<HomePage>
         }
       }
       if (missingUserIds.isEmpty && missingGroupIds.isEmpty) return;
+
       final newUsers = missingUserIds.isNotEmpty
           ? await _homeProvider.batchFetchUserChats(missingUserIds)
           : <String, UserChat>{};
       final newGroups = missingGroupIds.isNotEmpty
           ? await _homeProvider.batchFetchGroups(missingGroupIds)
           : <String, Group>{};
+
       if (!mounted) return;
+      // [+] Skip setState when nothing actually changed to avoid unnecessary rebuild
       if (newUsers.isEmpty && newGroups.isEmpty) return;
+
       setState(() {
         _userProfileCache.addAll(newUsers);
         _groupCache.addAll(newGroups);
@@ -335,7 +350,7 @@ class _HomePageState extends State<HomePage>
           fs
               .where(FirestoreConstants.userId2, isEqualTo: _currentUserId)
               .snapshots(),
-              (snap1, snap2) {
+          (snap1, snap2) {
             final ids = <String>{};
             for (final d in snap1.docs) {
               ids.add(d[FirestoreConstants.userId2] as String);
@@ -356,15 +371,20 @@ class _HomePageState extends State<HomePage>
     if (!_scrollController.hasClients) return;
     final pos = _scrollController.position;
     if (!pos.hasContentDimensions) return;
+
+    // [+] Debounce _isLoadingMore reset with a flag check to avoid race
     if (_textSearch.isNotEmpty &&
         !_isLoadingMore &&
         pos.pixels >= pos.maxScrollExtent - 300) {
       _isLoadingMore = true;
       setState(() => _searchLimit += _limitIncrement);
+      // [+] Invalidate cached search stream so new limit is applied
+      _activeSearchKey = '';
       Future.delayed(const Duration(milliseconds: 1500), () {
         if (mounted) _isLoadingMore = false;
       });
     }
+
     final show = pos.pixels > 280;
     if (show != _showScrollToTop) setState(() => _showScrollToTop = show);
   }
@@ -384,12 +404,39 @@ class _HomePageState extends State<HomePage>
 
   void _closeFab() {}
 
+  // ── Search stream helper ───────────────────────────────────────────────────
+  // [+] Returns a cached Firestore stream so no new listener is created on rebuild
+  Stream<QuerySnapshot> _getSearchStream(String query, int limit) {
+    final key = '$query::$limit';
+    if (key == _activeSearchKey && _activeSearchStream != null) {
+      return _activeSearchStream!;
+    }
+    _activeSearchKey = key;
+    final isPhone = RegExp(r'^[+\d][\d\s-]*$').hasMatch(query);
+    _activeSearchStream = isPhone
+        ? _homeProvider.firebaseFirestore
+              .collection(FirestoreConstants.pathUserCollection)
+              .where(FirestoreConstants.phoneNumber, isEqualTo: query)
+              .limit(limit)
+              .snapshots()
+        : _homeProvider.firebaseFirestore
+              .collection(FirestoreConstants.pathUserCollection)
+              .where(FirestoreConstants.nickname, isGreaterThanOrEqualTo: query)
+              .where(
+                FirestoreConstants.nickname,
+                isLessThanOrEqualTo: '$query\uf8ff',
+              )
+              .limit(limit)
+              .snapshots();
+    return _activeSearchStream!;
+  }
+
   // ── Navigation ─────────────────────────────────────────────────────────────
 
   void _redirectToLogin() {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => LoginPage()),
-          (_) => false,
+      (_) => false,
     );
   }
 
@@ -433,7 +480,7 @@ class _HomePageState extends State<HomePage>
     if (!mounted) return;
     await Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => LoginPage()),
-          (_) => false,
+      (_) => false,
     );
   }
 
@@ -463,6 +510,37 @@ class _HomePageState extends State<HomePage>
 
   void _push(Widget page) => Navigator.push(context, _slideRoute(page));
 
+  // [TÍCH HỢP BATCH 4]: Xử lý hiển thị Onboarding Dialog khi người dùng ấn vào Banner
+  Future<void> _handleBannerTap() async {
+    try {
+      final method = const MethodChannel('chat_bubbles_v2');
+      final oemName =
+          await method.invokeMethod<String>('getOemName') ?? 'Android';
+      final rawSteps = await method.invokeListMethod<String>(
+        'getBubbleSetupSteps',
+      );
+      final steps =
+          rawSteps?.cast<String>() ??
+          ['Cài đặt → Thông báo → Cho phép bong bóng'];
+
+      if (!mounted) return;
+
+      await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => BubbleOnboardingDialog(
+          status: BubblePermissionService.instance.currentStatus,
+          oemName: oemName,
+          setupSteps: steps,
+        ),
+      );
+
+      BubblePermissionService.instance.refresh();
+    } catch (e) {
+      debugPrint('Lỗi hiển thị Onboarding: $e');
+    }
+  }
+
   // ── Conversation swipe actions ─────────────────────────────────────────────
 
   Widget _wrapWithSwipe({
@@ -472,15 +550,22 @@ class _HomePageState extends State<HomePage>
     return Dismissible(
       key: ValueKey('swipe_${conversation.id}'),
       background: Container(
-        color: _kAccent,
+        // [+] Gradient background gives a more modern feel than flat color
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [_kAccent, Color(0xFF0060D0)],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+        ),
         alignment: Alignment.centerLeft,
         padding: const EdgeInsets.only(left: 24),
-        child: Column(
+        child: const Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.done_all_rounded, color: Colors.white, size: 22),
-            const SizedBox(height: 4),
-            const Text(
+            Icon(Icons.done_all_rounded, color: Colors.white, size: 22),
+            SizedBox(height: 4),
+            Text(
               'Đã đọc',
               style: TextStyle(
                 color: Colors.white,
@@ -492,15 +577,21 @@ class _HomePageState extends State<HomePage>
         ),
       ),
       secondaryBackground: Container(
-        color: _kOrange,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFFDD7700), _kOrange],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+        ),
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 24),
-        child: Column(
+        child: const Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.archive_rounded, color: Colors.white, size: 22),
-            const SizedBox(height: 4),
-            const Text(
+            Icon(Icons.archive_rounded, color: Colors.white, size: 22),
+            SizedBox(height: 4),
+            Text(
               'Lưu trữ',
               style: TextStyle(
                 color: Colors.white,
@@ -586,18 +677,31 @@ class _HomePageState extends State<HomePage>
     if (type == TypeMessage.document) return '📄 Tài liệu';
     if (type == TypeMessage.poll) return '📊 Bình chọn';
     if (msg.isEmpty) return 'Bắt đầu cuộc trò chuyện';
-
-    // Trả về thẳng msg để _ConversationTile sẽ tự xử lý logic dịch/giải mã ở UI
     return msg;
   }
 
+  // [+] Cache only stable (day+) formats; recent relative times computed fresh
   String _timeAgo(String timestamp) {
     if (timestamp.isEmpty || timestamp == '0') return '';
     try {
       final t = DateTime.fromMillisecondsSinceEpoch(int.parse(timestamp));
       final diff = DateTime.now().difference(t);
-      if (diff.inDays > 6) return DateFormat('d MMM').format(t);
-      if (diff.inDays > 0) return DateFormat('EEE').format(t);
+
+      if (diff.inDays > 6) {
+        // Stable — cache indefinitely
+        return _timeAgoCache.putIfAbsent(
+          timestamp,
+          () => DateFormat('d MMM').format(t),
+        );
+      }
+      if (diff.inDays > 0) {
+        // Stable within the same day — cache
+        return _timeAgoCache.putIfAbsent(
+          timestamp,
+          () => DateFormat('EEE').format(t),
+        );
+      }
+      // Recent — compute fresh (changes every minute/hour)
       if (diff.inHours > 0) return '${diff.inHours}g';
       if (diff.inMinutes > 0) return '${diff.inMinutes}ph';
       return 'vừa xong';
@@ -660,7 +764,7 @@ class _HomePageState extends State<HomePage>
       backgroundColor: _bg(isDark),
       body: Stack(
         children: [
-          // ── Main layout ──────────────────────────────────────────────────────
+          // ── Main layout ──────────────────────────────────────────────────
           SafeArea(
             bottom: false,
             child: Column(
@@ -686,14 +790,49 @@ class _HomePageState extends State<HomePage>
                     ),
                     slivers: [
                       if (_textSearch.isEmpty) ...[
-                        // Stories row
+                        // [TÍCH HỢP BATCH 4]: Cảnh báo Quyền Bong bóng Chat (Banner)
+                        SliverToBoxAdapter(
+                          child: FadeTransition(
+                            opacity: _filterAnim,
+                            child: StreamBuilder<BubblePermissionStatus>(
+                              stream:
+                                  BubblePermissionService.instance.statusStream,
+                              builder: (ctx, snap) {
+                                final s =
+                                    snap.data ??
+                                    BubblePermissionService
+                                        .instance
+                                        .currentStatus;
+
+                                // Nếu permission ok, hoặc bị block cứng bởi phần cứng -> không hiện Banner
+                                if (s.isReady ||
+                                    s.isHardBlocked ||
+                                    s == BubblePermissionStatus.unknown) {
+                                  return const SizedBox.shrink();
+                                }
+
+                                return Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    0,
+                                    16,
+                                    12,
+                                  ),
+                                  child: BubblePermissionBanner(
+                                    status: s,
+                                    onTap: _handleBannerTap,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
                         SliverToBoxAdapter(
                           child: FadeTransition(
                             opacity: _filterAnim,
                             child: _buildStoriesRow(storyProvider, isDark),
                           ),
                         ),
-                        // Filter chips với unread count
                         SliverToBoxAdapter(
                           child: FadeTransition(
                             opacity: _filterAnim,
@@ -701,18 +840,14 @@ class _HomePageState extends State<HomePage>
                           ),
                         ),
                       ],
-
-                      // Chat list hoặc search results
                       SliverToBoxAdapter(
                         child: _textSearch.isEmpty
                             ? _buildChatList(isDark)
-                            : Container(
-                          color: _surface(isDark),
-                          child: _buildSearchResults(isDark),
-                        ),
+                            : ColoredBox(
+                                color: _surface(isDark),
+                                child: _buildSearchResults(isDark),
+                              ),
                       ),
-
-                      // Bottom padding for FAB + dock
                       SliverToBoxAdapter(
                         child: SizedBox(height: bottomPad + 130),
                       ),
@@ -723,10 +858,10 @@ class _HomePageState extends State<HomePage>
             ),
           ),
 
-          // ── Loading overlay ──────────────────────────────────────────────────
+          // ── Loading overlay ──────────────────────────────────────────────
           if (_isLoading) const LoadingView(),
 
-          // ── Bubble Dock ──────────────────────────────────────────────────────
+          // ── Bubble Dock ──────────────────────────────────────────────────
           _BubbleDock(
             currentUserId: _currentUserId,
             isDark: isDark,
@@ -755,7 +890,7 @@ class _HomePageState extends State<HomePage>
             ),
           ),
 
-          // ── Compose FAB ──────────────────────────────────────────────────────
+          // ── Compose FAB ──────────────────────────────────────────────────
           Positioned(
             right: 16,
             bottom: bottomPad + 80,
@@ -765,7 +900,7 @@ class _HomePageState extends State<HomePage>
             ),
           ),
 
-          // ── Scroll-to-top ────────────────────────────────────────────────────
+          // ── Scroll-to-top ────────────────────────────────────────────────
           AnimatedPositioned(
             duration: const Duration(milliseconds: 260),
             curve: Curves.easeOut,
@@ -792,14 +927,11 @@ class _HomePageState extends State<HomePage>
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // User avatar → settings
           GestureDetector(
             onTap: () => _push(const SettingsPage()),
             child: _AvatarRing(photoUrl: photoUrl, name: name, isDark: isDark),
           ),
           const SizedBox(width: 12),
-
-          // Title + unread badge
           Expanded(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -871,8 +1003,6 @@ class _HomePageState extends State<HomePage>
             },
           ),
           const SizedBox(width: 4),
-
-          // QR scan
           _NavBtn(
             icon: Icons.qr_code_scanner_rounded,
             isDark: isDark,
@@ -880,8 +1010,6 @@ class _HomePageState extends State<HomePage>
             onTap: _scanQRCode,
           ),
           const SizedBox(width: 4),
-
-          // More menu
           _buildMenuButton(isDark),
         ],
       ),
@@ -908,9 +1036,9 @@ class _HomePageState extends State<HomePage>
                 borderRadius: BorderRadius.circular(11),
                 border: _isSearchFocused
                     ? Border.all(
-                  color: _kAccent.withValues(alpha: 0.55),
-                  width: 1.5,
-                )
+                        color: _kAccent.withValues(alpha: 0.55),
+                        width: 1.5,
+                      )
                     : Border.all(color: Colors.transparent),
               ),
               child: Row(
@@ -948,10 +1076,22 @@ class _HomePageState extends State<HomePage>
                         _searchDebouncer.run(() {
                           if (!mounted) return;
                           _btnClearController.add(v.isNotEmpty);
-                          setState(() {
-                            _textSearch = v;
-                            _searchLimit = 20;
-                          });
+                          if (v.isEmpty) {
+                            // [+] Reset search stream cache on clear
+                            setState(() {
+                              _textSearch = '';
+                              _searchLimit = 20;
+                              _activeSearchStream = null;
+                              _activeSearchKey = '';
+                            });
+                          } else {
+                            setState(() {
+                              _textSearch = v;
+                              _searchLimit = 20;
+                              // [+] Invalidate stale key so new stream is created
+                              _activeSearchKey = '';
+                            });
+                          }
                         });
                       },
                     ),
@@ -959,14 +1099,19 @@ class _HomePageState extends State<HomePage>
                   StreamBuilder<bool>(
                     stream: _btnClearController.stream,
                     builder: (_, snap) {
-                      if (snap.data != true) return const SizedBox(width: 12);
+                      if (snap.data != true) {
+                        return const SizedBox(width: 12);
+                      }
                       return GestureDetector(
                         onTap: () {
                           _searchController.clear();
                           _btnClearController.add(false);
+                          // [+] Also reset cached search stream
                           setState(() {
                             _textSearch = '';
                             _searchLimit = 20;
+                            _activeSearchStream = null;
+                            _activeSearchKey = '';
                           });
                           _searchFocusNode.unfocus();
                         },
@@ -1089,7 +1234,7 @@ class _HomePageState extends State<HomePage>
                       .where((s) => s.userId != _currentUserId)
                       .toList();
                   final idx = others.indexWhere(
-                        (s) => s.userId == userStories.userId,
+                    (s) => s.userId == userStories.userId,
                   );
                   _push(
                     StoryViewerPage(
@@ -1097,14 +1242,14 @@ class _HomePageState extends State<HomePage>
                       initialUserIndex: idx < 0 ? 0 : idx,
                       currentUserId: _currentUserId,
                       currentUserName:
-                      _authProvider.prefs.getString(
-                        FirestoreConstants.nickname,
-                      ) ??
+                          _authProvider.prefs.getString(
+                            FirestoreConstants.nickname,
+                          ) ??
                           '',
                       currentUserPhotoUrl:
-                      _authProvider.prefs.getString(
-                        FirestoreConstants.photoUrl,
-                      ) ??
+                          _authProvider.prefs.getString(
+                            FirestoreConstants.photoUrl,
+                          ) ??
                           '',
                     ),
                   );
@@ -1193,13 +1338,13 @@ class _HomePageState extends State<HomePage>
 
   Widget _buildChatList(bool isDark) {
     if (_conversationsStream == null) {
-      return Container(color: _surface(isDark), child: _buildSkeleton(isDark));
+      return ColoredBox(color: _surface(isDark), child: _buildSkeleton(isDark));
     }
     return StreamBuilder<List<QueryDocumentSnapshot>>(
       stream: _conversationsStream,
       builder: (_, snap) {
         if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-          return Container(
+          return ColoredBox(
             color: _surface(isDark),
             child: _buildSkeleton(isDark),
           );
@@ -1211,26 +1356,31 @@ class _HomePageState extends State<HomePage>
           final participants = List<String>.from(
             data['participants'] as List? ?? [],
           );
-          if (participants.contains(AppConstants.aiAssistantId)) return false;
-          return true;
+          return !participants.contains(AppConstants.aiAssistantId);
         }).toList();
 
-        _schedulePrefetch(activeDocs);
+        // [+] Only reschedule prefetch when the doc ID list actually changes
+        final currentIds = activeDocs.map((d) => d.id).toList();
+        if (!listEquals(currentIds, _lastPrefetchDocIds)) {
+          _lastPrefetchDocIds = currentIds;
+          _schedulePrefetch(activeDocs);
+        }
 
-        return Container(
+        return ColoredBox(
           color: _surface(isDark),
           child: Column(
             children: [
-              // AI assistant row
               _buildAiItem(isDark),
               Divider(height: 0.5, indent: 72, color: _sep(isDark)),
-
               if (activeDocs.isEmpty)
                 _buildEmptyState(isDark)
               else
                 ListView.separated(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
+                  // [+] We add our own RepaintBoundary; Flutter's defaults are redundant
+                  addAutomaticKeepAlives: false,
+                  addRepaintBoundaries: false,
                   itemCount: activeDocs.length,
                   separatorBuilder: (_, __) =>
                       Divider(height: 0.5, indent: 72, color: _sep(isDark)),
@@ -1396,11 +1546,14 @@ class _HomePageState extends State<HomePage>
         onLongPress: () => _showConversationOptions(conversation),
       );
 
-      return _wrapWithSwipe(child: tile, conversation: conversation);
+      // [+] RepaintBoundary isolates each tile's repaint layer
+      return RepaintBoundary(
+        child: _wrapWithSwipe(child: tile, conversation: conversation),
+      );
     }
 
     final otherId = conversation.participants.firstWhere(
-          (id) => id != _currentUserId,
+      (id) => id != _currentUserId,
       orElse: () => '',
     );
     if (otherId.isEmpty) return const SizedBox.shrink();
@@ -1452,32 +1605,20 @@ class _HomePageState extends State<HomePage>
       onLongPress: () => _showConversationOptions(conversation),
     );
 
-    return _wrapWithSwipe(child: tile, conversation: conversation);
+    // [+] RepaintBoundary isolates each tile's repaint layer
+    return RepaintBoundary(
+      child: _wrapWithSwipe(child: tile, conversation: conversation),
+    );
   }
 
   // ── Search Results ─────────────────────────────────────────────────────────
 
   Widget _buildSearchResults(bool isDark) {
     final query = _textSearch.trim();
-    final isPhone = RegExp(r'^[+\d][\d\s-]*$').hasMatch(query);
-    final stream = isPhone
-        ? _homeProvider.firebaseFirestore
-        .collection(FirestoreConstants.pathUserCollection)
-        .where(FirestoreConstants.phoneNumber, isEqualTo: query)
-        .limit(_searchLimit)
-        .snapshots()
-        : _homeProvider.firebaseFirestore
-        .collection(FirestoreConstants.pathUserCollection)
-        .where(FirestoreConstants.nickname, isGreaterThanOrEqualTo: query)
-        .where(
-      FirestoreConstants.nickname,
-      isLessThanOrEqualTo: '$query\uf8ff',
-    )
-        .limit(_searchLimit)
-        .snapshots();
 
     return StreamBuilder<QuerySnapshot>(
-      stream: stream,
+      // [+] Use cached stream to avoid creating a new Firestore listener on every rebuild
+      stream: _getSearchStream(query, _searchLimit),
       builder: (_, snap) {
         if (!snap.hasData) return _buildSkeleton(isDark);
         final docs = snap.data!.docs
@@ -1489,6 +1630,8 @@ class _HomePageState extends State<HomePage>
             ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
+              addAutomaticKeepAlives: false, // [+]
+              addRepaintBoundaries: false, // [+]
               itemCount: docs.length,
               separatorBuilder: (_, __) =>
                   Divider(height: 0.5, indent: 72, color: _sep(isDark)),
@@ -1692,11 +1835,117 @@ class _HomePageState extends State<HomePage>
   Widget _buildSkeleton(bool isDark) => ListView.separated(
     shrinkWrap: true,
     physics: const NeverScrollableScrollPhysics(),
+    addAutomaticKeepAlives: false, // [+]
     itemCount: 8,
     separatorBuilder: (_, __) =>
         Divider(height: 0.5, indent: 72, color: _sep(isDark)),
     itemBuilder: (_, __) => _SkeletonTile(isDark: isDark),
   );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// DECRYPTED TEXT WIDGET
+// [+] NEW: StatefulWidget with a shared static cache to prevent repeated
+//     decryption calls when the parent widget rebuilds. Previously, an inline
+//     FutureBuilder would restart decryption on every parent rebuild, causing
+//     flicker ("🔒 Đang giải mã...") and wasted async work.
+// ════════════════════════════════════════════════════════════════════════════
+
+class _DecryptedText extends StatefulWidget {
+  final String cipherText;
+  final String conversationId;
+  final List<String> participants;
+  final String currentUserId;
+  final TextStyle style;
+  final int maxChars;
+
+  const _DecryptedText({
+    required this.cipherText,
+    required this.conversationId,
+    required this.participants,
+    required this.currentUserId,
+    required this.style,
+    this.maxChars = 44,
+  });
+
+  @override
+  State<_DecryptedText> createState() => _DecryptedTextState();
+}
+
+class _DecryptedTextState extends State<_DecryptedText> {
+  // Static cache shared across all list tiles; survives widget rebuilds
+  static final Map<String, String> _cache = {};
+  static const int _kMaxSize = 400;
+
+  String? _result; // null → pending
+
+  @override
+  void initState() {
+    super.initState();
+    _resolve();
+  }
+
+  @override
+  void didUpdateWidget(_DecryptedText old) {
+    super.didUpdateWidget(old);
+    // Re-decrypt if the message itself changed (e.g., conversation updated)
+    if (old.cipherText != widget.cipherText ||
+        old.conversationId != widget.conversationId) {
+      _result = null;
+      _resolve();
+    }
+  }
+
+  // Short but unique key: conversationId + cipher hash
+  String _cacheKey() =>
+      '${widget.conversationId}_${widget.cipherText.hashCode}';
+
+  void _resolve() {
+    final k = _cacheKey();
+    final cached = _cache[k];
+    if (cached != null) {
+      _result = cached; // Already done — no setState needed in initState
+      return;
+    }
+    _decrypt(k);
+  }
+
+  Future<void> _decrypt(String k) async {
+    try {
+      final raw = await EncryptionService().decryptPayload(
+        widget.cipherText,
+        widget.conversationId,
+        widget.participants,
+        widget.currentUserId,
+      );
+      var display = raw;
+      if (display.startsWith('{"iv":')) display = '🔒 Tin nhắn bảo mật';
+
+      // Evict oldest entries when cache grows too large
+      if (_cache.length >= _kMaxSize) {
+        final toRemove = _cache.keys.take(80).toList();
+        for (final key in toRemove) _cache.remove(key);
+      }
+      _cache[k] = display;
+      if (mounted) setState(() => _result = display);
+    } catch (_) {
+      if (mounted) setState(() => _result = '🔒 Tin nhắn bảo mật');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = _result ?? '🔒 Đang giải mã...';
+    final display = text.length > widget.maxChars
+        ? '${text.substring(0, widget.maxChars)}…'
+        : text;
+    return Text(
+      display,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: widget.style,
+    );
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1795,7 +2044,7 @@ class _BubbleDock extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       ...bubbles.map(
-                            (b) => _BubbleAvatar(
+                        (b) => _BubbleAvatar(
                           bubble: b,
                           isDark: isDark,
                           onTap: () {
@@ -1906,15 +2155,15 @@ class _BubbleAvatarState extends State<_BubbleAvatar>
                 backgroundColor: _kAccent.withValues(alpha: 0.2),
                 child: b.avatarUrl.isEmpty
                     ? Text(
-                  b.userName.isNotEmpty
-                      ? b.userName[0].toUpperCase()
-                      : '?',
-                  style: const TextStyle(
-                    color: _kAccent,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 13,
-                  ),
-                )
+                        b.userName.isNotEmpty
+                            ? b.userName[0].toUpperCase()
+                            : '?',
+                        style: const TextStyle(
+                          color: _kAccent,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                        ),
+                      )
                     : null,
               ),
               if (b.unreadCount > 0)
@@ -2034,10 +2283,11 @@ class _AvatarRing extends StatelessWidget {
       child: ClipOval(
         child: photoUrl.isNotEmpty
             ? Image.network(
-          photoUrl,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _initials(),
-        )
+                photoUrl,
+                fit: BoxFit.cover,
+                filterQuality: FilterQuality.low, // [+] Faster decode
+                errorBuilder: (_, __, ___) => _initials(),
+              )
             : _initials(),
       ),
     );
@@ -2247,6 +2497,7 @@ class _ConversationTile extends StatelessWidget {
       fontWeight: hasUnread ? FontWeight.w500 : FontWeight.w400,
     );
 
+    // Media shorthand — emoji prefix detection
     if (lastMessage.startsWith('📷') ||
         lastMessage.startsWith('😊') ||
         lastMessage.startsWith('🎥') ||
@@ -2256,48 +2507,30 @@ class _ConversationTile extends StatelessWidget {
       return Text(lastMessage, style: style);
     }
 
+    // [+] Use _DecryptedText (StatefulWidget with static cache) instead of
+    //     an inline FutureBuilder, preventing restart on every parent rebuild
     if (EncryptionService().isEncrypted(lastMessage)) {
-      return FutureBuilder<String>(
-        future: EncryptionService().decryptPayload(
-          lastMessage,
-          id,
-          participants,
-          currentUserId,
-        ),
-        builder: (context, snapshot) {
-          String display = '🔒 Đang giải mã...';
-          if (snapshot.connectionState == ConnectionState.done) {
-            if (snapshot.hasData) {
-              display = snapshot.data!;
-              if (display.startsWith('{"iv":')) {
-                display = '🔒 Tin nhắn bảo mật';
-              }
-            } else {
-              display = '🔒 Tin nhắn bảo mật';
-            }
-          }
-          return Text(
-            display.length > 44 ? '${display.substring(0, 44)}…' : display,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: style,
-          );
-        },
+      return _DecryptedText(
+        cipherText: lastMessage,
+        conversationId: id,
+        participants: participants,
+        currentUserId: currentUserId,
+        style: style,
       );
     }
 
+    // Plain-text pattern matching
     String displayText = lastMessage;
     if (displayText.startsWith('{"iv":') || displayText.startsWith('eyJ')) {
       displayText = '🔒 Tin nhắn bảo mật';
     } else if (displayText.startsWith('{"type":"group_call_') ||
         displayText.startsWith('{"type":"call_')) {
-      if (displayText.contains('ended')) {
+      if (displayText.contains('ended'))
         displayText = '📞 Cuộc gọi đã kết thúc';
-      } else if (displayText.contains('missed')) {
+      else if (displayText.contains('missed'))
         displayText = '📞 Cuộc gọi nhỡ';
-      } else {
+      else
         displayText = '📞 Cuộc gọi';
-      }
     } else if (displayText.startsWith('{"board":')) {
       displayText = '🎮 Lời mời game Caro';
     } else if (displayText.startsWith('{"question":')) {
@@ -2351,7 +2584,11 @@ class _ConversationTile extends StatelessWidget {
                       Positioned(
                         right: 1,
                         bottom: 1,
-                        child: _OnlineDot(userId: onlineUserId!),
+                        // [+] RepaintBoundary so online-dot stream rebuilds
+                        //     don't dirty the rest of the tile
+                        child: RepaintBoundary(
+                          child: _OnlineDot(userId: onlineUserId!),
+                        ),
                       ),
                     if (isMuted)
                       Positioned(
@@ -2529,11 +2766,16 @@ class _Avatar extends StatelessWidget {
         ),
       );
     }
+
     final colorIdx = name.isEmpty
         ? 0
         : name.codeUnitAt(0) % ColorConstants.avatarColors.length;
     final avatarColor = ColorConstants.avatarColors[colorIdx];
     final initials = name.isNotEmpty ? name[0].toUpperCase() : '?';
+
+    // [+] cacheWidth/cacheHeight reduce decoded image memory proportionally
+    final cacheSize = (size * 2).toInt(); // 2× for high-DPI
+
     return Container(
       width: size,
       height: size,
@@ -2548,10 +2790,13 @@ class _Avatar extends StatelessWidget {
       child: ClipOval(
         child: photoUrl.isNotEmpty
             ? Image.network(
-          photoUrl,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _fallback(initials, avatarColor),
-        )
+                photoUrl,
+                fit: BoxFit.cover,
+                filterQuality: FilterQuality.low, // [+] Faster GPU path
+                cacheWidth: cacheSize, // [+] Reduced memory footprint
+                cacheHeight: cacheSize,
+                errorBuilder: (_, __, ___) => _fallback(initials, avatarColor),
+              )
             : _fallback(initials, avatarColor),
       ),
     );
@@ -2740,6 +2985,8 @@ class _ScrollToTopButton extends StatelessWidget {
 
 // ════════════════════════════════════════════════════════════════════════════
 // SKELETON TILE
+// Shimmer animation per-tile with bounded AnimationController.
+// Each tile independently animates so the list never stalls.
 // ════════════════════════════════════════════════════════════════════════════
 
 class _SkeletonTile extends StatefulWidget {
@@ -2777,15 +3024,15 @@ class _SkeletonTileState extends State<_SkeletonTile>
     builder: (_, __) {
       final base = widget.isDark
           ? Color.lerp(
-        const Color(0xFF1C1C22),
-        const Color(0xFF2C2C34),
-        _anim.value,
-      )!
+              const Color(0xFF1C1C22),
+              const Color(0xFF2C2C34),
+              _anim.value,
+            )!
           : Color.lerp(
-        const Color(0xFFF2F2F7),
-        const Color(0xFFE5E5EA),
-        _anim.value,
-      )!;
+              const Color(0xFFF2F2F7),
+              const Color(0xFFE5E5EA),
+              _anim.value,
+            )!;
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
         child: Row(

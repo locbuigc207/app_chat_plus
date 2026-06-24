@@ -118,12 +118,10 @@ class BubbleActivity : FlutterActivity() {
             Log.d(TAG, "🔧 Creating new bubble engine")
             eng = FlutterEngine(ctx.applicationContext)
 
-            // [SỬA LỖI P1]: Sử dụng entry point bubbleMain thay vì createDefault() để tránh conflict Hive
+            // Sử dụng entry point bubbleMain thay vì createDefault() để tránh conflict Hive
+            val bundlePath = FlutterInjector.instance().flutterLoader().findAppBundlePath()
             eng.dartExecutor.executeDartEntrypoint(
-                DartExecutor.DartEntrypoint(
-                    FlutterInjector.instance().flutterLoader().findAppBundlePath(),
-                    "bubbleMain"
-                )
+                DartExecutor.DartEntrypoint(bundlePath, "bubbleMain")
             )
             cache.put(BUBBLE_ENGINE_ID, eng)
         } else {
@@ -169,7 +167,13 @@ class BubbleActivity : FlutterActivity() {
     override fun onResume() {
         super.onResume()
         val uid = pendingUid ?: return
-        if (isFlutterReady && !navigatedUsers.contains(uid)) scheduleNav(0)
+
+        // [SỬA LỖI TỐI THƯỢNG]: Gọi chủ động điều hướng ngay trong onResume thay vì chỉ
+        // chờ đợi scheduleNav thụ động. Xóa cache nếu cần ép reload
+        if (isFlutterReady) {
+            Log.d(TAG, "▶️ onResume - Force pushing intent")
+            doNavigate(uid, pendingName ?: "", pendingAvatar ?: "")
+        }
     }
 
     override fun onPause() {
@@ -196,7 +200,7 @@ class BubbleActivity : FlutterActivity() {
         currentName   = newName
         currentAvatar = intent.getStringExtra(EXTRA_AVATAR)
 
-        // [SỬA LỖI MỚI 5]: Cập nhật LocusId ngay khi Bubble nhận intent của user khác
+        // Cập nhật LocusId ngay khi Bubble nhận intent của user khác
         setLocusContext(LocusId(newUid), null)
 
         setPending()
@@ -223,7 +227,7 @@ class BubbleActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
-        // [SỬA LỖI P1]: Báo cho Manager biết bong bóng đã bị đóng hoàn toàn
+        // Báo cho Manager biết bong bóng đã bị đóng hoàn toàn
         BubbleNotificationManager.markCollapsed(currentUid ?: "")
 
         mainHandler.removeCallbacksAndMessages(null)
@@ -260,7 +264,7 @@ class BubbleActivity : FlutterActivity() {
                     Log.d(TAG, "🟢 Flutter ready")
                     isFlutterReady = true
 
-                    // [SỬA LỖI P1]: Đánh dấu trạng thái expanded khi Dart phía Bubble đã sẵn sàng
+                    // Đánh dấu trạng thái expanded khi Dart phía Bubble đã sẵn sàng
                     BubbleNotificationManager.markExpanded(currentUid ?: "")
 
                     scheduleNav(0)
@@ -282,7 +286,7 @@ class BubbleActivity : FlutterActivity() {
             }
         }
 
-        // [SỬA LỖI MỚI 6]: Signal cho Flutter biết nếu đây là HyperOS 2 để xử lý resize linh hoạt
+        // Signal cho Flutter biết nếu đây là HyperOS 2 để xử lý resize linh hoạt
         val isHyperOS2 = System.getProperty("ro.product.build.version.incremental", "").contains("OS2") ||
                 System.getProperty("ro.build.version.hyperos", "").startsWith("2") ||
                 System.getProperty("ro.miui.ui.version.name", "").isNotEmpty() &&
@@ -316,7 +320,13 @@ class BubbleActivity : FlutterActivity() {
         val name  = pendingName  ?: return
         val av    = pendingAvatar ?: ""
 
-        if (navigatedUsers.contains(uid)) return
+        if (navigatedUsers.contains(uid)) {
+            // [SỬA LỖI P0]: Nếu đã tồn tại trong mảng navigated thì ép gọi doNavigate lại
+            // để đảm bảo Dart bắt buộc phải cập nhật lại UI chứ không bỏ ngỏ gây màn hình trắng.
+            Log.d(TAG, "♻️ User $uid already in cache, forcing nav update")
+            doNavigate(uid, name, av)
+            return
+        }
 
         if (!isFlutterReady) {
             if (attempt >= MAX_RETRIES) {

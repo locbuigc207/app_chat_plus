@@ -8,15 +8,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Trạng thái chi tiết về quyền Bong bóng chat trên Android
-enum BubblePermissionStatus {
-  fullySupported,
-  notificationDisabled,
-  channelDisabled,
-  batteryNotWhitelisted,
-  oemBlocked,
-  unknown,
-}
+// Import file chứa định nghĩa enum BubblePermissionStatus
+import 'package:flutter_chat_demo/services/bubble_permission_service.dart';
 
 /// Service that wraps the Android Bubble API (Android 11+ / API 30+).
 /// Uses [MethodChannel] for imperative calls and [EventChannel] for
@@ -42,9 +35,6 @@ class BubbleServiceV2 {
   final Map<String, BubbleData> _activeBubbles = {};
 
   // ── Stream controllers ────────────────────────────────────────────────────
-  // [FIX P2]: Sử dụng StreamController duy nhất xuyên suốt vòng đời Singleton.
-  // Không đóng các luồng này khi Provider gọi dispose() vì nó sẽ giết chết Stream
-  // đối với bất kỳ Widget/Service nào đang subscribe.
   final StreamController<BubbleClickEvent> _clickCtrl =
   StreamController<BubbleClickEvent>.broadcast();
   final StreamController<Map<String, BubbleData>> _bubblesCtrl =
@@ -104,7 +94,6 @@ class BubbleServiceV2 {
     }
   }
 
-  // [SỬA LỖI P2]: Hàm kiểm tra phân định trạng thái quyền chi tiết của Bong bóng chat
   Future<BubblePermissionStatus> getBubblePermissionStatus() async {
     if (!Platform.isAndroid) return BubblePermissionStatus.unknown;
     try {
@@ -140,8 +129,6 @@ class BubbleServiceV2 {
   // BUBBLE STATE SYNCHRONIZATION
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// Hàm đồng bộ trạng thái bong bóng từ Native -> Dart
-  /// Gọi hàm này khi khởi tạo app và mỗi khi App Resumed.
   Future<void> syncWithNative() async {
     if (!_isBubbleApiSupported) return;
     try {
@@ -163,7 +150,6 @@ class BubbleServiceV2 {
         if (uid == null || uid.isEmpty) continue;
         currentNativeIds.add(uid);
 
-        // Nếu Native có mà Dart chưa có (bong bóng tạo ngầm từ FCM background)
         if (!_activeBubbles.containsKey(uid)) {
           _activeBubbles[uid] = BubbleData(
             userId: uid,
@@ -178,8 +164,6 @@ class BubbleServiceV2 {
         }
       }
 
-      // Xoá những bong bóng Dart đang lưu nhưng Native thực tế đã đóng
-      // (VD: User tự vuốt tắt bong bóng ngoài màn hình chính khi app đang ở background).
       final keysToRemove = _activeBubbles.keys
           .where((k) => !currentNativeIds.contains(k))
           .toList();
@@ -222,18 +206,16 @@ class BubbleServiceV2 {
   }
 
   void _handleEvent(Map<String, dynamic> event) {
-    // Nếu event là map("event" -> "app_resumed") (Từ fix P2 của Native MainActivity)
     if (event['event'] == 'app_resumed') {
       debugPrint('▶️ App resumed from Native, syncing bubbles...');
       syncWithNative();
       return;
     }
 
-    // [SỬA LỖI MỚI]: Tiếp nhận và đẩy tín hiệu mất quyền hiển thị bong bóng chat lên controller để xử lý UI
     if (event['event'] == 'bubble_permission_lost') {
       debugPrint('⚠️ Bubble permission lost signal received in service');
       if (!_permissionCtrl.isClosed) {
-        _permissionCtrl.add(BubblePermissionStatus.channelDisabled);
+        _permissionCtrl.add(BubblePermissionStatus.bubbleChannelDisabled);
       }
       return;
     }
@@ -292,7 +274,6 @@ class BubbleServiceV2 {
     if (!_isBubbleApiSupported) return false;
 
     try {
-      // If already active, just update
       if (_activeBubbles.containsKey(userId)) {
         return await updateBubble(userId: userId, message: message);
       }
@@ -353,8 +334,6 @@ class BubbleServiceV2 {
                 : existing.unreadCount,
           );
         } else {
-          // Thành công nhưng Dart chưa có state -> Bubble được tạo từ background
-          // Gọi hàm đồng bộ để kéo tên và avatar từ Native về
           await syncWithNative();
         }
         _emitActiveBubbles();
@@ -402,8 +381,6 @@ class BubbleServiceV2 {
     if (existing == null) return false;
 
     try {
-      // [FIX P1]: Gửi tín hiệu xuống Native để xóa Notification History thực sự,
-      // tắt Badge bong bóng chat giống Messenger/Zalo.
       await _method.invokeMethod('clearUnread', {'userId': userId});
     } on PlatformException catch (e) {
       debugPrint('⚠️ clearUnread Native: ${e.message}');
@@ -497,8 +474,6 @@ class BubbleServiceV2 {
 
   Future<void> _restoreBubbles() async {
     try {
-      // [SỬA LỖI MỚI]: Thêm trì hoãn 500ms để đảm bảo luồng MethodChannel giao tiếp với Native Android
-      // đã hoàn toàn sẵn sàng trước khi thực hiện truy vấn kiểm tra Shortcut.
       await Future.delayed(const Duration(milliseconds: 500));
 
       await _initPrefs();
@@ -607,9 +582,6 @@ class BubbleServiceV2 {
     _isDisposing = true;
     debugPrint('🗑️ BubbleServiceV2 disposing EventChannel...');
 
-    // [FIX P2]: Chỉ hủy Subscription lắng nghe MethodChannel.
-    // KHÔNG gọi _clickCtrl.close() hay _bubblesCtrl.close() vì sẽ gây đứt gãy
-    // liên kết với Provider.
     _eventSubscription?.cancel();
     _eventSubscription = null;
 

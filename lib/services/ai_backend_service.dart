@@ -128,6 +128,32 @@ class AIBackendService {
   // CORE METHODS
   // ══════════════════════════════════════════════════════════════════════════
 
+  /// Gọi Cloud Function để lấy AI chat reply (Thay thế GeminiService trực tiếp)
+  Future<String?> generateAiChatReply({
+    required String userMessage,
+    List<String> conversationHistory = const [],
+  }) async {
+    if (userMessage.trim().isEmpty) return null;
+    try {
+      final safeMsg = DataMaskingUtils.maskText(
+        userMessage,
+        config: _kAiMaskingConfig,
+      );
+      final safeHistory = DataMaskingUtils.prepareForAI(conversationHistory);
+
+      final result = await _call(
+        functionName: 'generateAiChatReply',
+        params: {'userMessage': safeMsg, 'conversationHistory': safeHistory},
+        timeout: const Duration(seconds: 30),
+      );
+      if (result?['success'] != true) return null;
+      return result?['reply'] as String?;
+    } catch (e, st) {
+      _logError('generateAiChatReply', e, st);
+      return null;
+    }
+  }
+
   /// Kiểm tra scam nhanh — trả về ScamLevel enum.
   Future<ScamLevel> checkScam(String message) async {
     final result = await analyzeScamDetailed(message);
@@ -514,10 +540,8 @@ class AIBackendService {
     try {
       final safeMessages = DataMaskingUtils.prepareForAI(messages);
 
-      // Đã sửa: Gọi đúng Cloud Function hỗ trợ userProfile có cấu trúc và trả về stickers
       final result = await _call(
-        functionName:
-            'smartReplyEnhanced', // Alias của smartReplyWithContext ở backend
+        functionName: 'smartReplyEnhanced',
         params: {
           'messages': safeMessages,
           'userProfile': {
@@ -532,12 +556,20 @@ class AIBackendService {
 
       if (result == null) return null;
 
+      // ✅ FIX P0: CF alias trả về {reply} không phải {replies}, normalize thành list
+      List<dynamic> repliesList = [];
+      if (result['replies'] is List) {
+        repliesList = result['replies'] as List;
+      } else if (result['suggestions'] is List) {
+        repliesList = result['suggestions'] as List;
+      } else if (result['reply'] is String &&
+          (result['reply'] as String).isNotEmpty) {
+        repliesList = [result['reply']];
+      }
+
       final mappedResult = {
-        'replies': result['replies'] ?? result['suggestions'] ?? [],
-        'stickers':
-            result['stickers'] ??
-            [], // Dữ liệu thật từ backend thay vì hard-code []
-        ...result,
+        'replies': repliesList,
+        'stickers': result['stickers'] ?? result['stickerCards'] ?? [],
       };
 
       return EnhancedSmartReplyResult.fromMap(mappedResult);
@@ -602,7 +634,7 @@ class AIBackendService {
       // Restore PII vào kết quả AI
       final restored = session.restore(rawRewritten);
 
-      // [FIX 10] Cải thiện PII Fallback: Kiểm tra những placeholder không thể restore (bị xoá/sửa bởi AI)
+      // [FIX 10] Cải thiện PII Fallback: Kiểm tra những placeholder không thể restore
       final hasUnrestoredPlaceholders = RegExp(
         r'\[[A-Z]+_\d+\]',
       ).hasMatch(restored);
@@ -652,7 +684,7 @@ class AIBackendService {
   ) async {
     if (messages.isEmpty) return [];
 
-    // [FIX 17] Cài đặt giới hạn 20 message client-side trước khi truyền tải bảo vệ chống rớt payload
+    // [FIX 17] Cài đặt giới hạn 20 message client-side trước khi truyền tải
     const clientLimit = 20;
     if (messages.length > clientLimit) {
       _log(
@@ -744,40 +776,34 @@ class AIBackendService {
           .subtract(Duration(days: lookbackDays))
           .millisecondsSinceEpoch;
 
-      // Đã sửa: Lọc và map cấu trúc Object chứa cả Timestamp thay vì string
-      final recentRawMessages = LocalDbService()
+      final rawMessages = LocalDbService()
           .getMessages(conversationId)
           .where((m) {
             final ts = int.tryParse(m['timestamp']?.toString() ?? '0') ?? 0;
-            return ts >= cutoff;
-          })
-          .take(messageLimit)
-          .where((m) {
             final c = m['content']?.toString() ?? '';
-            return c.isNotEmpty &&
+            return ts >= cutoff &&
+                c.isNotEmpty &&
                 !c.startsWith('{"iv":') &&
                 !c.startsWith('eyJ');
           })
+          .take(messageLimit)
           .toList();
 
-      if (recentRawMessages.length < 5) {
-        _log(
-          'getUserInsights: not enough messages (${recentRawMessages.length})',
-        );
+      if (rawMessages.length < 5) {
+        _log('getUserInsights: not enough messages (${rawMessages.length})');
         return null;
       }
 
-      // Gửi mảng các object chứa text đã che giấu PII và timestamp thật để backend phân tích Activity Pattern
-      final maskedMessages = recentRawMessages.map((m) {
-        final contentStr = m['content']?.toString() ?? '';
-        return {
-          'content': DataMaskingUtils.maskText(
-            contentStr,
-            config: _kAiMaskingConfig,
-          ),
-          'timestamp': m['timestamp'],
-        };
-      }).toList();
+      // ✅ FIX P0: Đưa về mảng các chuỗi thô (List<String>) vì CF cần typeof m === "string"
+      final maskedMessages = rawMessages
+          .map(
+            (m) => DataMaskingUtils.maskText(
+              m['content']?.toString() ?? '',
+              config: _kAiMaskingConfig,
+            ),
+          )
+          .where((s) => s.trim().length > 2)
+          .toList();
 
       final result = await _call(
         functionName: 'getUserInsightsV2',
@@ -792,7 +818,15 @@ class AIBackendService {
       );
 
       if (result == null) return null;
-      return UserInsightsResult.fromMap(Map<String, dynamic>.from(result));
+
+      // ✅ FIX P0: Truy xuất vào trường insights khi có nested response ({success: bool, insights: {...}})
+      if (result['success'] != true) return null;
+      final insights = result['insights'];
+      if (insights == null) return null;
+
+      return UserInsightsResult.fromMap(
+        Map<String, dynamic>.from(insights as Map),
+      );
     } catch (e, st) {
       _logError('getUserInsights', e, st);
       return null;
@@ -824,7 +858,7 @@ class AIBackendService {
     int messageLimit = 100,
   }) async {
     try {
-      // [FIX 5 & 16] Cải thiện filter giữ lại các chuỗi dạng JSON hợp lệ do Client parse lỗi. Sắp xếp list lấy tin nhắn gần nhất nhưng theo thứ tự dòng thời gian
+      // [FIX 5 & 16] Cải thiện filter giữ lại các chuỗi dạng JSON hợp lệ
       final recentMessages = LocalDbService()
           .getMessages(conversationId)
           .take(messageLimit)
@@ -857,7 +891,7 @@ class AIBackendService {
                   return false;
               }
             } catch (_) {
-              // Bỏ qua lỗi bắt JSON vì nó là Plain Text chat bình thường của User, do đó bắt buộc return True
+              // Bỏ qua lỗi bắt JSON vì nó là Plain Text chat bình thường của User
             }
             return true;
           })
@@ -891,10 +925,11 @@ class AIBackendService {
     try {
       final result = await _call(
         functionName: 'getAutoPilotConfig',
-        params: {'conversationId': conversationId, 'userId': userId},
+        params: {'conversationId': conversationId},
         timeout: _kDefaultTimeout,
       );
-      if (result?['success'] == true && result?['config'] != null) {
+      // ✅ FIX P0: Check trường exists vì response của CF là {exists: true, config: {...}}
+      if (result?['exists'] == true && result?['config'] != null) {
         return Map<String, dynamic>.from(result!['config'] as Map);
       }
       return null;
@@ -1028,8 +1063,7 @@ class AIBackendService {
       try {
         final config = await getAutoPilotConfig(
           conversationId: conversationId,
-          userId:
-              '', // Không yêu cầu userID thực do Function tự đối chiếu theo Request.Auth
+          userId: '',
         );
         effectivePersona = config?['learnedPersona'] as String?;
       } catch (_) {
@@ -1194,7 +1228,7 @@ class AIBackendService {
     required List<String> messages,
     required List<String> messageIds,
     bool checkToxicity = true,
-    bool checkHateSpeech = false, // Đã được sử dụng và kích hoạt bên dưới
+    bool checkHateSpeech = false,
   }) async {
     final results = <String, dynamic>{};
     if (messages.isEmpty) return results;
@@ -1215,7 +1249,6 @@ class AIBackendService {
         results['toxicity'] = toxicityResults;
       }
 
-      // Đã sửa: Thực thi kiểm tra checkHateSpeech theo như khai báo
       if (checkHateSpeech) {
         final hateSpeechResults = await Future.wait(
           messages.map((m) => detectHateSpeechDetailed(m)),

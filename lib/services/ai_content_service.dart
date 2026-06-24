@@ -27,8 +27,9 @@ class AiContentService {
   /// Batch size cho cleanup
   static const int _cleanupBatchSize = 500;
 
+  // ✅ FIX P0: Thay đổi tên subcollection từ 'ai_content' thành convId để khớp với Cloud Functions
   CollectionReference<Map<String, dynamic>> _ref(String convId) =>
-      _db.collection('ai_content').doc(convId).collection('ai_content');
+      _db.collection('ai_content').doc(convId).collection(convId);
 
   // ── Push ──────────────────────────────────────────────────────────────────
 

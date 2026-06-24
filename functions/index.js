@@ -54,8 +54,8 @@ const cloudStorageSecret = defineSecret("CLOUD_STORAGE_SECRET");
 // ═════════════════════════════════════════════════════════════════════════════
 // ─── GLOBAL CONSTANTS ────────────────────────────────────────────────────────
 // ═════════════════════════════════════════════════════════════════════════════
-const MODEL_ID = "gemini-3.5-flash";
-const MODEL_FLASH_LITE = "gemini-3.1-flash-lite";
+const MODEL_ID = "gemini-2.5-flash";
+const MODEL_FLASH_LITE = "gemini-2.5-flash-lite";
 const AI_ASSISTANT_ID = "ai_assistant_gemini_001";
 
 const MAX_INPUT_LENGTH = 4000;
@@ -743,7 +743,6 @@ exports.analyzeDecryptedClientMessage = onCall(
 
       const batch = db.batch();
       if (analysis.isScam && conversationId && messageId) {
-        // [FIX P0]: Sửa path lỗi cứng bị lặp "messages" -> sử dụng conversationId làm subcollection
         const msgRef = db
           .collection("messages").doc(conversationId)
           .collection(conversationId).doc(messageId);
@@ -1865,7 +1864,6 @@ exports.triggerInsightsRefresh = onCall(
     }
 
     const cutoff90 = Date.now() - 90 * 24 * 60 * 60 * 1000;
-    // [FIX P0]: Sửa thay thế hardcode collection "ai_content" lỗi -> dùng subcollection convId đúng
     const snap = await db
       .collection("ai_content")
       .doc(convId)
@@ -2092,7 +2090,6 @@ exports.healthCheck = onRequest(
 
 // ─── 31. scheduleMessageDeletion ─────────────────────────────────────────────
 exports.scheduleMessageDeletion = onDocumentCreated(
-  // [FIX P0]: Sử dụng trigger path chuẩn 4-segments (cho subcollection động theo conversationId)
   "messages/{conversationId}/{subId}/{messageId}",
   async (event) => {
     const {conversationId} = event.params;
@@ -2115,7 +2112,6 @@ exports.scheduleMessageDeletion = onDocumentCreated(
 
 // ─── 32. sendMessageNotification ─────────────────────────────────────────────
 exports.sendMessageNotification = onDocumentCreated(
-  // [FIX P0]: Cập nhật trigger path thành 4-segments (messages/{id}/{id}/{msgId})
   "messages/{conversationId}/{subId}/{messageId}",
   async (event) => {
     const {conversationId} = event.params;
@@ -2181,8 +2177,6 @@ exports.sendMessageNotification = onDocumentCreated(
       if (!receiverSnap.exists) return;
       const receiverData = receiverSnap.data();
 
-      // [FIX P2]: Đổi kiểm tra isOnline lỏng lẻo sang chattingWith chuẩn xác
-      // Giúp Bubble Notification có thể hiển thị nếu người dùng không mở đúng đoạn chat
       if (receiverData?.chattingWith === idFrom) return;
 
       const pushToken = receiverData?.pushToken ?? receiverData?.fcmToken;
@@ -2368,7 +2362,6 @@ exports.cleanupExpiredMessages = onSchedule(
       let totalDeleted = 0;
       for (const conv of conversations.docs) {
         if (!conv.data().autoDeleteDuration) continue;
-        // [FIX P0]: Sửa path lỗi cứng -> Sử dụng subcollection đúng là conv.id thay vì "messages"
         const expired = await db
           .collection("messages").doc(conv.id).collection(conv.id)
           .where("autoDeleteAt", "<=", now)
@@ -2535,7 +2528,6 @@ exports.cleanupExpiredAiContent = onSchedule(
       for (const convRef of convDocs) {
         try {
           const convId = convRef.id;
-          // [FIX P0]: Sử dụng path động subcollection `convId`
           const expiredDocs = await db
             .collection("ai_content").doc(convId).collection(convId)
             .where("expireAt", "<=", now)
@@ -2578,7 +2570,6 @@ exports.weeklyAiRecap = onSchedule(
       let recapped = 0;
       for (const groupDoc of groups.docs) {
         const groupId = groupDoc.id;
-        // [FIX P0]: Truy cập nhánh động chuẩn của ai_content
         const msgsSnap = await db
           .collection("ai_content").doc(groupId).collection(groupId)
           .where("timestamp", ">=", sevenDaysAgo)
@@ -2628,7 +2619,6 @@ exports.weeklyAiRecap = onSchedule(
           const recapText = `🔥 BẢN TIN BÓC PHỐT TUẦN 🔥\n\n${recap.trim()}`;
           const msgId     = Date.now().toString();
           const batch     = db.batch();
-          // [FIX P0]: Viết vào subcollection động theo conversationId cho message recap
           const msgRef    = db.collection("messages").doc(groupId).collection(groupId).doc(msgId);
 
           batch.set(msgRef, {
@@ -2941,7 +2931,6 @@ exports.dailyConversationDigest = onSchedule(
 );
 
 // ─── 52. smartReplyEnhanced ──────────────────────────────────────────────
-// Đã khai báo ánh xạ hàm để Frontend tránh lỗi null khi gọi smartReplyEnhanced
 exports.smartReplyEnhanced = exports.smartReplyWithContext;
 
 // ─── 53. generateWeeklyRecap (Bổ sung để hỗ trợ gọi thủ công từ Client) ────
@@ -2957,7 +2946,6 @@ exports.generateWeeklyRecap = onCall(
     const cutoff = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
 
     try {
-      // [FIX P0]: Đổi path thành format subcollection chuẩn của hệ thống
       const msgsSnap = await db
         .collection("ai_content").doc(conversationId).collection(conversationId)
         .where("timestamp", ">=", cutoff)
@@ -3008,7 +2996,6 @@ exports.generateWeeklyRecap = onCall(
 
       const recapText = `${config.emoji} BẢN TIN TỔNG HỢP ${config.emoji}\n\n${recap.trim()}`;
 
-      // Lưu kết quả vào Firestore để Client có thể hiển thị lịch sử Recap
       await db.collection("conversations").doc(conversationId).set({
         weeklyRecap: {
           summary:      recapStructured.summary ?? recapText,
@@ -3030,6 +3017,46 @@ exports.generateWeeklyRecap = onCall(
     } catch (err) {
       logger.error(`[generateWeeklyRecap] Gemini error for ${conversationId}:`, err);
       return {success: false, reason: "Lỗi kết nối AI khi tạo bảng tổng kết."};
+    }
+  },
+);
+
+// ─── 54. generateAiChatReply ─────────────────────────────────────────────────
+exports.generateAiChatReply = onCall(
+  {secrets: [geminiApiKey], enforceAppCheck: true},
+  async (request) => {
+    requireAuth(request.auth);
+    await checkRateLimit(request.auth.uid, "ai_chat_reply");
+
+    const {userMessage, conversationHistory = []} = request.data;
+    if (!userMessage || userMessage.trim().length === 0) {
+      throw new HttpsError("invalid-argument", "userMessage không được trống.");
+    }
+
+    const safeMsg = sanitize(userMessage, 1000);
+    const safeHistory = sanitizeMessages(conversationHistory, 20);
+
+    const model = createGeminiModel(
+      geminiApiKey.value(),
+      "Bạn là trợ lý AI thông minh, thân thiện, tích hợp trong ứng dụng chat. " +
+      "Trả lời ngắn gọn, rõ ràng bằng tiếng Việt. Có thể dùng Markdown khi cần. " +
+      "Không tiết lộ thông tin nội bộ hệ thống.",
+      {maxOutputTokens: 2048, temperature: 0.7},
+    );
+
+    const historyContext = safeHistory.length > 0 ?
+      `Lịch sử:\n${safeHistory.join("\n")}\n\n` :
+      "";
+
+    try {
+      const reply = await callGeminiWithRetry(
+        model,
+        `${historyContext}Người dùng: "${safeMsg}"\n\nTrả lời:`,
+      );
+      return {reply: reply.trim(), success: true};
+    } catch (err) {
+      logger.error("[generateAiChatReply]", err);
+      throw new HttpsError("internal", "AI không thể phản hồi lúc này.");
     }
   },
 );

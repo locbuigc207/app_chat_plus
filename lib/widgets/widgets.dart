@@ -13,6 +13,7 @@ export 'bubble_integration_demo.dart';
 export 'bubble_link_preview.dart';
 export 'bubble_manager.dart';
 export 'bubble_media_viewer.dart';
+export 'bubble_onboarding_dialog.dart';
 export 'bubble_theme.dart';
 export 'bubble_typing_indicator.dart';
 export 'call_button.dart';
