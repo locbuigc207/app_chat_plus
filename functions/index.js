@@ -244,7 +244,7 @@ function createGeminiModel(apiKey, systemPrompt, genConfig = {}, lite = false) {
           systemInstruction: systemPrompt,
           temperature: genConfig.temperature ?? 0.5,
           maxOutputTokens: genConfig.maxOutputTokens ?? 1024,
-          responseMimeType: genConfig.responseMimeType,
+          ...(genConfig.responseMimeType ? {responseMimeType: genConfig.responseMimeType} : {}), // [FIX P0 Lỗi 1]
         },
       });
       return {response: {text: () => response.text || ""}};
@@ -2139,19 +2139,16 @@ exports.sendMessageNotification = onDocumentCreated(
       (TYPE_PREVIEW[msgType] ?? "[Tệp đính kèm]");
     const lastMessagePreview = rawContent.substring(0, 100);
 
+    // [FIX P1 Lỗi 4] Fetch participants explicitly from the group/conversation document
+    let participants = [idFrom, idTo];
     try {
-      const convoQuery = await db
-        .collection("conversations")
-        .where("participants", "array-contains", idFrom)
-        .get();
-
-      const convoDoc = convoQuery.docs.find((d) => {
-        const parts = d.data().participants || [];
-        return parts.includes(idTo);
-      });
-
-      if (convoDoc) {
-        await convoDoc.ref.set({
+      const convSnap = await db.collection("conversations").doc(conversationId).get();
+      if (convSnap.exists) {
+        const convData = convSnap.data();
+        if (Array.isArray(convData.participants)) {
+          participants = convData.participants;
+        }
+        await convSnap.ref.set({
           lastMessage:     lastMessagePreview,
           lastMessageTime: msgTimestamp,
           lastMessageType: msgType,
@@ -2161,11 +2158,11 @@ exports.sendMessageNotification = onDocumentCreated(
           lastMessage:     lastMessagePreview,
           lastMessageTime: msgTimestamp,
           lastMessageType: msgType,
-          participants:    [idFrom, idTo],
+          participants:    participants,
         }, {merge: true});
       }
-    } catch (convoErr) {
-      logger.warn("[sendMessageNotification] convo update error:", convoErr);
+    } catch (e) {
+      logger.warn("[sendMessageNotification] Lỗi truy xuất conversation:", e);
     }
 
     try {
@@ -2204,7 +2201,7 @@ exports.sendMessageNotification = onDocumentCreated(
           type:             "new_message",
           messageType:      String(msgType),
           encryptedContent,
-          participantIds:   JSON.stringify([idTo, idFrom]),
+          participantIds:   JSON.stringify(participants), // [FIX P1 Lỗi 4] Đúng context group
         },
       });
     } catch (err) {
@@ -2930,8 +2927,37 @@ exports.dailyConversationDigest = onSchedule(
   },
 );
 
-// ─── 52. smartReplyEnhanced ──────────────────────────────────────────────
-exports.smartReplyEnhanced = exports.smartReplyWithContext;
+// ─── 52. smartReplyEnhanced [FIX P2 Lỗi 3] ──────────────────────────────────────────────
+exports.smartReplyEnhanced = onCall(
+  {secrets: [geminiApiKey]},
+  async (request) => {
+    requireAuth(request.auth);
+    await checkRateLimit(request.auth.uid, "smart_reply_enhanced");
+    const {messages, count = 3, language = "vi"} = request.data;
+    const clean = sanitizeMessages(messages);
+    if (clean.length === 0) return {replies: [], stickers: []};
+
+    const model = createGeminiModel(
+      geminiApiKey.value(),
+      `Chuyên gia giao tiếp tiếng ${language === "vi" ? "Việt" : "Anh"}. Gợi ý câu trả lời ngắn gọn, tự nhiên.`,
+      {maxOutputTokens: 256, temperature: 0.7, responseMimeType: "application/json"},
+    );
+
+    try {
+      const raw = await callGeminiWithRetry(model,
+        `Gợi ý ${count} cách trả lời (dưới 15 chữ) cho tin nhắn cuối cùng.\n` +
+        `Trả về đúng định dạng JSON: {"replies": ["câu 1", "câu 2", "câu 3"]}\n\n` +
+        `Cuộc trò chuyện:\n${clean.slice(-5).join("\n")}`,
+      );
+      const parsed = safeParseJson(raw);
+      const replies = Array.isArray(parsed?.replies) ? parsed.replies.slice(0, count) : [];
+      return {replies, stickers: []};
+    } catch (err) {
+      logger.error("[smartReplyEnhanced]", err);
+      return {replies: [], stickers: []};
+    }
+  },
+);
 
 // ─── 53. generateWeeklyRecap (Bổ sung để hỗ trợ gọi thủ công từ Client) ────
 exports.generateWeeklyRecap = onCall(
@@ -3021,7 +3047,7 @@ exports.generateWeeklyRecap = onCall(
   },
 );
 
-// ─── 54. generateAiChatReply ─────────────────────────────────────────────────
+// ─── 54. generateAiChatReply [FIX P0 Lỗi 2] ─────────────────────────────────────────────────
 exports.generateAiChatReply = onCall(
   {secrets: [geminiApiKey], enforceAppCheck: true},
   async (request) => {
@@ -3056,7 +3082,35 @@ exports.generateAiChatReply = onCall(
       return {reply: reply.trim(), success: true};
     } catch (err) {
       logger.error("[generateAiChatReply]", err);
-      throw new HttpsError("internal", "AI không thể phản hồi lúc này.");
+      const isTransient = err?.status === 503 || String(err).includes("quota") || String(err).includes("rate_limit");
+      throw new HttpsError(
+        isTransient ? "resource-exhausted" : "internal",
+        "AI không thể phản hồi lúc này.",
+        {errorCode: err?.status ?? "unknown", message: err?.message ?? String(err)},
+      );
+    }
+  },
+);
+
+// ─── 55. cleanupExpiredRateLimits (Scheduled) [FIX P2 Lỗi 5] ────────────────
+exports.cleanupExpiredRateLimits = onSchedule(
+  {schedule: "every 24 hours", timeZone: "Asia/Ho_Chi_Minh"},
+  async () => {
+    const now = new Date();
+    try {
+      const expiredSnap = await db.collection("_rate_limits")
+        .where("expireAt", "<=", now)
+        .limit(500)
+        .get();
+
+      if (expiredSnap.empty) return;
+
+      const batch = db.batch();
+      expiredSnap.docs.forEach((doc) => batch.delete(doc.ref));
+      await batch.commit();
+      logger.info(`[cleanupExpiredRateLimits] Deleted ${expiredSnap.size} limit docs`);
+    } catch (err) {
+      logger.error("[cleanupExpiredRateLimits]", err);
     }
   },
 );

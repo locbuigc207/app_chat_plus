@@ -99,7 +99,10 @@ class _ChessGameOverOverlayState extends State<ChessGameOverOverlay>
     }
 
     final reasonText = _buildReasonText(gs.endReason);
-    final moveCount = gs.chessSanHistory.length;
+
+    // Bug 16 Fix: Tính toán full moves thay vì đếm số plies
+    final totalPlies = gs.chessSanHistory.length;
+    final moveCount = (totalPlies / 2).ceil();
 
     return FadeTransition(
       opacity: _fade,
@@ -223,7 +226,7 @@ class _ChessGameOverOverlayState extends State<ChessGameOverOverlay>
                             ),
                             const SizedBox(width: 5),
                             Text(
-                              '$moveCount nước đi',
+                              '$moveCount nước đi ($totalPlies ply)',
                               style: const TextStyle(
                                 color: _CO.text2,
                                 fontSize: 12.5,

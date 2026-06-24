@@ -146,6 +146,10 @@ class GeminiService {
         _lastPingTime = DateTime.now();
         debugPrint('[GeminiService] ✅ Available');
       }
+    } on TimeoutException {
+      // [FIX P2 Lỗi 2] Phân loại riêng lỗi Timeout thành networkError thay vì phụ thuộc catch chung
+      _availability = GeminiAvailability.networkError;
+      debugPrint('[GeminiService] ⚠️ Availability: Timeout -> networkError');
     } catch (e) {
       _availability = _classifyAvailability(e);
       debugPrint('[GeminiService] ⚠️ Availability: $_availability — $e');
@@ -627,6 +631,9 @@ Tin nhắn cần phân tích:
   Future<void> _handleAuthError(Object e) async {
     _availability = GeminiAvailability.keyExpired;
     _keyExpiredAt ??= DateTime.now();
+
+    // [FIX P2 Lỗi 1] Invalidate model cache ngay khi key bị quá hạn hoặc bị thay đổi
+    clearModelCache();
 
     debugPrint('[GeminiService] 🔑 Auth error: $e');
 

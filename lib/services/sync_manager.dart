@@ -269,6 +269,19 @@ class SyncManager {
           SyncJobType.aiResponse => await _processAiResponse(payload),
           _ => true,
         };
+      } on AIBackendException catch (e) {
+        // [FIX P1 Lỗi 1] Bắt riêng lỗi từ hệ thống AI (AIBackendService)
+        // Lỗi này xảy ra khi có cấu hình sai hoặc model không khả dụng, không cần retry
+        if (e.type == AIBackendErrorType.unknown) {
+          debugPrint('[SyncManager] ❌ Permanent AI Error: $e');
+          await _sendAiErrorMessage(payload);
+          await _localDb.removeFromSyncQueue(key as int);
+          failed++;
+          continue; // Chuyển sang Job tiếp theo luôn, bỏ qua luồng retry phía dưới
+        } else {
+          // Những lỗi transient (networkError, quotaExceeded...) để pass qua dưới và tiếp tục tính retries
+          debugPrint('[SyncManager] Transient AI error: $e');
+        }
       } on FirebaseException catch (e) {
         isNetworkError =
             e.code == 'unavailable' || e.code == 'deadline-exceeded';
@@ -362,7 +375,7 @@ class SyncManager {
         '❌ Trợ lý AI tạm thời không khả dụng. Vui lòng thử lại sau.';
     final nowMs = DateTime.now().millisecondsSinceEpoch;
 
-    // ✅ FIX: Đổi từ '_' sang '-' để không vi phạm quy tắc của LocalDbService
+    // FIX: Đổi từ '_' sang '-' để không vi phạm quy tắc của LocalDbService
     final msgId = '${nowMs}-err';
     final tsStr = nowMs.toString();
 
@@ -444,7 +457,7 @@ class SyncManager {
           'status': MessageStatus.sent,
         });
 
-    // 3. Cập nhật dữ liệu hội thoại bằng Transaction để đảm bảo tính toàn vẹn (Fix P1)
+    // 3. Cập nhật dữ liệu hội thoại bằng Transaction để đảm bảo tính toàn vẹn
     try {
       final isGroupChat = idTo == conversationId;
       final convRef = FirebaseFirestore.instance
@@ -517,8 +530,10 @@ class SyncManager {
 
     if (conversationId.isEmpty || userMessage.isEmpty) return false;
 
-    // Build lịch sử hội thoại từ LocalDB (ưu tiên chuỗi văn bản thô qua `contentPlain`)
-    final historyMessages = _localDb
+    // [FIX P1 Lỗi 2] Lịch sử hội thoại từ LocalDB (đảm bảo thứ tự cũ nhất -> mới nhất để feed cho AI)
+    // LocalDbService().getMessages() trả về mới nhất trước tiên, take(20) lấy 20 tin nhắn gần nhất.
+    // .reversed() sau đó sẽ đảo ngược thành trình tự Cũ -> Mới (Chronological) hợp lệ cho mô hình AI
+    final rawHistoryMessages = _localDb
         .getMessages(conversationId)
         .take(20)
         .toList()
@@ -531,25 +546,27 @@ class SyncManager {
               text.startsWith('eyJ'))
             return null;
           final isMe = m['idFrom'] == currentUserId;
-          final maskedText = DataMaskingUtils.maskText(
-            text,
-            config: MaskingConfig.piiOnly,
-          );
-          return '${isMe ? "User" : "Assistant"}: $maskedText';
+          return '${isMe ? "User" : "Assistant"}: $text'; // Bỏ masking tại đây để tránh AIBackendService biến đổi chuỗi sai lệch
         })
         .whereType<String>()
         .toList();
 
-    final maskedUserMessage = DataMaskingUtils.maskText(
-      userMessage,
-      config: MaskingConfig.piiOnly,
-    );
-
-    // Gọi lên cổng Cloud Function thay vì GeminiService nội bộ
-    final aiText = await _aiBackend.generateAiChatReply(
-      userMessage: maskedUserMessage,
-      conversationHistory: historyMessages,
-    );
+    String? aiText;
+    try {
+      // Gọi lên cổng Cloud Function thay vì GeminiService nội bộ
+      // [FIX P1 Lỗi 1] Truyền thẳng userMessage và lịch sử thô. Việc mask sẽ do AIBackendService (cổng duy nhất) hoặc CF xử lý
+      aiText = await _aiBackend.generateAiChatReply(
+        userMessage: userMessage,
+        conversationHistory: rawHistoryMessages,
+      );
+    } on AIBackendException catch (e) {
+      // Xác nhận AIBackendException đã được raise
+      // Nếu là Permanent error, rethrow để `_processBatch` xử lý catch block riêng của nó
+      if (e.type == AIBackendErrorType.unknown) {
+        rethrow;
+      }
+      debugPrint('[SyncManager] Transient AI error details: $e');
+    }
 
     // Nếu trả về null, trả về false để Queue tự động Retry
     if (aiText == null || aiText.trim().isEmpty) {
@@ -559,7 +576,7 @@ class SyncManager {
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
 
-    // ✅ FIX: Đổi từ '_' sang '-' để không vi phạm quy tắc của LocalDbService
+    // FIX: Đổi từ '_' sang '-' để không vi phạm quy tắc của LocalDbService
     final aiMessageId = '${nowMs}-${1000 + Random().nextInt(9000)}';
     final aiTimestampStr = nowMs.toString();
 
@@ -623,7 +640,9 @@ class SyncManager {
         final updates = <String, dynamic>{};
 
         if (newTime >= currentLastTime || !snapshot.exists) {
-          final preview = aiText.length > 80
+          final preview =
+              aiText!.length >
+                  80 // Safe do đã check null trước
               ? '${aiText.substring(0, 80)}…'
               : aiText;
           updates['lastMessage'] = '[Trợ lý AI] $preview';

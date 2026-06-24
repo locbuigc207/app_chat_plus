@@ -27,19 +27,19 @@ class BubbleActivity : FlutterActivity() {
     companion object {
         private const val TAG = "BubbleActivity"
 
-        // Đã đồng bộ với định danh truyền vào EngineWarmer tại MainActivity
+        // Đồng bộ với định danh truyền vào EngineWarmer tại MainActivity
         const val BUBBLE_ENGINE_ID = "bubble_chat_engine"
 
-        private const val CHANNEL        = "bubble_chat_channel"
-        private const val EXTRA_UID      = "userId"
-        private const val EXTRA_NAME     = "userName"
-        private const val EXTRA_AVATAR   = "avatarUrl"
+        private const val CHANNEL           = "bubble_chat_channel"
+        private const val EXTRA_UID         = "userId"
+        private const val EXTRA_NAME        = "userName"
+        private const val EXTRA_AVATAR      = "avatarUrl"
 
-        private const val RETRY_INTERVAL_MS    = 60L
-        private const val MAX_RETRIES          = 60          // ~3.6 s
-        private const val FALLBACK_READY_MS    = 2500L       // [SỬA LỖI MỚI 6]: Tăng lên 2500ms để an toàn hơn
-        private const val KEYBOARD_DELAY_MS    = 350L
-        private const val MAX_NAV_CACHE        = 50
+        private const val RETRY_INTERVAL_MS = 60L
+        private const val MAX_RETRIES       = 60          // ~3.6 s
+        private const val FALLBACK_READY_MS = 2500L
+        private const val KEYBOARD_DELAY_MS = 350L
+        private const val MAX_NAV_CACHE     = 50
 
         fun createIntent(
             ctx: Context,
@@ -48,7 +48,7 @@ class BubbleActivity : FlutterActivity() {
             avatarUrl: String
         ): Intent = Intent(ctx, BubbleActivity::class.java).apply {
             action = Intent.ACTION_VIEW
-            data = android.net.Uri.parse("bubble://chat/$userId")
+            data   = android.net.Uri.parse("bubble://chat/$userId")
             putExtra(EXTRA_UID,    userId)
             putExtra(EXTRA_NAME,   userName)
             putExtra(EXTRA_AVATAR, avatarUrl)
@@ -75,9 +75,27 @@ class BubbleActivity : FlutterActivity() {
     // ─── Lifecycle ────────────────────────────────────────────────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+        // ══════════════════════════════════════════════════════════════════
+        // [FIX BUG 1 — BẮT BUỘC #1] Root cause: blank screen khi tap bubble
+        //
+        // Vấn đề gốc: super.onCreate() nội bộ gọi provideFlutterEngine()
+        // → configureFlutterEngine() → setPending() → NHƯNG lúc này
+        // currentUid = null vì readExtras() chưa chạy (nó nằm SAU super
+        // trong code cũ). Kết quả: pendingUid = null, scheduleNav(0)
+        // bail ngay tại "val uid = pendingUid ?: return". Khi flutterReady
+        // được gửi lên sau đó, scheduleNav() cũng null-bail vì pendingUid
+        // chưa bao giờ được cập nhật → navigateToChat không bao giờ được
+        // invoke → BubbleEntryPage loading vô tận.
+        //
+        // Cách sửa: readExtras() PHẢI chạy TRƯỚC super.onCreate() để
+        // currentUid đã có giá trị đúng khi configureFlutterEngine() fires.
+        // ══════════════════════════════════════════════════════════════════
+        if (savedInstanceState == null) readExtras(intent)
 
-        // Xử lý back gesture đúng chuẩn Android 16 (Tiramisu trở lên)
+        super.onCreate(savedInstanceState)
+        // Từ đây trở đi: configureFlutterEngine() đã chạy với currentUid đúng.
+
+        // Xử lý back gesture đúng chuẩn Android 13+ (API 33 / Tiramisu trở lên)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(
                 OnBackInvokedDispatcher.PRIORITY_DEFAULT
@@ -88,16 +106,23 @@ class BubbleActivity : FlutterActivity() {
             }
         }
 
-        if (savedInstanceState == null) readExtras(intent)
         if (!validateUser()) { Log.e(TAG, "❌ Missing user info"); finish(); return }
 
-        // Gắn LocusId để hệ thống join đúng task khi mở lại từ Bubble Bar / Recents
+        // [FIX BUG 1 — belt-and-suspenders]: Gọi lại setPending() sau super
+        // để phủ edge case: engine lấy từ cache có thể không trigger lại
+        // configureFlutterEngine(), hoặc Flutter engine đã ở trạng thái ready
+        // trước khi Activity init xong (ví dụ: EngineWarmer đã warm engine).
+        setPending()
+        if (isFlutterReady) scheduleNav(0)
+
+        // Gắn LocusId để hệ thống Android join đúng task
+        // khi mở lại Bubble từ Bubble Bar / Recents / Overview
         setLocusContext(LocusId(currentUid!!), null)
 
         Log.d(TAG, "✅ onCreate — user: $currentName ($currentUid)")
     }
 
-    // [SỬA LỖI MỚI 4]: Override onBackPressed() cho các thiết bị API < 33 (Android 11, 12, 12L)
+    // [Xử lý back cho thiết bị API < 33: Android 11, 12, 12L]
     @Suppress("DEPRECATION")
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
@@ -107,18 +132,18 @@ class BubbleActivity : FlutterActivity() {
 
     override fun provideFlutterEngine(ctx: Context): FlutterEngine? {
         val cache = FlutterEngineCache.getInstance()
-        var eng = cache.get(BUBBLE_ENGINE_ID)
+        var eng   = cache.get(BUBBLE_ENGINE_ID)
 
         if (eng != null && !eng.dartExecutor.isExecutingDart) {
             Log.w(TAG, "⚠️ Cached engine dead — recreating")
-            cache.remove(BUBBLE_ENGINE_ID); eng = null
+            cache.remove(BUBBLE_ENGINE_ID)
+            eng = null
         }
 
         if (eng == null) {
             Log.d(TAG, "🔧 Creating new bubble engine")
             eng = FlutterEngine(ctx.applicationContext)
-
-            // Sử dụng entry point bubbleMain thay vì createDefault() để tránh conflict Hive
+            // Dùng entry point bubbleMain riêng để tránh conflict Hive với main isolate
             val bundlePath = FlutterInjector.instance().flutterLoader().findAppBundlePath()
             eng.dartExecutor.executeDartEntrypoint(
                 DartExecutor.DartEntrypoint(bundlePath, "bubbleMain")
@@ -132,35 +157,44 @@ class BubbleActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(engine: FlutterEngine) {
         super.configureFlutterEngine(engine)
-        // Engine giờ mới thực sự được "wake up" khi Activity attach
+        // Đánh thức engine khi Activity attach vào
         engine.lifecycleChannel.appIsResumed()
 
         configureWindow()
         setupChannel(engine)
+        // Sau FIX BUG 1: readExtras() đã chạy trước super.onCreate(),
+        // nên currentUid ở đây đã có giá trị đúng.
         setPending()
         scheduleNav(0)
     }
 
-    // Handle bubble resize/re-embed trên Android 16
-    override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: Configuration) {
+    // Handle bubble resize / re-embed trên Android 16+ (foldable, split screen)
+    override fun onMultiWindowModeChanged(
+        isInMultiWindowMode: Boolean,
+        newConfig: Configuration
+    ) {
         super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
         Log.d(TAG, "🪟 Multi-window mode changed: $isInMultiWindowMode")
         if (isFlutterReady) {
-            channel?.invokeMethod("onWindowSizeChanged", mapOf(
-                "width" to newConfig.screenWidthDp,
-                "height" to newConfig.screenHeightDp
-            ))
+            channel?.invokeMethod(
+                "onWindowSizeChanged", mapOf(
+                    "width"  to newConfig.screenWidthDp,
+                    "height" to newConfig.screenHeightDp
+                )
+            )
         }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        Log.d(TAG, "📐 Configuration changed: w=${newConfig.screenWidthDp}, h=${newConfig.screenHeightDp}")
+        Log.d(TAG, "📐 Config changed: w=${newConfig.screenWidthDp}dp, h=${newConfig.screenHeightDp}dp")
         if (isFlutterReady) {
-            channel?.invokeMethod("onWindowSizeChanged", mapOf(
-                "width" to newConfig.screenWidthDp,
-                "height" to newConfig.screenHeightDp
-            ))
+            channel?.invokeMethod(
+                "onWindowSizeChanged", mapOf(
+                    "width"  to newConfig.screenWidthDp,
+                    "height" to newConfig.screenHeightDp
+                )
+            )
         }
     }
 
@@ -168,10 +202,21 @@ class BubbleActivity : FlutterActivity() {
         super.onResume()
         val uid = pendingUid ?: return
 
-        // [SỬA LỖI TỐI THƯỢNG]: Gọi chủ động điều hướng ngay trong onResume thay vì chỉ
-        // chờ đợi scheduleNav thụ động. Xóa cache nếu cần ép reload
-        if (isFlutterReady) {
-            Log.d(TAG, "▶️ onResume - Force pushing intent")
+        // ══════════════════════════════════════════════════════════════════
+        // [FIX BUG 3 — TỐI ƯU] ChatPage reload nhẹ mỗi lần re-open bubble
+        //
+        // Vấn đề: onResume() gọi doNavigate() mỗi lần bubble được maximize
+        // lại từ nền → ChatPage bị reload nhẹ mỗi lần, dù Dart có dedup
+        // 2s để xử lý.
+        //
+        // Cách sửa: Guard !navigatedUsers.contains(uid) — chỉ gọi
+        // doNavigate() trong onResume() khi đây là lần đầu tiên navigate
+        // cho uid này. Các lần mở lại sau, ChatPage đang hiển thị đúng
+        // và không cần reload. Nếu intent mới đến qua onNewIntent(),
+        // navigatedUsers.remove(uid) sẽ reset guard để nav lại.
+        // ══════════════════════════════════════════════════════════════════
+        if (isFlutterReady && !navigatedUsers.contains(uid)) {
+            Log.d(TAG, "▶️ onResume — first-time nav: $uid")
             doNavigate(uid, pendingName ?: "", pendingAvatar ?: "")
         }
     }
@@ -184,7 +229,7 @@ class BubbleActivity : FlutterActivity() {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         Log.d(TAG, "🏠 User pressed Home — minimizing bubble")
-        // Vẫn giữ lại cho các thiết bị cũ, hoặc hành vi bấm phím home cứng
+        // Giữ cho thiết bị cũ / hành vi bấm phím home cứng
         moveTaskToBack(true)
     }
 
@@ -193,14 +238,15 @@ class BubbleActivity : FlutterActivity() {
         val newUid  = intent.getStringExtra(EXTRA_UID)  ?: return
         val newName = intent.getStringExtra(EXTRA_NAME) ?: return
 
+        // Reset guard BUG3 để onResume() / scheduleNav() có thể navigate lại cho user mới
         navigatedUsers.remove(newUid)
 
-        Log.d(TAG, "🔄 New intent → $newName")
+        Log.d(TAG, "🔄 New intent → $newName ($newUid)")
         currentUid    = newUid
         currentName   = newName
         currentAvatar = intent.getStringExtra(EXTRA_AVATAR)
 
-        // Cập nhật LocusId ngay khi Bubble nhận intent của user khác
+        // Cập nhật LocusId khi Bubble nhận intent của user khác
         setLocusContext(LocusId(newUid), null)
 
         setPending()
@@ -227,12 +273,12 @@ class BubbleActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
-        // Báo cho Manager biết bong bóng đã bị đóng hoàn toàn
+        // Báo cho Manager biết bubble đã bị đóng hoàn toàn
         BubbleNotificationManager.markCollapsed(currentUid ?: "")
 
         mainHandler.removeCallbacksAndMessages(null)
         channel?.setMethodCallHandler(null)
-        channel = null
+        channel        = null
         isFlutterReady = false
         navigatedUsers.clear()
         super.onDestroy()
@@ -264,19 +310,22 @@ class BubbleActivity : FlutterActivity() {
                     Log.d(TAG, "🟢 Flutter ready")
                     isFlutterReady = true
 
-                    // Đánh dấu trạng thái expanded khi Dart phía Bubble đã sẵn sàng
+                    // Sau FIX BUG 1: currentUid đúng ở đây → markExpanded nhận uid thật.
+                    // Trước khi fix: currentUid = null → markExpanded("") bị ghi sai.
                     BubbleNotificationManager.markExpanded(currentUid ?: "")
 
                     scheduleNav(0)
                     result.success(true)
                 }
-                "minimize"     -> { moveTaskToBack(true); result.success(true) }
-                "close"        -> { moveTaskToBack(true); result.success(true) }
-                "getUserInfo"  -> result.success(mapOf(
-                    "userId"    to currentUid,
-                    "userName"  to currentName,
-                    "avatarUrl" to currentAvatar,
-                ))
+                "minimize"      -> { moveTaskToBack(true); result.success(true) }
+                "close"         -> { moveTaskToBack(true); result.success(true) }
+                "getUserInfo"   -> result.success(
+                    mapOf(
+                        "userId"    to currentUid,
+                        "userName"  to currentName,
+                        "avatarUrl" to currentAvatar,
+                    )
+                )
                 "getBubbleMode" -> result.success(true)
                 "showKeyboard"  -> {
                     mainHandler.postDelayed({ showKeyboard() }, 150L)
@@ -286,11 +335,12 @@ class BubbleActivity : FlutterActivity() {
             }
         }
 
-        // Signal cho Flutter biết nếu đây là HyperOS 2 để xử lý resize linh hoạt
-        val isHyperOS2 = System.getProperty("ro.product.build.version.incremental", "").contains("OS2") ||
-                System.getProperty("ro.build.version.hyperos", "").startsWith("2") ||
-                System.getProperty("ro.miui.ui.version.name", "").isNotEmpty() &&
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+        // Phát hiện HyperOS 2 để kích hoạt resize linh hoạt phía Dart
+        val isHyperOS2 =
+            System.getProperty("ro.product.build.version.incremental", "").contains("OS2") ||
+                    System.getProperty("ro.build.version.hyperos", "").startsWith("2") ||
+                    (System.getProperty("ro.miui.ui.version.name", "").isNotEmpty() &&
+                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 
         if (isHyperOS2) {
             mainHandler.postDelayed({
@@ -298,10 +348,13 @@ class BubbleActivity : FlutterActivity() {
             }, 200L)
         }
 
+        // Fallback safety: nếu Flutter không gửi "flutterReady" sau 2500ms
+        // (engine bị treo khởi động), tự đánh dấu ready và thử navigate.
         mainHandler.postDelayed({
             if (!isFlutterReady && !isFinishing) {
-                Log.d(TAG, "⏰ Flutter ready (fallback)")
-                isFlutterReady = true; scheduleNav(0)
+                Log.d(TAG, "⏰ Flutter ready (fallback timer — 2500ms)")
+                isFlutterReady = true
+                scheduleNav(0)
             }
         }, FALLBACK_READY_MS)
     }
@@ -316,21 +369,22 @@ class BubbleActivity : FlutterActivity() {
 
     private fun scheduleNav(attempt: Int) {
         if (isFinishing) return
-        val uid   = pendingUid   ?: return
-        val name  = pendingName  ?: return
-        val av    = pendingAvatar ?: ""
+        val uid  = pendingUid  ?: return
+        val name = pendingName ?: return
+        val av   = pendingAvatar ?: ""
 
         if (navigatedUsers.contains(uid)) {
-            // [SỬA LỖI P0]: Nếu đã tồn tại trong mảng navigated thì ép gọi doNavigate lại
-            // để đảm bảo Dart bắt buộc phải cập nhật lại UI chứ không bỏ ngỏ gây màn hình trắng.
-            Log.d(TAG, "♻️ User $uid already in cache, forcing nav update")
+            // Uid đã trong cache: force-navigate lại để Dart đảm bảo cập nhật UI
+            // (phòng trường hợp ChatPage bị trắng sau engine restart / process death)
+            Log.d(TAG, "♻️ $uid in cache — forcing nav update")
             doNavigate(uid, name, av)
             return
         }
 
         if (!isFlutterReady) {
             if (attempt >= MAX_RETRIES) {
-                Log.e(TAG, "❌ Navigation timeout after $MAX_RETRIES retries"); return
+                Log.e(TAG, "❌ Nav timeout after $MAX_RETRIES retries (~${MAX_RETRIES * RETRY_INTERVAL_MS}ms)")
+                return
             }
             mainHandler.postDelayed({ scheduleNav(attempt + 1) }, RETRY_INTERVAL_MS)
             return
@@ -343,18 +397,21 @@ class BubbleActivity : FlutterActivity() {
     private fun doNavigate(uid: String, name: String, av: String) {
         if (isFinishing) return
         try {
-            channel?.invokeMethod("navigateToChat", mapOf(
-                "peerId"       to uid,
-                "peerNickname" to name,
-                "peerAvatar"   to av,
-                "isBubbleMode" to true,
-            ))
+            channel?.invokeMethod(
+                "navigateToChat", mapOf(
+                    "peerId"       to uid,
+                    "peerNickname" to name,
+                    "peerAvatar"   to av,
+                    "isBubbleMode" to true,
+                )
+            )
 
+            // Duy trì LRU-style cache cho navigatedUsers (giới hạn MAX_NAV_CACHE uid)
             if (navigatedUsers.size >= MAX_NAV_CACHE) {
                 navigatedUsers.iterator().next().also { navigatedUsers.remove(it) }
             }
             navigatedUsers.add(uid)
-            Log.d(TAG, "✅ Navigated → $name")
+            Log.d(TAG, "✅ Navigated → $name ($uid)")
 
             mainHandler.postDelayed({ showKeyboard() }, KEYBOARD_DELAY_MS)
         } catch (e: Exception) { Log.e(TAG, "❌ doNavigate: $e") }
@@ -377,7 +434,7 @@ class BubbleActivity : FlutterActivity() {
         } catch (_: Exception) {}
     }
 
-    // ─── Helpers ─────────────────────────────────────────────────────────
+    // ─── Helpers ──────────────────────────────────────────────────────────
 
     private fun readExtras(i: Intent) {
         currentUid    = i.getStringExtra(EXTRA_UID)

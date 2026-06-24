@@ -2,16 +2,16 @@
 //
 // Classic wooden chess board — full feature set:
 //   • Realtime 2-player via Firestore (GameStateProvider)
-//   • Piece drag + tap to move
-//   • Legal move highlight (dot/circle overlay)
+//   • Piece drag + tap to move (fixed ghost/double tap)
+//   • Legal move highlight (dot/circle overlay, En Passant supported)
 //   • Last move highlight (amber wash)
-//   • King in check highlight (red pulse)
+//   • King in check highlight (red pulse, optimized repaint)
 //   • Promotion dialog (Queen / Rook / Bishop / Knight)
 //   • Chess clock display (integrated, driven by provider)
 //   • Move history panel (collapsible, algebraic notation)
 //   • Flip board for black player
 //   • Unicode chess pieces — no asset dependency
-//   • En passant, castling, 50-move draw detection via `chess` package
+//   • Castling, 50-move draw detection via `chess` package
 
 import 'dart:async';
 
@@ -141,10 +141,14 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
   List<String> _legalTargets = [];
   Set<String> _legalCaptures = {};
 
-  // ── Drag state ────────────────────────────────────────────────────────────
+  // ── Drag state (Fix Bug 1) ─────────────────────────────────────────────────
   String? _dragSquare;
   Offset? _dragOffset;
   String? _dragPiece; // e.g. 'wP'
+
+  Offset? _pendingDragOrigin;
+  String? _pendingDragSquare;
+  static const _kDragThreshold = 8.0;
 
   // ── Cache & Animation ─────────────────────────────────────────────────────
   String? _cachedCheckedKingSq;
@@ -190,6 +194,8 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
       _legalCaptures = {};
       _dragSquare = null;
       _dragPiece = null;
+      _pendingDragOrigin = null;
+      _pendingDragSquare = null;
 
       // Scroll history to bottom when new move arrives
       WidgetsBinding.instance.addPostFrameCallback(
@@ -252,45 +258,128 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
         : null;
   }
 
-  // ── Legal move calculation ─────────────────────────────────────────────────
+  // ── Drag & Tap Handlers (Bug 1, Bug 3 & Bug 18 Fixes) ─────────────────────
 
-  void _selectSquare(String sq) {
+  void _onPointerDown(PointerDownEvent e) {
     if (!widget.isMyTurn || widget.isGameOver) return;
+
+    final col = (e.localPosition.dx / _squareSize).floor().clamp(0, 7);
+    final row = (e.localPosition.dy / _squareSize).floor().clamp(0, 7);
+    final sq = _displayToSquare(col, row);
 
     final piece = _chess.get(sq);
     final myColorEnum = widget.myColor == 'white'
         ? ch.Color.WHITE
         : ch.Color.BLACK;
 
-    // Clicked own piece → select
-    if (piece != null && piece.color == myColorEnum) {
-      final moves = _chess.generate_moves({'square': sq});
+    if (piece == null || piece.color != myColorEnum) {
+      // Tap trên ô trống hoặc quân địch → có thể là di chuyển đến target, xử lý ở onPointerUp
+      _pendingDragOrigin = null;
+      _pendingDragSquare = null;
+      return;
+    }
+
+    // Là quân của mình: lưu candidate, hiện legal moves ngay
+    final moves = _chess.generate_moves({'square': sq});
+    _pendingDragOrigin = e.position;
+    _pendingDragSquare = sq;
+    HapticFeedback.lightImpact();
+
+    setState(() {
+      _selectedSquare = sq;
+      // Bug 18 Fix: Thêm guard length >= 4 tránh RangeError
+      _legalTargets = moves
+          .where((m) => m.toAlgebraic.length >= 4)
+          .map((m) => m.toAlgebraic.substring(2, 4))
+          .toList();
+
+      // Lọc bắt quân bao gồm cả En Passant (Bug 3 Fix) + Guard Length (Bug 18 Fix)
+      _legalCaptures = moves
+          .where(
+            (m) => (m.flags & 12) != 0 && m.toAlgebraic.length >= 4,
+          ) // 12 = BITS_CAPTURE (4) | BITS_EP_CAPTURE (8)
+          .map((m) => m.toAlgebraic.substring(2, 4))
+          .toSet();
+    });
+  }
+
+  void _onPointerMove(PointerMoveEvent e) {
+    if (_dragSquare != null) {
+      // Đang drag thật → cập nhật vị trí
+      setState(() => _dragOffset = e.position);
+      return;
+    }
+
+    if (_pendingDragOrigin != null && _pendingDragSquare != null) {
+      final delta = (e.position - _pendingDragOrigin!).distance;
+      if (delta > _kDragThreshold) {
+        // Vượt ngưỡng → mới thực sự kích hoạt drag ghost (Bug 1 Fix)
+        final sq = _pendingDragSquare!;
+        final piece = _chess.get(sq)!;
+        setState(() {
+          _dragSquare = sq;
+          _dragOffset = e.position;
+          _dragPiece =
+              '${piece.color == ch.Color.WHITE ? 'w' : 'b'}${piece.type.toUpperCase()}';
+        });
+        _pendingDragOrigin = null;
+        _pendingDragSquare = null;
+      }
+    }
+  }
+
+  void _onPointerUp(PointerUpEvent e) {
+    if (_dragSquare != null) {
+      // Kết thúc drag → thử thực hiện nước đi
+      final renderBox =
+          _boardKey.currentContext?.findRenderObject() as RenderBox?;
+      if (renderBox != null) {
+        final local = renderBox.globalToLocal(e.position);
+        final col = (local.dx / _squareSize).floor().clamp(0, 7);
+        final row = (local.dy / _squareSize).floor().clamp(0, 7);
+        final targetSq = _displayToSquare(col, row);
+
+        if (_legalTargets.contains(targetSq) && targetSq != _dragSquare) {
+          _attemptMove(_dragSquare!, targetSq);
+          return;
+        }
+      }
       setState(() {
-        _selectedSquare = sq;
-        _legalTargets = moves
-            .map((m) => m.toAlgebraic.substring(2, 4))
-            .toList();
-        _legalCaptures = moves
-            .where((m) => m.flags & ch.Chess.BITS_CAPTURE != 0)
-            .map((m) => m.toAlgebraic.substring(2, 4))
-            .toSet();
+        _dragSquare = null;
+        _dragOffset = null;
+        _dragPiece = null;
       });
       return;
     }
 
-    // Clicked legal target → attempt move
-    if (_selectedSquare != null && _legalTargets.contains(sq)) {
-      _attemptMove(_selectedSquare!, sq);
-      return;
-    }
+    // Là tap (di chuyển không vượt ngưỡng)
+    _pendingDragOrigin = null;
+    final renderBox =
+        _boardKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox != null) {
+      final local = renderBox.globalToLocal(e.position);
+      final col = (local.dx / _squareSize).floor().clamp(0, 7);
+      final row = (local.dy / _squareSize).floor().clamp(0, 7);
+      final sq = _displayToSquare(col, row);
 
-    // Deselect
-    setState(() {
-      _selectedSquare = null;
-      _legalTargets = [];
-      _legalCaptures = {};
-    });
+      if (_pendingDragSquare != null) {
+        // Tap trên quân mình: đã select xong ở onPointerDown, không làm gì thêm
+        _pendingDragSquare = null;
+      } else if (_selectedSquare != null && _legalTargets.contains(sq)) {
+        // Tap vào ô hợp lệ → di chuyển
+        _attemptMove(_selectedSquare!, sq);
+      } else {
+        // Tap lung tung → bỏ chọn
+        setState(() {
+          _selectedSquare = null;
+          _legalTargets = [];
+          _legalCaptures = {};
+        });
+      }
+    }
   }
+
+  // ── Move execution ─────────────────────────────────────────────────────────
 
   void _attemptMove(String from, String to) {
     // Check promotion
@@ -319,6 +408,8 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
       _legalCaptures = {};
       _dragSquare = null;
       _dragPiece = null;
+      _pendingDragOrigin = null;
+      _pendingDragSquare = null;
     });
 
     HapticFeedback.mediumImpact();
@@ -342,63 +433,6 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
       _PromoPiece.knight => 'n',
     };
     _commitMove(from, to, promoChar);
-  }
-
-  // ── Drag handlers ─────────────────────────────────────────────────────────
-
-  void _onDragStart(String sq, Offset globalPos) {
-    if (!widget.isMyTurn || widget.isGameOver) return;
-    final piece = _chess.get(sq);
-    final myColorEnum = widget.myColor == 'white'
-        ? ch.Color.WHITE
-        : ch.Color.BLACK;
-    if (piece == null || piece.color != myColorEnum) return;
-
-    final moves = _chess.generate_moves({'square': sq});
-    HapticFeedback.lightImpact();
-    setState(() {
-      _dragSquare = sq;
-      _dragOffset = globalPos;
-      _dragPiece =
-          '${piece.color == ch.Color.WHITE ? 'w' : 'b'}${piece.type.toUpperCase()}';
-      _selectedSquare = sq;
-      _legalTargets = moves.map((m) => m.toAlgebraic.substring(2, 4)).toList();
-      _legalCaptures = moves
-          .where((m) => m.flags & ch.Chess.BITS_CAPTURE != 0)
-          .map((m) => m.toAlgebraic.substring(2, 4))
-          .toSet();
-    });
-  }
-
-  void _onDragEnd(Offset globalPos) {
-    if (_dragSquare == null) return;
-    final renderBox =
-        _boardKey.currentContext?.findRenderObject() as RenderBox?;
-    if (renderBox != null) {
-      final local = renderBox.globalToLocal(globalPos);
-      final boardSize = renderBox.size;
-      _squareSize = boardSize.width / 8;
-
-      final displayCol = (local.dx / _squareSize).floor().clamp(0, 7);
-      final displayRow = (local.dy / _squareSize).floor().clamp(0, 7);
-      final targetSq = _displayToSquare(displayCol, displayRow);
-
-      if (_legalTargets.contains(targetSq) && targetSq != _dragSquare) {
-        _attemptMove(_dragSquare!, targetSq);
-        return;
-      }
-    }
-
-    setState(() {
-      _dragSquare = null;
-      _dragOffset = null;
-      _dragPiece = null;
-    });
-  }
-
-  void _onDragMove(Offset globalPos) {
-    if (_dragSquare == null) return;
-    setState(() => _dragOffset = globalPos);
   }
 
   // ── Last move squares ─────────────────────────────────────────────────────
@@ -545,13 +579,13 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
               }),
             ),
           ),
-          // Board
+          // Board - Bọc board vào KeyedSubtree để sửa tọa độ 20px bị lệch (Bug 4)
           Positioned(
             left: frameW,
             top: frameW,
             width: boardSize,
             height: boardSize,
-            child: _buildBoard(boardSize),
+            child: KeyedSubtree(key: _boardKey, child: _buildBoard(boardSize)),
           ),
         ],
       ),
@@ -564,31 +598,24 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
     final (lastFrom, lastTo) = _lastMoveSqs;
     final checkedKing = _cachedCheckedKingSq;
 
-    return GestureDetector(
-      onTapUp: (d) {
-        final col = (d.localPosition.dx / _squareSize).floor().clamp(0, 7);
-        final row = (d.localPosition.dy / _squareSize).floor().clamp(0, 7);
-        _selectSquare(_displayToSquare(col, row));
-      },
-      child: Listener(
-        onPointerDown: (e) {
-          final col = (e.localPosition.dx / _squareSize).floor().clamp(0, 7);
-          final row = (e.localPosition.dy / _squareSize).floor().clamp(0, 7);
-          final sq = _displayToSquare(col, row);
-          _onDragStart(sq, e.position);
-        },
-        onPointerMove: (e) => _onDragMove(e.position),
-        onPointerUp: (e) => _onDragEnd(e.position),
-        onPointerCancel: (_) => setState(() {
-          _dragSquare = null;
-          _dragOffset = null;
-          _dragPiece = null;
-        }),
+    // Gỡ bỏ GestureDetector ngoài cùng, dùng duy nhất Listener
+    return Listener(
+      onPointerDown: _onPointerDown,
+      onPointerMove: _onPointerMove,
+      onPointerUp: _onPointerUp,
+      onPointerCancel: (_) => setState(() {
+        _dragSquare = null;
+        _dragOffset = null;
+        _dragPiece = null;
+        _pendingDragOrigin = null;
+        _pendingDragSquare = null;
+      }),
+      // Bọc RepaintBoundary để giới hạn vùng repaint khi drag move (Bug 2)
+      child: RepaintBoundary(
         child: SizedBox(
           width: size,
           height: size,
           child: Stack(
-            key: _boardKey,
             children: [
               // Squares
               ...List.generate(64, (i) {
@@ -610,23 +637,31 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
                   squareColor = isLight ? _CW.lightSquare : _CW.darkSquare;
                 }
 
+                // Chỉ bọc AnimatedBuilder cho ô Vua bị chiếu (Bug 2 Fix)
+                Widget squareContainer;
+                if (isChecked) {
+                  squareContainer = AnimatedBuilder(
+                    animation: _checkAnim,
+                    builder: (_, __) => ColoredBox(
+                      color:
+                          Color.lerp(
+                            _CW.checkSq.withValues(alpha: 0.3),
+                            _CW.checkSq.withValues(alpha: 0.75),
+                            _checkAnim.value,
+                          ) ??
+                          Colors.transparent,
+                    ),
+                  );
+                } else {
+                  squareContainer = ColoredBox(color: squareColor);
+                }
+
                 return Positioned(
                   left: displayCol * _squareSize,
                   top: displayRow * _squareSize,
                   width: _squareSize,
                   height: _squareSize,
-                  child: AnimatedBuilder(
-                    animation: _checkAnim,
-                    builder: (_, __) => Container(
-                      color: isChecked
-                          ? Color.lerp(
-                              _CW.checkSq.withValues(alpha: 0.3),
-                              _CW.checkSq.withValues(alpha: 0.7),
-                              _checkAnim.value,
-                            )
-                          : squareColor,
-                    ),
-                  ),
+                  child: squareContainer,
                 );
               }),
 

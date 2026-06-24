@@ -105,6 +105,7 @@ class GameFirebaseService {
     }
   }
 
+  // Bug 19 Fix: Dùng Transaction để ngăn Race Condition khi cả 2 client cùng gọi finishMatch
   Future<void> finishMatch({
     required String matchId,
     required GameResult result,
@@ -112,13 +113,28 @@ class GameFirebaseService {
     required int totalMoves,
   }) async {
     final now = DateTime.now().millisecondsSinceEpoch.toString();
-    await updateMatch(matchId, {
-      FirestoreConstants.gameStatus: GameMatchStatus.finished.name,
-      FirestoreConstants.gameResult: result.value,
-      FirestoreConstants.gameEndReason: endReason,
-      FirestoreConstants.endedAt: now,
-    });
-    _log('🏁 Match finished: $matchId → ${result.value} ($endReason)');
+    try {
+      await _db.runTransaction((tx) async {
+        final doc = await tx.get(_matchDoc(matchId));
+        if (!doc.exists) return;
+
+        final data = doc.data()!;
+        final currentStatus = data[FirestoreConstants.gameStatus] as String?;
+
+        // Đã finish rồi thì bỏ qua
+        if (currentStatus == GameMatchStatus.finished.name) return;
+
+        tx.update(_matchDoc(matchId), {
+          FirestoreConstants.gameStatus: GameMatchStatus.finished.name,
+          FirestoreConstants.gameResult: result.value,
+          FirestoreConstants.gameEndReason: endReason,
+          FirestoreConstants.endedAt: now,
+        });
+      });
+      _log('🏁 Match finished: $matchId → ${result.value} ($endReason)');
+    } catch (e) {
+      _log('❌ finishMatch error: $e');
+    }
   }
 
   Future<void> abortMatch(String matchId, {String reason = 'timeout'}) async {

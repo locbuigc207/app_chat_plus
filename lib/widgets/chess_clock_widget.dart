@@ -2,11 +2,10 @@
 //
 // Widget đồng hồ cờ vua hiển thị trong MatchRoomPage khi gameType == chess.
 // Hiển thị 2 đồng hồ: player trên (đối thủ) và player dưới (mình).
-// Tích hợp với GameStateProvider qua Consumer.
+// Nhận dữ liệu trực tiếp từ parent để tối ưu hiệu suất (Không dùng Consumer nội bộ).
 
+import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter_chat_demo/providers/game_state_provider.dart';
-import 'package:provider/provider.dart';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 abstract final class _CC {
@@ -21,10 +20,10 @@ abstract final class _CC {
 }
 
 class ChessClockWidget extends StatelessWidget {
-  /// Player 1 name (white)
+  /// Player 1 name (white by default, but could be black)
   final String player1Name;
 
-  /// Player 2 name (black)
+  /// Player 2 name (black by default, but could be white)
   final String player2Name;
 
   /// Player 1 avatar URL
@@ -36,6 +35,15 @@ class ChessClockWidget extends StatelessWidget {
   /// Màu của current user: 'white' hoặc 'black'
   final String myColor;
 
+  /// True nếu người dùng hiện tại là Player 2 (người join)
+  final bool isCurrentUserPlayer2;
+
+  // ─── State do parent truyền vào để tối ưu rebuild (Bug 21 Fix) ─────────────
+  final int player1RemainingMs;
+  final int player2RemainingMs;
+  final bool isPlayer1Turn;
+  final bool isGameOver;
+
   const ChessClockWidget({
     super.key,
     required this.player1Name,
@@ -43,62 +51,53 @@ class ChessClockWidget extends StatelessWidget {
     required this.player1Avatar,
     required this.player2Avatar,
     required this.myColor,
+    required this.isCurrentUserPlayer2,
+    required this.player1RemainingMs,
+    required this.player2RemainingMs,
+    required this.isPlayer1Turn,
+    required this.isGameOver,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<GameStateProvider>(
-      builder: (context, gs, _) {
-        final match = gs.match;
-        if (match == null || match.timeControlSeconds <= 0) {
-          return const SizedBox.shrink();
-        }
+    // Quy ước chuẩn: Đồng hồ của TÔI luôn ở DƯỚI, đồng hồ ĐỐI THỦ luôn ở TRÊN.
+    // "Tôi là Player 2, vậy Player 1 (đối thủ) sẽ ở trên" (Bug 10 Fix)
+    final topIsPlayer1 = isCurrentUserPlayer2;
 
-        final isPlayer1Turn = gs.isPlayer1Turn;
-        final p1Ms = gs.player1RemainingMs;
-        final p2Ms = gs.player2RemainingMs;
-        final isGameOver = gs.isGameOver;
+    final topMs = topIsPlayer1 ? player1RemainingMs : player2RemainingMs;
+    final bottomMs = topIsPlayer1 ? player2RemainingMs : player1RemainingMs;
+    final topActive = topIsPlayer1 ? isPlayer1Turn : !isPlayer1Turn;
+    final botActive = !topActive;
+    final topName = topIsPlayer1 ? player1Name : player2Name;
+    final botName = topIsPlayer1 ? player2Name : player1Name;
+    final topAvatar = topIsPlayer1 ? player1Avatar : player2Avatar;
+    final botAvatar = topIsPlayer1 ? player2Avatar : player1Avatar;
 
-        // Xác định top/bottom theo màu người chơi
-        // Nếu myColor == 'white' → tôi là white (player1), đối thủ là black (player2) ở trên
-        final topIsPlayer1 = myColor == 'black'; // đối thủ ở trên
-
-        final topMs = topIsPlayer1 ? p1Ms : p2Ms;
-        final bottomMs = topIsPlayer1 ? p2Ms : p1Ms;
-        final topActive = topIsPlayer1 ? isPlayer1Turn : !isPlayer1Turn;
-        final botActive = !topActive;
-        final topName = topIsPlayer1 ? player1Name : player2Name;
-        final botName = topIsPlayer1 ? player2Name : player1Name;
-        final topAvatar = topIsPlayer1 ? player1Avatar : player2Avatar;
-        final botAvatar = topIsPlayer1 ? player2Avatar : player1Avatar;
-
-        return Container(
-          color: _CC.bg,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Đồng hồ đối thủ (trên)
-              _ClockTile(
-                name: topName,
-                avatarUrl: topAvatar,
-                remainingMs: topMs,
-                isActive: topActive && !isGameOver,
-                isTop: true,
-              ),
-              // Divider
-              Container(height: 1, color: _CC.border),
-              // Đồng hồ mình (dưới)
-              _ClockTile(
-                name: botName,
-                avatarUrl: botAvatar,
-                remainingMs: bottomMs,
-                isActive: botActive && !isGameOver,
-                isTop: false,
-              ),
-            ],
+    return Container(
+      color: _CC.bg,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Đồng hồ đối thủ (trên)
+          _ClockTile(
+            name: topName,
+            avatarUrl: topAvatar,
+            remainingMs: topMs,
+            isActive: topActive && !isGameOver,
+            isTop: true,
           ),
-        );
-      },
+          // Divider
+          Container(height: 1, color: _CC.border),
+          // Đồng hồ mình (dưới)
+          _ClockTile(
+            name: botName,
+            avatarUrl: botAvatar,
+            remainingMs: bottomMs,
+            isActive: botActive && !isGameOver,
+            isTop: false,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -153,13 +152,13 @@ class _ClockTile extends StatelessWidget {
                 : null,
             child: avatarUrl.isEmpty
                 ? Text(
-                    name.isNotEmpty ? name[0].toUpperCase() : '?',
-                    style: TextStyle(
-                      color: isActive ? const Color(0xFF4A2518) : _CC.idleText,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
-                    ),
-                  )
+              name.isNotEmpty ? name[0].toUpperCase() : '?',
+              style: TextStyle(
+                color: isActive ? const Color(0xFF4A2518) : _CC.idleText,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            )
                 : null,
           ),
           const SizedBox(width: 10),
@@ -228,15 +227,15 @@ class _ClockDisplay extends StatelessWidget {
         color: isLow && isActive
             ? _CC.lowColor.withValues(alpha: 0.12)
             : (isActive
-                  ? const Color(0xFF8B4513).withValues(alpha: 0.08)
-                  : Colors.transparent),
+            ? const Color(0xFF8B4513).withValues(alpha: 0.08)
+            : Colors.transparent),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: isLow && isActive
               ? _CC.lowColor.withValues(alpha: 0.4)
               : (isActive
-                    ? const Color(0xFFB58863).withValues(alpha: 0.3)
-                    : Colors.transparent),
+              ? const Color(0xFFB58863).withValues(alpha: 0.3)
+              : Colors.transparent),
         ),
       ),
       child: Text(

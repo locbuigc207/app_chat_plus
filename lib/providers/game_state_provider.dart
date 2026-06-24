@@ -339,16 +339,23 @@ class GameStateProvider extends ChangeNotifier {
   }
 
   String _computeCurrentTurn(GameMatch match) {
-    if (_nextMoveIndex == 0) return match.player1Id;
-    return _nextMoveIndex.isEven
-        ? match.player1Id
-        : (match.player2Id ?? match.player1Id);
+    final player1IsWhite = match.player1Side == ChessSide.white;
+    final isWhiteTurn = _nextMoveIndex.isEven;
+
+    if (isWhiteTurn) {
+      return player1IsWhite
+          ? match.player1Id
+          : (match.player2Id ?? match.player1Id);
+    } else {
+      return player1IsWhite
+          ? (match.player2Id ?? match.player1Id)
+          : match.player1Id;
+    }
   }
 
   void _initClocks(GameMatch match) {
     if (match.timeControlSeconds > 0) {
       final totalMs = match.timeControlSeconds * 1000;
-      // Tránh ghi đè nếu đã khôi phục từ lịch sử
       if (_player1RemainingMs == 0) _player1RemainingMs = totalMs;
       if (_player2RemainingMs == 0) _player2RemainingMs = totalMs;
     }
@@ -516,16 +523,18 @@ class GameStateProvider extends ChangeNotifier {
         final r = row - dr * i, c = col - dc * i;
         if (_caroBoard['$r,$c'] == symbol) {
           line.insert(0, CaroCell(r, c, symbol));
-        } else
+        } else {
           break;
+        }
       }
 
       for (int i = 1; i <= winLength - 1; i++) {
         final r = row + dr * i, c = col + dc * i;
         if (_caroBoard['$r,$c'] == symbol) {
           line.add(CaroCell(r, c, symbol));
-        } else
+        } else {
           break;
+        }
       }
 
       if (line.length >= winLength) return line.take(winLength).toList();
@@ -583,6 +592,11 @@ class GameStateProvider extends ChangeNotifier {
     final engine = _chessEngine!;
     if (uci.length < 4) return false;
 
+    // Bug 12 Fix: Snapshot trạng thái trước khi thay đổi để rollback nếu lỗi
+    final snapshotFen = _chessFen;
+    final snapshotLastUci = _lastChessMoveUci;
+    final snapshotSanLen = _chessSanHistory.length;
+
     final from = uci.substring(0, 2);
     final to = uci.substring(2, 4);
     final promo = uci.length >= 5 ? uci[4] : null;
@@ -631,12 +645,23 @@ class GameStateProvider extends ChangeNotifier {
     try {
       await _firebase.addMove(_match!.matchId, move);
     } catch (e) {
-      if (_chessSanHistory.isNotEmpty) _chessSanHistory.removeLast();
-      _nextMoveIndex--;
+      // Bug 12 Fix: Rollback TOÀN BỘ — bao gồm cả engine
+      try {
+        _chessEngine = ch.Chess.fromFEN(snapshotFen);
+      } catch (_) {}
+      _chessFen = snapshotFen;
+      _lastChessMoveUci = snapshotLastUci;
+
+      // Trim SAN history về snapshot length
+      while (_chessSanHistory.length > snapshotSanLen) {
+        _chessSanHistory.removeLast();
+      }
+
+      _nextMoveIndex = _nextMoveIndex - 1; // revert _advanceTurn
       _currentTurnUserId = _computeCurrentTurn(_match!);
       _isGameOver = false;
       notifyListeners();
-      debugPrint('[GameStateProvider] chess addMove failed: $e');
+      debugPrint('[GameStateProvider] chess addMove failed, rolled back: $e');
       return false;
     }
 
@@ -670,7 +695,7 @@ class GameStateProvider extends ChangeNotifier {
     }
 
     _lastChessMoveUci = uci;
-    if (san.isNotEmpty && !_chessSanHistory.contains(san)) {
+    if (san.isNotEmpty) {
       _chessSanHistory.add(san);
     }
 
@@ -686,6 +711,9 @@ class GameStateProvider extends ChangeNotifier {
     _currentTurnUserId = _computeCurrentTurn(_match!);
     _checkChessGameOver();
     notifyListeners();
+
+    // Bug 13 Fix: Reset turn timer cho lượt tiếp theo (lượt của mình)
+    if (!_isGameOver) _resetTurnTimer();
   }
 
   void _executeChessUci(ch.Chess engine, String uci) {
@@ -732,13 +760,12 @@ class GameStateProvider extends ChangeNotifier {
       }
     }
 
-    if (_chessFen != ch.Chess.DEFAULT_POSITION) {
-      try {
-        _chessEngine = ch.Chess.fromFEN(_chessFen);
-      } catch (_) {}
-    }
+    try {
+      _chessEngine = ch.Chess.fromFEN(_chessFen);
+    } catch (_) {}
   }
 
+  // Bug 17 Fix: Đổi thứ tự check theo từ cụ thể đến tổng quát để tránh engine.in_draw nhận diện nhầm
   void _checkChessGameOver() {
     final engine = _chessEngine;
     if (engine == null) return;
@@ -754,12 +781,39 @@ class GameStateProvider extends ChangeNotifier {
           ? GameResult.player1Win
           : GameResult.player2Win;
       _stopAllTimers();
-    } else if (engine.in_stalemate ||
-        engine.in_draw ||
-        engine.insufficient_material ||
-        engine.in_threefold_repetition) {
+      return;
+    }
+
+    if (engine.in_stalemate) {
       _isGameOver = true;
       _endReason = EndReason.stalemate;
+      _finalResult = GameResult.draw;
+      _winnerUserId = null;
+      _stopAllTimers();
+      return;
+    }
+
+    if (engine.insufficient_material) {
+      _isGameOver = true;
+      _endReason = EndReason.insufficientMaterial;
+      _finalResult = GameResult.draw;
+      _winnerUserId = null;
+      _stopAllTimers();
+      return;
+    }
+
+    if (engine.in_threefold_repetition) {
+      _isGameOver = true;
+      _endReason = EndReason.drawAgreed;
+      _finalResult = GameResult.draw;
+      _winnerUserId = null;
+      _stopAllTimers();
+      return;
+    }
+
+    if (engine.in_draw) {
+      _isGameOver = true;
+      _endReason = EndReason.drawAgreed;
       _finalResult = GameResult.draw;
       _winnerUserId = null;
       _stopAllTimers();
@@ -1127,6 +1181,25 @@ class GameStateProvider extends ChangeNotifier {
       _lastMove = null;
       _winLine = [];
       _stopAllTimers();
+
+      // Bug 15 Fix: Đặt lại trạng thái bàn cờ về vị trí ban đầu ngay lập tức
+      if (_match?.gameType == GameType.chess) {
+        _lastChessMoveUci = '';
+        final initialFen = _match?.initialFen;
+        if (initialFen != null && initialFen.isNotEmpty) {
+          try {
+            _chessEngine = ch.Chess.fromFEN(initialFen);
+            _chessFen = initialFen;
+          } catch (_) {
+            _chessEngine = ch.Chess();
+            _chessFen = ch.Chess.DEFAULT_POSITION;
+          }
+        } else {
+          _chessEngine = ch.Chess();
+          _chessFen = ch.Chess.DEFAULT_POSITION;
+        }
+      }
+
       _isLoading = false;
       notifyListeners();
     } catch (e) {
@@ -1146,6 +1219,13 @@ class GameStateProvider extends ChangeNotifier {
       _rebuildBoardFromHistory(_replayMoves);
     }
     notifyListeners();
+  }
+
+  // Bug 14 Fix: Method jumpToReplayIndex với độ phức tạp O(n)
+  void jumpToReplayIndex(int index) {
+    final clamped = index.clamp(-1, _replayMoves.length - 1);
+    _replayIndex = clamped;
+    _applyReplayState(clamped);
   }
 
   void replayForward() {
@@ -1189,6 +1269,8 @@ class GameStateProvider extends ChangeNotifier {
       _winLine = [];
     }
 
+    String replayLastUci = '';
+
     for (int i = 0; i <= index && i < _replayMoves.length; i++) {
       final move = _replayMoves[i];
       final data = move.moveData;
@@ -1204,21 +1286,28 @@ class GameStateProvider extends ChangeNotifier {
       } else if (_match?.gameType == GameType.chess) {
         final uci = data['uci'] as String?;
         final fen = data['fen'] as String?;
+
         if (fen != null && fen.isNotEmpty) {
           try {
             _chessEngine = ch.Chess.fromFEN(fen);
           } catch (_) {
-            if (uci != null && uci.length >= 4)
+            if (uci != null && uci.length >= 4) {
               _executeChessUci(_chessEngine!, uci);
+            }
           }
         } else if (uci != null && uci.length >= 4) {
           _executeChessUci(_chessEngine!, uci);
+        }
+
+        if (uci != null && uci.isNotEmpty) {
+          replayLastUci = uci;
         }
       }
     }
 
     if (_match?.gameType == GameType.chess) {
       _chessFen = _chessEngine?.fen ?? ch.Chess.DEFAULT_POSITION;
+      _lastChessMoveUci = index >= 0 ? replayLastUci : '';
     } else if (_replayIndex >= 0 && _replayIndex < _replayMoves.length) {
       final move = _replayMoves[_replayIndex];
       final data = move.moveData;

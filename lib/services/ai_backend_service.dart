@@ -135,22 +135,24 @@ class AIBackendService {
   }) async {
     if (userMessage.trim().isEmpty) return null;
     try {
-      final safeMsg = DataMaskingUtils.maskText(
-        userMessage,
-        config: _kAiMaskingConfig,
-      );
-      final safeHistory = DataMaskingUtils.prepareForAI(conversationHistory);
+      // [FIX P1 Lỗi 1] Bỏ masking tại đây để tránh lỗi double-masking phá hỏng format.
+      // SyncManager._processAiResponse sẽ chịu trách nhiệm mask (hoặc truyền thô nếu đã mask).
+      // Tham số truyền đi giờ sẽ nhận nguyên trạng từ SyncManager.
 
       final result = await _call(
         functionName: 'generateAiChatReply',
-        params: {'userMessage': safeMsg, 'conversationHistory': safeHistory},
+        params: {
+          'userMessage': userMessage,
+          'conversationHistory': conversationHistory,
+        },
         timeout: const Duration(seconds: 30),
       );
       if (result?['success'] != true) return null;
       return result?['reply'] as String?;
     } catch (e, st) {
       _logError('generateAiChatReply', e, st);
-      return null;
+      // Ném lỗi lên trên để SyncManager catch và xác định rethrow hay retry
+      rethrow;
     }
   }
 
@@ -556,7 +558,6 @@ class AIBackendService {
 
       if (result == null) return null;
 
-      // ✅ FIX P0: CF alias trả về {reply} không phải {replies}, normalize thành list
       List<dynamic> repliesList = [];
       if (result['replies'] is List) {
         repliesList = result['replies'] as List;
@@ -634,7 +635,7 @@ class AIBackendService {
       // Restore PII vào kết quả AI
       final restored = session.restore(rawRewritten);
 
-      // [FIX 10] Cải thiện PII Fallback: Kiểm tra những placeholder không thể restore
+      // Cải thiện PII Fallback: Kiểm tra những placeholder không thể restore
       final hasUnrestoredPlaceholders = RegExp(
         r'\[[A-Z]+_\d+\]',
       ).hasMatch(restored);
@@ -684,7 +685,6 @@ class AIBackendService {
   ) async {
     if (messages.isEmpty) return [];
 
-    // [FIX 17] Cài đặt giới hạn 20 message client-side trước khi truyền tải
     const clientLimit = 20;
     if (messages.length > clientLimit) {
       _log(
@@ -719,7 +719,6 @@ class AIBackendService {
       return results.asMap().entries.map((entry) {
         final map = entry.value as Map<dynamic, dynamic>;
         return ToxicityResult(
-          // GUARD CLAUSE (Bug 8): Tránh RangeError khi server trả về nhiều phần tử hơn limitedMessages
           id:
               map['id']?.toString() ??
               (entry.key < limitedMessages.length
@@ -794,7 +793,6 @@ class AIBackendService {
         return null;
       }
 
-      // ✅ FIX P0: Đưa về mảng các chuỗi thô (List<String>) vì CF cần typeof m === "string"
       final maskedMessages = rawMessages
           .map(
             (m) => DataMaskingUtils.maskText(
@@ -819,7 +817,6 @@ class AIBackendService {
 
       if (result == null) return null;
 
-      // ✅ FIX P0: Truy xuất vào trường insights khi có nested response ({success: bool, insights: {...}})
       if (result['success'] != true) return null;
       final insights = result['insights'];
       if (insights == null) return null;
@@ -858,7 +855,6 @@ class AIBackendService {
     int messageLimit = 100,
   }) async {
     try {
-      // [FIX 5 & 16] Cải thiện filter giữ lại các chuỗi dạng JSON hợp lệ
       final recentMessages = LocalDbService()
           .getMessages(conversationId)
           .take(messageLimit)
@@ -928,7 +924,6 @@ class AIBackendService {
         params: {'conversationId': conversationId},
         timeout: _kDefaultTimeout,
       );
-      // ✅ FIX P0: Check trường exists vì response của CF là {exists: true, config: {...}}
       if (result?['exists'] == true && result?['config'] != null) {
         return Map<String, dynamic>.from(result!['config'] as Map);
       }
@@ -1055,7 +1050,6 @@ class AIBackendService {
         incomingMessage.startsWith('eyJ'))
       return awayMessage;
 
-    // [FIX 18] Chủ động load Config khi Autopilot tone likeMe nhưng thiết bị Client mất learnedPersona State
     String? effectivePersona = learnedPersona;
     if (tone == 'likeMe' &&
         effectivePersona == null &&
@@ -1448,6 +1442,7 @@ class AIBackendService {
     return [];
   }
 
+  // [FIX P0 Lỗi 3] Cập nhật ánh xạ chính xác lỗi từ Cloud Function sang Client
   AIBackendException _mapFunctionsException(FirebaseFunctionsException e) {
     switch (e.code) {
       case 'unauthenticated':
@@ -1461,6 +1456,12 @@ class AIBackendService {
         return AIBackendException(
           AIBackendErrorType.quotaExceeded,
           'Cloud Function vượt quota: ${e.message}',
+          cause: e,
+        );
+      case 'internal': // Thêm case nhận diện Permanent Error
+        return AIBackendException(
+          AIBackendErrorType.unknown,
+          'Cloud Function internal error: ${e.message}',
           cause: e,
         );
       case 'not-found':
@@ -1489,10 +1490,21 @@ class AIBackendService {
     if (kDebugMode) debugPrint('[AIBackendService] $msg');
   }
 
+  // [FIX P0 Lỗi 2] Chặn báo cáo Spam lên Crashlytics với các lỗi AI tạm thời
   void _logError(String method, Object e, StackTrace st) {
     if (kDebugMode) {
       debugPrint('[AIBackendService] ❌ $method error: $e');
     }
+
+    if (e is AIBackendException) {
+      final isExpected =
+          e.type == AIBackendErrorType.unknown ||
+          e.type == AIBackendErrorType.networkError ||
+          e.type == AIBackendErrorType.quotaExceeded;
+      // Bỏ qua không gửi log lên Crashlytics với lỗi đã expect và không phải crash
+      if (isExpected) return;
+    }
+
     ErrorLogger.logError(e, st, context: 'AIBackendService.$method');
   }
 }

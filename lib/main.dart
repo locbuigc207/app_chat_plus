@@ -12,19 +12,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_chat_demo/constants/constants.dart';
 import 'package:flutter_chat_demo/firebase_options.dart';
-import 'package:flutter_chat_demo/models/call_model.dart';
-import 'package:flutter_chat_demo/models/group_call_model.dart';
 import 'package:flutter_chat_demo/models/models.dart';
 import 'package:flutter_chat_demo/pages/pages.dart';
 import 'package:flutter_chat_demo/providers/phone_auth_provider.dart'
-as custom_auth;
+    as custom_auth;
 import 'package:flutter_chat_demo/providers/providers.dart';
 import 'package:flutter_chat_demo/services/services.dart';
 import 'package:flutter_chat_demo/utils/utils.dart';
 import 'package:flutter_chat_demo/widgets/widgets.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:hive_flutter/hive_flutter.dart'; // [THÊM MỚI] Import Hive
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:path_provider/path_provider.dart'; // [THÊM MỚI] Import Path Provider
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -36,11 +36,11 @@ import 'package:timezone/timezone.dart' as tz;
 // ─────────────────────────────────────────────────────────────────────────────
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-FlutterLocalNotificationsPlugin();
+    FlutterLocalNotificationsPlugin();
 
 /// Navigator key dùng cho toàn app.
 final GlobalKey<NavigatorState> globalNavigatorKey =
-GlobalKey<NavigatorState>();
+    GlobalKey<NavigatorState>();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FCM background handler
@@ -77,10 +77,8 @@ List<SingleChildWidget> buildAppProviders({
 }) {
   return [
     ChangeNotifierProvider<AutoPilotProvider>(
-      create: (_) => AutoPilotProvider(
-        firebaseFirestore: firebaseFirestore,
-        prefs: prefs,
-      ),
+      create: (_) =>
+          AutoPilotProvider(firebaseFirestore: firebaseFirestore, prefs: prefs),
     ),
     ChangeNotifierProvider<InsightsProvider>(
       create: (_) => InsightsProvider(firebaseFirestore: firebaseFirestore),
@@ -192,6 +190,29 @@ Future<void> bubbleMain() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
+  // [SỬA LỖI] Đợi Firebase Auth khôi phục session nếu currentUser chưa sẵn sàng
+  if (firebase_auth.FirebaseAuth.instance.currentUser == null) {
+    try {
+      await firebase_auth.FirebaseAuth.instance
+          .authStateChanges()
+          .firstWhere((user) => user != null)
+          .timeout(const Duration(seconds: 3));
+      debugPrint('✅ Firebase Auth session restored in bubble engine');
+    } catch (e) {
+      debugPrint('⚠️ Auth wait timeout: $e');
+    }
+  }
+
+  // [SỬA LỖI] Init Hive với path riêng để tránh file-lock với main engine
+  try {
+    final dir = await getApplicationDocumentsDirectory();
+    Hive.init('${dir.path}/bubble_hive');
+    await LocalDbService().initialize();
+    debugPrint('✅ Bubble LocalDbService ready');
+  } catch (e) {
+    debugPrint('⚠️ Bubble LocalDb init: $e');
+  }
+
   final prefs = await SharedPreferences.getInstance();
 
   runApp(BubbleChatEntryApp(prefs: prefs));
@@ -201,6 +222,29 @@ Future<void> bubbleMain() async {
 Future<void> miniChatMain() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // [SỬA LỖI] Đợi Firebase Auth khôi phục session cho Mini Chat Engine
+  if (firebase_auth.FirebaseAuth.instance.currentUser == null) {
+    try {
+      await firebase_auth.FirebaseAuth.instance
+          .authStateChanges()
+          .firstWhere((user) => user != null)
+          .timeout(const Duration(seconds: 3));
+      debugPrint('✅ Firebase Auth session restored in mini chat engine');
+    } catch (e) {
+      debugPrint('⚠️ Auth wait timeout: $e');
+    }
+  }
+
+  // [SỬA LỖI] Init Hive với path riêng biệt cho Mini Chat để tránh conflict
+  try {
+    final dir = await getApplicationDocumentsDirectory();
+    Hive.init('${dir.path}/minichat_hive');
+    await LocalDbService().initialize();
+    debugPrint('✅ MiniChat LocalDbService ready');
+  } catch (e) {
+    debugPrint('⚠️ MiniChat LocalDb init: $e');
+  }
 
   final prefs = await SharedPreferences.getInstance();
 
@@ -388,8 +432,8 @@ Future<void> _initializeFcm() async {
 // ─────────────────────────────────────────────────────────────────────────────
 
 Future<void> _initializeLocalNotifications(
-    FlutterLocalNotificationsPlugin plugin,
-    ) async {
+  FlutterLocalNotificationsPlugin plugin,
+) async {
   try {
     const androidSettings = AndroidInitializationSettings(
       '@mipmap/ic_launcher',
@@ -418,15 +462,15 @@ Future<void> _initializeLocalNotifications(
       initSettings,
       onDidReceiveNotificationResponse: _onNotificationTapped,
       onDidReceiveBackgroundNotificationResponse:
-      _onBackgroundNotificationTapped,
+          _onBackgroundNotificationTapped,
     );
 
     if (Platform.isAndroid) await _setupAndroidNotificationChannels(plugin);
     if (Platform.isIOS) {
       await plugin
           .resolvePlatformSpecificImplementation<
-          IOSFlutterLocalNotificationsPlugin
-      >()
+            IOSFlutterLocalNotificationsPlugin
+          >()
           ?.requestPermissions(alert: true, badge: true, sound: true);
     }
     debugPrint('✅ Local Notifications khởi tạo xong');
@@ -441,12 +485,12 @@ Future<void> _initializeLocalNotifications(
 }
 
 Future<void> _setupAndroidNotificationChannels(
-    FlutterLocalNotificationsPlugin plugin,
-    ) async {
+  FlutterLocalNotificationsPlugin plugin,
+) async {
   final androidPlugin = plugin
       .resolvePlatformSpecificImplementation<
-      AndroidFlutterLocalNotificationsPlugin
-  >();
+        AndroidFlutterLocalNotificationsPlugin
+      >();
   if (androidPlugin == null) return;
 
   await androidPlugin.requestNotificationsPermission();
@@ -609,10 +653,12 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
 
     final peerId = (args['peerId'] ?? args['userId']) as String?;
     final peerNickname = (args['peerNickname'] ?? args['userName']) as String?;
-    final peerAvatar = (args['peerAvatar'] ?? args['avatarUrl']) as String? ?? '';
+    final peerAvatar =
+        (args['peerAvatar'] ?? args['avatarUrl']) as String? ?? '';
     final isBubbleMode = args['isBubbleMode'] as bool? ?? true;
 
-    final isGroup = (args['isGroup'] as bool?) ?? (peerId?.startsWith('group_') ?? false);
+    final isGroup =
+        (args['isGroup'] as bool?) ?? (peerId?.startsWith('group_') ?? false);
 
     if (peerId == null || peerNickname == null) {
       debugPrint('❌ Missing peerId or peerNickname trong args điều hướng');
@@ -625,7 +671,7 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
     _recentNavigations.add(dedupKey);
     Future.delayed(
       const Duration(seconds: 10),
-          () => _recentNavigations.remove(dedupKey),
+      () => _recentNavigations.remove(dedupKey),
     );
 
     await _waitForNavigator();
@@ -654,7 +700,7 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
               ),
             ),
           ),
-              (route) => false,
+          (route) => false,
         );
       } else {
         // [SỬA LỖI ĐIỀU HƯỚNG]: Xóa màn hình Loading và đè thẳng ChatPage
@@ -666,9 +712,10 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
         globalNavigatorKey.currentState!.pushAndRemoveUntil(
           MaterialPageRoute(
             settings: const RouteSettings(name: '/chat'),
-            builder: (_) => ChatPage(arguments: chatArgs, isBubbleMode: isBubbleMode),
+            builder: (_) =>
+                ChatPage(arguments: chatArgs, isBubbleMode: isBubbleMode),
           ),
-              (route) => false,
+          (route) => false,
         );
       }
     } catch (e, stack) {
@@ -747,8 +794,8 @@ class _AppInitializerState extends State<AppInitializer>
 
   void _startNotificationService() {
     _authSub = firebase_auth.FirebaseAuth.instance.authStateChanges().listen((
-        user,
-        ) async {
+      user,
+    ) async {
       if (user != null && !_notificationStarted) {
         widget.notificationService.initialize();
         widget.notificationService.listenForNewMessages(user.uid);
@@ -971,10 +1018,10 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
             navigatorKey: AppRouter.navigatorKey,
             themeMode: themeProvider.flutterThemeMode ?? ThemeMode.system,
             theme:
-            themeProvider.lightTheme ??
+                themeProvider.lightTheme ??
                 _buildFallbackTheme(Brightness.light),
             darkTheme:
-            themeProvider.darkTheme ?? _buildFallbackTheme(Brightness.dark),
+                themeProvider.darkTheme ?? _buildFallbackTheme(Brightness.dark),
             initialRoute: AppRouter.splash,
             onGenerateRoute: AppRouter.onGenerateRoute,
             builder: (context, child) {
@@ -1126,7 +1173,8 @@ class BubbleEntryPage extends StatefulWidget {
 }
 
 // [SỬA LỖI P1] Đồng bộ Widget Binding Observer để bắn lại Ready Signal cho Native
-class _BubbleEntryPageState extends State<BubbleEntryPage> with WidgetsBindingObserver {
+class _BubbleEntryPageState extends State<BubbleEntryPage>
+    with WidgetsBindingObserver {
   static const _channel = MethodChannel('bubble_chat_channel');
 
   @override
@@ -1169,7 +1217,10 @@ class _BubbleEntryPageState extends State<BubbleEntryPage> with WidgetsBindingOb
           children: [
             CircularProgressIndicator(),
             SizedBox(height: 16),
-            Text('Đang tải cuộc trò chuyện...', style: TextStyle(color: Colors.grey, fontSize: 13)),
+            Text(
+              'Đang tải cuộc trò chuyện...',
+              style: TextStyle(color: Colors.grey, fontSize: 13),
+            ),
           ],
         ),
       ),
@@ -1234,7 +1285,8 @@ class MiniChatEntryApp extends StatelessWidget {
                   MediaQuery.textScalerOf(context).scale(1.0).clamp(0.8, 1.3),
                 ),
               ),
-              child: child!, // KHÔNG SỬ DỤNG BubbleChatChannelManager để tránh conflict
+              child:
+                  child!, // KHÔNG SỬ DỤNG BubbleChatChannelManager để tránh conflict
             ),
             home: const MiniChatEntryPage(),
             onGenerateRoute: AppRouter.onGenerateRoute,
@@ -1253,7 +1305,8 @@ class MiniChatEntryPage extends StatefulWidget {
 }
 
 // [SỬA LỖI P1] Đồng bộ Widget Binding Observer để bắn lại Ready Signal cho Native
-class _MiniChatEntryPageState extends State<MiniChatEntryPage> with WidgetsBindingObserver {
+class _MiniChatEntryPageState extends State<MiniChatEntryPage>
+    with WidgetsBindingObserver {
   static const _channel = MethodChannel('mini_chat_channel');
 
   @override
@@ -1293,12 +1346,15 @@ class _MiniChatEntryPageState extends State<MiniChatEntryPage> with WidgetsBindi
       case 'navigateToChat':
         final args = call.arguments;
         final peerId = (args['peerId'] ?? args['userId']) as String?;
-        final peerNickname = (args['peerNickname'] ?? args['userName']) as String?;
-        final peerAvatar = (args['peerAvatar'] ?? args['avatarUrl']) as String? ?? '';
-        final isGroup = (args['isGroup'] as bool?) ?? (peerId?.startsWith('group_') ?? false);
+        final peerNickname =
+            (args['peerNickname'] ?? args['userName']) as String?;
+        final peerAvatar =
+            (args['peerAvatar'] ?? args['avatarUrl']) as String? ?? '';
+        final isGroup =
+            (args['isGroup'] as bool?) ??
+            (peerId?.startsWith('group_') ?? false);
 
         if (peerId != null && peerNickname != null) {
-
           await _waitForNavigator();
           if (globalNavigatorKey.currentState == null) return null;
 
@@ -1318,7 +1374,7 @@ class _MiniChatEntryPageState extends State<MiniChatEntryPage> with WidgetsBindi
                   ),
                 ),
               ),
-                  (route) => false,
+              (route) => false,
             );
           } else {
             globalNavigatorKey.currentState!.pushAndRemoveUntil(
@@ -1333,7 +1389,7 @@ class _MiniChatEntryPageState extends State<MiniChatEntryPage> with WidgetsBindi
                   isBubbleMode: true,
                 ),
               ),
-                  (route) => false,
+              (route) => false,
             );
           }
         }
@@ -1348,7 +1404,7 @@ class _MiniChatEntryPageState extends State<MiniChatEntryPage> with WidgetsBindi
           return {
             'userId': user.uid,
             'userName': user.displayName ?? '',
-            'avatarUrl': user.photoURL ?? ''
+            'avatarUrl': user.photoURL ?? '',
           };
         }
         return null;
@@ -1373,7 +1429,10 @@ class _MiniChatEntryPageState extends State<MiniChatEntryPage> with WidgetsBindi
           children: [
             CircularProgressIndicator(),
             SizedBox(height: 16),
-            Text('Đang kết nối cuộc trò chuyện mini...', style: TextStyle(color: Colors.grey, fontSize: 13)),
+            Text(
+              'Đang kết nối cuộc trò chuyện mini...',
+              style: TextStyle(color: Colors.grey, fontSize: 13),
+            ),
           ],
         ),
       ),

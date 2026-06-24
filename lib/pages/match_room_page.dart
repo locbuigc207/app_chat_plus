@@ -145,7 +145,7 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
     _inviteTimeoutTimer?.cancel();
     _inviteTimeoutTimer = Timer(
       Duration(seconds: AppConstants.gameInviteTimeoutSeconds),
-      () async {
+          () async {
         if (!mounted) return;
         final match = _gs.match;
         if (match == null || !match.isWaiting) return;
@@ -379,12 +379,18 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
                   _buildBanner(gs, match, _BannerType.drawRequest),
                 if (match.isWaiting) _buildWaitingBanner(match),
                 if (match.timeControlSeconds > 0)
+                // Bug 21 Fix: Truyền trực tiếp data vào ChessClockWidget thay vì để nó tự Consume
                   ChessClockWidget(
+                    player1RemainingMs: gs.player1RemainingMs,
+                    player2RemainingMs: gs.player2RemainingMs,
+                    isPlayer1Turn: gs.isPlayer1Turn,
+                    isGameOver: isGameOver,
                     player1Name: match.player1Name,
                     player2Name: match.player2Name ?? 'Đối thủ',
                     player1Avatar: match.player1Avatar,
                     player2Avatar: match.player2Avatar ?? '',
                     myColor: myColor,
+                    isCurrentUserPlayer2: widget.currentUserId == match.player2Id,
                   ),
                 Expanded(
                   child: ChessBoardWidget(
@@ -515,14 +521,14 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
   );
 
   Widget _buildPlayerRow(
-    GameStateProvider gs,
-    GameMatch match, {
-    required bool isTop,
-  }) {
+      GameStateProvider gs,
+      GameMatch match, {
+        required bool isTop,
+      }) {
     final isPlayer1 = !isTop;
     final isMyRow =
         (isPlayer1 && gs.role == PlayerRole.player1) ||
-        (!isPlayer1 && gs.role == PlayerRole.player2);
+            (!isPlayer1 && gs.role == PlayerRole.player2);
 
     final name = isPlayer1 ? match.player1Name : (match.player2Name ?? '???');
     final avatar = isPlayer1
@@ -560,9 +566,9 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
             backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
             child: avatar.isEmpty
                 ? Text(
-                    name.isNotEmpty ? name[0].toUpperCase() : '?',
-                    style: TextStyle(color: color, fontWeight: FontWeight.w700),
-                  )
+              name.isNotEmpty ? name[0].toUpperCase() : '?',
+              style: TextStyle(color: color, fontWeight: FontWeight.w700),
+            )
                 : null,
           ),
           const SizedBox(width: 10),
@@ -1111,18 +1117,10 @@ class _ChessReplayBarState extends State<_ChessReplayBar> {
   }
 
   void _seekTo(int target) {
+    // Bug 14 Fix: Sử dụng hàm jumpToReplayIndex với độ phức tạp O(n) thay vì vòng lặp O(n^2)
     final gs = widget.gs;
     final clamped = target.clamp(-1, gs.replayTotal - 1);
-    if (clamped < gs.replayIndex) {
-      while (gs.replayIndex > clamped && gs.canReplayBack) {
-        gs.replayBack();
-      }
-      if (gs.replayIndex > clamped) gs.replayBack();
-    } else {
-      while (gs.replayIndex < clamped && gs.canReplayForward) {
-        gs.replayForward();
-      }
-    }
+    gs.jumpToReplayIndex(clamped);
   }
 
   @override
@@ -1169,11 +1167,11 @@ class _ChessReplayBarState extends State<_ChessReplayBar> {
                   value: progress,
                   onChanged: total > 0
                       ? (v) {
-                          _pause();
-                          _seekTo(
-                            ((v * total).round() - 1).clamp(-1, total - 1),
-                          );
-                        }
+                    _pause();
+                    _seekTo(
+                      ((v * total).round() - 1).clamp(-1, total - 1),
+                    );
+                  }
                       : null,
                 ),
               ),

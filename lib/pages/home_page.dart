@@ -189,12 +189,12 @@ class _HomePageState extends State<HomePage>
             .getConversationsWithPinned(_currentUserId)
             .map(
               (docs) => docs
-                  .where(
-                    (d) =>
-                        (d.data() as Map<String, dynamic>)['isGroup'] == true,
-                  )
-                  .toList(),
-            );
+              .where(
+                (d) =>
+            (d.data() as Map<String, dynamic>)['isGroup'] == true,
+          )
+              .toList(),
+        );
       default:
         _conversationsStream = _conversationProvider.getConversationsWithPinned(
           _currentUserId,
@@ -212,8 +212,8 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _prefetchConversationPeers(
-    List<QueryDocumentSnapshot> docs,
-  ) async {
+      List<QueryDocumentSnapshot> docs,
+      ) async {
     if (_isPrefetching) return;
     _isPrefetching = true;
     try {
@@ -229,7 +229,7 @@ class _HomePageState extends State<HomePage>
             data['participants'] as List? ?? [],
           );
           final otherId = participants.firstWhere(
-            (id) => id != _currentUserId,
+                (id) => id != _currentUserId,
             orElse: () => '',
           );
           if (otherId.isNotEmpty && !_userProfileCache.containsKey(otherId)) {
@@ -350,7 +350,7 @@ class _HomePageState extends State<HomePage>
           fs
               .where(FirestoreConstants.userId2, isEqualTo: _currentUserId)
               .snapshots(),
-          (snap1, snap2) {
+              (snap1, snap2) {
             final ids = <String>{};
             for (final d in snap1.docs) {
               ids.add(d[FirestoreConstants.userId2] as String);
@@ -415,19 +415,19 @@ class _HomePageState extends State<HomePage>
     final isPhone = RegExp(r'^[+\d][\d\s-]*$').hasMatch(query);
     _activeSearchStream = isPhone
         ? _homeProvider.firebaseFirestore
-              .collection(FirestoreConstants.pathUserCollection)
-              .where(FirestoreConstants.phoneNumber, isEqualTo: query)
-              .limit(limit)
-              .snapshots()
+        .collection(FirestoreConstants.pathUserCollection)
+        .where(FirestoreConstants.phoneNumber, isEqualTo: query)
+        .limit(limit)
+        .snapshots()
         : _homeProvider.firebaseFirestore
-              .collection(FirestoreConstants.pathUserCollection)
-              .where(FirestoreConstants.nickname, isGreaterThanOrEqualTo: query)
-              .where(
-                FirestoreConstants.nickname,
-                isLessThanOrEqualTo: '$query\uf8ff',
-              )
-              .limit(limit)
-              .snapshots();
+        .collection(FirestoreConstants.pathUserCollection)
+        .where(FirestoreConstants.nickname, isGreaterThanOrEqualTo: query)
+        .where(
+      FirestoreConstants.nickname,
+      isLessThanOrEqualTo: '$query\uf8ff',
+    )
+        .limit(limit)
+        .snapshots();
     return _activeSearchStream!;
   }
 
@@ -436,7 +436,7 @@ class _HomePageState extends State<HomePage>
   void _redirectToLogin() {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => LoginPage()),
-      (_) => false,
+          (_) => false,
     );
   }
 
@@ -480,7 +480,7 @@ class _HomePageState extends State<HomePage>
     if (!mounted) return;
     await Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => LoginPage()),
-      (_) => false,
+          (_) => false,
     );
   }
 
@@ -521,7 +521,7 @@ class _HomePageState extends State<HomePage>
       );
       final steps =
           rawSteps?.cast<String>() ??
-          ['Cài đặt → Thông báo → Cho phép bong bóng'];
+              ['Cài đặt → Thông báo → Cho phép bong bóng'];
 
       if (!mounted) return;
 
@@ -691,14 +691,14 @@ class _HomePageState extends State<HomePage>
         // Stable — cache indefinitely
         return _timeAgoCache.putIfAbsent(
           timestamp,
-          () => DateFormat('d MMM').format(t),
+              () => DateFormat('d MMM').format(t),
         );
       }
       if (diff.inDays > 0) {
         // Stable within the same day — cache
         return _timeAgoCache.putIfAbsent(
           timestamp,
-          () => DateFormat('EEE').format(t),
+              () => DateFormat('EEE').format(t),
         );
       }
       // Recent — compute fresh (changes every minute/hour)
@@ -796,13 +796,13 @@ class _HomePageState extends State<HomePage>
                             opacity: _filterAnim,
                             child: StreamBuilder<BubblePermissionStatus>(
                               stream:
-                                  BubblePermissionService.instance.statusStream,
+                              BubblePermissionService.instance.statusStream,
                               builder: (ctx, snap) {
                                 final s =
                                     snap.data ??
-                                    BubblePermissionService
-                                        .instance
-                                        .currentStatus;
+                                        BubblePermissionService
+                                            .instance
+                                            .currentStatus;
 
                                 // Nếu permission ok, hoặc bị block cứng bởi phần cứng -> không hiện Banner
                                 if (s.isReady ||
@@ -844,9 +844,9 @@ class _HomePageState extends State<HomePage>
                         child: _textSearch.isEmpty
                             ? _buildChatList(isDark)
                             : ColoredBox(
-                                color: _surface(isDark),
-                                child: _buildSearchResults(isDark),
-                              ),
+                          color: _surface(isDark),
+                          child: _buildSearchResults(isDark),
+                        ),
                       ),
                       SliverToBoxAdapter(
                         child: SizedBox(height: bottomPad + 130),
@@ -1036,9 +1036,9 @@ class _HomePageState extends State<HomePage>
                 borderRadius: BorderRadius.circular(11),
                 border: _isSearchFocused
                     ? Border.all(
-                        color: _kAccent.withValues(alpha: 0.55),
-                        width: 1.5,
-                      )
+                  color: _kAccent.withValues(alpha: 0.55),
+                  width: 1.5,
+                )
                     : Border.all(color: Colors.transparent),
               ),
               child: Row(
@@ -1234,7 +1234,7 @@ class _HomePageState extends State<HomePage>
                       .where((s) => s.userId != _currentUserId)
                       .toList();
                   final idx = others.indexWhere(
-                    (s) => s.userId == userStories.userId,
+                        (s) => s.userId == userStories.userId,
                   );
                   _push(
                     StoryViewerPage(
@@ -1242,14 +1242,14 @@ class _HomePageState extends State<HomePage>
                       initialUserIndex: idx < 0 ? 0 : idx,
                       currentUserId: _currentUserId,
                       currentUserName:
-                          _authProvider.prefs.getString(
-                            FirestoreConstants.nickname,
-                          ) ??
+                      _authProvider.prefs.getString(
+                        FirestoreConstants.nickname,
+                      ) ??
                           '',
                       currentUserPhotoUrl:
-                          _authProvider.prefs.getString(
-                            FirestoreConstants.photoUrl,
-                          ) ??
+                      _authProvider.prefs.getString(
+                        FirestoreConstants.photoUrl,
+                      ) ??
                           '',
                     ),
                   );
@@ -1553,7 +1553,7 @@ class _HomePageState extends State<HomePage>
     }
 
     final otherId = conversation.participants.firstWhere(
-      (id) => id != _currentUserId,
+          (id) => id != _currentUserId,
       orElse: () => '',
     );
     if (otherId.isEmpty) return const SizedBox.shrink();
@@ -2044,7 +2044,7 @@ class _BubbleDock extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       ...bubbles.map(
-                        (b) => _BubbleAvatar(
+                            (b) => _BubbleAvatar(
                           bubble: b,
                           isDark: isDark,
                           onTap: () {
@@ -2155,15 +2155,15 @@ class _BubbleAvatarState extends State<_BubbleAvatar>
                 backgroundColor: _kAccent.withValues(alpha: 0.2),
                 child: b.avatarUrl.isEmpty
                     ? Text(
-                        b.userName.isNotEmpty
-                            ? b.userName[0].toUpperCase()
-                            : '?',
-                        style: const TextStyle(
-                          color: _kAccent,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 13,
-                        ),
-                      )
+                  b.userName.isNotEmpty
+                      ? b.userName[0].toUpperCase()
+                      : '?',
+                  style: const TextStyle(
+                    color: _kAccent,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
+                )
                     : null,
               ),
               if (b.unreadCount > 0)
@@ -2283,11 +2283,11 @@ class _AvatarRing extends StatelessWidget {
       child: ClipOval(
         child: photoUrl.isNotEmpty
             ? Image.network(
-                photoUrl,
-                fit: BoxFit.cover,
-                filterQuality: FilterQuality.low, // [+] Faster decode
-                errorBuilder: (_, __, ___) => _initials(),
-              )
+          photoUrl,
+          fit: BoxFit.cover,
+          filterQuality: FilterQuality.low, // [+] Faster decode
+          errorBuilder: (_, __, ___) => _initials(),
+        )
             : _initials(),
       ),
     );
@@ -2790,13 +2790,13 @@ class _Avatar extends StatelessWidget {
       child: ClipOval(
         child: photoUrl.isNotEmpty
             ? Image.network(
-                photoUrl,
-                fit: BoxFit.cover,
-                filterQuality: FilterQuality.low, // [+] Faster GPU path
-                cacheWidth: cacheSize, // [+] Reduced memory footprint
-                cacheHeight: cacheSize,
-                errorBuilder: (_, __, ___) => _fallback(initials, avatarColor),
-              )
+          photoUrl,
+          fit: BoxFit.cover,
+          filterQuality: FilterQuality.low, // [+] Faster GPU path
+          cacheWidth: cacheSize, // [+] Reduced memory footprint
+          cacheHeight: cacheSize,
+          errorBuilder: (_, __, ___) => _fallback(initials, avatarColor),
+        )
             : _fallback(initials, avatarColor),
       ),
     );
@@ -3024,15 +3024,15 @@ class _SkeletonTileState extends State<_SkeletonTile>
     builder: (_, __) {
       final base = widget.isDark
           ? Color.lerp(
-              const Color(0xFF1C1C22),
-              const Color(0xFF2C2C34),
-              _anim.value,
-            )!
+        const Color(0xFF1C1C22),
+        const Color(0xFF2C2C34),
+        _anim.value,
+      )!
           : Color.lerp(
-              const Color(0xFFF2F2F7),
-              const Color(0xFFE5E5EA),
-              _anim.value,
-            )!;
+        const Color(0xFFF2F2F7),
+        const Color(0xFFE5E5EA),
+        _anim.value,
+      )!;
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
         child: Row(
