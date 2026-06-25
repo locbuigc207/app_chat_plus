@@ -212,12 +212,11 @@ class GroupChatPageState extends State<GroupChatPage>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!resourceManager.isDisposed && mounted) {
         _initializeProviders(context);
-        MethodChannel(
-          'bubble_chat_channel',
-        ).invokeMethod('flutterReady').catchError((_) {});
-        MethodChannel(
-          'mini_chat_channel',
-        ).invokeMethod('flutterReady').catchError((_) {});
+
+        // [SỬA LỖI]: Bỏ việc gửi flutterReady trong bubble mode vì nó sẽ trigger re-navigation từ Android.
+        // Tương tự logic bên ChatPage.
+        // MethodChannel('bubble_chat_channel').invokeMethod('flutterReady').catchError((_) {});
+        // MethodChannel('mini_chat_channel').invokeMethod('flutterReady').catchError((_) {});
       }
     });
   }
@@ -269,6 +268,12 @@ class GroupChatPageState extends State<GroupChatPage>
     _readLocal();
     _loadPinnedMessages();
     _loadMemberNames();
+
+    // [SỬA LỖI]: Self-heal khi nhận stub object (thường do timeout fetch bên Main Engine)
+    if (widget.group.memberIds.isEmpty || widget.group.adminId.isEmpty) {
+      _fetchFullGroupData();
+    }
+
     _startToxicityMonitor();
     _listenActiveGroupCall();
     BubbleLifecycleObserver.instance.onChatOpened(groupChatId);
@@ -277,6 +282,47 @@ class GroupChatPageState extends State<GroupChatPage>
       groupChatId,
     );
     _reminderProvider.checkAndHandleExpired(_currentUserId).catchError((_) {});
+  }
+
+  Future<void> _fetchFullGroupData() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection(FirestoreConstants.pathGroupCollection)
+          .doc(groupChatId)
+          .get();
+
+      if (!doc.exists || doc.data() == null || resourceManager.isDisposed)
+        return;
+
+      final names = <String, String>{};
+      final fullGroup = Group.fromDocument(doc);
+
+      await Future.wait(
+        fullGroup.memberIds.map((uid) async {
+          try {
+            final userDoc = await FirebaseFirestore.instance
+                .collection(FirestoreConstants.pathUserCollection)
+                .doc(uid)
+                .get();
+            if (!userDoc.exists) return;
+            names[uid] =
+                userDoc.get(FirestoreConstants.nickname) as String? ?? 'User';
+            final photo =
+                userDoc.get(FirestoreConstants.photoUrl) as String? ?? '';
+            if (photo.isNotEmpty) _avatarUrlCache[uid] = photo;
+          } catch (_) {}
+        }),
+      );
+
+      if (mounted && !resourceManager.isDisposed) {
+        setState(() => _memberNames = names);
+        debugPrint(
+          '✅ GroupChatPage self-healed: ${fullGroup.memberIds.length} members',
+        );
+      }
+    } catch (e) {
+      debugPrint('⚠️ _fetchFullGroupData: $e');
+    }
   }
 
   void _listenActiveGroupCall() {
@@ -306,6 +352,32 @@ class GroupChatPageState extends State<GroupChatPage>
       groupChatId,
     );
     resourceManager.addSubscription(sub);
+
+    // [SỬA LỖI]: Full sync cho group (Đồng bộ mọi chiều từ Firestore về Local Hive)
+    final fullSyncSub = FirebaseFirestore.instance
+        .collection(FirestoreConstants.pathMessageCollection)
+        .doc(groupChatId)
+        .collection(groupChatId)
+        .orderBy('timestamp', descending: true)
+        .limit(80)
+        .snapshots()
+        .listen((snap) {
+          if (resourceManager.isDisposed) return;
+          for (final change in snap.docChanges) {
+            if (change.type != DocumentChangeType.added &&
+                change.type != DocumentChangeType.modified)
+              continue;
+            final data = change.doc.data();
+            if (data == null) continue;
+            LocalDbService().saveMessage(groupChatId, change.doc.id, {
+              ...data,
+              'messageId': change.doc.id,
+              'status': 'sent',
+            });
+          }
+        }, onError: (_) {});
+    resourceManager.addSubscription(fullSyncSub);
+
     _markMessagesAsRead();
     _listenIncomingGroupMessages();
     // PERF-2: prefetch only once here, NOT in build
@@ -484,6 +556,7 @@ class GroupChatPageState extends State<GroupChatPage>
           TypeMessage.video => 'video',
           _ => 'text',
         },
+        isGroup: true, // [SỬA LỖI]: Bắt buộc truyền isGroup
       );
     } catch (e) {
       debugPrint('❌ GroupBubble update: $e');
@@ -578,6 +651,7 @@ class GroupChatPageState extends State<GroupChatPage>
       userId: groupChatId,
       userName: widget.group.groupName,
       avatarUrl: widget.group.groupPhotoUrl,
+      isGroup: true, // [SỬA LỖI]: Bắt buộc truyền isGroup
     );
     if (ok) {
       _showToast('🫧 Bubble nhóm đã tạo (${ctx.mode.name})', isSuccess: true);
@@ -633,6 +707,7 @@ class GroupChatPageState extends State<GroupChatPage>
                 userId: groupChatId,
                 userName: widget.group.groupName,
                 avatarUrl: widget.group.groupPhotoUrl,
+                isGroup: true, // [SỬA LỖI]: Bắt buộc truyền isGroup
               );
             }
           }
@@ -1259,7 +1334,6 @@ class GroupChatPageState extends State<GroupChatPage>
   Future<void> _onPickDocument() async {
     HapticFeedback.lightImpact();
     try {
-      // FIX-7: FilePicker.platform (API đúng)
       final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'doc', 'docx', 'xls', 'xlsx'],

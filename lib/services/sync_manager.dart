@@ -93,7 +93,7 @@ class SyncManager {
   final _localDb = LocalDbService();
   final _encryption = EncryptionService();
   final _aiBackend =
-      AIBackendService(); // Dùng Cloud Functions thay vì Gemini trực tiếp
+  AIBackendService(); // Dùng Cloud Functions thay vì Gemini trực tiếp
   final _aiContent = AiContentService();
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -177,8 +177,8 @@ class SyncManager {
 
   void _onConnectivity(List<ConnectivityResult> results) {
     final online = results.any(
-      (r) =>
-          r == ConnectivityResult.mobile ||
+          (r) =>
+      r == ConnectivityResult.mobile ||
           r == ConnectivityResult.wifi ||
           r == ConnectivityResult.ethernet,
     );
@@ -270,7 +270,7 @@ class SyncManager {
           _ => true,
         };
       } on AIBackendException catch (e) {
-        // [FIX P1 Lỗi 1] Bắt riêng lỗi từ hệ thống AI (AIBackendService)
+        // Bắt riêng lỗi từ hệ thống AI (AIBackendService)
         // Lỗi này xảy ra khi có cấu hình sai hoặc model không khả dụng, không cần retry
         if (e.type == AIBackendErrorType.unknown) {
           debugPrint('[SyncManager] ❌ Permanent AI Error: $e');
@@ -370,7 +370,7 @@ class SyncManager {
         '❌ Trợ lý AI tạm thời không khả dụng. Vui lòng thử lại sau.';
     final nowMs = DateTime.now().millisecondsSinceEpoch;
 
-    // FIX: Đổi từ '_' sang '-' để không vi phạm quy tắc của LocalDbService
+    // Đổi từ '_' sang '-' để không vi phạm quy tắc của LocalDbService
     final msgId = '${nowMs}-err';
     final tsStr = nowMs.toString();
 
@@ -395,14 +395,14 @@ class SyncManager {
           .collection(conversationId)
           .doc(msgId)
           .set({
-            'idFrom': AppConstants.aiAssistantId,
-            'idTo': currentUserId,
-            'timestamp': tsStr,
-            'content': errorText,
-            'type': TypeMessage.text,
-            'status': MessageStatus.sent,
-            'isError': true,
-          });
+        'idFrom': AppConstants.aiAssistantId,
+        'idTo': currentUserId,
+        'timestamp': tsStr,
+        'content': errorText,
+        'type': TypeMessage.text,
+        'status': MessageStatus.sent,
+        'isError': true,
+      });
     } catch (e) {
       debugPrint('[SyncManager] ❌ Cannot send AI error message: $e');
     }
@@ -444,13 +444,13 @@ class SyncManager {
         .collection(conversationId)
         .doc(messageId)
         .set({
-          'idFrom': idFrom,
-          'idTo': idTo,
-          'timestamp': timestamp,
-          'content': encryptedContent,
-          'type': messageType,
-          'status': MessageStatus.sent,
-        });
+      'idFrom': idFrom,
+      'idTo': idTo,
+      'timestamp': timestamp,
+      'content': encryptedContent,
+      'type': messageType,
+      'status': MessageStatus.sent,
+    });
 
     // 3. Cập nhật dữ liệu hội thoại bằng Transaction để đảm bảo tính toàn vẹn
     try {
@@ -478,8 +478,9 @@ class SyncManager {
 
         List<dynamic> participants = List.from(data['participants'] ?? []);
         if (!participants.contains(idFrom)) participants.add(idFrom);
-        if (!isGroupChat && !participants.contains(idTo))
+        if (!isGroupChat && !participants.contains(idTo)) {
           participants.add(idTo);
+        }
         updates['participants'] = participants;
 
         for (final p in participants) {
@@ -491,8 +492,8 @@ class SyncManager {
         transaction.set(convRef, updates, SetOptions(merge: true));
       });
     } catch (err) {
-      debugPrint('[SyncManager] convo update error: $err');
-      return false;
+      // [FIX] Cảnh báo lỗi non-fatal, bỏ lệnh return false để Job không bị Retry vô tận
+      debugPrint('[SyncManager] ⚠️ Conversation update non-fatal: $err');
     }
 
     // 4. Cập nhật trạng thái database cục bộ: pending → sent
@@ -525,37 +526,34 @@ class SyncManager {
 
     if (conversationId.isEmpty || userMessage.isEmpty) return false;
 
-    // [FIX P1 Lỗi 2] Lịch sử hội thoại từ LocalDB (đảm bảo thứ tự cũ nhất -> mới nhất để feed cho AI)
-    // LocalDbService().getMessages() trả về mới nhất trước tiên, take(20) lấy 20 tin nhắn gần nhất.
-    // .reversed() sau đó sẽ đảo ngược thành trình tự Cũ -> Mới (Chronological) hợp lệ cho mô hình AI
+    // Lịch sử hội thoại từ LocalDB
     final rawHistoryMessages = _localDb
         .getMessages(conversationId)
         .take(20)
         .toList()
         .reversed
         .map((m) {
-          final text =
-              m['contentPlain']?.toString() ?? m['content']?.toString() ?? '';
-          if (text.isEmpty ||
-              text.startsWith('{"iv":') ||
-              text.startsWith('eyJ'))
-            return null;
-          final isMe = m['idFrom'] == currentUserId;
-          return '${isMe ? "User" : "Assistant"}: $text'; // Bỏ masking tại đây để tránh AIBackendService biến đổi chuỗi sai lệch
-        })
+      final text =
+          m['contentPlain']?.toString() ?? m['content']?.toString() ?? '';
+      if (text.isEmpty ||
+          text.startsWith('{"iv":') ||
+          text.startsWith('eyJ')) {
+        return null;
+      }
+      final isMe = m['idFrom'] == currentUserId;
+      return '${isMe ? "User" : "Assistant"}: $text';
+    })
         .whereType<String>()
         .toList();
 
     String? aiText;
     try {
       // Gọi lên cổng Cloud Function thay vì GeminiService nội bộ
-      // [FIX P1 Lỗi 1] Truyền thẳng userMessage và lịch sử thô. Việc mask sẽ do AIBackendService (cổng duy nhất) hoặc CF xử lý
       aiText = await _aiBackend.generateAiChatReply(
         userMessage: userMessage,
         conversationHistory: rawHistoryMessages,
       );
     } on AIBackendException catch (e) {
-      // Xác nhận AIBackendException đã được raise
       // Nếu là Permanent error, rethrow để `_processBatch` xử lý catch block riêng của nó
       if (e.type == AIBackendErrorType.unknown) {
         rethrow;
@@ -571,11 +569,11 @@ class SyncManager {
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
 
-    // FIX: Đổi từ '_' sang '-' để không vi phạm quy tắc của LocalDbService
+    // Đổi từ '_' sang '-' để không vi phạm quy tắc của LocalDbService
     final aiMessageId = '${nowMs}-${1000 + Random().nextInt(9000)}';
     final aiTimestampStr = nowMs.toString();
 
-    // Mã hóa tin nhắn với ID của người dùng thực - Khắc phục hoàn toàn lỗi đè khóa E2EE Key
+    // Mã hóa tin nhắn với ID của người dùng thực
     String encryptedAiText;
     try {
       encryptedAiText = await _encryption.encryptPayload(
@@ -610,13 +608,13 @@ class SyncManager {
         .collection(conversationId)
         .doc(aiMessageId)
         .set({
-          'idFrom': AppConstants.aiAssistantId,
-          'idTo': currentUserId,
-          'timestamp': aiTimestampStr,
-          'content': encryptedAiText,
-          'type': TypeMessage.text,
-          'status': MessageStatus.sent,
-        });
+      'idFrom': AppConstants.aiAssistantId,
+      'idTo': currentUserId,
+      'timestamp': aiTimestampStr,
+      'content': encryptedAiText,
+      'type': TypeMessage.text,
+      'status': MessageStatus.sent,
+    });
 
     // Cập nhật lại khung tin nhắn hiển thị ngoài danh sách chat
     try {
@@ -636,8 +634,7 @@ class SyncManager {
 
         if (newTime >= currentLastTime || !snapshot.exists) {
           final preview =
-              aiText!.length >
-                  80 // Safe do đã check null trước
+          aiText!.length > 80 // Safe do đã check null trước
               ? '${aiText.substring(0, 80)}…'
               : aiText;
           updates['lastMessage'] = '[Trợ lý AI] $preview';
@@ -646,8 +643,9 @@ class SyncManager {
         }
 
         List<dynamic> participants = List.from(data['participants'] ?? []);
-        if (!participants.contains(currentUserId))
+        if (!participants.contains(currentUserId)) {
           participants.add(currentUserId);
+        }
         if (!participants.contains(AppConstants.aiAssistantId)) {
           participants.add(AppConstants.aiAssistantId);
         }
@@ -680,39 +678,39 @@ class SyncManager {
         .doc(conversationId)
         .get()
         .then((doc) {
-          final isGroup = doc.data()?['isGroup'] as bool? ?? false;
-          _aiContent
-              .pushAiContentWithRetry(
-                conversationId: conversationId,
-                messageId: messageId,
-                plainText: plainContent,
-                idFrom: idFrom,
-                messageType: TypeMessage.text,
-                groupId: isGroup ? conversationId : null,
-              )
-              .catchError((e) {
-                debugPrint('[SyncManager] AiContent retry push failed: $e');
-              });
-        })
+      final isGroup = doc.data()?['isGroup'] as bool? ?? false;
+      _aiContent
+          .pushAiContentWithRetry(
+        conversationId: conversationId,
+        messageId: messageId,
+        plainText: plainContent,
+        idFrom: idFrom,
+        messageType: TypeMessage.text,
+        groupId: isGroup ? conversationId : null,
+      )
+          .catchError((e) {
+        debugPrint('[SyncManager] AiContent retry push failed: $e');
+      });
+    })
         .catchError((e) {
-          _aiContent
-              .pushAiContentWithRetry(
-                conversationId: conversationId,
-                messageId: messageId,
-                plainText: plainContent,
-                idFrom: idFrom,
-                messageType: TypeMessage.text,
-                groupId: null,
-              )
-              .catchError((err) {
-                debugPrint(
-                  '[SyncManager] AiContent fallback retry push failed: $err',
-                );
-              });
-          debugPrint(
-            ('[SyncManager] AiContent conv fetch error (non-critical): $e'),
-          );
-        });
+      _aiContent
+          .pushAiContentWithRetry(
+        conversationId: conversationId,
+        messageId: messageId,
+        plainText: plainContent,
+        idFrom: idFrom,
+        messageType: TypeMessage.text,
+        groupId: null,
+      )
+          .catchError((err) {
+        debugPrint(
+          '[SyncManager] AiContent fallback retry push failed: $err',
+        );
+      });
+      debugPrint(
+        ('[SyncManager] AiContent conv fetch error (non-critical): $e'),
+      );
+    });
   }
 
   // ═════════════════════════════════════════════════════════════════════════

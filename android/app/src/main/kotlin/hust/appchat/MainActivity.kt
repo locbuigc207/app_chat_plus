@@ -173,7 +173,16 @@ class MainActivity : FlutterActivity() {
                             val uname = call.argument<String>("userName")  ?: return@setMethodCallHandler result.success(false)
                             val av    = call.argument<String>("avatarUrl") ?: ""
                             val msg   = call.argument<String>("lastMessage") ?: ""
-                            BubbleNotificationService.showBubbleNotification(this, uid, uname, msg, av)
+                            val isGroup = call.argument<Boolean>("isGroup") ?: false // Đọc thêm isGroup
+
+                            BubbleNotificationService.showBubbleNotification(
+                                context = this,
+                                userId = uid,
+                                userName = uname,
+                                message = msg,
+                                avatarUrl = av,
+                                isGroup = isGroup // Truyền isGroup xuống
+                            )
                             result.success(true)
                         }
 
@@ -193,12 +202,21 @@ class MainActivity : FlutterActivity() {
                             val msg = call.argument<String>("message") ?: ""
                             val uname = call.argument<String>("userName") ?: ""
                             val av = call.argument<String>("avatarUrl") ?: ""
+                            val isGroup = call.argument<Boolean>("isGroup") ?: false
 
                             val meta = BubbleNotificationManager.getMeta(uid)
-                            val finalName = meta?.first ?: uname
-                            val finalAvatar = meta?.second ?: av
+                            val finalName = meta?.userName ?: uname       // Thay .first thành .userName
+                            val finalAvatar = meta?.avatarUrl ?: av       // Thay .second thành .avatarUrl
+                            val finalIsGroup = meta?.isGroup ?: isGroup   // Đọc cờ isGroup đã lưu
 
-                            BubbleNotificationService.updateBubbleNotification(this, uid, finalName, msg, finalAvatar)
+                            BubbleNotificationService.updateBubbleNotification(
+                                context = this,
+                                userId = uid,
+                                userName = finalName,
+                                message = msg,
+                                avatarUrl = finalAvatar,
+                                isGroup = finalIsGroup // Truyền cờ isGroup
+                            )
                             result.success(true)
                         }
 
@@ -309,8 +327,8 @@ class MainActivity : FlutterActivity() {
                                     val meta = BubbleNotificationManager.getMeta(uid)
                                     mapOf(
                                         "userId" to uid,
-                                        "userName" to (meta?.first ?: ""),
-                                        "avatarUrl" to (meta?.second ?: "")
+                                        "userName" to (meta?.userName ?: ""),    // Thay .first thành .userName
+                                        "avatarUrl" to (meta?.avatarUrl ?: "")  // Thay .second thành .avatarUrl
                                     )
                                 }
                                 result.success(list)
@@ -325,7 +343,16 @@ class MainActivity : FlutterActivity() {
                             val uname = call.argument<String>("userName")  ?: return@setMethodCallHandler result.success(false)
                             val msg   = call.argument<String>("message")   ?: ""
                             val av    = call.argument<String>("avatarUrl") ?: ""
-                            BubbleNotificationService.showBubbleNotification(this, uid, uname, msg, av)
+                            val isGroup = call.argument<Boolean>("isGroup") ?: false // Đọc thêm isGroup
+
+                            BubbleNotificationService.showBubbleNotification(
+                                context = this,
+                                userId = uid,
+                                userName = uname,
+                                message = msg,
+                                avatarUrl = av,
+                                isGroup = isGroup // Truyền isGroup
+                            )
                             result.success(true)
                         }
 
@@ -334,12 +361,21 @@ class MainActivity : FlutterActivity() {
                             val msg = call.argument<String>("message") ?: ""
                             val uname = call.argument<String>("userName") ?: ""
                             val av = call.argument<String>("avatarUrl") ?: ""
+                            val isGroup = call.argument<Boolean>("isGroup") ?: false
 
                             val meta = BubbleNotificationManager.getMeta(uid)
-                            val finalName = meta?.first ?: uname
-                            val finalAvatar = meta?.second ?: av
+                            val finalName = meta?.userName ?: uname       // Thay .first thành .userName
+                            val finalAvatar = meta?.avatarUrl ?: av       // Thay .second thành .avatarUrl
+                            val finalIsGroup = meta?.isGroup ?: isGroup   // Đọc cờ isGroup
 
-                            BubbleNotificationService.updateBubbleNotification(this, uid, finalName, msg, finalAvatar)
+                            BubbleNotificationService.updateBubbleNotification(
+                                context = this,
+                                userId = uid,
+                                userName = finalName,
+                                message = msg,
+                                avatarUrl = finalAvatar,
+                                isGroup = finalIsGroup // Truyền cờ isGroup
+                            )
                             result.success(true)
                         }
 
@@ -372,13 +408,24 @@ class MainActivity : FlutterActivity() {
                             val msg   = call.argument<String>("message")     ?: return@setMethodCallHandler result.error("INVALID_ARGS", "Missing required arguments", null)
                             val av    = call.argument<String>("avatarUrl")   ?: ""
                             val typeStr = call.argument<String>("messageType") ?: "text"
+                            val isGroup = call.argument<Boolean>("isGroup") ?: false // Đọc cờ isGroup
+
                             val type = when (typeStr.lowercase()) {
                                 "image"    -> BubbleNotificationManager.MessageType.IMAGE
                                 "voice"    -> BubbleNotificationManager.MessageType.VOICE
                                 "location" -> BubbleNotificationManager.MessageType.LOCATION
                                 else       -> BubbleNotificationManager.MessageType.TEXT
                             }
-                            BubbleNotificationService.sendMessage(this, uid, uname, msg, av, type)
+
+                            BubbleNotificationService.sendMessage(
+                                context = this,
+                                userId = uid,
+                                userName = uname,
+                                message = msg,
+                                avatarUrl = av,
+                                messageType = type,
+                                isGroup = isGroup // Truyền isGroup xuống
+                            )
                             result.success(true)
                         }
 

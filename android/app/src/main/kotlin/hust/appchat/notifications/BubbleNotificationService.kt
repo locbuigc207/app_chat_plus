@@ -74,7 +74,8 @@ object BubbleNotificationService {
                 Log.d(TAG, "🔄 Preloading recent avatars...")
                 val userList = currentKeys.mapNotNull { uid ->
                     val meta = BubbleNotificationManager.getMeta(uid)
-                    if (meta != null) Pair(meta.second, meta.first) else null
+                    // Cập nhật để dùng thuộc tính của ConversationMeta thay vì Pair
+                    if (meta != null) Pair(meta.avatarUrl, meta.userName) else null
                 }
 
                 if (userList.isNotEmpty()) {
@@ -97,7 +98,8 @@ object BubbleNotificationService {
         userName: String,
         message: String,
         avatarUrl: String,
-        messageType: BubbleNotificationManager.MessageType = BubbleNotificationManager.MessageType.TEXT
+        messageType: BubbleNotificationManager.MessageType = BubbleNotificationManager.MessageType.TEXT,
+        isGroup: Boolean = false // THÊM CỜ isGroup
     ) {
         if (!isInitialized) {
             Log.w(TAG, "⚠️ Service not initialized, initializing now...")
@@ -106,8 +108,8 @@ object BubbleNotificationService {
 
         scope.launch {
             try {
-                Log.d(TAG, "🎈 Creating modern bubble notification: $userName")
-                showModernBubble(context, userId, userName, message, avatarUrl, messageType)
+                Log.d(TAG, "🎈 Creating modern bubble notification: $userName (isGroup: $isGroup)")
+                showModernBubble(context, userId, userName, message, avatarUrl, messageType, isGroup)
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Failed to create bubble notification: $e")
             }
@@ -121,13 +123,14 @@ object BubbleNotificationService {
         userName: String,
         message: String,
         avatarUrl: String,
-        messageType: BubbleNotificationManager.MessageType = BubbleNotificationManager.MessageType.TEXT
+        messageType: BubbleNotificationManager.MessageType = BubbleNotificationManager.MessageType.TEXT,
+        isGroup: Boolean = false // THÊM CỜ isGroup
     ) {
         if (!isInitialized) init(context)
 
         scope.launch {
             try {
-                showModernBubble(context, userId, userName, message, avatarUrl, messageType)
+                showModernBubble(context, userId, userName, message, avatarUrl, messageType, isGroup)
             } catch (e: Exception) {
                 Log.e(TAG, "❌ showBubbleNotificationOnly failed: $e")
                 // Fallback nếu ngoại lệ cấp cao
@@ -138,7 +141,8 @@ object BubbleNotificationService {
                     message = message,
                     avatarUrl = avatarUrl,
                     fromUser = false,
-                    type = messageType
+                    type = messageType,
+                    isGroup = isGroup // TRUYỀN CỜ isGroup
                 )
             }
         }
@@ -150,7 +154,8 @@ object BubbleNotificationService {
         userName: String,
         message: String,
         avatarUrl: String,
-        messageType: BubbleNotificationManager.MessageType
+        messageType: BubbleNotificationManager.MessageType,
+        isGroup: Boolean // THÊM CỜ isGroup
     ) {
         try {
             withTimeout(3000L) {
@@ -172,7 +177,8 @@ object BubbleNotificationService {
                 message = message,
                 avatarUrl = avatarUrl,
                 fromUser = false,
-                type = messageType
+                type = messageType,
+                isGroup = isGroup // TRUYỀN CỜ isGroup
             )
 
             synchronized(activeBubbles) { activeBubbles.add(userId) }
@@ -200,7 +206,8 @@ object BubbleNotificationService {
         userName: String,
         message: String,
         avatarUrl: String,
-        messageType: BubbleNotificationManager.MessageType = BubbleNotificationManager.MessageType.TEXT
+        messageType: BubbleNotificationManager.MessageType = BubbleNotificationManager.MessageType.TEXT,
+        isGroup: Boolean = false // THÊM CỜ isGroup
     ) {
         scope.launch {
             try {
@@ -214,9 +221,10 @@ object BubbleNotificationService {
                             message = message,
                             avatarUrl = avatarUrl,
                             fromUser = false,
-                            type = messageType
+                            type = messageType,
+                            isGroup = isGroup // TRUYỀN CỜ isGroup
                         )
-                        Log.d(TAG, "✅ Bubble notification updated: $userName")
+                        Log.d(TAG, "✅ Bubble notification updated: $userName (isGroup: $isGroup)")
                     } catch (e: IllegalStateException) {
                         Log.e(TAG, "❌ ensureShortcut failed on update: ${e.message}")
                         postFallbackNotification(context, userId, userName, message)
@@ -283,7 +291,8 @@ object BubbleNotificationService {
         userName: String,
         message: String,
         avatarUrl: String,
-        messageType: BubbleNotificationManager.MessageType = BubbleNotificationManager.MessageType.TEXT
+        messageType: BubbleNotificationManager.MessageType = BubbleNotificationManager.MessageType.TEXT,
+        isGroup: Boolean = false // THÊM CỜ isGroup
     ) {
         scope.launch {
             try {
@@ -294,7 +303,8 @@ object BubbleNotificationService {
                     message = message,
                     avatarUrl = avatarUrl,
                     fromUser = true,
-                    type = messageType
+                    type = messageType,
+                    isGroup = isGroup // TRUYỀN CỜ isGroup
                 )
                 Log.d(TAG, "✅ User message added to bubble: $message")
             } catch (e: Exception) {
@@ -384,8 +394,8 @@ object BubbleNotificationService {
                         ShortcutHelper.ensureShortcutForNotification(
                             context = context,
                             userId = uid,
-                            userName = meta.first,
-                            avatarUrl = meta.second
+                            userName = meta.userName, // SỬ DỤNG meta.userName
+                            avatarUrl = meta.avatarUrl // SỬ DỤNG meta.avatarUrl
                         )
                     }
                 }
@@ -493,7 +503,7 @@ object BubbleNotificationService {
     }
 
     // KHÔNG clear activeBubbles. Đồng bộ dựa vào bộ nhớ hiện hành
-    // và lấy Meta Data từ BubbleNotificationManager để tạo lại đúng tên và ảnh.
+    // và lấy Meta Data từ BubbleNotificationManager để tạo lại đúng tên, ảnh và cờ isGroup.
     private fun syncState(context: Context) {
         scope.launch {
             try {
@@ -508,10 +518,11 @@ object BubbleNotificationService {
                         updateBubbleNotification(
                             context = context,
                             userId = uid,
-                            userName = meta.first,
+                            userName = meta.userName,   // SỬ DỤNG meta.userName
                             message = lastMsg.text,
-                            avatarUrl = meta.second,
-                            messageType = lastMsg.type
+                            avatarUrl = meta.avatarUrl, // SỬ DỤNG meta.avatarUrl
+                            messageType = lastMsg.type,
+                            isGroup = meta.isGroup      // SỬ DỤNG meta.isGroup
                         )
                     }
                 }

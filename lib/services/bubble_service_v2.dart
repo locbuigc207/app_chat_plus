@@ -270,12 +270,17 @@ class BubbleServiceV2 {
     required String message,
     String? avatarUrl,
     bool isOnline = false,
+    bool isGroup = false, // [SỬA LỖI]: Thêm isGroup
   }) async {
     if (!_isBubbleApiSupported) return false;
 
     try {
       if (_activeBubbles.containsKey(userId)) {
-        return await updateBubble(userId: userId, message: message);
+        return await updateBubble(
+          userId: userId,
+          message: message,
+          isGroup: isGroup,
+        );
       }
 
       final success =
@@ -285,6 +290,7 @@ class BubbleServiceV2 {
             'message': message,
             'avatarUrl': avatarUrl ?? '',
             'isOnline': isOnline,
+            'isGroup': isGroup, // [SỬA LỖI]: Truyền isGroup
           }) ??
               false;
 
@@ -299,7 +305,7 @@ class BubbleServiceV2 {
         );
         _emitActiveBubbles();
         await _saveBubbles();
-        debugPrint('🫧 Bubble shown for $userName');
+        debugPrint('🫧 Bubble shown for $userName (isGroup: $isGroup)');
       }
       return success;
     } catch (e) {
@@ -312,6 +318,7 @@ class BubbleServiceV2 {
     required String userId,
     required String message,
     bool incrementUnread = true,
+    bool isGroup = false, // [SỬA LỖI]: Thêm isGroup
   }) async {
     if (!_isBubbleApiSupported) return false;
 
@@ -320,6 +327,7 @@ class BubbleServiceV2 {
           await _method.invokeMethod<bool>('updateBubble', {
             'userId': userId,
             'message': message,
+            'isGroup': isGroup, // [SỬA LỖI]: Truyền isGroup
           }) ??
               false;
 
@@ -402,6 +410,7 @@ class BubbleServiceV2 {
     required String message,
     required String avatarUrl,
     String messageType = 'text',
+    bool isGroup = false, // [SỬA LỖI]: Thêm isGroup
   }) async {
     try {
       return await _method.invokeMethod<bool>('sendMessage', {
@@ -410,6 +419,7 @@ class BubbleServiceV2 {
         'message': message,
         'avatarUrl': avatarUrl,
         'messageType': messageType,
+        'isGroup': isGroup, // [SỬA LỖI]: Truyền isGroup
       }) ??
           false;
     } catch (e) {

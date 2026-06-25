@@ -35,9 +35,15 @@ object BubbleNotificationManager {
     private val history       = ConcurrentHashMap<String, CopyOnWriteArrayList<Message>>()
     private val expandedUsers = ConcurrentHashMap.newKeySet<String>()
 
-    // [GIẢI QUYẾT LỖI P0]: Thêm map lưu trữ Meta Data để giải quyết triệt để lỗi
-    // quên tên (userName) và ảnh (avatarUrl) trên các phiên bản Android 11+
-    private val conversationMeta = ConcurrentHashMap<String, Pair<String, String>>() // userId -> (userName, avatarUrl)
+    // [GIẢI QUYẾT LỖI MỚI]: Thêm data class để lưu cả cờ isGroup thay vì chỉ Pair
+    data class ConversationMeta(
+        val userName:  String,
+        val avatarUrl: String,
+        val isGroup:   Boolean = false
+    )
+
+    // [GIẢI QUYẾT LỖI P0 & LỖI ROUTE GROUP]: Map lưu trữ Meta Data
+    private val conversationMeta = ConcurrentHashMap<String, ConversationMeta>()
 
     data class Message(
         val text     : String,
@@ -53,11 +59,13 @@ object BubbleNotificationManager {
     // ═════════════════════════════════════════════════════════════════════
 
     // Các hàm truy xuất và lưu trữ Meta Data
-    fun rememberMeta(userId: String, userName: String, avatarUrl: String) {
-        conversationMeta[userId] = Pair(userName, avatarUrl)
+    fun rememberMeta(userId: String, userName: String, avatarUrl: String, isGroup: Boolean = false) {
+        conversationMeta[userId] = ConversationMeta(userName, avatarUrl, isGroup)
     }
 
-    fun getMeta(userId: String): Pair<String, String>? = conversationMeta[userId]
+    fun getMeta(userId: String): ConversationMeta? = conversationMeta[userId]
+
+    fun isGroupConversation(userId: String): Boolean = conversationMeta[userId]?.isGroup ?: false
 
     fun addMessage(
         context  : Context,
@@ -67,9 +75,10 @@ object BubbleNotificationManager {
         avatarUrl: String,
         fromUser : Boolean,
         type     : MessageType = MessageType.TEXT,
+        isGroup  : Boolean = false,
     ): Int {
         // Lưu metadata ngay khi có tin nhắn mới để các luồng update sau (syncState) có dữ liệu để dùng
-        rememberMeta(userId, userName, avatarUrl)
+        rememberMeta(userId, userName, avatarUrl, isGroup)
 
         val msgs = history.getOrPut(userId) { CopyOnWriteArrayList() }
         msgs.add(Message(message, System.currentTimeMillis(), fromUser, type))
@@ -86,14 +95,15 @@ object BubbleNotificationManager {
         userName : String,
         message  : String,
         avatarUrl: String,
+        isGroup  : Boolean = false,
     ) {
         if (!history.containsKey(userId)) {
-            addMessage(context, userId, userName, message, avatarUrl, fromUser = false)
+            addMessage(context, userId, userName, message, avatarUrl, fromUser = false, isGroup = isGroup)
             return
         }
 
-        // Cập nhật lại metadata phòng trường hợp người dùng đổi tên/avatar
-        rememberMeta(userId, userName, avatarUrl)
+        // Cập nhật lại metadata phòng trường hợp người dùng đổi tên/avatar/thay đổi trạng thái group
+        rememberMeta(userId, userName, avatarUrl, isGroup)
 
         val msgs = history[userId] ?: return
         postNotification(context, userId, userName, avatarUrl, msgs.toList(), notifId(userId))
@@ -257,7 +267,9 @@ object BubbleNotificationManager {
             return null
         }
 
-        val intent = BubbleActivity.createIntent(context, userId, userName, avatarUrl)
+        // Lấy cờ isGroup từ conversationMeta để truyền vào BubbleActivity
+        val isGroupConvo = isGroupConversation(userId)
+        val intent = BubbleActivity.createIntent(context, userId, userName, avatarUrl, isGroupConvo)
         val reqCode = (userId.hashCode() and 0x7FFFFFFF)
 
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or

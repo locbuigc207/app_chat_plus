@@ -106,8 +106,9 @@ class ChatPageState extends State<ChatPage>
     _ctxSub = ContextualBubbleService.instance
         .contextStream(widget.arguments.peerId)
         .listen((ctx) {
-          if (mounted && !resourceManager.isDisposed)
+          if (mounted && !resourceManager.isDisposed) {
             setState(() => _bubbleCtx = ctx);
+          }
         });
   }
 
@@ -173,6 +174,22 @@ class ChatPageState extends State<ChatPage>
     _ => 'text',
   };
 
+  // [FIX] Bổ sung helper _buildChatPreview() để build clean preview cho direct write
+  String _buildChatPreview(String content, int type) {
+    if (type == TypeMessage.image) return '📷 Ảnh';
+    if (type == TypeMessage.video) return '🎬 Video';
+    if (type == TypeMessage.sticker) return '😊 Sticker';
+    if (type == TypeMessage.poll) return '📊 Bình chọn';
+    if (type == TypeMessage.geoLocked) return '📍 Tin nhắn địa điểm';
+    if (type == 3) return '🎤 Tin nhắn thoại';
+    if (type == TypeMessage.gameInvite) return '🎮 Lời mời chơi game';
+    if (type == TypeMessage.gameResult) return '🏆 Kết quả game';
+    // Với text: bỏ reply prefix '↪ [original]\n', lấy dòng thực tế cuối
+    final lines = content.split('\n');
+    final actual = lines.length > 1 ? lines.last : content;
+    return actual.length > 60 ? '${actual.substring(0, 60)}…' : actual;
+  }
+
   // ── Core ──────────────────────────────────────────────────────────────────
   String _currentUserId = '';
   String _groupChatId = '';
@@ -236,10 +253,10 @@ class ChatPageState extends State<ChatPage>
   int _recSeconds = 0;
   Timer? _recTimer;
 
-  // [FIX] Dedicated debounce timers — tránh chồng chất timer
+  // Dedicated debounce timers — tránh chồng chất timer
   Timer? _aiDockDebouncer;
   Timer? _typingStopTimer;
-  // [FIX] Giới hạn đệ quy _scrollToMsg
+  // Giới hạn đệ quy _scrollToMsg
   int _scrollToMsgDepth = 0;
 
   List<DocumentSnapshot> _pinned = [];
@@ -250,7 +267,7 @@ class ChatPageState extends State<ChatPage>
   MessageChat? _replyingTo;
   String? _pendingScrollId;
 
-  // [FIX] LinkedHashSet cho FIFO cleanup đúng thứ tự
+  // LinkedHashSet cho FIFO cleanup đúng thứ tự
   final Set<String> _processedIds = LinkedHashSet<String>();
   final Map<String, Timer> _scheduled = {};
   final Map<String, String> _scheduledContent = {};
@@ -258,7 +275,7 @@ class ChatPageState extends State<ChatPage>
   final ImagePicker _picker = ImagePicker();
 
   // ── AI Dock refresh (debounced 350ms) ────────────────────────────────────
-  // [PERF] Tránh gọi lại liên tục mỗi keystroke
+  // Tránh gọi lại liên tục mỗi keystroke
   void _refreshAiDock() {
     _aiDockDebouncer?.cancel();
     _aiDockDebouncer = Timer(const Duration(milliseconds: 350), () {
@@ -426,14 +443,15 @@ class ChatPageState extends State<ChatPage>
     } else if (state == AppLifecycleState.resumed) {
       _presenceProvider?.setUserOnline(_currentUserId);
       _markRead();
-      if (mounted)
+      if (mounted) {
         BubbleManager.of(context)?.clearUnread(widget.arguments.peerId);
+      }
     }
   }
 
   @override
   void dispose() {
-    // [FIX] Cancel debounce timers trước để tránh callback sau dispose
+    // Cancel debounce timers trước để tránh callback sau dispose
     _aiDockDebouncer?.cancel();
     _typingStopTimer?.cancel();
     _ctxSub?.cancel();
@@ -494,11 +512,12 @@ class ChatPageState extends State<ChatPage>
     } catch (_) {}
 
     final sub = _bubbleService?.bubbleClickStream.listen((event) {
-      if (event.userId == widget.arguments.peerId && mounted)
+      if (event.userId == widget.arguments.peerId && mounted) {
         _toast(
           '📨 ${widget.arguments.peerNickname}: ${event.message}',
           isSuccess: true,
         );
+      }
     });
     if (sub != null) resourceManager.addSubscription(sub);
 
@@ -613,8 +632,9 @@ class ChatPageState extends State<ChatPage>
       });
     } catch (_) {
     } finally {
-      if (mounted && !resourceManager.isDisposed)
+      if (mounted && !resourceManager.isDisposed) {
         setState(() => _isExtractingReminder = false);
+      }
     }
   }
 
@@ -659,8 +679,9 @@ class ChatPageState extends State<ChatPage>
         .listen((snap) async {
           if (snap.docs.isEmpty || resourceManager.isDisposed) return;
           if (!(_autoPilotProvider?.isActiveForConversation(_groupChatId) ??
-              false))
+              false)) {
             return;
+          }
           final data = snap.docs.first.data();
           final idFrom = data['idFrom'] as String? ?? '';
           final content = data['content'] as String? ?? '';
@@ -690,7 +711,9 @@ class ChatPageState extends State<ChatPage>
             await Future.delayed(
               Duration(milliseconds: 500 + (reply.length * 30).clamp(0, 1000)),
             );
-            if (!resourceManager.isDisposed && mounted) await _onSend(reply, 0);
+            if (!resourceManager.isDisposed && mounted) {
+              await _onSend(reply, 0);
+            }
           }
         });
     resourceManager.addSubscription(sub);
@@ -712,15 +735,18 @@ class ChatPageState extends State<ChatPage>
     final pos = _scrollController.position;
     if (pos.pixels >= pos.maxScrollExtent - 200 && !pos.outOfRange) {
       final total = LocalDbService().getMessages(_groupChatId).length;
-      if (_limit < total && mounted) setState(() => _limit += _limitIncrement);
+      if (_limit < total && mounted) {
+        setState(() => _limit += _limitIncrement);
+      }
     }
     final show = pos.pixels > 400;
     if (show != _showScrollToBottom && mounted) {
       setState(() => _showScrollToBottom = show);
-      if (show)
+      if (show) {
         _fabAnim.forward();
-      else
+      } else {
         _fabAnim.reverse();
+      }
     }
   }
 
@@ -738,10 +764,11 @@ class ChatPageState extends State<ChatPage>
   // ==========================================================================
 
   void _onInputChanged() {
-    if (_inputController.text.trim().isNotEmpty)
+    if (_inputController.text.trim().isNotEmpty) {
       _sendBtnAnim.forward();
-    else
+    } else {
       _sendBtnAnim.reverse();
+    }
     _refreshAiDock(); // debounced — không lag khi gõ
   }
 
@@ -756,7 +783,7 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // [FIX] Typing timer: cancel trước khi tạo mới, tránh chồng chất
+  // Typing timer: cancel trước khi tạo mới, tránh chồng chất
   void _handleTyping(String text) {
     if (_presenceProvider == null || resourceManager.isDisposed) return;
     _telemetryProvider.recordTextChange(text);
@@ -839,9 +866,17 @@ class ChatPageState extends State<ChatPage>
       return;
     }
     HapticFeedback.mediumImpact();
+
+    // [FIX] Capture timestamp trước sendMessage() để dùng cho direct Firestore write.
+    // sendMessage() tạo timestamp riêng bên trong → dùng timestamp đó sẽ lệch vài ms.
+    // SyncManager sẽ overwrite bằng timestamp chính xác hơn khi transaction thành công.
+    final String _directWriteTs = DateTime.now().millisecondsSinceEpoch
+        .toString();
+
     String finalContent = content;
-    if (_replyingTo != null)
+    if (_replyingTo != null) {
       finalContent = '↪ ${_replyingTo!.content}\n$finalContent';
+    }
     _inputController.clear();
     if (mounted && !resourceManager.isDisposed) {
       setState(() {
@@ -864,6 +899,27 @@ class ChatPageState extends State<ChatPage>
       );
       _onUserSentMessage(finalContent, type: _typeToString(type));
       await _updateBubble(finalContent, type, fromUser: true);
+
+      // [FIX] Direct Firestore conversation update — mirror pattern của GroupChatPage.
+      // SyncManager transaction fail silently → home page kẹt ở tin cũ / mã hóa.
+      // unawaited: không block UI, Firestore offline persistence sẽ queue nếu offline.
+      unawaited(
+        FirebaseFirestore.instance
+            .collection(FirestoreConstants.pathConversationCollection)
+            .doc(_groupChatId)
+            .set({
+              FirestoreConstants.participants: FieldValue.arrayUnion([
+                _currentUserId,
+                widget.arguments.peerId,
+              ]),
+              FirestoreConstants.lastMessage: _buildChatPreview(
+                finalContent,
+                type,
+              ),
+              FirestoreConstants.lastMessageTime: _directWriteTs,
+              FirestoreConstants.lastMessageType: type,
+            }, SetOptions(merge: true)),
+      );
     } catch (e) {
       ErrorLogger.logError(e, null, context: 'SendMessage');
       _toast('Lỗi gửi tin nhắn');
@@ -931,8 +987,9 @@ class ChatPageState extends State<ChatPage>
   void _listenIncoming() {
     if (resourceManager.isDisposed ||
         _groupChatId.isEmpty ||
-        _currentUserId.isEmpty)
+        _currentUserId.isEmpty) {
       return;
+    }
     final sub = FirebaseFirestore.instance
         .collection(FirestoreConstants.pathMessageCollection)
         .doc(_groupChatId)
@@ -953,9 +1010,10 @@ class ChatPageState extends State<ChatPage>
               final id = change.doc.id;
               if (_processedIds.contains(id)) continue;
               _processedIds.add(id);
-              // [FIX] LinkedHashSet: first() luôn là cũ nhất (FIFO)
-              if (_processedIds.length > 200)
+              // LinkedHashSet: first() luôn là cũ nhất (FIFO)
+              if (_processedIds.length > 200) {
                 _processedIds.remove(_processedIds.first);
+              }
               final content = data[FirestoreConstants.content] as String? ?? '';
               final type = data[FirestoreConstants.type] as int? ?? 0;
               final isFromMe =
@@ -965,8 +1023,9 @@ class ChatPageState extends State<ChatPage>
               if (!isFromMe &&
                   !isFromBot &&
                   content.isNotEmpty &&
-                  type == TypeMessage.text)
+                  type == TypeMessage.text) {
                 unawaited(_analyzeMessageForReminders(content));
+              }
               _onIncomingMessage(content, type: _typeToString(type));
               if (BubbleSettingsService().settings.soundEnabled) {
                 final ctx = ContextualBubbleService.instance.getContext(
@@ -997,18 +1056,20 @@ class ChatPageState extends State<ChatPage>
           .get();
       if (unread.docs.isEmpty) return;
       final batch = FirebaseFirestore.instance.batch();
-      for (final doc in unread.docs)
+      for (final doc in unread.docs) {
         batch.update(doc.reference, {
           'isRead': true,
           'readAt': FieldValue.serverTimestamp(),
         });
+      }
       await batch.commit();
       _presenceProvider?.markMessagesAsRead(
         conversationId: _groupChatId,
         userId: _currentUserId,
       );
-      if (mounted)
+      if (mounted) {
         BubbleManager.of(context)?.clearUnread(widget.arguments.peerId);
+      }
     } catch (e) {
       ErrorLogger.logError(e, null, context: 'MarkRead');
     }
@@ -1031,11 +1092,12 @@ class ChatPageState extends State<ChatPage>
         confirmLabel: 'Mở cài đặt',
         icon: Icons.chat_bubble_rounded,
       );
-      if (confirm == true && mounted)
+      if (confirm == true && mounted) {
         Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const BubbleSettingsPage()),
         );
+      }
       return;
     }
     final ok = await _bubbleService!.showChatBubble(
@@ -1108,8 +1170,9 @@ class ChatPageState extends State<ChatPage>
       ErrorLogger.logError(e, null, context: 'SendMedia');
       _toast('Lỗi gửi media');
     } finally {
-      if (mounted && !resourceManager.isDisposed)
+      if (mounted && !resourceManager.isDisposed) {
         setState(() => _isLoadingMedia = false);
+      }
     }
   }
 
@@ -1169,11 +1232,12 @@ class ChatPageState extends State<ChatPage>
       _toast('Ghi âm thất bại');
       return;
     }
-    if (mounted)
+    if (mounted) {
       setState(() {
         _isRecording = false;
         _isLoading = true;
       });
+    }
     final result = await _voiceProvider!.uploadVoiceMessage(
       path,
       'voice_${DateTime.now().millisecondsSinceEpoch}.aac',
@@ -1263,8 +1327,9 @@ class ChatPageState extends State<ChatPage>
   Future<void> _openMaps(String url) async {
     try {
       final uri = Uri.parse(url);
-      if (await canLaunchUrl(uri))
+      if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
     } catch (_) {}
   }
 
@@ -1307,12 +1372,14 @@ class ChatPageState extends State<ChatPage>
     if (msgs.isEmpty) return;
     final last = msgs.first;
     if (last['idFrom'] == _currentUserId ||
-        (last['type'] as int?) != TypeMessage.text)
+        (last['type'] as int?) != TypeMessage.text) {
       return;
+    }
     final content = last['content'] as String? ?? '';
     if (content.isEmpty || content.startsWith('{"iv":')) return;
-    if (mounted && !resourceManager.isDisposed)
+    if (mounted && !resourceManager.isDisposed) {
       setState(() => _isLoadingSmartReply = true);
+    }
     try {
       final history = msgs
           .take(6)
@@ -1339,11 +1406,12 @@ class ChatPageState extends State<ChatPage>
         relationshipType: 'friend',
         language: 'vi',
       );
-      if (mounted && !resourceManager.isDisposed)
+      if (mounted && !resourceManager.isDisposed) {
         setState(() {
           _smartReplyResult = result;
           _isLoadingSmartReply = false;
         });
+      }
     } catch (e) {
       if (mounted && !resourceManager.isDisposed) {
         final fb = _smartReplyProvider.getRuleBasedReplies(
@@ -1384,8 +1452,9 @@ class ChatPageState extends State<ChatPage>
     } catch (_) {
       _toast('AI không khả dụng');
     } finally {
-      if (mounted && !resourceManager.isDisposed)
+      if (mounted && !resourceManager.isDisposed) {
         setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -1411,8 +1480,9 @@ class ChatPageState extends State<ChatPage>
               ? 'Tôi'
               : widget.arguments.peerNickname;
           final content = m['content']?.toString() ?? '';
-          if (content.startsWith('{"iv":') || content.startsWith('{'))
+          if (content.startsWith('{"iv":') || content.startsWith('{')) {
             return null;
+          }
           return '$sender: $content';
         })
         .whereType<String>()
@@ -1812,8 +1882,9 @@ class ChatPageState extends State<ChatPage>
       final ok = await _showPinVerify();
       if (ok != true && mounted) Navigator.pop(context);
     }
-    if (mounted && !resourceManager.isDisposed)
+    if (mounted && !resourceManager.isDisposed) {
       setState(() => _lockChecked = true);
+    }
   }
 
   Future<bool?> _showPinVerify() async {
@@ -1855,9 +1926,9 @@ class ChatPageState extends State<ChatPage>
       backgroundColor: Colors.transparent,
       builder: (_) => _LockOptionsSheet(),
     );
-    if (action == 'set_pin' && !resourceManager.isDisposed)
+    if (action == 'set_pin' && !resourceManager.isDisposed) {
       _setPin();
-    else if (action == 'remove' && !resourceManager.isDisposed) {
+    } else if (action == 'remove' && !resourceManager.isDisposed) {
       await _lockProvider.removeConversationLock(_groupChatId);
       _toast('Đã xóa khoá', isSuccess: true);
     }
@@ -1916,7 +1987,7 @@ class ChatPageState extends State<ChatPage>
     }
   }
 
-  // [FIX] Giới hạn đệ quy tối đa 5 lần để tránh vòng lặp vô tận
+  // Giới hạn đệ quy tối đa 5 lần để tránh vòng lặp vô tận
   void _scrollToMsg(String id) {
     if (!_scrollController.hasClients) return;
     final all = LocalDbService().getMessages(_groupChatId);
@@ -1953,11 +2024,12 @@ class ChatPageState extends State<ChatPage>
 
   void _onBack() {
     if (_isShowSticker || _showMenu) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _isShowSticker = false;
           _showMenu = false;
         });
+      }
       _menuAnim.reverse();
     } else {
       _chatProvider.updateDataFirestore(
@@ -2174,7 +2246,7 @@ class ChatPageState extends State<ChatPage>
                       .collection(FirestoreConstants.pathUserCollection)
                       .doc(widget.arguments.peerId)
                       .get();
-                  if (doc.exists && mounted)
+                  if (doc.exists && mounted) {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -2183,6 +2255,7 @@ class ChatPageState extends State<ChatPage>
                         ),
                       ),
                     );
+                  }
                 },
               ),
               actions: [
@@ -2561,8 +2634,6 @@ class ChatPageState extends State<ChatPage>
                       _pendingExtracted = [];
                     }),
                   ),
-                // [LAYOUT] Expanded ổn định hơn Flexible — message list chiếm
-                // đúng phần còn lại, không bị collapse khi FeatureHub xuất hiện
                 _buildMsgList(p, theme),
                 _buildTypingBar(p, theme),
                 if (_isShowSticker &&
@@ -2624,7 +2695,6 @@ class ChatPageState extends State<ChatPage>
         itemCount: _pinned.length,
         itemBuilder: (_, i) {
           final msg = MessageChat.fromDocument(_pinned[i]);
-          // [FIX] Ẩn nội dung mã hóa trong pinned bar
           final display =
               (msg.content.startsWith('{"iv":') ||
                   msg.content.startsWith('eyJ') ||
@@ -2675,8 +2745,6 @@ class ChatPageState extends State<ChatPage>
   // ── Message list ───────────────────────────────────────────────────────────
 
   Widget _buildMsgList(ThemePalette p, ThemeProvider theme) {
-    // [LAYOUT] Expanded = chiếm phần còn lại chính xác, tránh RenderFlex overflow
-    // [UX] GestureDetector dismiss keyboard khi tap vùng chat
     return Expanded(
       child: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
@@ -2687,7 +2755,7 @@ class ChatPageState extends State<ChatPage>
                 builder: (_, Box box, __) {
                   final all = LocalDbService().getMessages(_groupChatId);
                   final display = all.take(_limit).toList();
-                  if (display.isEmpty)
+                  if (display.isEmpty) {
                     return Center(
                       child: _EmptyChat(
                         palette: p,
@@ -2695,6 +2763,7 @@ class ChatPageState extends State<ChatPage>
                         onIcebreaker: _showIcebreakers,
                       ),
                     );
+                  }
                   _prefetchLinkPreviews(display);
                   return Stack(
                     children: [
@@ -2706,10 +2775,8 @@ class ChatPageState extends State<ChatPage>
                           parent: AlwaysScrollableScrollPhysics(),
                         ),
                         itemCount: display.length,
-                        // [PERF] KeyedSubtree: Flutter tái sử dụng widget đúng item
                         itemBuilder: (_, i) => KeyedSubtree(
                           key: ValueKey(display[i]['messageId'] ?? 'msg_$i'),
-                          // [PERF] RepaintBoundary: cô lập repaint từng bubble
                           child: RepaintBoundary(
                             child: _buildMsgItem(
                               i,
@@ -2903,7 +2970,7 @@ class ChatPageState extends State<ChatPage>
         ),
       );
     }
-    if (msg.type == TypeMessage.video)
+    if (msg.type == TypeMessage.video) {
       return wrap(
         _buildVideoBubble(
           msgId: msgId,
@@ -2915,7 +2982,8 @@ class ChatPageState extends State<ChatPage>
           theme: theme,
         ),
       );
-    if (msg.type == TypeMessage.image)
+    }
+    if (msg.type == TypeMessage.image) {
       return wrap(
         _buildImageBubble(
           msgId: msgId,
@@ -2927,6 +2995,7 @@ class ChatPageState extends State<ChatPage>
           theme: theme,
         ),
       );
+    }
     if (msg.type == TypeMessage.sticker) {
       return wrap(
         Align(
@@ -3170,7 +3239,7 @@ class ChatPageState extends State<ChatPage>
                     ),
                   ),
                 ),
-              ), // <-- FIXED: Changed semicolon to comma
+              ),
             ],
           ),
           const SizedBox(width: 4),
@@ -3252,11 +3321,12 @@ class ChatPageState extends State<ChatPage>
     alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
     child: GestureDetector(
       onTap: () {
-        if (!isPending)
+        if (!isPending) {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => FullPhotoPage(url: msg.content)),
           );
+        }
       },
       onLongPress: () => _showMsgOptions(msg, msgId),
       child: ClipRRect(
@@ -3312,13 +3382,14 @@ class ChatPageState extends State<ChatPage>
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
         onTap: () {
-          if (!isPending)
+          if (!isPending) {
             Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (_) => VideoPlayerPage(videoUrl: videoUrl),
               ),
             );
+          }
         },
         onLongPress: () => _showMsgOptions(msg, msgId),
         child: Container(
@@ -3470,8 +3541,6 @@ class ChatPageState extends State<ChatPage>
         border: Border(top: BorderSide(color: p.divider)),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      // [LAYOUT] Wrap thay Row cứng — tự xuống dòng trên màn hình nhỏ (iPhone SE)
-      // Tránh overflow ngang khi có nhiều sticker
       child: Wrap(
         spacing: 12,
         runSpacing: 8,
@@ -3523,9 +3592,6 @@ class ChatPageState extends State<ChatPage>
                 ),
               ),
             ),
-            // [LAYOUT] ConstrainedBox + SingleChildScrollView:
-            //   maxHeight 45% màn hình → nội dung scroll bên trong trên thiết bị
-            //   nhỏ (iPhone SE, màn 5"), tránh overflow Column toàn trang
             ConstrainedBox(
               constraints: BoxConstraints(
                 maxHeight: MediaQuery.of(context).size.height * 0.45,
@@ -3752,8 +3818,9 @@ class ChatPageState extends State<ChatPage>
       items: result?.merged ?? const [],
       isLoading: _isLoadingSmartReply,
       onDismiss: () {
-        if (mounted && !resourceManager.isDisposed)
+        if (mounted && !resourceManager.isDisposed) {
           setState(() => _smartReplyResult = null);
+        }
       },
       onSelect: (payload, msgType) {
         if (resourceManager.isDisposed) return;
@@ -3785,8 +3852,6 @@ class ChatPageState extends State<ChatPage>
           ),
         _buildRecBar(p, theme),
         Container(
-          // [LAYOUT] Trong SafeArea, padding.bottom đã được consume bởi Scaffold.
-          // Chỉ cần thêm 10px margin tránh bị chạm cạnh.
           margin: EdgeInsets.only(
             bottom: MediaQuery.of(context).padding.bottom + 10,
             left: _CD.s12,
@@ -3796,7 +3861,6 @@ class ChatPageState extends State<ChatPage>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Reply preview
               AnimatedSize(
                 duration: const Duration(milliseconds: 260),
                 curve: Curves.easeOutCubic,
@@ -3813,7 +3877,6 @@ class ChatPageState extends State<ChatPage>
                         },
                       ),
               ),
-              // Main input row
               Container(
                 decoration: BoxDecoration(
                   color: p.surface,
@@ -3830,7 +3893,6 @@ class ChatPageState extends State<ChatPage>
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    // [+] Feature Hub toggle
                     if (full)
                       GestureDetector(
                         onTap: () {
@@ -3843,8 +3905,9 @@ class ChatPageState extends State<ChatPage>
                           if (_showMenu) {
                             _menuAnim.forward();
                             _focusNode.unfocus();
-                          } else
+                          } else {
                             _menuAnim.reverse();
+                          }
                         },
                         child: Padding(
                           padding: const EdgeInsets.all(10),
@@ -3888,7 +3951,6 @@ class ChatPageState extends State<ChatPage>
                           ),
                         ),
                       ),
-                    // TextField
                     Expanded(
                       child: Padding(
                         padding: EdgeInsets.only(
@@ -3916,15 +3978,17 @@ class ChatPageState extends State<ChatPage>
                                 _handleTyping(t);
                                 if (t.isNotEmpty &&
                                     _smartReplyResult != null &&
-                                    mounted)
+                                    mounted) {
                                   setState(() => _smartReplyResult = null);
+                                }
                               },
                               onSubmitted: (_) {
-                                if (!resourceManager.isDisposed)
+                                if (!resourceManager.isDisposed) {
                                   _onSend(
                                     _inputController.text,
                                     TypeMessage.text,
                                   );
+                                }
                               },
                               decoration: InputDecoration.collapsed(
                                 hintText: 'Nhắn tin...',
@@ -3934,12 +3998,12 @@ class ChatPageState extends State<ChatPage>
                                 ),
                               ),
                             ),
-                            // ✨ AI Magic button inline
                             ValueListenableBuilder<TextEditingValue>(
                               valueListenable: _inputController,
                               builder: (_, val, __) {
-                                if (val.text.trim().length < 10)
+                                if (val.text.trim().length < 10) {
                                   return const SizedBox.shrink();
+                                }
                                 return GestureDetector(
                                   onTap: _showToneRewriter,
                                   child: Container(
@@ -3971,7 +4035,6 @@ class ChatPageState extends State<ChatPage>
                         ),
                       ),
                     ),
-                    // Morphing send / mic button
                     Padding(
                       padding: const EdgeInsets.all(6),
                       child: ValueListenableBuilder<TextEditingValue>(
@@ -3980,13 +4043,14 @@ class ChatPageState extends State<ChatPage>
                           final hasText = val.text.trim().isNotEmpty;
                           return GestureDetector(
                             onTap: () {
-                              if (hasText)
+                              if (hasText) {
                                 _onSend(
                                   _inputController.text,
                                   TypeMessage.text,
                                 );
-                              else if (full)
+                              } else if (full) {
                                 _startRec();
+                              }
                             },
                             onLongPress: full && !hasText
                                 ? () {
@@ -5159,8 +5223,9 @@ class _ScamScanWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (result != null && result != 'SAFE')
+    if (result != null && result != 'SAFE') {
       return ScamWarningWidget(status: result as String);
+    }
     if (result == null) {
       return GestureDetector(
         onTap: () async {
@@ -5168,11 +5233,12 @@ class _ScamScanWidget extends StatelessWidget {
           final scamLevel = await AIBackendService().checkScam(content);
           final statusString = scamLevel.name.toUpperCase();
           onScan(statusString);
-          if (statusString == 'SAFE')
+          if (statusString == 'SAFE') {
             Fluttertoast.showToast(
               msg: '✅ Tin nhắn an toàn',
               backgroundColor: palette.successColor,
             );
+          }
         },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -5228,8 +5294,9 @@ class _ReactionRow extends StatelessWidget {
   Widget build(BuildContext context) => StreamBuilder<QuerySnapshot>(
     stream: provider.getReactions(groupChatId, msgId),
     builder: (_, snap) {
-      if (!snap.hasData || snap.data!.docs.isEmpty)
+      if (!snap.hasData || snap.data!.docs.isEmpty) {
         return const SizedBox.shrink();
+      }
       final reactions = <String, int>{};
       final myReactions = <String, bool>{};
       for (final doc in snap.data!.docs) {
@@ -5445,7 +5512,7 @@ class _AIDialog extends StatelessWidget {
         'extract_tasks',
       ),
       builder: (_, snap) {
-        if (snap.connectionState == ConnectionState.waiting)
+        if (snap.connectionState == ConnectionState.waiting) {
           return const SizedBox(
             height: 100,
             child: Center(
@@ -5455,11 +5522,13 @@ class _AIDialog extends StatelessWidget {
               ),
             ),
           );
-        if (!snap.hasData)
+        }
+        if (!snap.hasData) {
           return Text(
             'Không thể kết nối AI lúc này.',
             style: TextStyle(color: palette.textSecondary),
           );
+        }
         return SizedBox(
           height: 280,
           child: SingleChildScrollView(

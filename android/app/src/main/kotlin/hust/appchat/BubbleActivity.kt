@@ -34,6 +34,7 @@ class BubbleActivity : FlutterActivity() {
         private const val EXTRA_UID         = "userId"
         private const val EXTRA_NAME        = "userName"
         private const val EXTRA_AVATAR      = "avatarUrl"
+        private const val EXTRA_IS_GROUP    = "isGroup"
 
         private const val RETRY_INTERVAL_MS = 60L
         private const val MAX_RETRIES       = 60          // ~3.6 s
@@ -45,13 +46,15 @@ class BubbleActivity : FlutterActivity() {
             ctx: Context,
             userId: String,
             userName: String,
-            avatarUrl: String
+            avatarUrl: String,
+            isGroup: Boolean = false
         ): Intent = Intent(ctx, BubbleActivity::class.java).apply {
             action = Intent.ACTION_VIEW
             data   = android.net.Uri.parse("bubble://chat/$userId")
-            putExtra(EXTRA_UID,    userId)
-            putExtra(EXTRA_NAME,   userName)
-            putExtra(EXTRA_AVATAR, avatarUrl)
+            putExtra(EXTRA_UID,      userId)
+            putExtra(EXTRA_NAME,     userName)
+            putExtra(EXTRA_AVATAR,   avatarUrl)
+            putExtra(EXTRA_IS_GROUP, isGroup)
             addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT)
             addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
         }
@@ -61,13 +64,14 @@ class BubbleActivity : FlutterActivity() {
     private var channel        : MethodChannel? = null
     private var isFlutterReady = false
 
-    private var currentUid    : String? = null
-    private var currentName   : String? = null
-    private var currentAvatar : String? = null
+    private var currentUid     : String? = null
+    private var currentName    : String? = null
+    private var currentAvatar  : String? = null
+    private var currentIsGroup : Boolean = false
 
-    private var pendingUid    : String? = null
-    private var pendingName   : String? = null
-    private var pendingAvatar : String? = null
+    private var pendingUid     : String? = null
+    private var pendingName    : String? = null
+    private var pendingAvatar  : String? = null
 
     private val navigatedUsers = LinkedHashSet<String>()
     private val mainHandler    = Handler(Looper.getMainLooper())
@@ -119,7 +123,7 @@ class BubbleActivity : FlutterActivity() {
         // khi mở lại Bubble từ Bubble Bar / Recents / Overview
         setLocusContext(LocusId(currentUid!!), null)
 
-        Log.d(TAG, "✅ onCreate — user: $currentName ($currentUid)")
+        Log.d(TAG, "✅ onCreate — user: $currentName ($currentUid) | isGroup: $currentIsGroup")
     }
 
     // [Xử lý back cho thiết bị API < 33: Android 11, 12, 12L]
@@ -242,9 +246,10 @@ class BubbleActivity : FlutterActivity() {
         navigatedUsers.remove(newUid)
 
         Log.d(TAG, "🔄 New intent → $newName ($newUid)")
-        currentUid    = newUid
-        currentName   = newName
-        currentAvatar = intent.getStringExtra(EXTRA_AVATAR)
+        currentUid     = newUid
+        currentName    = newName
+        currentAvatar  = intent.getStringExtra(EXTRA_AVATAR)
+        currentIsGroup = intent.getBooleanExtra(EXTRA_IS_GROUP, false)
 
         // Cập nhật LocusId khi Bubble nhận intent của user khác
         setLocusContext(LocusId(newUid), null)
@@ -255,17 +260,19 @@ class BubbleActivity : FlutterActivity() {
 
     override fun onSaveInstanceState(out: Bundle) {
         super.onSaveInstanceState(out)
-        out.putString("uid",    currentUid)
-        out.putString("name",   currentName)
-        out.putString("avatar", currentAvatar)
+        out.putString("uid",      currentUid)
+        out.putString("name",     currentName)
+        out.putString("avatar",   currentAvatar)
+        out.putBoolean("isGroup", currentIsGroup)
         out.putStringArrayList("navDone", ArrayList(navigatedUsers))
     }
 
     override fun onRestoreInstanceState(saved: Bundle) {
         super.onRestoreInstanceState(saved)
-        currentUid    = saved.getString("uid")
-        currentName   = saved.getString("name")
-        currentAvatar = saved.getString("avatar")
+        currentUid     = saved.getString("uid")
+        currentName    = saved.getString("name")
+        currentAvatar  = saved.getString("avatar")
+        currentIsGroup = saved.getBoolean("isGroup", false)
         saved.getStringArrayList("navDone")?.let { navigatedUsers.addAll(it) }
         setPending()
 
@@ -403,6 +410,7 @@ class BubbleActivity : FlutterActivity() {
                     "peerNickname" to name,
                     "peerAvatar"   to av,
                     "isBubbleMode" to true,
+                    "isGroup"      to currentIsGroup,
                 )
             )
 
@@ -411,7 +419,7 @@ class BubbleActivity : FlutterActivity() {
                 navigatedUsers.iterator().next().also { navigatedUsers.remove(it) }
             }
             navigatedUsers.add(uid)
-            Log.d(TAG, "✅ Navigated → $name ($uid)")
+            Log.d(TAG, "✅ Navigated → $name ($uid) | Group: $currentIsGroup")
 
             mainHandler.postDelayed({ showKeyboard() }, KEYBOARD_DELAY_MS)
         } catch (e: Exception) { Log.e(TAG, "❌ doNavigate: $e") }
@@ -437,9 +445,10 @@ class BubbleActivity : FlutterActivity() {
     // ─── Helpers ──────────────────────────────────────────────────────────
 
     private fun readExtras(i: Intent) {
-        currentUid    = i.getStringExtra(EXTRA_UID)
-        currentName   = i.getStringExtra(EXTRA_NAME)
-        currentAvatar = i.getStringExtra(EXTRA_AVATAR)
+        currentUid     = i.getStringExtra(EXTRA_UID)
+        currentName    = i.getStringExtra(EXTRA_NAME)
+        currentAvatar  = i.getStringExtra(EXTRA_AVATAR)
+        currentIsGroup = i.getBooleanExtra(EXTRA_IS_GROUP, false)
     }
 
     private fun validateUser() =

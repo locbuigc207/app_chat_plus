@@ -37,7 +37,7 @@ class UnifiedBubbleService {
 
   // ── Singleton ─────────────────────────────────────────────────────────────
   static final UnifiedBubbleService _instance =
-      UnifiedBubbleService._internal();
+  UnifiedBubbleService._internal();
   factory UnifiedBubbleService() => _instance;
 
   UnifiedBubbleService._internal() {
@@ -151,7 +151,7 @@ class UnifiedBubbleService {
     void forwardClick(Stream<BubbleClickEvent> src) {
       _subs.add(
         src.listen(
-          (e) {
+              (e) {
             if (!(_clickCtrl?.isClosed ?? true)) _clickCtrl!.add(e);
           },
           onError: (Object err) => debugPrint('⚠️ click stream error: $err'),
@@ -163,7 +163,7 @@ class UnifiedBubbleService {
     void forwardBubbles(Stream<Map<String, BubbleData>> src) {
       _subs.add(
         src.listen(
-          (b) {
+              (b) {
             if (!(_bubblesCtrl?.isClosed ?? true)) _bubblesCtrl!.add(b);
           },
           onError: (Object err) => debugPrint('⚠️ bubbles stream error: $err'),
@@ -216,6 +216,7 @@ class UnifiedBubbleService {
     required String avatarUrl,
     String? lastMessage,
     bool isOnline = false,
+    bool isGroup = false, // [SỬA LỖI]: Thêm isGroup
   }) => _queue<bool>(() async {
     if (_impl == BubbleImplementation.bubbleApi) {
       return _bubbleApi.showBubble(
@@ -224,13 +225,17 @@ class UnifiedBubbleService {
         message: lastMessage ?? 'New message',
         avatarUrl: avatarUrl,
         isOnline: isOnline,
+        isGroup: isGroup, // [SỬA LỖI]: Truyền isGroup
       );
     } else if (_impl == BubbleImplementation.windowManager) {
+      // Nếu ChatBubbleService hỗ trợ isGroup, hãy truyền vào.
+      // Tùy theo logic cũ, WindowManager có thể bỏ qua hoặc xử lý.
       return _windowMgr.showChatBubble(
         userId: userId,
         userName: userName,
         avatarUrl: avatarUrl,
         lastMessage: lastMessage,
+        // isGroup: isGroup, (Thêm vào ChatBubbleService nếu cần thiết)
       );
     }
     return false;
@@ -316,6 +321,7 @@ class UnifiedBubbleService {
     required String message,
     required String avatarUrl,
     String messageType = 'text',
+    bool isGroup = false, // [SỬA LỖI]: Thêm isGroup
   }) async {
     await _ensureInitialized();
     if (_impl != BubbleImplementation.bubbleApi) return false;
@@ -325,6 +331,7 @@ class UnifiedBubbleService {
       message: message,
       avatarUrl: avatarUrl,
       messageType: messageType,
+      isGroup: isGroup, // [SỬA LỖI]: Truyền isGroup
     );
   }
 
@@ -334,12 +341,14 @@ class UnifiedBubbleService {
     required String message,
     required String avatarUrl,
     required int typeCode,
+    bool isGroup = false, // [SỬA LỖI]: Thêm isGroup
   }) => sendMessage(
     userId: userId,
     userName: userName,
     message: message,
     avatarUrl: avatarUrl,
     messageType: _resolveType(message, typeCode),
+    isGroup: isGroup, // [SỬA LỖI]: Truyền isGroup
   );
 
   Future<Map<String, dynamic>> getBubbleStats() async {
@@ -497,7 +506,7 @@ class UnifiedBubbleService {
     3 => 'voice',
     5 => 'location', // Sửa từ 4 -> 5 (TypeMessage.geoLocked = 5)
     _ when content.contains('maps.google') || content.contains('📍') =>
-      'location',
+    'location',
     _ => 'text',
   };
 
@@ -539,7 +548,7 @@ class UnifiedBubbleService {
 
     // [FIX P2]: KHÔNG dispose _bubbleApi và _windowMgr vì đây là Singleton.
     // Nếu app/provider khởi tạo lại, _bubbleApi.initialize() sẽ bị lỗi do
-    // đã bị tiêu hủy trước đó. Ta chỉ dọn dẹp Stream và Queue là đủ an toàn.
+    // đã bị tiêu hủy trước đó. Ta chỉ dọn chi Stream và Queue là đủ an toàn.
     // _bubbleApi.dispose();
     // _windowMgr.dispose();
 
