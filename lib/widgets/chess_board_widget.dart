@@ -199,7 +199,7 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
 
       // Scroll history to bottom when new move arrives
       WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _scrollHistoryToBottom(),
+            (_) => _scrollHistoryToBottom(),
       );
     }
   }
@@ -258,7 +258,7 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
         : null;
   }
 
-  // ── Drag & Tap Handlers (Bug 1, Bug 3 & Bug 18 Fixes) ─────────────────────
+  // ── Drag & Tap Handlers ───────────────────────────────────────────────────
 
   void _onPointerDown(PointerDownEvent e) {
     if (!widget.isMyTurn || widget.isGameOver) return;
@@ -279,8 +279,13 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
       return;
     }
 
-    // Là quân của mình: lưu candidate, hiện legal moves ngay
-    final moves = _chess.generate_moves({'square': sq});
+    // FIX BUG 6: Lọc nước đi thủ công theo ô được chọn thay vì phụ thuộc vào options của package
+    final allMoves = _chess.generate_moves();
+    final moves = allMoves.where((m) {
+      final algebraic = m.toAlgebraic;
+      return algebraic.length >= 4 && algebraic.substring(0, 2) == sq;
+    }).toList();
+
     _pendingDragOrigin = e.position;
     _pendingDragSquare = sq;
     HapticFeedback.lightImpact();
@@ -297,7 +302,7 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
       _legalCaptures = moves
           .where(
             (m) => (m.flags & 12) != 0 && m.toAlgebraic.length >= 4,
-          ) // 12 = BITS_CAPTURE (4) | BITS_EP_CAPTURE (8)
+      ) // 12 = BITS_CAPTURE (4) | BITS_EP_CAPTURE (8)
           .map((m) => m.toAlgebraic.substring(2, 4))
           .toSet();
     });
@@ -320,7 +325,7 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
           _dragSquare = sq;
           _dragOffset = e.position;
           _dragPiece =
-              '${piece.color == ch.Color.WHITE ? 'w' : 'b'}${piece.type.toUpperCase()}';
+          '${piece.color == ch.Color.WHITE ? 'w' : 'b'}${piece.type.toUpperCase()}';
         });
         _pendingDragOrigin = null;
         _pendingDragSquare = null;
@@ -332,7 +337,7 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
     if (_dragSquare != null) {
       // Kết thúc drag → thử thực hiện nước đi
       final renderBox =
-          _boardKey.currentContext?.findRenderObject() as RenderBox?;
+      _boardKey.currentContext?.findRenderObject() as RenderBox?;
       if (renderBox != null) {
         final local = renderBox.globalToLocal(e.position);
         final col = (local.dx / _squareSize).floor().clamp(0, 7);
@@ -355,7 +360,7 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
     // Là tap (di chuyển không vượt ngưỡng)
     _pendingDragOrigin = null;
     final renderBox =
-        _boardKey.currentContext?.findRenderObject() as RenderBox?;
+    _boardKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox != null) {
       final local = renderBox.globalToLocal(e.position);
       final col = (local.dx / _squareSize).floor().clamp(0, 7);
@@ -386,9 +391,9 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
     final piece = _chess.get(from);
     final isPawnPromo =
         piece != null &&
-        piece.type == ch.PieceType.PAWN &&
-        ((widget.myColor == 'white' && to[1] == '8') ||
-            (widget.myColor == 'black' && to[1] == '1'));
+            piece.type == ch.PieceType.PAWN &&
+            ((widget.myColor == 'white' && to[1] == '8') ||
+                (widget.myColor == 'black' && to[1] == '1'));
 
     if (isPawnPromo) {
       _showPromoDialog(from, to);
@@ -644,11 +649,11 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
                     animation: _checkAnim,
                     builder: (_, __) => ColoredBox(
                       color:
-                          Color.lerp(
-                            _CW.checkSq.withValues(alpha: 0.3),
-                            _CW.checkSq.withValues(alpha: 0.75),
-                            _checkAnim.value,
-                          ) ??
+                      Color.lerp(
+                        _CW.checkSq.withValues(alpha: 0.3),
+                        _CW.checkSq.withValues(alpha: 0.75),
+                        _checkAnim.value,
+                      ) ??
                           Colors.transparent,
                     ),
                   );
@@ -768,69 +773,69 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
             curve: Curves.easeOutCubic,
             child: _historyExpanded && records.isNotEmpty
                 ? SizedBox(
-                    height: 72,
-                    child: ListView.builder(
-                      controller: _historyScroll,
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 8,
-                      ),
-                      itemCount: records.length,
-                      itemBuilder: (_, i) {
-                        final r = records[i];
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 4),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // Move number
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 5,
-                                  vertical: 3,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: _CW.panelBg,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  '${r.number}.',
-                                  style: const TextStyle(
-                                    color: _CW.textDim,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 3),
-                              // White move
-                              _MoveChip(
-                                san: r.white,
-                                isLatest:
-                                    i == records.length - 1 && r.black.isEmpty,
-                              ),
-                              if (r.black.isNotEmpty) ...[
-                                const SizedBox(width: 3),
-                                _MoveChip(
-                                  san: r.black,
-                                  isLatest: i == records.length - 1,
-                                ),
-                              ],
-                              const SizedBox(width: 6),
-                              // Divider
-                              Container(
-                                width: 1,
-                                height: 20,
-                                color: const Color(0xFF5C3520),
-                              ),
-                              const SizedBox(width: 6),
-                            ],
+              height: 72,
+              child: ListView.builder(
+                controller: _historyScroll,
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 8,
+                ),
+                itemCount: records.length,
+                itemBuilder: (_, i) {
+                  final r = records[i];
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Move number
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 3,
                           ),
-                        );
-                      },
+                          decoration: BoxDecoration(
+                            color: _CW.panelBg,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '${r.number}.',
+                            style: const TextStyle(
+                              color: _CW.textDim,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 3),
+                        // White move
+                        _MoveChip(
+                          san: r.white,
+                          isLatest:
+                          i == records.length - 1 && r.black.isEmpty,
+                        ),
+                        if (r.black.isNotEmpty) ...[
+                          const SizedBox(width: 3),
+                          _MoveChip(
+                            san: r.black,
+                            isLatest: i == records.length - 1,
+                          ),
+                        ],
+                        const SizedBox(width: 6),
+                        // Divider
+                        Container(
+                          width: 1,
+                          height: 20,
+                          color: const Color(0xFF5C3520),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
                     ),
-                  )
+                  );
+                },
+              ),
+            )
                 : const SizedBox.shrink(),
           ),
         ],
@@ -887,19 +892,19 @@ class _PieceWidget extends StatelessWidget {
                 color: isWhite ? _CW.pieceWhite : _CW.pieceBlack,
                 shadows: isWhite
                     ? [
-                        const Shadow(
-                          color: Color(0xFF8B4513),
-                          blurRadius: 1,
-                          offset: Offset(0.5, 0.5),
-                        ),
-                      ]
+                  const Shadow(
+                    color: Color(0xFF8B4513),
+                    blurRadius: 1,
+                    offset: Offset(0.5, 0.5),
+                  ),
+                ]
                     : [
-                        const Shadow(
-                          color: Color(0xFFD2691E),
-                          blurRadius: 2,
-                          offset: Offset(0, 0),
-                        ),
-                      ],
+                  const Shadow(
+                    color: Color(0xFFD2691E),
+                    blurRadius: 2,
+                    offset: Offset(0, 0),
+                  ),
+                ],
               ),
             ),
           ],
@@ -1024,33 +1029,33 @@ class _PromotionDialog extends StatelessWidget {
               children: pieces
                   .map(
                     (p) => GestureDetector(
-                      onTap: () => Navigator.pop(context, p.$1),
-                      child: Container(
-                        width: 64,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          color: _CW.lightSquare,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: _CW.darkSquare, width: 2),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _PieceWidget(pieceKey: p.$2, size: 40),
-                            const SizedBox(height: 4),
-                            Text(
-                              p.$3,
-                              style: const TextStyle(
-                                color: _CW.panelBg,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                  onTap: () => Navigator.pop(context, p.$1),
+                  child: Container(
+                    width: 64,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: _CW.lightSquare,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: _CW.darkSquare, width: 2),
                     ),
-                  )
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _PieceWidget(pieceKey: p.$2, size: 40),
+                        const SizedBox(height: 4),
+                        Text(
+                          p.$3,
+                          style: const TextStyle(
+                            color: _CW.panelBg,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
                   .toList(),
             ),
           ],

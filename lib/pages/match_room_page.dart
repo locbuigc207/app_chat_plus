@@ -119,9 +119,13 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
 
   Future<void> _init() async {
     _gs = context.read<GameStateProvider>();
+
+    // FIX BUG 2: Truyền thêm currentUserName và currentUserAvatar để Provider gọi được acceptMatch
     await _gs.initialize(
       matchId: widget.matchId,
       currentUserId: widget.currentUserId,
+      currentUserName: widget.currentUserName,
+      currentUserAvatar: widget.currentUserAvatar,
     );
 
     // Guard mounted sau quá trình await initialize
@@ -145,7 +149,7 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
     _inviteTimeoutTimer?.cancel();
     _inviteTimeoutTimer = Timer(
       Duration(seconds: AppConstants.gameInviteTimeoutSeconds),
-          () async {
+      () async {
         if (!mounted) return;
         final match = _gs.match;
         if (match == null || !match.isWaiting) return;
@@ -379,7 +383,6 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
                   _buildBanner(gs, match, _BannerType.drawRequest),
                 if (match.isWaiting) _buildWaitingBanner(match),
                 if (match.timeControlSeconds > 0)
-                // Bug 21 Fix: Truyền trực tiếp data vào ChessClockWidget thay vì để nó tự Consume
                   ChessClockWidget(
                     player1RemainingMs: gs.player1RemainingMs,
                     player2RemainingMs: gs.player2RemainingMs,
@@ -390,13 +393,18 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
                     player1Avatar: match.player1Avatar,
                     player2Avatar: match.player2Avatar ?? '',
                     myColor: myColor,
-                    isCurrentUserPlayer2: widget.currentUserId == match.player2Id,
+                    isCurrentUserPlayer2:
+                        widget.currentUserId == match.player2Id,
                   ),
                 Expanded(
                   child: ChessBoardWidget(
                     fen: gs.chessFen,
                     myColor: myColor,
-                    isMyTurn: gs.isMyTurn && match.isPlaying && !isGameOver,
+                    // FIX BUG 1: Loại bỏ khóa cứng match.isPlaying, cho phép thao tác ở trạng thái kết hợp
+                    isMyTurn:
+                        gs.isMyTurn &&
+                        (match.isPlaying || match.isWaiting) &&
+                        !isGameOver,
                     isGameOver: isGameOver,
                     onMove: (uci) => gs.playChessMove(uci),
                     lastMoveUci: gs.lastChessMoveUci.isNotEmpty
@@ -521,14 +529,14 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
   );
 
   Widget _buildPlayerRow(
-      GameStateProvider gs,
-      GameMatch match, {
-        required bool isTop,
-      }) {
+    GameStateProvider gs,
+    GameMatch match, {
+    required bool isTop,
+  }) {
     final isPlayer1 = !isTop;
     final isMyRow =
         (isPlayer1 && gs.role == PlayerRole.player1) ||
-            (!isPlayer1 && gs.role == PlayerRole.player2);
+        (!isPlayer1 && gs.role == PlayerRole.player2);
 
     final name = isPlayer1 ? match.player1Name : (match.player2Name ?? '???');
     final avatar = isPlayer1
@@ -566,9 +574,9 @@ class _MatchRoomBodyState extends State<_MatchRoomBody>
             backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
             child: avatar.isEmpty
                 ? Text(
-              name.isNotEmpty ? name[0].toUpperCase() : '?',
-              style: TextStyle(color: color, fontWeight: FontWeight.w700),
-            )
+                    name.isNotEmpty ? name[0].toUpperCase() : '?',
+                    style: TextStyle(color: color, fontWeight: FontWeight.w700),
+                  )
                 : null,
           ),
           const SizedBox(width: 10),
@@ -1117,7 +1125,6 @@ class _ChessReplayBarState extends State<_ChessReplayBar> {
   }
 
   void _seekTo(int target) {
-    // Bug 14 Fix: Sử dụng hàm jumpToReplayIndex với độ phức tạp O(n) thay vì vòng lặp O(n^2)
     final gs = widget.gs;
     final clamped = target.clamp(-1, gs.replayTotal - 1);
     gs.jumpToReplayIndex(clamped);
@@ -1167,11 +1174,11 @@ class _ChessReplayBarState extends State<_ChessReplayBar> {
                   value: progress,
                   onChanged: total > 0
                       ? (v) {
-                    _pause();
-                    _seekTo(
-                      ((v * total).round() - 1).clamp(-1, total - 1),
-                    );
-                  }
+                          _pause();
+                          _seekTo(
+                            ((v * total).round() - 1).clamp(-1, total - 1),
+                          );
+                        }
                       : null,
                 ),
               ),

@@ -167,8 +167,7 @@ class ChatProvider {
   // CONVERSATION FALLBACK UPDATE
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // [SỬA LỖI P1]: Tránh quét toàn bộ DB chỉ để cập nhật một conversation.
-  // Dùng thẳng doc(groupChatId).set() để tăng hiệu năng và tiết kiệm chi phí.
+  // [SỬA LỖI]: Dùng transaction để ngăn chặn race condition khi 50 tin nhắn được load song song.
   Future<void> _updateConversationLastMessage({
     required String groupChatId,
     required String currentUserId,
@@ -182,13 +181,24 @@ class ChatProvider {
           .collection(FirestoreConstants.pathConversationCollection)
           .doc(groupChatId);
 
-      await docRef.set({
-        // Nếu đây là hội thoại mới, thiết lập luôn array participants
-        'participants': FieldValue.arrayUnion([currentUserId, peerId]),
-        'lastMessage': _previewFor(content, type),
-        'lastMessageTime': timestamp,
-        'lastMessageType': type,
-      }, SetOptions(merge: true));
+      final newTime = int.tryParse(timestamp) ?? 0;
+
+      await firebaseFirestore.runTransaction((tx) async {
+        final snap = await tx.get(docRef);
+        final currentTime =
+            int.tryParse(snap.data()?['lastMessageTime']?.toString() ?? '0') ??
+            0;
+
+        // Chỉ cập nhật nếu document chưa tồn tại hoặc tin nhắn này thực sự mới hơn.
+        if (!snap.exists || newTime > currentTime) {
+          tx.set(docRef, {
+            'participants': FieldValue.arrayUnion([currentUserId, peerId]),
+            'lastMessage': _previewFor(content, type),
+            'lastMessageTime': timestamp,
+            'lastMessageType': type,
+          }, SetOptions(merge: true));
+        }
+      });
     } catch (e) {
       _log('⚠️ _updateConversationLastMessage error: $e');
     }
@@ -261,6 +271,7 @@ class ChatProvider {
     _syncManager.startListening();
   }
 
+  // [SỬA LỖI]: Cập nhật đầy đủ các type và chặn không cho raw JSON hoặc mã hóa hiển thị ra Home Page.
   String _previewFor(String content, int type) {
     switch (type) {
       case TypeMessage.image:
@@ -272,14 +283,25 @@ class ChatProvider {
       case TypeMessage.document:
         return '📄 Tài liệu';
       case TypeMessage.poll:
-        return '📊 Cuộc khảo sát';
+        return '📊 Bình chọn';
       case TypeMessage.geoLocked:
-        return '🔐 Tin nhắn ẩn địa điểm';
+        return '📍 Tin nhắn địa điểm';
       case 3:
         return '🎤 Tin nhắn thoại';
-      default:
-        return content;
     }
+
+    if (type == TypeMessage.gameInvite) return '🎮 Lời mời chơi game';
+    if (type == TypeMessage.gameResult) return '🏆 Kết quả game';
+    if (type == TypeMessage.gameLive) return '🎮 Đang chơi game';
+
+    // Guard cuối: không bao giờ trả về chuỗi mã hóa làm preview
+    if (content.startsWith('{"iv":') && content.contains('"data":')) {
+      return '🔒 Tin nhắn';
+    }
+    if (content.startsWith('{') && content.contains('"matchId"')) {
+      return '🎮 Game';
+    }
+    return content;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -559,7 +581,9 @@ class ChatProvider {
 
     // ── Incoming message ──────────────────────────────────────────────────────
 
+    // [SỬA LỖI]: Track the original encrypted content
     String content = data[FirestoreConstants.content] as String? ?? '';
+    final String _originalEncryptedContent = content;
 
     // Bỏ qua decrypt cho Game Message
     if (type == TypeMessage.gameInvite ||
@@ -619,9 +643,18 @@ class ChatProvider {
     // Save to local DB first
     await _localDb.saveMessage(groupChatId, messageId, updatedMessage);
 
-    // Fallback Update Conversation Last Message
+    // [SỬA LỖI]: Fallback Update Conversation Last Message
+    // Chỉ cập nhật nếu giải mã thành công, không bao giờ ghi chuỗi mã hóa lên Firestore
+    final bool _decryptSucceeded =
+        type != TypeMessage.text ||
+        (content != _originalEncryptedContent &&
+            !content.startsWith('🔒 [') &&
+            !content.startsWith('⚠️ [') &&
+            !(content.startsWith('{"iv":') && content.contains('"data":')));
+
     if (change.type == DocumentChangeType.added &&
         content.isNotEmpty &&
+        _decryptSucceeded &&
         data['idFrom'] != AppConstants.aiAssistantId) {
       unawaited(
         _updateConversationLastMessage(
@@ -872,6 +905,21 @@ class ChatProvider {
         lastMessageType: TypeMessage.gameInvite,
       );
 
+      // [SỬA LỖI]: Cập nhật Firestore để home page của cả hai phía thấy preview đúng
+      try {
+        await firebaseFirestore
+            .collection(FirestoreConstants.pathConversationCollection)
+            .doc(groupChatId)
+            .set({
+              'lastMessage': preview,
+              'lastMessageTime': timestamp,
+              'lastMessageType': TypeMessage.gameInvite,
+              'participants': FieldValue.arrayUnion([currentUserId]),
+            }, SetOptions(merge: true));
+      } catch (e) {
+        _log('⚠️ Game invite convo update error: $e');
+      }
+
       // [SỬA LỖI P0]: Xóa logic gọi RPC native cũ của ChatBubbleService vì đã dọn dẹp khỏi Kotlin.
       // Firebase Cloud Functions sẽ lo nhiệm vụ gửi Notification thay thế.
 
@@ -933,6 +981,21 @@ class ChatProvider {
         lastMessageTime: timestamp,
         lastMessageType: TypeMessage.gameResult,
       );
+
+      // [SỬA LỖI]: Cập nhật Firestore để home page của cả hai phía thấy preview đúng
+      try {
+        await firebaseFirestore
+            .collection(FirestoreConstants.pathConversationCollection)
+            .doc(groupChatId)
+            .set({
+              'lastMessage': previewText,
+              'lastMessageTime': timestamp,
+              'lastMessageType': TypeMessage.gameResult,
+              'participants': FieldValue.arrayUnion([currentUserId]),
+            }, SetOptions(merge: true));
+      } catch (e) {
+        _log('⚠️ Game result convo update error: $e');
+      }
 
       _log('🏁 Game result sent: ${payload.matchId} → $groupChatId');
       return timestamp;

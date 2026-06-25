@@ -343,27 +343,22 @@ class SyncManager {
   // ═════════════════════════════════════════════════════════════════════════
 
   static String _buildPreview(String plainContent, int messageType) {
-    switch (messageType) {
-      case 1:
-        return '📷 Hình ảnh';
-      case 2:
-        return '🎬 Video';
-      case 3:
-        return '🎤 Tin nhắn thoại';
-      case 10:
-        return '😊 Sticker';
-      case 11:
-        return '📍 Tin nhắn địa điểm';
-      case 4:
-      case 5:
-        return '📄 Tài liệu';
-      default:
-        final masked = DataMaskingUtils.maskText(
-          plainContent,
-          config: MaskingConfig.piiOnly,
-        );
-        return masked.length > 80 ? '${masked.substring(0, 80)}…' : masked;
-    }
+    if (messageType == TypeMessage.image) return '📷 Hình ảnh';
+    if (messageType == TypeMessage.video) return '🎬 Video';
+    if (messageType == 3) return '🎤 Tin nhắn thoại';
+    if (messageType == TypeMessage.sticker) return '😊 Sticker';
+    if (messageType == TypeMessage.document) return '📄 Tài liệu';
+    if (messageType == TypeMessage.poll) return '📊 Bình chọn';
+    if (messageType == TypeMessage.geoLocked) return '📍 Tin nhắn địa điểm';
+    if (messageType == TypeMessage.gameInvite) return '🎮 Lời mời chơi game';
+    if (messageType == TypeMessage.gameResult) return '🏆 Kết quả game';
+    if (messageType == TypeMessage.gameLive) return '🎮 Đang chơi game';
+
+    final masked = DataMaskingUtils.maskText(
+      plainContent,
+      config: MaskingConfig.piiOnly,
+    );
+    return masked.length > 80 ? '${masked.substring(0, 80)}…' : masked;
   }
 
   Future<void> _sendAiErrorMessage(Map<String, dynamic> payload) async {

@@ -4,11 +4,8 @@ import 'package:flutter_chat_demo/models/message_chat.dart';
 
 enum GameMatchStatus {
   waiting,
-
   playing,
-
   finished,
-
   aborted;
 
   static GameMatchStatus fromString(String value) {
@@ -100,13 +97,9 @@ enum ChessSide {
 
 class GameMove {
   final int moveIndex;
-
   final String movedBy;
-
   final Map<String, dynamic> moveData;
-
   final String movedAt;
-
   final int remainingTimeMs;
 
   const GameMove({
@@ -118,22 +111,22 @@ class GameMove {
   });
 
   Map<String, dynamic> toJson() => {
-        FirestoreConstants.moveIndex: moveIndex,
-        FirestoreConstants.movedBy: movedBy,
-        FirestoreConstants.moveData: moveData,
-        FirestoreConstants.movedAt: movedAt,
-        FirestoreConstants.remainingTimeMs: remainingTimeMs,
-      };
+    FirestoreConstants.moveIndex: moveIndex,
+    FirestoreConstants.movedBy: movedBy,
+    FirestoreConstants.moveData: moveData,
+    FirestoreConstants.movedAt: movedAt,
+    FirestoreConstants.remainingTimeMs: remainingTimeMs,
+  };
 
   factory GameMove.fromJson(Map<String, dynamic> json) => GameMove(
-        moveIndex: json[FirestoreConstants.moveIndex] as int? ?? 0,
-        movedBy: json[FirestoreConstants.movedBy] as String? ?? '',
-        moveData: Map<String, dynamic>.from(
-          json[FirestoreConstants.moveData] as Map? ?? {},
-        ),
-        movedAt: _parseTs(json[FirestoreConstants.movedAt]),
-        remainingTimeMs: json[FirestoreConstants.remainingTimeMs] as int? ?? 0,
-      );
+    moveIndex: json[FirestoreConstants.moveIndex] as int? ?? 0,
+    movedBy: json[FirestoreConstants.movedBy] as String? ?? '',
+    moveData: Map<String, dynamic>.from(
+      json[FirestoreConstants.moveData] as Map? ?? {},
+    ),
+    movedAt: _parseTs(json[FirestoreConstants.movedAt]),
+    remainingTimeMs: json[FirestoreConstants.remainingTimeMs] as int? ?? 0,
+  );
 
   factory GameMove.fromDocument(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
@@ -161,12 +154,13 @@ class GameMatch {
   final String? player2Name;
   final String? player2Avatar;
 
+  // FIX BUG 3: Bổ sung thông tin người được mời đích danh để xác định chính xác Player2
+  final String? targetUserId;
+  final String? targetUserName;
+
   final ChessSide player1Side;
-
   final int timeControlSeconds;
-
   final int turnTimerSeconds;
-
   final int boardSize;
 
   /// FEN ban đầu của bàn cờ vua (nếu không có thì dùng FEN chuẩn).
@@ -176,11 +170,8 @@ class GameMatch {
   final String? endReason;
 
   final String sourceGroupId;
-
   final String? inviteMessageId;
-
   final List<String> spectatorIds;
-
   final List<GameMove> moveHistory;
 
   final String createdAt;
@@ -197,6 +188,8 @@ class GameMatch {
     this.player2Id,
     this.player2Name,
     this.player2Avatar,
+    this.targetUserId,
+    this.targetUserName,
     this.player1Side = ChessSide.random,
     this.timeControlSeconds = 0,
     this.turnTimerSeconds = 0,
@@ -239,31 +232,35 @@ class GameMatch {
   }
 
   Map<String, dynamic> toJson() => {
-        FirestoreConstants.matchId: matchId,
-        FirestoreConstants.gameType: gameType.name,
-        FirestoreConstants.gameStatus: status.name,
-        FirestoreConstants.player1Id: player1Id,
-        FirestoreConstants.player1Name: player1Name,
-        FirestoreConstants.player1Avatar: player1Avatar,
-        if (player2Id != null) FirestoreConstants.player2Id: player2Id,
-        if (player2Name != null) FirestoreConstants.player2Name: player2Name,
-        if (player2Avatar != null)
-          FirestoreConstants.player2Avatar: player2Avatar,
-        FirestoreConstants.player1Side: player1Side.name,
-        FirestoreConstants.timeControlSeconds: timeControlSeconds,
-        FirestoreConstants.turnTimerSeconds: turnTimerSeconds,
-        FirestoreConstants.boardSize: boardSize,
-        if (initialFen != null) FirestoreConstants.initialFen: initialFen,
-        if (result != null) FirestoreConstants.gameResult: result!.value,
-        if (endReason != null) FirestoreConstants.gameEndReason: endReason,
-        FirestoreConstants.sourceGroupId: sourceGroupId,
-        if (inviteMessageId != null)
-          FirestoreConstants.inviteMessageId: inviteMessageId,
-        FirestoreConstants.spectatorIds: spectatorIds,
-        FirestoreConstants.createdAt: createdAt,
-        if (startedAt != null) FirestoreConstants.startedAt: startedAt,
-        if (endedAt != null) FirestoreConstants.endedAt: endedAt,
-      };
+    FirestoreConstants.matchId: matchId,
+    FirestoreConstants.gameType: gameType.name,
+    FirestoreConstants.gameStatus: status.name,
+    FirestoreConstants.player1Id: player1Id,
+    FirestoreConstants.player1Name: player1Name,
+    FirestoreConstants.player1Avatar: player1Avatar,
+    if (player2Id != null) FirestoreConstants.player2Id: player2Id,
+    if (player2Name != null) FirestoreConstants.player2Name: player2Name,
+    if (player2Avatar != null) FirestoreConstants.player2Avatar: player2Avatar,
+
+    // FIX BUG 3: Lưu trữ dữ liệu target user
+    if (targetUserId != null) 'targetUserId': targetUserId,
+    if (targetUserName != null) 'targetUserName': targetUserName,
+
+    FirestoreConstants.player1Side: player1Side.name,
+    FirestoreConstants.timeControlSeconds: timeControlSeconds,
+    FirestoreConstants.turnTimerSeconds: turnTimerSeconds,
+    FirestoreConstants.boardSize: boardSize,
+    if (initialFen != null) FirestoreConstants.initialFen: initialFen,
+    if (result != null) FirestoreConstants.gameResult: result!.value,
+    if (endReason != null) FirestoreConstants.gameEndReason: endReason,
+    FirestoreConstants.sourceGroupId: sourceGroupId,
+    if (inviteMessageId != null)
+      FirestoreConstants.inviteMessageId: inviteMessageId,
+    FirestoreConstants.spectatorIds: spectatorIds,
+    FirestoreConstants.createdAt: createdAt,
+    if (startedAt != null) FirestoreConstants.startedAt: startedAt,
+    if (endedAt != null) FirestoreConstants.endedAt: endedAt,
+  };
 
   factory GameMatch.fromDocument(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
@@ -271,48 +268,54 @@ class GameMatch {
   }
 
   factory GameMatch.fromJson(Map<String, dynamic> data) => GameMatch(
-        matchId: data[FirestoreConstants.matchId] as String? ?? '',
-        gameType: GameType.fromString(
-          data[FirestoreConstants.gameType] as String? ?? 'caro',
-        ),
-        status: GameMatchStatus.fromString(
-          data[FirestoreConstants.gameStatus] as String? ?? 'waiting',
-        ),
-        player1Id: data[FirestoreConstants.player1Id] as String? ?? '',
-        player1Name: data[FirestoreConstants.player1Name] as String? ?? '',
-        player1Avatar: data[FirestoreConstants.player1Avatar] as String? ?? '',
-        player2Id: data[FirestoreConstants.player2Id] as String?,
-        player2Name: data[FirestoreConstants.player2Name] as String?,
-        player2Avatar: data[FirestoreConstants.player2Avatar] as String?,
-        player1Side: ChessSide.fromString(
-          data[FirestoreConstants.player1Side] as String?,
-        ),
-        timeControlSeconds:
-            data[FirestoreConstants.timeControlSeconds] as int? ?? 0,
-        turnTimerSeconds:
-            data[FirestoreConstants.turnTimerSeconds] as int? ?? 0,
-        boardSize: data[FirestoreConstants.boardSize] as int? ?? 0,
-        initialFen: data[FirestoreConstants.initialFen] as String?,
-        result: GameResult.fromString(
-          data[FirestoreConstants.gameResult] as String?,
-        ),
-        endReason: data[FirestoreConstants.gameEndReason] as String?,
-        sourceGroupId: data[FirestoreConstants.sourceGroupId] as String? ?? '',
-        inviteMessageId: data[FirestoreConstants.inviteMessageId] as String?,
-        spectatorIds: List<String>.from(
-          data[FirestoreConstants.spectatorIds] as List? ?? [],
-        ),
-        moveHistory: const [],
-        createdAt: _parseTs(data[FirestoreConstants.createdAt]),
-        startedAt: _parseTsNullable(data[FirestoreConstants.startedAt]),
-        endedAt: _parseTsNullable(data[FirestoreConstants.endedAt]),
-      );
+    matchId: data[FirestoreConstants.matchId] as String? ?? '',
+    gameType: GameType.fromString(
+      data[FirestoreConstants.gameType] as String? ?? 'caro',
+    ),
+    status: GameMatchStatus.fromString(
+      data[FirestoreConstants.gameStatus] as String? ?? 'waiting',
+    ),
+    player1Id: data[FirestoreConstants.player1Id] as String? ?? '',
+    player1Name: data[FirestoreConstants.player1Name] as String? ?? '',
+    player1Avatar: data[FirestoreConstants.player1Avatar] as String? ?? '',
+    player2Id: data[FirestoreConstants.player2Id] as String?,
+    player2Name: data[FirestoreConstants.player2Name] as String?,
+    player2Avatar: data[FirestoreConstants.player2Avatar] as String?,
+
+    // FIX BUG 3: Đọc dữ liệu target user từ Firestore
+    targetUserId: data['targetUserId'] as String?,
+    targetUserName: data['targetUserName'] as String?,
+
+    player1Side: ChessSide.fromString(
+      data[FirestoreConstants.player1Side] as String?,
+    ),
+    timeControlSeconds:
+        data[FirestoreConstants.timeControlSeconds] as int? ?? 0,
+    turnTimerSeconds: data[FirestoreConstants.turnTimerSeconds] as int? ?? 0,
+    boardSize: data[FirestoreConstants.boardSize] as int? ?? 0,
+    initialFen: data[FirestoreConstants.initialFen] as String?,
+    result: GameResult.fromString(
+      data[FirestoreConstants.gameResult] as String?,
+    ),
+    endReason: data[FirestoreConstants.gameEndReason] as String?,
+    sourceGroupId: data[FirestoreConstants.sourceGroupId] as String? ?? '',
+    inviteMessageId: data[FirestoreConstants.inviteMessageId] as String?,
+    spectatorIds: List<String>.from(
+      data[FirestoreConstants.spectatorIds] as List? ?? [],
+    ),
+    moveHistory: const [],
+    createdAt: _parseTs(data[FirestoreConstants.createdAt]),
+    startedAt: _parseTsNullable(data[FirestoreConstants.startedAt]),
+    endedAt: _parseTsNullable(data[FirestoreConstants.endedAt]),
+  );
 
   GameMatch copyWith({
     GameMatchStatus? status,
     String? player2Id,
     String? player2Name,
     String? player2Avatar,
+    String? targetUserId,
+    String? targetUserName,
     ChessSide? player1Side,
     String? initialFen,
     GameResult? result,
@@ -322,32 +325,33 @@ class GameMatch {
     List<GameMove>? moveHistory,
     String? startedAt,
     String? endedAt,
-  }) =>
-      GameMatch(
-        matchId: matchId,
-        gameType: gameType,
-        status: status ?? this.status,
-        player1Id: player1Id,
-        player1Name: player1Name,
-        player1Avatar: player1Avatar,
-        player2Id: player2Id ?? this.player2Id,
-        player2Name: player2Name ?? this.player2Name,
-        player2Avatar: player2Avatar ?? this.player2Avatar,
-        player1Side: player1Side ?? this.player1Side,
-        timeControlSeconds: timeControlSeconds,
-        turnTimerSeconds: turnTimerSeconds,
-        boardSize: boardSize,
-        initialFen: initialFen ?? this.initialFen,
-        result: result ?? this.result,
-        endReason: endReason ?? this.endReason,
-        sourceGroupId: sourceGroupId,
-        inviteMessageId: inviteMessageId ?? this.inviteMessageId,
-        spectatorIds: spectatorIds ?? this.spectatorIds,
-        moveHistory: moveHistory ?? this.moveHistory,
-        createdAt: createdAt,
-        startedAt: startedAt ?? this.startedAt,
-        endedAt: endedAt ?? this.endedAt,
-      );
+  }) => GameMatch(
+    matchId: matchId,
+    gameType: gameType,
+    status: status ?? this.status,
+    player1Id: player1Id,
+    player1Name: player1Name,
+    player1Avatar: player1Avatar,
+    player2Id: player2Id ?? this.player2Id,
+    player2Name: player2Name ?? this.player2Name,
+    player2Avatar: player2Avatar ?? this.player2Avatar,
+    targetUserId: targetUserId ?? this.targetUserId,
+    targetUserName: targetUserName ?? this.targetUserName,
+    player1Side: player1Side ?? this.player1Side,
+    timeControlSeconds: timeControlSeconds,
+    turnTimerSeconds: turnTimerSeconds,
+    boardSize: boardSize,
+    initialFen: initialFen ?? this.initialFen,
+    result: result ?? this.result,
+    endReason: endReason ?? this.endReason,
+    sourceGroupId: sourceGroupId,
+    inviteMessageId: inviteMessageId ?? this.inviteMessageId,
+    spectatorIds: spectatorIds ?? this.spectatorIds,
+    moveHistory: moveHistory ?? this.moveHistory,
+    createdAt: createdAt,
+    startedAt: startedAt ?? this.startedAt,
+    endedAt: endedAt ?? this.endedAt,
+  );
 
   @override
   bool operator ==(Object other) =>

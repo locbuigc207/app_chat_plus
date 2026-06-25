@@ -249,6 +249,8 @@ class GameStateProvider extends ChangeNotifier {
   Future<void> initialize({
     required String matchId,
     required String currentUserId,
+    String currentUserName = '', // MỚI (Fix Bug 2)
+    String currentUserAvatar = '', // MỚI (Fix Bug 2)
   }) async {
     _currentUserId = currentUserId;
     _isLoading = true;
@@ -256,17 +258,46 @@ class GameStateProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final match = await _firebase.fetchMatch(matchId);
-      if (match == null) {
+      // Lấy dữ liệu dạng nullable từ Firebase
+      GameMatch? fetchedMatch = await _firebase.fetchMatch(matchId);
+      if (fetchedMatch == null) {
         _errorMessage = 'Không tìm thấy trận đấu';
         _isLoading = false;
         notifyListeners();
         return;
       }
 
+      GameMatch match = fetchedMatch;
+
+      // Xác định Role ngay để xử lý Auto-Accept
+      _role = _detectRole(match, currentUserId);
+
+      // AUTO-ACCEPT (Fix Bug 2): Nếu là player2 bước vào phòng chờ, tự động accept
+      if (_role == PlayerRole.player2 && match.isWaiting) {
+        try {
+          await _firebase.acceptMatch(
+            matchId: matchId,
+            player2Id: currentUserId,
+            player2Name: currentUserName,
+            player2Avatar: currentUserAvatar,
+          );
+          final updatedMatch = await _firebase.fetchMatch(matchId);
+          if (updatedMatch != null) {
+            match = updatedMatch; // Gán lại biến non-nullable hợp lệ
+          }
+        } catch (e) {
+          debugPrint('[GameStateProvider] acceptMatch error: $e');
+        }
+      } else if (_role == PlayerRole.spectator) {
+        await _firebase.joinAsSpectator(matchId, currentUserId);
+      }
+
       _applyMatchData(match);
 
       if (match.gameType == GameType.chess) {
+        // Lưu ý: initialFen trong class GameMatch là String?
+        // Nếu hàm _initChessEngine() bắt buộc nhận String (non-null),
+        // bạn có thể đổi thành match.initialFen ?? ''
         _initChessEngine(match.initialFen);
       }
 
@@ -292,12 +323,6 @@ class GameStateProvider extends ChangeNotifier {
             }
           }
         }
-      }
-
-      _role = _detectRole(match, currentUserId);
-
-      if (_role == PlayerRole.spectator) {
-        await _firebase.joinAsSpectator(matchId, currentUserId);
       }
 
       _initClocks(match);
@@ -335,6 +360,17 @@ class GameStateProvider extends ChangeNotifier {
   PlayerRole _detectRole(GameMatch match, String userId) {
     if (match.player1Id == userId) return PlayerRole.player1;
     if (match.player2Id == userId) return PlayerRole.player2;
+
+    // FIX BUG 3: Đảm bảo Player2 không bị nhầm thành spectator khi đang waiting
+    if (match.isWaiting && match.targetUserId == userId) {
+      return PlayerRole.player2;
+    }
+    if (match.isWaiting &&
+        match.targetUserId == null &&
+        match.player1Id != userId) {
+      return PlayerRole.player2;
+    }
+
     return PlayerRole.spectator;
   }
 
@@ -342,14 +378,14 @@ class GameStateProvider extends ChangeNotifier {
     final player1IsWhite = match.player1Side == ChessSide.white;
     final isWhiteTurn = _nextMoveIndex.isEven;
 
+    // FIX BUG 5: Xử lý fallback chặt chẽ, không trả lại lượt cho Player 1
+    // nếu như đó là lượt của quân Trắng mà Player 1 đang cầm quân Đen
     if (isWhiteTurn) {
       return player1IsWhite
           ? match.player1Id
-          : (match.player2Id ?? match.player1Id);
+          : (match.player2Id ?? ''); // Trả về rỗng nếu player2 chưa vào
     } else {
-      return player1IsWhite
-          ? (match.player2Id ?? match.player1Id)
-          : match.player1Id;
+      return player1IsWhite ? (match.player2Id ?? '') : match.player1Id;
     }
   }
 
@@ -367,11 +403,24 @@ class GameStateProvider extends ChangeNotifier {
   // ── Subscriptions ─────────────────────────────────────────────────────────
 
   void _subscribeMatch(String matchId) {
+    bool wasWaiting = _match?.isWaiting ?? true; // Lưu trạng thái cũ
+
     _matchSub?.cancel();
     _matchSub = _firebase.watchMatch(matchId).listen((match) {
       if (match == null) return;
+
+      // FIX BUG 4: Kiểm tra sự thay đổi trạng thái từ waiting -> playing
+      final justBecamePlaying = wasWaiting && match.isPlaying;
+      wasWaiting = match.isWaiting;
+
       _match = match;
       notifyListeners();
+
+      if (justBecamePlaying) {
+        _initClocks(match);
+        _startActiveTimer(); // Bật đồng hồ ngay lập tức
+      }
+
       if (match.isFinished && !_isGameOver) {
         _handleGameOverFromFirestore(match);
       }
@@ -592,7 +641,7 @@ class GameStateProvider extends ChangeNotifier {
     final engine = _chessEngine!;
     if (uci.length < 4) return false;
 
-    // Bug 12 Fix: Snapshot trạng thái trước khi thay đổi để rollback nếu lỗi
+    // Snapshot trạng thái trước khi thay đổi để rollback nếu lỗi
     final snapshotFen = _chessFen;
     final snapshotLastUci = _lastChessMoveUci;
     final snapshotSanLen = _chessSanHistory.length;
@@ -613,11 +662,19 @@ class GameStateProvider extends ChangeNotifier {
       }
     }
 
+    // FIX BUG 7: Đảm bảo có log khi engine.move thất bại và notify lại state cũ
     final success = promo != null
         ? engine.move({'from': from, 'to': to, 'promotion': promo})
         : engine.move({'from': from, 'to': to});
 
-    if (!success) return false;
+    if (!success) {
+      debugPrint(
+        '[Chess] Illegal move rejected: $uci | FEN: ${engine.fen} | '
+        'Turn: ${engine.turn} | My color: $myChessColor',
+      );
+      notifyListeners();
+      return false;
+    }
 
     _chessFen = engine.fen;
     _lastChessMoveUci = uci;
@@ -645,7 +702,7 @@ class GameStateProvider extends ChangeNotifier {
     try {
       await _firebase.addMove(_match!.matchId, move);
     } catch (e) {
-      // Bug 12 Fix: Rollback TOÀN BỘ — bao gồm cả engine
+      // Rollback TOÀN BỘ — bao gồm cả engine
       try {
         _chessEngine = ch.Chess.fromFEN(snapshotFen);
       } catch (_) {}
@@ -712,7 +769,6 @@ class GameStateProvider extends ChangeNotifier {
     _checkChessGameOver();
     notifyListeners();
 
-    // Bug 13 Fix: Reset turn timer cho lượt tiếp theo (lượt của mình)
     if (!_isGameOver) _resetTurnTimer();
   }
 
@@ -765,7 +821,6 @@ class GameStateProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
-  // Bug 17 Fix: Đổi thứ tự check theo từ cụ thể đến tổng quát để tránh engine.in_draw nhận diện nhầm
   void _checkChessGameOver() {
     final engine = _chessEngine;
     if (engine == null) return;
@@ -1182,7 +1237,6 @@ class GameStateProvider extends ChangeNotifier {
       _winLine = [];
       _stopAllTimers();
 
-      // Bug 15 Fix: Đặt lại trạng thái bàn cờ về vị trí ban đầu ngay lập tức
       if (_match?.gameType == GameType.chess) {
         _lastChessMoveUci = '';
         final initialFen = _match?.initialFen;
@@ -1221,7 +1275,6 @@ class GameStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Bug 14 Fix: Method jumpToReplayIndex với độ phức tạp O(n)
   void jumpToReplayIndex(int index) {
     final clamped = index.clamp(-1, _replayMoves.length - 1);
     _replayIndex = clamped;
