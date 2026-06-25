@@ -106,10 +106,10 @@ class ChatPageState extends State<ChatPage>
     _ctxSub = ContextualBubbleService.instance
         .contextStream(widget.arguments.peerId)
         .listen((ctx) {
-          if (mounted && !resourceManager.isDisposed) {
-            setState(() => _bubbleCtx = ctx);
-          }
-        });
+      if (mounted && !resourceManager.isDisposed) {
+        setState(() => _bubbleCtx = ctx);
+      }
+    });
   }
 
   void _onUserSentMessage(String text, {String type = 'text'}) {
@@ -174,7 +174,7 @@ class ChatPageState extends State<ChatPage>
     _ => 'text',
   };
 
-  // [FIX] Bổ sung helper _buildChatPreview() để build clean preview cho direct write
+  // [FIX BUG 3] Bổ sung xử lý TypeMessage.document
   String _buildChatPreview(String content, int type) {
     if (type == TypeMessage.image) return '📷 Ảnh';
     if (type == TypeMessage.video) return '🎬 Video';
@@ -184,6 +184,9 @@ class ChatPageState extends State<ChatPage>
     if (type == 3) return '🎤 Tin nhắn thoại';
     if (type == TypeMessage.gameInvite) return '🎮 Lời mời chơi game';
     if (type == TypeMessage.gameResult) return '🏆 Kết quả game';
+    // [FIX - VẤN ĐỀ 4]: Thêm TypeMessage.gameLive để không bị lọt JSON raw ra ngoài trang chủ
+    if (type == TypeMessage.gameLive) return '🎮 Đang chơi game';
+    if (type == TypeMessage.document) return '📄 Tài liệu';
     // Với text: bỏ reply prefix '↪ [original]\n', lấy dòng thực tế cuối
     final lines = content.split('\n');
     final actual = lines.length > 1 ? lines.last : content;
@@ -530,10 +533,12 @@ class ChatPageState extends State<ChatPage>
     _locationProvider = LocationProvider();
     _startContextListener();
     _readLocal();
+
+    // [FIX - VẤN ĐỀ 5]: Check rỗng _groupChatId ngay sau _readLocal() trước khi query Firestore
+    if (_groupChatId.isEmpty) return;
+
     _loadPinned();
     _checkLock();
-
-    if (_groupChatId.isEmpty) return;
 
     _autoPilotProvider = ctx.read<AutoPilotProvider>();
     unawaited(_autoPilotProvider!.loadConfig(_groupChatId, _currentUserId));
@@ -556,7 +561,7 @@ class ChatPageState extends State<ChatPage>
     if (uid == null || uid.isEmpty) {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => LoginPage()),
-        (_) => false,
+            (_) => false,
       );
       return;
     }
@@ -596,8 +601,8 @@ class ChatPageState extends State<ChatPage>
         .read<ReminderProvider>()
         .getActiveReminderCount(_currentUserId)
         .listen((count) {
-          if (mounted) setState(() => _activeReminderCount = count);
-        });
+      if (mounted) setState(() => _activeReminderCount = count);
+    });
     resourceManager.addSubscription(sub);
   }
 
@@ -677,45 +682,45 @@ class ChatPageState extends State<ChatPage>
         .limit(1)
         .snapshots()
         .listen((snap) async {
-          if (snap.docs.isEmpty || resourceManager.isDisposed) return;
-          if (!(_autoPilotProvider?.isActiveForConversation(_groupChatId) ??
-              false)) {
-            return;
-          }
-          final data = snap.docs.first.data();
-          final idFrom = data['idFrom'] as String? ?? '';
-          final content = data['content'] as String? ?? '';
-          final msgDocId = snap.docs.first.id;
-          if (idFrom == _currentUserId) return;
-          if (idFrom == AppConstants.aiAssistantId) return;
-          if (msgDocId == _lastAutoPilotRepliedMsgId) return;
-          if (content.startsWith('{"iv":')) return;
-          if (content.trim().length < 2) return;
-          _lastAutoPilotRepliedMsgId = msgDocId;
-          final ctxMsgs = LocalDbService()
-              .getMessages(_groupChatId)
-              .take(4)
-              .map((m) => m['content']?.toString() ?? '')
-              .where((c) => c.isNotEmpty && !c.startsWith('{"iv":'))
-              .toList()
-              .reversed
-              .toList();
-          final reply = await _autoPilotProvider!.generateReply(
-            conversationId: _groupChatId,
-            incomingMessage: content,
-            senderId: idFrom,
-            currentUserId: _currentUserId,
-            contextMessages: ctxMsgs,
-          );
-          if (reply != null && !resourceManager.isDisposed && mounted) {
-            await Future.delayed(
-              Duration(milliseconds: 500 + (reply.length * 30).clamp(0, 1000)),
-            );
-            if (!resourceManager.isDisposed && mounted) {
-              await _onSend(reply, 0);
-            }
-          }
-        });
+      if (snap.docs.isEmpty || resourceManager.isDisposed) return;
+      if (!(_autoPilotProvider?.isActiveForConversation(_groupChatId) ??
+          false)) {
+        return;
+      }
+      final data = snap.docs.first.data();
+      final idFrom = data['idFrom'] as String? ?? '';
+      final content = data['content'] as String? ?? '';
+      final msgDocId = snap.docs.first.id;
+      if (idFrom == _currentUserId) return;
+      if (idFrom == AppConstants.aiAssistantId) return;
+      if (msgDocId == _lastAutoPilotRepliedMsgId) return;
+      if (content.startsWith('{"iv":')) return;
+      if (content.trim().length < 2) return;
+      _lastAutoPilotRepliedMsgId = msgDocId;
+      final ctxMsgs = LocalDbService()
+          .getMessages(_groupChatId)
+          .take(4)
+          .map((m) => m['content']?.toString() ?? '')
+          .where((c) => c.isNotEmpty && !c.startsWith('{"iv":'))
+          .toList()
+          .reversed
+          .toList();
+      final reply = await _autoPilotProvider!.generateReply(
+        conversationId: _groupChatId,
+        incomingMessage: content,
+        senderId: idFrom,
+        currentUserId: _currentUserId,
+        contextMessages: ctxMsgs,
+      );
+      if (reply != null && !resourceManager.isDisposed && mounted) {
+        await Future.delayed(
+          Duration(milliseconds: 500 + (reply.length * 30).clamp(0, 1000)),
+        );
+        if (!resourceManager.isDisposed && mounted) {
+          await _onSend(reply, 0);
+        }
+      }
+    });
     resourceManager.addSubscription(sub);
   }
 
@@ -867,12 +872,6 @@ class ChatPageState extends State<ChatPage>
     }
     HapticFeedback.mediumImpact();
 
-    // [FIX] Capture timestamp trước sendMessage() để dùng cho direct Firestore write.
-    // sendMessage() tạo timestamp riêng bên trong → dùng timestamp đó sẽ lệch vài ms.
-    // SyncManager sẽ overwrite bằng timestamp chính xác hơn khi transaction thành công.
-    final String _directWriteTs = DateTime.now().millisecondsSinceEpoch
-        .toString();
-
     String finalContent = content;
     if (_replyingTo != null) {
       finalContent = '↪ ${_replyingTo!.content}\n$finalContent';
@@ -885,6 +884,11 @@ class ChatPageState extends State<ChatPage>
       });
       _replyAnim.reverse();
     }
+
+    final String _messageTimestamp =
+    DateTime.now().millisecondsSinceEpoch.toString();
+
+    // [FIX - VẤN ĐỀ 3]: Tách Try-catch ra để không block luồng gửi chính nếu ghi direct Firestore lỗi
     try {
       await _chatProvider.sendMessage(
         finalContent,
@@ -899,32 +903,33 @@ class ChatPageState extends State<ChatPage>
       );
       _onUserSentMessage(finalContent, type: _typeToString(type));
       await _updateBubble(finalContent, type, fromUser: true);
-
-      // [FIX] Direct Firestore conversation update — mirror pattern của GroupChatPage.
-      // SyncManager transaction fail silently → home page kẹt ở tin cũ / mã hóa.
-      // unawaited: không block UI, Firestore offline persistence sẽ queue nếu offline.
-      unawaited(
-        FirebaseFirestore.instance
-            .collection(FirestoreConstants.pathConversationCollection)
-            .doc(_groupChatId)
-            .set({
-              FirestoreConstants.participants: FieldValue.arrayUnion([
-                _currentUserId,
-                widget.arguments.peerId,
-              ]),
-              FirestoreConstants.lastMessage: _buildChatPreview(
-                finalContent,
-                type,
-              ),
-              FirestoreConstants.lastMessageTime: _directWriteTs,
-              FirestoreConstants.lastMessageType: type,
-            }, SetOptions(merge: true)),
-      );
     } catch (e) {
       ErrorLogger.logError(e, null, context: 'SendMessage');
       _toast('Lỗi gửi tin nhắn');
-      return;
+      return; // Chỉ return lỗi nếu Step 1 thực sự hỏng
     }
+
+    // Step 2: Cập nhật Conversation Doc riêng, nếu fail thì SyncManager sẽ tự lo
+    try {
+      await FirebaseFirestore.instance
+          .collection(FirestoreConstants.pathConversationCollection)
+          .doc(_groupChatId)
+          .set({
+        FirestoreConstants.participants: FieldValue.arrayUnion([
+          _currentUserId,
+          widget.arguments.peerId,
+        ]),
+        FirestoreConstants.lastMessage: _buildChatPreview(
+          finalContent,
+          type,
+        ),
+        FirestoreConstants.lastMessageTime: _messageTimestamp,
+        FirestoreConstants.lastMessageType: type,
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('⚠️ chat_page: direct conversation update failed (non-fatal): $e');
+    }
+
     try {
       await _autoDeleteProvider.scheduleMessageDeletion(
         groupChatId: _groupChatId,
@@ -946,10 +951,10 @@ class ChatPageState extends State<ChatPage>
   }
 
   Future<void> _updateBubble(
-    String content,
-    int type, {
-    required bool fromUser,
-  }) async {
+      String content,
+      int type, {
+        required bool fromUser,
+      }) async {
     if (_bubbleService == null || resourceManager.isDisposed) return;
     final settings = BubbleSettingsService();
     if (!settings.isEnabled) return;
@@ -997,50 +1002,50 @@ class ChatPageState extends State<ChatPage>
         .where(FirestoreConstants.idTo, isEqualTo: _currentUserId)
         .snapshots()
         .listen((snap) async {
-          if (resourceManager.isDisposed || _isProcessingMsg) return;
-          _isProcessingMsg = true;
-          try {
-            for (final change in snap.docChanges) {
-              if (resourceManager.isDisposed) break;
-              if (change.type != DocumentChangeType.added) continue;
-              final data = change.doc.data();
-              if (data == null) continue;
-              final isRead = data['isRead'] as bool? ?? false;
-              if (isRead) continue;
-              final id = change.doc.id;
-              if (_processedIds.contains(id)) continue;
-              _processedIds.add(id);
-              // LinkedHashSet: first() luôn là cũ nhất (FIFO)
-              if (_processedIds.length > 200) {
-                _processedIds.remove(_processedIds.first);
-              }
-              final content = data[FirestoreConstants.content] as String? ?? '';
-              final type = data[FirestoreConstants.type] as int? ?? 0;
-              final isFromMe =
-                  data[FirestoreConstants.idFrom] == _currentUserId;
-              final isFromBot =
-                  data[FirestoreConstants.idFrom] == AppConstants.aiAssistantId;
-              if (!isFromMe &&
-                  !isFromBot &&
-                  content.isNotEmpty &&
-                  type == TypeMessage.text) {
-                unawaited(_analyzeMessageForReminders(content));
-              }
-              _onIncomingMessage(content, type: _typeToString(type));
-              if (BubbleSettingsService().settings.soundEnabled) {
-                final ctx = ContextualBubbleService.instance.getContext(
-                  widget.arguments.peerId,
-                );
-                unawaited(BubbleSoundService().playReceive(ctx.mode));
-              }
-              await _updateBubble(content, type, fromUser: false);
-              _showBubbleIfNeeded();
-            }
-            if (mounted && !resourceManager.isDisposed) _refreshAiDock();
-          } finally {
-            _isProcessingMsg = false;
+      if (resourceManager.isDisposed || _isProcessingMsg) return;
+      _isProcessingMsg = true;
+      try {
+        for (final change in snap.docChanges) {
+          if (resourceManager.isDisposed) break;
+          if (change.type != DocumentChangeType.added) continue;
+          final data = change.doc.data();
+          if (data == null) continue;
+          final isRead = data['isRead'] as bool? ?? false;
+          if (isRead) continue;
+          final id = change.doc.id;
+          if (_processedIds.contains(id)) continue;
+          _processedIds.add(id);
+          // LinkedHashSet: first() luôn là cũ nhất (FIFO)
+          if (_processedIds.length > 200) {
+            _processedIds.remove(_processedIds.first);
           }
-        }, onError: (_) => _isProcessingMsg = false);
+          final content = data[FirestoreConstants.content] as String? ?? '';
+          final type = data[FirestoreConstants.type] as int? ?? 0;
+          final isFromMe =
+              data[FirestoreConstants.idFrom] == _currentUserId;
+          final isFromBot =
+              data[FirestoreConstants.idFrom] == AppConstants.aiAssistantId;
+          if (!isFromMe &&
+              !isFromBot &&
+              content.isNotEmpty &&
+              type == TypeMessage.text) {
+            unawaited(_analyzeMessageForReminders(content));
+          }
+          _onIncomingMessage(content, type: _typeToString(type));
+          if (BubbleSettingsService().settings.soundEnabled) {
+            final ctx = ContextualBubbleService.instance.getContext(
+              widget.arguments.peerId,
+            );
+            unawaited(BubbleSoundService().playReceive(ctx.mode));
+          }
+          await _updateBubble(content, type, fromUser: false);
+          _showBubbleIfNeeded();
+        }
+        if (mounted && !resourceManager.isDisposed) _refreshAiDock();
+      } finally {
+        _isProcessingMsg = false;
+      }
+    }, onError: (_) => _isProcessingMsg = false);
     resourceManager.addSubscription(sub);
   }
 
@@ -1392,10 +1397,10 @@ class ChatPageState extends State<ChatPage>
       try {
         if (LocalDbService().isInitialized) {
           final mem =
-              (LocalDbService().getConversation(
-                    _groupChatId,
-                  )?['relationshipMemory']
-                  as Map?);
+          (LocalDbService().getConversation(
+            _groupChatId,
+          )?['relationshipMemory']
+          as Map?);
           closeness = (mem?['closenessLevel'] as int?)?.clamp(1, 5) ?? 3;
         }
       } catch (_) {}
@@ -1476,15 +1481,15 @@ class ChatPageState extends State<ChatPage>
         .getMessages(_groupChatId)
         .take(30)
         .map((m) {
-          final sender = m['idFrom'] == _currentUserId
-              ? 'Tôi'
-              : widget.arguments.peerNickname;
-          final content = m['content']?.toString() ?? '';
-          if (content.startsWith('{"iv":') || content.startsWith('{')) {
-            return null;
-          }
-          return '$sender: $content';
-        })
+      final sender = m['idFrom'] == _currentUserId
+          ? 'Tôi'
+          : widget.arguments.peerNickname;
+      final content = m['content']?.toString() ?? '';
+      if (content.startsWith('{"iv":') || content.startsWith('{')) {
+        return null;
+      }
+      return '$sender: $content';
+    })
         .whereType<String>()
         .toList()
         .reversed
@@ -1643,15 +1648,15 @@ class ChatPageState extends State<ChatPage>
     final recent = msgs
         .take(15)
         .where((d) {
-          final c = d['content']?.toString() ?? '';
-          return !c.startsWith('{"iv":') && !c.startsWith('eyJ');
-        })
+      final c = d['content']?.toString() ?? '';
+      return !c.startsWith('{"iv":') && !c.startsWith('eyJ');
+    })
         .map((d) {
-          final s = d['idFrom'] == _currentUserId
-              ? 'Tôi'
-              : widget.arguments.peerNickname;
-          return '$s: ${d['content']}';
-        })
+      final s = d['idFrom'] == _currentUserId
+          ? 'Tôi'
+          : widget.arguments.peerNickname;
+      return '$s: ${d['content']}';
+    })
         .toList()
         .reversed
         .toList();
@@ -1671,8 +1676,8 @@ class ChatPageState extends State<ChatPage>
     HapticFeedback.lightImpact();
     final validName =
         _authProvider.currentUserName ??
-        _authProvider.firebaseAuth.currentUser?.displayName ??
-        _currentUserId;
+            _authProvider.firebaseAuth.currentUser?.displayName ??
+            _currentUserId;
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -1998,7 +2003,7 @@ class ChatPageState extends State<ChatPage>
         setState(() => _limit += _limitIncrement);
         resourceManager.addDelayedTimer(
           const Duration(milliseconds: 500),
-          () => _scrollToMsg(id),
+              () => _scrollToMsg(id),
         );
       } else {
         _scrollToMsgDepth = 0;
@@ -2226,13 +2231,13 @@ class ChatPageState extends State<ChatPage>
               leading: widget.isWebMode
                   ? null
                   : IconButton(
-                      icon: Icon(
-                        Icons.arrow_back_ios_new_rounded,
-                        size: 20,
-                        color: theme.primaryColor,
-                      ),
-                      onPressed: _onBack,
-                    ),
+                icon: Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  size: 20,
+                  color: theme.primaryColor,
+                ),
+                onPressed: _onBack,
+              ),
               title: _AppBarTitle(
                 peerId: widget.arguments.peerId,
                 peerNickname: widget.arguments.peerNickname,
@@ -2392,9 +2397,9 @@ class ChatPageState extends State<ChatPage>
   }
 
   List<PopupMenuEntry<String>> _buildMenuItems(
-    ThemePalette p,
-    ThemeProvider theme,
-  ) {
+      ThemePalette p,
+      ThemeProvider theme,
+      ) {
     final msgCount = LocalDbService().getMessages(_groupChatId).length;
     return [
       _popItem(
@@ -2500,12 +2505,12 @@ class ChatPageState extends State<ChatPage>
   }
 
   PopupMenuItem<String> _popItem(
-    String value,
-    IconData icon,
-    String label,
-    Color color,
-    ThemePalette p,
-  ) => PopupMenuItem(
+      String value,
+      IconData icon,
+      String label,
+      Color color,
+      ThemePalette p,
+      ) => PopupMenuItem(
     value: value,
     child: Row(
       children: [
@@ -2532,13 +2537,13 @@ class ChatPageState extends State<ChatPage>
   );
 
   PopupMenuItem<String> _popItemWithBadge(
-    String value,
-    IconData icon,
-    String label,
-    Color color,
-    ThemePalette p,
-    BubbleMode mode,
-  ) => PopupMenuItem(
+      String value,
+      IconData icon,
+      String label,
+      Color color,
+      ThemePalette p,
+      BubbleMode mode,
+      ) => PopupMenuItem(
     value: value,
     child: Row(
       children: [
@@ -2665,11 +2670,11 @@ class ChatPageState extends State<ChatPage>
                     if (mounted) setState(() => _showSwipeCards = false);
                   },
                   incomingMessage:
-                      LocalDbService().getMessages(_groupChatId).isNotEmpty
+                  LocalDbService().getMessages(_groupChatId).isNotEmpty
                       ? LocalDbService()
-                            .getMessages(_groupChatId)
-                            .first['content']
-                            ?.toString()
+                      .getMessages(_groupChatId)
+                      .first['content']
+                      ?.toString()
                       : null,
                 ),
               ),
@@ -2696,9 +2701,9 @@ class ChatPageState extends State<ChatPage>
         itemBuilder: (_, i) {
           final msg = MessageChat.fromDocument(_pinned[i]);
           final display =
-              (msg.content.startsWith('{"iv":') ||
-                  msg.content.startsWith('eyJ') ||
-                  msg.content.isEmpty)
+          (msg.content.startsWith('{"iv":') ||
+              msg.content.startsWith('eyJ') ||
+              msg.content.isEmpty)
               ? '🔒 Tin nhắn mã hóa'
               : msg.content;
           return Container(
@@ -2751,79 +2756,79 @@ class ChatPageState extends State<ChatPage>
         behavior: HitTestBehavior.translucent,
         child: _groupChatId.isNotEmpty
             ? ValueListenableBuilder(
-                valueListenable: LocalDbService().messagesBox.listenable(),
-                builder: (_, Box box, __) {
-                  final all = LocalDbService().getMessages(_groupChatId);
-                  final display = all.take(_limit).toList();
-                  if (display.isEmpty) {
-                    return Center(
-                      child: _EmptyChat(
-                        palette: p,
-                        primaryColor: theme.primaryColor,
-                        onIcebreaker: _showIcebreakers,
-                      ),
-                    );
-                  }
-                  _prefetchLinkPreviews(display);
-                  return Stack(
-                    children: [
-                      ListView.builder(
-                        controller: _scrollController,
-                        reverse: true,
-                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                        physics: const BouncingScrollPhysics(
-                          parent: AlwaysScrollableScrollPhysics(),
-                        ),
-                        itemCount: display.length,
-                        itemBuilder: (_, i) => KeyedSubtree(
-                          key: ValueKey(display[i]['messageId'] ?? 'msg_$i'),
-                          child: RepaintBoundary(
-                            child: _buildMsgItem(
-                              i,
-                              display[i],
-                              display,
-                              p,
-                              theme,
-                            ),
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        right: 12,
-                        bottom: 12,
-                        child: ScaleTransition(
-                          scale: CurvedAnimation(
-                            parent: _fabAnim,
-                            curve: Curves.elasticOut,
-                          ),
-                          child: _ScrollFab(
-                            onTap: _scrollToBottom,
-                            palette: p,
-                            theme: theme,
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              )
-            : Center(
-                child: CircularProgressIndicator(
-                  color: theme.primaryColor,
-                  strokeWidth: 2,
+          valueListenable: LocalDbService().messagesBox.listenable(),
+          builder: (_, Box box, __) {
+            final all = LocalDbService().getMessages(_groupChatId);
+            final display = all.take(_limit).toList();
+            if (display.isEmpty) {
+              return Center(
+                child: _EmptyChat(
+                  palette: p,
+                  primaryColor: theme.primaryColor,
+                  onIcebreaker: _showIcebreakers,
                 ),
-              ),
+              );
+            }
+            _prefetchLinkPreviews(display);
+            return Stack(
+              children: [
+                ListView.builder(
+                  controller: _scrollController,
+                  reverse: true,
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  itemCount: display.length,
+                  itemBuilder: (_, i) => KeyedSubtree(
+                    key: ValueKey(display[i]['messageId'] ?? 'msg_$i'),
+                    child: RepaintBoundary(
+                      child: _buildMsgItem(
+                        i,
+                        display[i],
+                        display,
+                        p,
+                        theme,
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 12,
+                  bottom: 12,
+                  child: ScaleTransition(
+                    scale: CurvedAnimation(
+                      parent: _fabAnim,
+                      curve: Curves.elasticOut,
+                    ),
+                    child: _ScrollFab(
+                      onTap: _scrollToBottom,
+                      palette: p,
+                      theme: theme,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        )
+            : Center(
+          child: CircularProgressIndicator(
+            color: theme.primaryColor,
+            strokeWidth: 2,
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildMsgItem(
-    int index,
-    Map<dynamic, dynamic> data,
-    List<Map<dynamic, dynamic>> full,
-    ThemePalette p,
-    ThemeProvider theme,
-  ) {
+      int index,
+      Map<dynamic, dynamic> data,
+      List<Map<dynamic, dynamic>> full,
+      ThemePalette p,
+      ThemeProvider theme,
+      ) {
     final isHighlighted = _pendingScrollId == data['messageId'];
     final isPending = data['status'] == 'pending';
     final msg = MessageChat(
@@ -2903,8 +2908,8 @@ class ChatPageState extends State<ChatPage>
         msg.type == TypeMessage.gameLive) {
       final validName =
           _authProvider.currentUserName ??
-          _authProvider.firebaseAuth.currentUser?.displayName ??
-          _currentUserId;
+              _authProvider.firebaseAuth.currentUser?.displayName ??
+              _currentUserId;
       return wrap(
         Align(
           alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -2924,8 +2929,8 @@ class ChatPageState extends State<ChatPage>
     if (msg.type == TypeMessage.gameResult) {
       final validName =
           _authProvider.currentUserName ??
-          _authProvider.firebaseAuth.currentUser?.displayName ??
-          _currentUserId;
+              _authProvider.firebaseAuth.currentUser?.displayName ??
+              _currentUserId;
       return wrap(
         Align(
           alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -3063,9 +3068,9 @@ class ChatPageState extends State<ChatPage>
     final fs = theme.fontSizeMultiplier;
     final hasUrl =
         !msg.isDeleted &&
-        msg.type == TypeMessage.text &&
-        location == null &&
-        UrlDetector.containsUrl(msg.content);
+            msg.type == TypeMessage.text &&
+            location == null &&
+            UrlDetector.containsUrl(msg.content);
     final isAI = msg.idFrom == AppConstants.aiAssistantId;
 
     return Container(
@@ -3102,7 +3107,7 @@ class ChatPageState extends State<ChatPage>
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
                     maxWidth:
-                        MediaQuery.of(context).size.width *
+                    MediaQuery.of(context).size.width *
                         (hasUrl ? 0.82 : theme.bubbleMaxWidthFactor),
                   ),
                   child: AnimatedContainer(
@@ -3176,35 +3181,35 @@ class ChatPageState extends State<ChatPage>
                             onOpen: () => _openMaps(location.mapsUrl),
                           )
                         else if (isAI)
-                          MarkdownBody(
-                            data: msg.content,
-                            selectable: true,
-                            styleSheet: MarkdownStyleSheet(
-                              p: TextStyle(
-                                fontSize: 15 * fs,
-                                color: isMe ? Colors.white : p.incomingText,
-                                height: 1.5,
+                            MarkdownBody(
+                              data: msg.content,
+                              selectable: true,
+                              styleSheet: MarkdownStyleSheet(
+                                p: TextStyle(
+                                  fontSize: 15 * fs,
+                                  color: isMe ? Colors.white : p.incomingText,
+                                  height: 1.5,
+                                ),
                               ),
-                            ),
-                          )
-                        else if (hasUrl)
-                          ChatMessageWithLinkPreview(
-                            content: msg.content,
-                            isMe: isMe,
-                            textColor: isMe ? Colors.white : p.incomingText,
-                            fontSize: 15 * fs,
-                            primaryColor: theme.primaryColor,
-                            showPreview: true,
-                          )
-                        else
-                          Text(
-                            msg.content,
-                            style: TextStyle(
-                              color: isMe ? Colors.white : p.incomingText,
-                              fontSize: 15 * fs,
-                              height: 1.45,
-                            ),
-                          ),
+                            )
+                          else if (hasUrl)
+                              ChatMessageWithLinkPreview(
+                                content: msg.content,
+                                isMe: isMe,
+                                textColor: isMe ? Colors.white : p.incomingText,
+                                fontSize: 15 * fs,
+                                primaryColor: theme.primaryColor,
+                                showPreview: true,
+                              )
+                            else
+                              Text(
+                                msg.content,
+                                style: TextStyle(
+                                  color: isMe ? Colors.white : p.incomingText,
+                                  fontSize: 15 * fs,
+                                  height: 1.45,
+                                ),
+                              ),
                         if (isMe) ...[
                           const SizedBox(height: 3),
                           Row(
@@ -3336,30 +3341,30 @@ class ChatPageState extends State<ChatPage>
           height: 220,
           child: isPending
               ? _MediaPlaceholder(
-                  isLoading: true,
-                  palette: p,
-                  primary: theme.primaryColor,
-                )
+            isLoading: true,
+            palette: p,
+            primary: theme.primaryColor,
+          )
               : Image.network(
-                  msg.content,
-                  fit: BoxFit.cover,
-                  loadingBuilder: (_, child, prog) => prog == null
-                      ? child
-                      : _MediaPlaceholder(
-                          isLoading: true,
-                          palette: p,
-                          primary: theme.primaryColor,
-                          progress: prog.expectedTotalBytes != null
-                              ? prog.cumulativeBytesLoaded /
-                                    prog.expectedTotalBytes!
-                              : null,
-                        ),
-                  errorBuilder: (_, __, ___) => _MediaPlaceholder(
-                    isLoading: false,
-                    palette: p,
-                    primary: theme.primaryColor,
-                  ),
-                ),
+            msg.content,
+            fit: BoxFit.cover,
+            loadingBuilder: (_, child, prog) => prog == null
+                ? child
+                : _MediaPlaceholder(
+              isLoading: true,
+              palette: p,
+              primary: theme.primaryColor,
+              progress: prog.expectedTotalBytes != null
+                  ? prog.cumulativeBytesLoaded /
+                  prog.expectedTotalBytes!
+                  : null,
+            ),
+            errorBuilder: (_, __, ___) => _MediaPlaceholder(
+              isLoading: false,
+              palette: p,
+              primary: theme.primaryColor,
+            ),
+          ),
         ),
       ),
     ),
@@ -3415,7 +3420,7 @@ class ChatPageState extends State<ChatPage>
                   thumbUrl,
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) =>
-                      const ColoredBox(color: Color(0xFF1F2937)),
+                  const ColoredBox(color: Color(0xFF1F2937)),
                 )
               else
                 const ColoredBox(color: Color(0xFF1F2937)),
@@ -3496,36 +3501,36 @@ class ChatPageState extends State<ChatPage>
           duration: const Duration(milliseconds: 220),
           child: isTyping
               ? Padding(
-                  key: const ValueKey('typing'),
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 13,
-                        backgroundImage: widget.arguments.peerAvatar.isNotEmpty
-                            ? NetworkImage(widget.arguments.peerAvatar)
-                            : null,
-                        backgroundColor: theme.primaryColor.withValues(
-                          alpha: 0.12,
-                        ),
-                        child: widget.arguments.peerAvatar.isEmpty
-                            ? Text(
-                                widget.arguments.peerNickname.isNotEmpty
-                                    ? widget.arguments.peerNickname[0]
-                                          .toUpperCase()
-                                    : '?',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: theme.primaryColor,
-                                ),
-                              )
-                            : null,
-                      ),
-                      const SizedBox(width: 8),
-                      const BubbleTypingIndicator.chat(),
-                    ],
+            key: const ValueKey('typing'),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 13,
+                  backgroundImage: widget.arguments.peerAvatar.isNotEmpty
+                      ? NetworkImage(widget.arguments.peerAvatar)
+                      : null,
+                  backgroundColor: theme.primaryColor.withValues(
+                    alpha: 0.12,
                   ),
-                )
+                  child: widget.arguments.peerAvatar.isEmpty
+                      ? Text(
+                    widget.arguments.peerNickname.isNotEmpty
+                        ? widget.arguments.peerNickname[0]
+                        .toUpperCase()
+                        : '?',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: theme.primaryColor,
+                    ),
+                  )
+                      : null,
+                ),
+                const SizedBox(width: 8),
+                const BubbleTypingIndicator.chat(),
+              ],
+            ),
+          )
               : const SizedBox.shrink(key: ValueKey('idle')),
         );
       },
@@ -3547,7 +3552,7 @@ class ChatPageState extends State<ChatPage>
         alignment: WrapAlignment.spaceEvenly,
         children: List.generate(
           9,
-          (i) => _StickerItem(
+              (i) => _StickerItem(
             name: 'mimi${i + 1}',
             onTap: () => _onSend('mimi${i + 1}', TypeMessage.sticker),
           ),
@@ -3694,7 +3699,7 @@ class ChatPageState extends State<ChatPage>
                                 _FeatureItem(
                                   Icons.timer_rounded,
                                   'Tự xoá',
-                                  () => showDialog(
+                                      () => showDialog(
                                     context: context,
                                     builder: (_) => AutoDeleteSettingsDialog(
                                       conversationId: _groupChatId,
@@ -3712,18 +3717,18 @@ class ChatPageState extends State<ChatPage>
                                 _FeatureItem(
                                   Icons.visibility_off_rounded,
                                   'View Once',
-                                  () => showDialog(
+                                      () => showDialog(
                                     context: context,
                                     builder: (_) => SendViewOnceDialog(
                                       onSend: (content, type, dur) async {
                                         await _viewOnceProvider
                                             .sendViewOnceMessage(
-                                              groupChatId: _groupChatId,
-                                              currentUserId: _currentUserId,
-                                              peerId: widget.arguments.peerId,
-                                              content: content,
-                                              type: type,
-                                            );
+                                          groupChatId: _groupChatId,
+                                          currentUserId: _currentUserId,
+                                          peerId: widget.arguments.peerId,
+                                          content: content,
+                                          type: type,
+                                        );
                                         unawaited(_loadSmartReplies());
                                       },
                                     ),
@@ -3789,7 +3794,7 @@ class ChatPageState extends State<ChatPage>
     if (!full) return const SizedBox.shrink();
     final hasSmartReplies =
         _isLoadingSmartReply ||
-        (_smartReplyResult != null && _smartReplyResult!.isNotEmpty);
+            (_smartReplyResult != null && _smartReplyResult!.isNotEmpty);
     final hasAiDock = _aiDockChips.isNotEmpty && _showAiDock;
     if (!hasSmartReplies && !hasAiDock) return const SizedBox.shrink();
     return Column(
@@ -3867,15 +3872,15 @@ class ChatPageState extends State<ChatPage>
                 child: _replyingTo == null
                     ? const SizedBox.shrink()
                     : _ReplyPreviewBar(
-                        replyingTo: _replyingTo!,
-                        palette: p,
-                        theme: theme,
-                        onDismiss: () {
-                          if (mounted) setState(() => _replyingTo = null);
-                          _replyAnim.reverse();
-                          _focusNode.requestFocus();
-                        },
-                      ),
+                  replyingTo: _replyingTo!,
+                  palette: p,
+                  theme: theme,
+                  onDismiss: () {
+                    if (mounted) setState(() => _replyingTo = null);
+                    _replyAnim.reverse();
+                    _focusNode.requestFocus();
+                  },
+                ),
               ),
               Container(
                 decoration: BoxDecoration(
@@ -3973,7 +3978,7 @@ class ChatPageState extends State<ChatPage>
                               maxLines: null,
                               textInputAction: TextInputAction.newline,
                               autofocus:
-                                  widget.isMiniChat || widget.isBubbleMode,
+                              widget.isMiniChat || widget.isBubbleMode,
                               onChanged: (t) {
                                 _handleTyping(t);
                                 if (t.isNotEmpty &&
@@ -4054,9 +4059,9 @@ class ChatPageState extends State<ChatPage>
                             },
                             onLongPress: full && !hasText
                                 ? () {
-                                    HapticFeedback.mediumImpact();
-                                    _triggerZeroTypeSwipe();
-                                  }
+                              HapticFeedback.mediumImpact();
+                              _triggerZeroTypeSwipe();
+                            }
                                 : (hasText ? _scheduleMessage : null),
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 200),
@@ -4070,14 +4075,14 @@ class ChatPageState extends State<ChatPage>
                                 shape: BoxShape.circle,
                                 boxShadow: hasText
                                     ? [
-                                        BoxShadow(
-                                          color: theme.primaryColor.withValues(
-                                            alpha: 0.35,
-                                          ),
-                                          blurRadius: 10,
-                                          offset: const Offset(0, 3),
-                                        ),
-                                      ]
+                                  BoxShadow(
+                                    color: theme.primaryColor.withValues(
+                                      alpha: 0.35,
+                                    ),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ]
                                     : null,
                               ),
                               child: AnimatedSwitcher(
@@ -4280,51 +4285,51 @@ class _AiDock extends StatelessWidget {
                   children: items
                       .map(
                         (item) => Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 3,
+                        vertical: 8,
+                      ),
+                      child: GestureDetector(
+                        onTap: item.onTap,
+                        child: Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 3,
-                            vertical: 8,
+                            horizontal: 12,
+                            vertical: 6,
                           ),
-                          child: GestureDetector(
-                            onTap: item.onTap,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
+                          decoration: BoxDecoration(
+                            gradient: item.gradient,
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: _CD.aiPurple.withValues(alpha: 0.18),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
                               ),
-                              decoration: BoxDecoration(
-                                gradient: item.gradient,
-                                borderRadius: BorderRadius.circular(20),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: _CD.aiPurple.withValues(alpha: 0.18),
-                                    blurRadius: 6,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                item.icon,
+                                size: 13,
+                                color: Colors.white,
                               ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    item.icon,
-                                    size: 13,
-                                    color: Colors.white,
-                                  ),
-                                  const SizedBox(width: 5),
-                                  Text(
-                                    item.label,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
+                              const SizedBox(width: 5),
+                              Text(
+                                item.label,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                            ),
+                            ],
                           ),
                         ),
-                      )
+                      ),
+                    ),
+                  )
                       .toList(),
                 ),
               ),
@@ -4395,8 +4400,8 @@ class _FeatureCard extends StatelessWidget {
                 gradient: isAI
                     ? _CD.aiGradient
                     : LinearGradient(
-                        colors: [color, color.withValues(alpha: 0.7)],
-                      ),
+                  colors: [color, color.withValues(alpha: 0.7)],
+                ),
                 borderRadius: BorderRadius.circular(7),
               ),
               child: Icon(icon, size: 14, color: Colors.white),
@@ -4424,38 +4429,38 @@ class _FeatureCard extends StatelessWidget {
           children: items
               .map(
                 (item) => GestureDetector(
-                  onTap: item.onTap,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: item.color.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(9),
-                      border: Border.all(
-                        color: item.color.withValues(alpha: 0.16),
-                        width: 0.8,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(item.icon, color: item.color, size: 13),
-                        const SizedBox(width: 4),
-                        Flexible(
-                          child: Text(
-                            item.label,
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              color: palette.textPrimary,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
+              onTap: item.onTap,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: item.color.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(9),
+                  border: Border.all(
+                    color: item.color.withValues(alpha: 0.16),
+                    width: 0.8,
                   ),
                 ),
-              )
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(item.icon, color: item.color, size: 13),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        item.label,
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          color: palette.textPrimary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          )
               .toList(),
         ),
       ],
@@ -4985,10 +4990,10 @@ class _MediaPlaceholder extends StatelessWidget {
     child: Center(
       child: isLoading
           ? CircularProgressIndicator(
-              value: progress,
-              color: primary,
-              strokeWidth: 2.5,
-            )
+        value: progress,
+        color: primary,
+        strokeWidth: 2.5,
+      )
           : Icon(Icons.broken_image_rounded, color: palette.textHint, size: 32),
     ),
   );
@@ -5382,10 +5387,10 @@ class _ThemedDialog extends StatelessWidget {
             children: actions
                 .map(
                   (a) => Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: a,
-                  ),
-                )
+                padding: const EdgeInsets.only(left: 8),
+                child: a,
+              ),
+            )
                 .toList(),
           ),
         ],

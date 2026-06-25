@@ -406,9 +406,25 @@ class HomeProvider {
     return firebaseFirestore
         .collection(FirestoreConstants.pathConversationCollection)
         .where('participants', arrayContains: userId)
-        .where('unreadCount', isGreaterThan: 0)
+        // [FIX P0]: Xóa .where('unreadCount', isGreaterThan: 0) và lọc client-side an toàn
         .snapshots()
-        .map((s) => s.docs.length);
+        .map((snapshot) {
+          int unreadConversations = 0;
+          for (final doc in snapshot.docs) {
+            final data = doc.data() as Map<String, dynamic>? ?? {};
+            final rawUnread = data['unreadCount'];
+
+            if (rawUnread is int) {
+              if (rawUnread > 0) unreadConversations++;
+            } else if (rawUnread is Map) {
+              final userUnread = rawUnread[userId];
+              if (userUnread is int && userUnread > 0) {
+                unreadConversations++;
+              }
+            }
+          }
+          return unreadConversations;
+        });
   }
 
   // ─── Groups ───────────────────────────────────────────────────────────────

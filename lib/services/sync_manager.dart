@@ -25,7 +25,7 @@ abstract class MessageStatus {
 
 abstract class SyncJobType {
   static const String sendMessage = 'send_message';
-  static const String aiResponse = 'ai_response';
+  static const String ai_response = 'ai_response';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -92,8 +92,7 @@ class SyncManager {
   // ── Dependencies ───────────────────────────────────────────────────────────
   final _localDb = LocalDbService();
   final _encryption = EncryptionService();
-  final _aiBackend =
-  AIBackendService(); // Dùng Cloud Functions thay vì Gemini trực tiếp
+  final _aiBackend = AIBackendService(); // Dùng Cloud Functions thay vì Gemini trực tiếp
   final _aiContent = AiContentService();
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -158,7 +157,7 @@ class SyncManager {
     required String userMessage,
   }) async {
     await _localDb.addToSyncQueue({
-      'type': SyncJobType.aiResponse,
+      'type': SyncJobType.ai_response,
       'priority': JobPriority.normal.index,
       'payload': {
         'conversationId': conversationId,
@@ -266,20 +265,17 @@ class SyncManager {
       try {
         ok = switch (jobType) {
           SyncJobType.sendMessage => await _processSendMessage(payload),
-          SyncJobType.aiResponse => await _processAiResponse(payload),
+          SyncJobType.ai_response => await _processAiResponse(payload),
           _ => true,
         };
       } on AIBackendException catch (e) {
-        // Bắt riêng lỗi từ hệ thống AI (AIBackendService)
-        // Lỗi này xảy ra khi có cấu hình sai hoặc model không khả dụng, không cần retry
         if (e.type == AIBackendErrorType.unknown) {
           debugPrint('[SyncManager] ❌ Permanent AI Error: $e');
           await _sendAiErrorMessage(payload);
           await _localDb.removeFromSyncQueue(key as int);
           failed++;
-          continue; // Chuyển sang Job tiếp theo luôn, bỏ qua luồng retry phía dưới
+          continue;
         } else {
-          // Những lỗi transient (networkError, quotaExceeded...) để pass qua dưới và tiếp tục tính retries
           debugPrint('[SyncManager] Transient AI error: $e');
         }
       } on FirebaseException catch (e) {
@@ -301,8 +297,7 @@ class SyncManager {
             '[SyncManager] 🗑 Job $key exhausted retries — handling failure',
           );
 
-          // Gửi thông báo lỗi AI trực quan cho người dùng thay vì xóa ngầm
-          if (jobType == SyncJobType.aiResponse) {
+          if (jobType == SyncJobType.ai_response) {
             await _sendAiErrorMessage(payload);
           } else {
             await _markMessageFailed(payload);
@@ -354,8 +349,13 @@ class SyncManager {
     if (messageType == TypeMessage.gameResult) return '🏆 Kết quả game';
     if (messageType == TypeMessage.gameLive) return '🎮 Đang chơi game';
 
+    String textToProcess = plainContent;
+    if (textToProcess.startsWith('↪') && textToProcess.contains('\n')) {
+      textToProcess = textToProcess.substring(textToProcess.indexOf('\n') + 1);
+    }
+
     final masked = DataMaskingUtils.maskText(
-      plainContent,
+      textToProcess,
       config: MaskingConfig.piiOnly,
     );
     return masked.length > 80 ? '${masked.substring(0, 80)}…' : masked;
@@ -366,12 +366,10 @@ class SyncManager {
     final currentUserId = _str(payload['currentUserId']);
     if (conversationId.isEmpty) return;
 
-    const errorText =
-        '❌ Trợ lý AI tạm thời không khả dụng. Vui lòng thử lại sau.';
+    const errorText = '❌ Trợ lý AI tạm thời không khả dụng. Vui lòng thử lại sau.';
     final nowMs = DateTime.now().millisecondsSinceEpoch;
 
-    // Đổi từ '_' sang '-' để không vi phạm quy tắc của LocalDbService
-    final msgId = '${nowMs}-err';
+    final msgId = '$nowMs-err';
     final tsStr = nowMs.toString();
 
     try {
@@ -437,7 +435,7 @@ class SyncManager {
       return false;
     }
 
-    // 2. Ghi tài liệu lên Firestore Collection (Dùng subcollection động conversationId)
+    // 2. Ghi tài liệu lên Firestore Collection
     await FirebaseFirestore.instance
         .collection(FirestoreConstants.pathMessageCollection)
         .doc(conversationId)
@@ -452,7 +450,7 @@ class SyncManager {
       'status': MessageStatus.sent,
     });
 
-    // 3. Cập nhật dữ liệu hội thoại bằng Transaction để đảm bảo tính toàn vẹn
+    // 3. Cập nhật dữ liệu hội thoại bằng duy nhất 1 lần ghi trong Transaction
     try {
       final isGroupChat = idTo == conversationId;
       final convRef = FirebaseFirestore.instance
@@ -470,7 +468,6 @@ class SyncManager {
         final updates = <String, dynamic>{};
 
         if (newTime >= currentLastTime || !snapshot.exists) {
-          // Lưu đoạn trích thay vì chuỗi mã hóa
           updates['lastMessage'] = _buildPreview(plainContent, messageType);
           updates['lastMessageTime'] = timestamp;
           updates['lastMessageType'] = messageType;
@@ -483,16 +480,23 @@ class SyncManager {
         }
         updates['participants'] = participants;
 
+        // [FIX - VẤN ĐỀ 1]: Tính toán thủ công unreadCount để tránh double-write trên convRef
+        final rawUnread = data['unreadCount'];
+        final unreadMap = <String, dynamic>{};
+        if (rawUnread is Map) {
+          rawUnread.forEach((k, v) => unreadMap[k.toString()] = v);
+        }
         for (final p in participants) {
           if (p != idFrom) {
-            updates['unreadCount.$p'] = FieldValue.increment(1);
+            unreadMap[p.toString()] = (unreadMap[p.toString()] as int? ?? 0) + 1;
           }
         }
+        updates['unreadCount'] = unreadMap;
 
+        // Chỉ gọi một lần ghi duy nhất cho tài liệu này trong transaction
         transaction.set(convRef, updates, SetOptions(merge: true));
       });
     } catch (err) {
-      // [FIX] Cảnh báo lỗi non-fatal, bỏ lệnh return false để Job không bị Retry vô tận
       debugPrint('[SyncManager] ⚠️ Conversation update non-fatal: $err');
     }
 
@@ -548,29 +552,24 @@ class SyncManager {
 
     String? aiText;
     try {
-      // Gọi lên cổng Cloud Function thay vì GeminiService nội bộ
       aiText = await _aiBackend.generateAiChatReply(
         userMessage: userMessage,
         conversationHistory: rawHistoryMessages,
       );
     } on AIBackendException catch (e) {
-      // Nếu là Permanent error, rethrow để `_processBatch` xử lý catch block riêng của nó
       if (e.type == AIBackendErrorType.unknown) {
         rethrow;
       }
       debugPrint('[SyncManager] Transient AI error details: $e');
     }
 
-    // Nếu trả về null, trả về false để Queue tự động Retry
     if (aiText == null || aiText.trim().isEmpty) {
       debugPrint('[SyncManager] ⚠️ AI CF returned null — will retry');
       return false;
     }
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-
-    // Đổi từ '_' sang '-' để không vi phạm quy tắc của LocalDbService
-    final aiMessageId = '${nowMs}-${1000 + Random().nextInt(9000)}';
+    final aiMessageId = '$nowMs-${1000 + Random().nextInt(9000)}';
     final aiTimestampStr = nowMs.toString();
 
     // Mã hóa tin nhắn với ID của người dùng thực
@@ -580,7 +579,7 @@ class SyncManager {
         aiText,
         conversationId,
         [currentUserId, AppConstants.aiAssistantId],
-        currentUserId, // Trực tiếp dùng Human ID để lấy session_key
+        currentUserId,
       );
     } catch (e) {
       debugPrint('[SyncManager] ❌ AI Encrypt failed: $e');
@@ -593,7 +592,7 @@ class SyncManager {
       'idTo': currentUserId,
       'timestamp': aiTimestampStr,
       'content': encryptedAiText,
-      'contentPlain': aiText, // Lưu dự phòng plaintext vào bộ nhớ tạm
+      'contentPlain': aiText,
       'type': TypeMessage.text,
       'status': MessageStatus.sent,
     };
@@ -601,7 +600,7 @@ class SyncManager {
     // Lưu trữ xuống local cache
     await _localDb.saveMessage(conversationId, aiMessageId, aiMessage);
 
-    // Ghi tài liệu lên Firestore Collection (Lưu chuỗi đã mã hóa an toàn lên Cloud)
+    // Ghi tài liệu lên Firestore Collection
     await FirebaseFirestore.instance
         .collection(FirestoreConstants.pathMessageCollection)
         .doc(conversationId)
@@ -633,8 +632,7 @@ class SyncManager {
         final updates = <String, dynamic>{};
 
         if (newTime >= currentLastTime || !snapshot.exists) {
-          final preview =
-          aiText!.length > 80 // Safe do đã check null trước
+          final preview = aiText!.length > 80
               ? '${aiText.substring(0, 80)}…'
               : aiText;
           updates['lastMessage'] = '[Trợ lý AI] $preview';
@@ -650,8 +648,17 @@ class SyncManager {
           participants.add(AppConstants.aiAssistantId);
         }
         updates['participants'] = participants;
-        updates['unreadCount.$currentUserId'] = FieldValue.increment(1);
 
+        // [FIX - VẤN ĐỀ 2]: Tính toán thủ công unreadCount để tránh double-write trên convRef
+        final rawUnread = data['unreadCount'];
+        final unreadMap = <String, dynamic>{};
+        if (rawUnread is Map) {
+          rawUnread.forEach((k, v) => unreadMap[k.toString()] = v);
+        }
+        unreadMap[currentUserId] = (unreadMap[currentUserId] as int? ?? 0) + 1;
+        updates['unreadCount'] = unreadMap;
+
+        // Ghi duy nhất 1 lần thay vì gọi thêm transaction.update() hoặc transaction.set() thứ hai
         transaction.set(convRef, updates, SetOptions(merge: true));
       });
     } catch (e) {
@@ -691,8 +698,7 @@ class SyncManager {
           .catchError((e) {
         debugPrint('[SyncManager] AiContent retry push failed: $e');
       });
-    })
-        .catchError((e) {
+    }).catchError((e) {
       _aiContent
           .pushAiContentWithRetry(
         conversationId: conversationId,

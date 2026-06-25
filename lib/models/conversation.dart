@@ -15,7 +15,8 @@ class Conversation {
   final List<String> archivedBy;
   final String contextType;
 
-  final dynamic unreadCount;
+  // [FIX] Lưu dữ liệu thô (có thể là int hoặc Map) để không bị lỗi cast exception
+  final dynamic rawUnreadCount;
   final Map<String, dynamic>? lastReadBy;
 
   final String? peerPhotoUrl;
@@ -38,7 +39,7 @@ class Conversation {
     this.isMuted = false,
     this.archivedBy = const [],
     this.contextType = 'default',
-    this.unreadCount = 0,
+    this.rawUnreadCount = 0, // Đổi tên constructor parameter
     this.lastReadBy,
     this.peerPhotoUrl,
     this.isOnline = false,
@@ -48,6 +49,29 @@ class Conversation {
     this.isRead = false,
     this.isArchived = false,
   });
+
+  // [FIX] Getter trả về tổng số lượng tin nhắn chưa đọc dạng int an toàn
+  int get unreadCount {
+    if (rawUnreadCount is int) return rawUnreadCount as int;
+    if (rawUnreadCount is Map) {
+      int total = 0;
+      (rawUnreadCount as Map).forEach((_, v) {
+        if (v is int) total += v;
+      });
+      return total;
+    }
+    return 0;
+  }
+
+  // [FIX] Helper method lấy số lượng unread của 1 user cụ thể (Dùng cho home_page.dart)
+  int getUnreadCountForUser(String userId) {
+    if (rawUnreadCount is int) return rawUnreadCount as int;
+    if (rawUnreadCount is Map) {
+      final v = (rawUnreadCount as Map)[userId];
+      if (v is int) return v;
+    }
+    return 0;
+  }
 
   Map<String, dynamic> toJson() {
     return {
@@ -61,7 +85,7 @@ class Conversation {
       'isMuted': isMuted,
       'archivedBy': archivedBy,
       'contextType': contextType,
-      'unreadCount': unreadCount,
+      'unreadCount': rawUnreadCount, // Giữ nguyên cấu trúc dữ liệu khi đẩy lên Firestore
       'lastReadBy': lastReadBy,
     };
   }
@@ -139,7 +163,7 @@ class Conversation {
         isMuted: data['isMuted'] ?? false,
         archivedBy: getListString(data['archivedBy']),
         contextType: data['contextType'] ?? 'default',
-        unreadCount: data['unreadCount'] ?? 0,
+        rawUnreadCount: data['unreadCount'] ?? 0, // Nhận an toàn mọi định dạng (int hoặc Map)
         lastReadBy: data['lastReadBy'] != null
             ? Map<String, dynamic>.from(data['lastReadBy'] as Map)
             : null,

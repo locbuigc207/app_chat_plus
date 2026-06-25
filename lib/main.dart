@@ -203,7 +203,7 @@ Future<void> bubbleMain() async {
     }
   }
 
-  // [SỬA LỖI] Cố gắng sử dụng chung thư mục với main engine để chatProvider có thể đồng bộ chéo
+  // Cố gắng sử dụng chung thư mục với main engine để chatProvider có thể đồng bộ chéo
   try {
     final dir = await getApplicationDocumentsDirectory();
     await Hive.initFlutter(dir.path);
@@ -242,7 +242,7 @@ Future<void> miniChatMain() async {
     }
   }
 
-  // [SỬA LỖI] Tương tự như Bubble, ưu tiên share path
+  // Tương tự như Bubble, ưu tiên share path
   try {
     final dir = await getApplicationDocumentsDirectory();
     await Hive.initFlutter(dir.path);
@@ -481,8 +481,7 @@ Future<void> _initializeLocalNotifications(
     if (Platform.isIOS) {
       await plugin
           .resolvePlatformSpecificImplementation<
-          IOSFlutterLocalNotificationsPlugin
-      >()
+          IOSFlutterLocalNotificationsPlugin>()
           ?.requestPermissions(alert: true, badge: true, sound: true);
     }
     debugPrint('✅ Local Notifications khởi tạo xong');
@@ -501,8 +500,7 @@ Future<void> _setupAndroidNotificationChannels(
     ) async {
   final androidPlugin = plugin
       .resolvePlatformSpecificImplementation<
-      AndroidFlutterLocalNotificationsPlugin
-  >();
+      AndroidFlutterLocalNotificationsPlugin>();
   if (androidPlugin == null) return;
 
   await androidPlugin.requestNotificationsPermission();
@@ -669,7 +667,6 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
         (args['peerAvatar'] ?? args['avatarUrl']) as String? ?? '';
     final isBubbleMode = args['isBubbleMode'] as bool? ?? true;
 
-    // [SỬA LỖI] Đọc isGroup đúng và an toàn
     final isGroup =
         (args['isGroup'] as bool?) ?? (peerId?.startsWith('group_') ?? false);
 
@@ -697,7 +694,7 @@ class _BubbleChatChannelManagerState extends State<BubbleChatChannelManager> {
 
     try {
       if (isGroup) {
-        // [SỬA LỖI ĐIỀU HƯỚNG]: Fetch Group từ Firestore để tránh dùng object rỗng gây lỗi
+        // Fetch Group từ Firestore để tránh dùng object rỗng gây lỗi
         Group group;
         try {
           final doc = await FirebaseFirestore.instance
@@ -950,8 +947,8 @@ class _AppInitializerState extends State<AppInitializer>
 
   Future<void> _handleNotificationLaunch() async {
     try {
-      final initialMessage = await FirebaseMessaging.instance
-          .getInitialMessage();
+      final initialMessage =
+      await FirebaseMessaging.instance.getInitialMessage();
       if (initialMessage != null) {
         await Future.delayed(const Duration(milliseconds: 800));
         await _routeFromNotificationMessage(initialMessage);
@@ -1053,8 +1050,7 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
             debugShowCheckedModeBanner: false,
             navigatorKey: AppRouter.navigatorKey,
             themeMode: themeProvider.flutterThemeMode ?? ThemeMode.system,
-            theme:
-            themeProvider.lightTheme ??
+            theme: themeProvider.lightTheme ??
                 _buildFallbackTheme(Brightness.light),
             darkTheme:
             themeProvider.darkTheme ?? _buildFallbackTheme(Brightness.dark),
@@ -1094,13 +1090,11 @@ class _ChatAppState extends State<ChatApp> with BubbleLifecycleMixin {
         brightness: brightness,
       ),
       fontFamily: 'Inter',
-      scaffoldBackgroundColor: isDark
-          ? const Color(0xFF0D0D0D)
-          : const Color(0xFFF4F7FF),
+      scaffoldBackgroundColor:
+      isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF4F7FF),
       appBarTheme: AppBarTheme(
-        backgroundColor: isDark
-            ? const Color(0xFF1A1A2E)
-            : const Color(0xFF2979FF),
+        backgroundColor:
+        isDark ? const Color(0xFF1A1A2E) : const Color(0xFF2979FF),
         foregroundColor: Colors.white,
         elevation: 0,
         systemOverlayStyle: SystemUiOverlayStyle.light,
@@ -1173,9 +1167,8 @@ class BubbleChatEntryApp extends StatelessWidget {
               seedColor: const Color(0xFF2979FF),
               brightness: brightness,
             ),
-            scaffoldBackgroundColor: isDark
-                ? const Color(0xFF0D0D0D)
-                : const Color(0xFFF4F7FF),
+            scaffoldBackgroundColor:
+            isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF4F7FF),
           );
 
           return MaterialApp(
@@ -1208,7 +1201,6 @@ class BubbleEntryPage extends StatefulWidget {
   State<BubbleEntryPage> createState() => _BubbleEntryPageState();
 }
 
-// [SỬA LỖI P1] Đồng bộ Widget Binding Observer để bắn lại Ready Signal cho Native
 class _BubbleEntryPageState extends State<BubbleEntryPage>
     with WidgetsBindingObserver {
   static const _channel = MethodChannel('bubble_chat_channel');
@@ -1222,7 +1214,6 @@ class _BubbleEntryPageState extends State<BubbleEntryPage>
 
   void _notifyReady() {
     _channel.invokeMethod('flutterReady').catchError((_) {});
-    // Bắn thêm vài lần dự phòng trường hợp Engine Warmup khiến Native bị lỡ mất (miss) event
     for (int i = 1; i <= 3; i++) {
       Future.delayed(Duration(milliseconds: i * 400), () {
         if (mounted) _channel.invokeMethod('flutterReady').catchError((_) {});
@@ -1304,9 +1295,8 @@ class MiniChatEntryApp extends StatelessWidget {
               seedColor: const Color(0xFF2979FF),
               brightness: brightness,
             ),
-            scaffoldBackgroundColor: isDark
-                ? const Color(0xFF0D0D0D)
-                : const Color(0xFFF4F7FF),
+            scaffoldBackgroundColor:
+            isDark ? const Color(0xFF0D0D0D) : const Color(0xFFF4F7FF),
           );
 
           return MaterialApp(
@@ -1321,8 +1311,7 @@ class MiniChatEntryApp extends StatelessWidget {
                   MediaQuery.textScalerOf(context).scale(1.0).clamp(0.8, 1.3),
                 ),
               ),
-              child:
-              child!, // KHÔNG SỬ DỤNG BubbleChatChannelManager để tránh conflict
+              child: child!,
             ),
             home: const MiniChatEntryPage(),
             onGenerateRoute: AppRouter.onGenerateRoute,
@@ -1340,7 +1329,6 @@ class MiniChatEntryPage extends StatefulWidget {
   State<MiniChatEntryPage> createState() => _MiniChatEntryPageState();
 }
 
-// [SỬA LỖI P1] Đồng bộ Widget Binding Observer để bắn lại Ready Signal cho Native
 class _MiniChatEntryPageState extends State<MiniChatEntryPage>
     with WidgetsBindingObserver {
   static const _channel = MethodChannel('mini_chat_channel');
@@ -1387,7 +1375,6 @@ class _MiniChatEntryPageState extends State<MiniChatEntryPage>
         final peerAvatar =
             (args['peerAvatar'] ?? args['avatarUrl']) as String? ?? '';
 
-        // [SỬA LỖI ĐIỀU HƯỚNG]
         final isGroup =
             (args['isGroup'] as bool?) ??
                 (peerId?.startsWith('group_') ?? false);
@@ -1397,7 +1384,6 @@ class _MiniChatEntryPageState extends State<MiniChatEntryPage>
           if (globalNavigatorKey.currentState == null) return null;
 
           if (isGroup) {
-            // [SỬA LỖI] Fetch Group data từ Firestore
             Group group;
             try {
               final doc = await FirebaseFirestore.instance
@@ -1420,7 +1406,8 @@ class _MiniChatEntryPageState extends State<MiniChatEntryPage>
                 );
               }
             } catch (e) {
-              debugPrint('⚠️ Fetch group failed in mini chat nav, using stub: $e');
+              debugPrint(
+                  '⚠️ Fetch group failed in mini chat nav, using stub: $e');
               group = Group(
                 id: peerId,
                 groupName: peerNickname,

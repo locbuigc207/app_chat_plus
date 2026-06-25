@@ -100,9 +100,9 @@ class ChatProvider {
           .ref()
           .child(storagePath)
           .putFile(
-        file,
-        SettableMetadata(contentType: _resolveContentType(originalName)),
-      );
+            file,
+            SettableMetadata(contentType: _resolveContentType(originalName)),
+          );
       final snapshot = await uploadTask.whenComplete(() {});
       return await snapshot.ref.getDownloadURL();
     } catch (e) {
@@ -117,13 +117,13 @@ class ChatProvider {
       'pdf': 'application/pdf',
       'doc': 'application/msword',
       'docx':
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'xls': 'application/vnd.ms-excel',
       'xlsx':
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'ppt': 'application/vnd.ms-powerpoint',
       'pptx':
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       'txt': 'text/plain',
     };
     return mimeMap[ext] ?? 'application/octet-stream';
@@ -141,10 +141,10 @@ class ChatProvider {
           .snapshots();
 
   Future<void> updateDataFirestore(
-      String collectionPath,
-      String docPath,
-      Map<String, dynamic> dataNeedUpdate,
-      ) => firebaseFirestore
+    String collectionPath,
+    String docPath,
+    Map<String, dynamic> dataNeedUpdate,
+  ) => firebaseFirestore
       .collection(collectionPath)
       .doc(docPath)
       .update(dataNeedUpdate);
@@ -188,7 +188,7 @@ class ChatProvider {
         final snap = await tx.get(docRef);
         final currentTime =
             int.tryParse(snap.data()?['lastMessageTime']?.toString() ?? '0') ??
-                0;
+            0;
 
         // Chỉ cập nhật nếu document chưa tồn tại hoặc tin nhắn này thực sự mới hơn.
         if (!snap.exists || newTime > currentTime) {
@@ -210,12 +210,12 @@ class ChatProvider {
   // ═══════════════════════════════════════════════════════════════════════════
 
   Future<void> sendMessage(
-      String content,
-      int type,
-      String groupChatId,
-      String currentUserId,
-      String peerId,
-      ) async {
+    String content,
+    int type,
+    String groupChatId,
+    String currentUserId,
+    String peerId,
+  ) async {
     final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
 
     // Extract URL for link preview
@@ -325,11 +325,11 @@ class ChatProvider {
     final options = optionTexts
         .map(
           (text) => <String, dynamic>{
-        'id': _uuid.v4(),
-        'text': text.trim(),
-        'votes': <String>[],
-      },
-    )
+            'id': _uuid.v4(),
+            'text': text.trim(),
+            'votes': <String>[],
+          },
+        )
         .toList();
 
     final pollJson = jsonEncode(<String, dynamic>{
@@ -420,14 +420,14 @@ class ChatProvider {
         }
 
         final targetIndex = options.indexWhere(
-              (o) => o['id'].toString() == optionId,
+          (o) => o['id'].toString() == optionId,
         );
         if (targetIndex == -1)
           throw Exception('Option $optionId không tồn tại.');
 
         final isMultipleChoice =
-        (pollData['isMultipleChoice'] ?? data['isMultipleChoice'] ?? false)
-        as bool;
+            (pollData['isMultipleChoice'] ?? data['isMultipleChoice'] ?? false)
+                as bool;
         if (!isMultipleChoice) {
           for (final opt in options) {
             final votes = List<dynamic>.from(opt['votes'] as List? ?? []);
@@ -470,7 +470,7 @@ class ChatProvider {
             String updatedContent = existing['content'] as String? ?? '{}';
             try {
               final pollMap =
-              jsonDecode(updatedContent) as Map<String, dynamic>;
+                  jsonDecode(updatedContent) as Map<String, dynamic>;
               pollMap['options'] = newOptions;
               updatedContent = jsonEncode(pollMap);
             } catch (_) {}
@@ -504,10 +504,10 @@ class ChatProvider {
   // [SỬA LỖI P0]: Trả về StreamSubscription để Controller (Page) nắm giữ và hủy bỏ
   // khi màn hình Dispose, ngăn ngừa rò rỉ bộ nhớ (memory leak).
   StreamSubscription<QuerySnapshot> listenToFirebaseChanges(
-      String groupChatId,
-      String currentUserId,
-      String peerId,
-      ) {
+    String groupChatId,
+    String currentUserId,
+    String peerId,
+  ) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathMessageCollection)
         .doc(groupChatId)
@@ -517,26 +517,26 @@ class ChatProvider {
         .snapshots()
         .listen(
           (snapshot) async {
-        // [SỬA LỖI P0]: Chỉ xử lý các thay đổi dựa trên docChanges thay vì quét lại toàn bộ snapshot.docs
-        for (final change in snapshot.docChanges) {
-          try {
-            await _processIncomingDocChange(
-              change: change,
-              groupChatId: groupChatId,
-              currentUserId: currentUserId,
-              peerId: peerId,
-            );
-          } catch (e) {
-            _log(
-              '❌ _processIncomingDocChange error [${change.doc.id}]: $e',
-            );
-          }
-        }
-      },
-      onError: (Object e, StackTrace st) {
-        _log('❌ listenToFirebaseChanges stream error: $e');
-      },
-    );
+            // [SỬA LỖI P0]: Chỉ xử lý các thay đổi dựa trên docChanges thay vì quét lại toàn bộ snapshot.docs
+            for (final change in snapshot.docChanges) {
+              try {
+                await _processIncomingDocChange(
+                  change: change,
+                  groupChatId: groupChatId,
+                  currentUserId: currentUserId,
+                  peerId: peerId,
+                );
+              } catch (e) {
+                _log(
+                  '❌ _processIncomingDocChange error [${change.doc.id}]: $e',
+                );
+              }
+            }
+          },
+          onError: (Object e, StackTrace st) {
+            _log('❌ listenToFirebaseChanges stream error: $e');
+          },
+        );
   }
 
   Future<void> _processIncomingDocChange({
@@ -580,7 +580,9 @@ class ChatProvider {
         // [FIX BUGS]: Xử lý cross-engine (tin nhắn do chính mình gửi từ engine khác)
         String content = data[FirestoreConstants.content] as String? ?? '';
 
-        if (type == TypeMessage.text && content.isNotEmpty && data['isDeleted'] != true) {
+        if (type == TypeMessage.text &&
+            content.isNotEmpty &&
+            data['isDeleted'] != true) {
           try {
             content = await EncryptionService().decryptPayload(
               content,
@@ -595,17 +597,18 @@ class ChatProvider {
 
         await _localDb.saveMessage(groupChatId, messageId, {
           'messageId': messageId,
-          'idFrom':    data['idFrom'],
-          'idTo':      data['idTo'],
+          'idFrom': data['idFrom'],
+          'idTo': data['idTo'],
           'timestamp': data['timestamp'],
-          'content':   content,
-          'type':      type,
-          'status':    MessageStatus.sent,
-          if (data.containsKey('options'))    'options':    _toOptionList(data['options']),
+          'content': content,
+          'type': type,
+          'status': MessageStatus.sent,
+          if (data.containsKey('options'))
+            'options': _toOptionList(data['options']),
           if (data.containsKey('isViewOnce')) 'isViewOnce': data['isViewOnce'],
-          if (data.containsKey('isPinned'))   'isPinned':   data['isPinned'],
-          if (data.containsKey('isDeleted'))  'isDeleted':  data['isDeleted'],
-          if (data.containsKey('isRead'))     'isRead':     data['isRead'],
+          if (data.containsKey('isPinned')) 'isPinned': data['isPinned'],
+          if (data.containsKey('isDeleted')) 'isDeleted': data['isDeleted'],
+          if (data.containsKey('isRead')) 'isRead': data['isRead'],
         });
         _log('💾 Cross-engine: saved own message $messageId from Firestore');
       }
@@ -626,12 +629,23 @@ class ChatProvider {
     } else if (type == TypeMessage.text &&
         content.isNotEmpty &&
         data['isDeleted'] != true) {
-      // CẬP NHẬT ĐIỀU KIỆN Ở ĐÂY
+      // [ĐÃ SỬA LỖI #2]: Sửa logic truyền sai participants khi nhận tin nhắn nhóm
       try {
+        final senderId = data['idFrom'] as String? ?? '';
+        final decryptParticipants = (senderId != peerId)
+            ? [
+                senderId,
+                peerId,
+              ] // Nhóm: senderId (người gửi), peerId (groupChatId)
+            : [
+                currentUserId,
+                peerId,
+              ]; // 1-1: currentUserId (người nhận), peerId (người gửi)
+
         content = await EncryptionService().decryptPayload(
           content,
           groupChatId,
-          [currentUserId, peerId],
+          decryptParticipants,
           currentUserId,
         );
       } catch (e) {
@@ -680,10 +694,10 @@ class ChatProvider {
     // Chỉ cập nhật nếu giải mã thành công, không bao giờ ghi chuỗi mã hóa lên Firestore
     final bool _decryptSucceeded =
         type != TypeMessage.text ||
-            (content != _originalEncryptedContent &&
-                !content.startsWith('🔒 [') &&
-                !content.startsWith('⚠️ [') &&
-                !(content.startsWith('{"iv":') && content.contains('"data":')));
+        (content != _originalEncryptedContent &&
+            !content.startsWith('🔒 [') &&
+            !content.startsWith('⚠️ [') &&
+            !(content.startsWith('{"iv":') && content.contains('"data":')));
 
     if (change.type == DocumentChangeType.added &&
         content.isNotEmpty &&
@@ -697,7 +711,7 @@ class ChatProvider {
           content: content,
           type: type,
           timestamp:
-          data['timestamp']?.toString() ??
+              data['timestamp']?.toString() ??
               DateTime.now().millisecondsSinceEpoch.toString(),
         ),
       );
@@ -719,11 +733,11 @@ class ChatProvider {
       unawaited(
         AIBackendService()
             .analyzeDecryptedClientMessage(
-          plainTextContent: content,
-          conversationId: groupChatId,
-          messageId: messageId,
-          idTo: currentUserId,
-        )
+              plainTextContent: content,
+              conversationId: groupChatId,
+              messageId: messageId,
+              idTo: currentUserId,
+            )
             .catchError((e) => _log('AI analysis skipped: $e')),
       );
 
@@ -732,24 +746,24 @@ class ChatProvider {
         AIBackendService()
             .detectHateSpeech(content)
             .then((isHateful) async {
-          if (!isHateful) return;
-          final key = '${groupChatId}_$messageId';
-          final existing = _localDb.messagesBox.get(key);
-          if (existing != null) {
-            await _localDb.saveMessage(groupChatId, messageId, {
-              ...Map<String, dynamic>.from(existing as Map),
-              'isHateful': true,
-              'hateSpeechCategory': 'hate',
-            });
-          }
-          firebaseFirestore
-              .collection(FirestoreConstants.pathMessageCollection)
-              .doc(groupChatId)
-              .collection(groupChatId)
-              .doc(messageId)
-              .update({'isHateful': true})
-              .catchError((_) {});
-        })
+              if (!isHateful) return;
+              final key = '${groupChatId}_$messageId';
+              final existing = _localDb.messagesBox.get(key);
+              if (existing != null) {
+                await _localDb.saveMessage(groupChatId, messageId, {
+                  ...Map<String, dynamic>.from(existing as Map),
+                  'isHateful': true,
+                  'hateSpeechCategory': 'hate',
+                });
+              }
+              firebaseFirestore
+                  .collection(FirestoreConstants.pathMessageCollection)
+                  .doc(groupChatId)
+                  .collection(groupChatId)
+                  .doc(messageId)
+                  .update({'isHateful': true})
+                  .catchError((_) {});
+            })
             .catchError((e) => _log('HateSpeech check skipped: $e')),
       );
     }
@@ -824,7 +838,7 @@ class ChatProvider {
     } finally {
       onLoadingStatusChanged(false);
       _compressionService.clearCache().catchError(
-            (e) => _log('⚠️ clearCache error: $e'),
+        (e) => _log('⚠️ clearCache error: $e'),
       );
     }
   }
@@ -876,7 +890,7 @@ class ChatProvider {
     } finally {
       onLoadingStatusChanged(false);
       _compressionService.clearCache().catchError(
-            (e) => _log('⚠️ clearCache error: $e'),
+        (e) => _log('⚠️ clearCache error: $e'),
       );
     }
     return successCount;
@@ -944,11 +958,11 @@ class ChatProvider {
             .collection(FirestoreConstants.pathConversationCollection)
             .doc(groupChatId)
             .set({
-          'lastMessage': preview,
-          'lastMessageTime': timestamp,
-          'lastMessageType': TypeMessage.gameInvite,
-          'participants': FieldValue.arrayUnion([currentUserId]),
-        }, SetOptions(merge: true));
+              'lastMessage': preview,
+              'lastMessageTime': timestamp,
+              'lastMessageType': TypeMessage.gameInvite,
+              'participants': FieldValue.arrayUnion([currentUserId]),
+            }, SetOptions(merge: true));
       } catch (e) {
         _log('⚠️ Game invite convo update error: $e');
       }
@@ -1021,11 +1035,11 @@ class ChatProvider {
             .collection(FirestoreConstants.pathConversationCollection)
             .doc(groupChatId)
             .set({
-          'lastMessage': previewText,
-          'lastMessageTime': timestamp,
-          'lastMessageType': TypeMessage.gameResult,
-          'participants': FieldValue.arrayUnion([currentUserId]),
-        }, SetOptions(merge: true));
+              'lastMessage': previewText,
+              'lastMessageTime': timestamp,
+              'lastMessageType': TypeMessage.gameResult,
+              'participants': FieldValue.arrayUnion([currentUserId]),
+            }, SetOptions(merge: true));
       } catch (e) {
         _log('⚠️ Game result convo update error: $e');
       }

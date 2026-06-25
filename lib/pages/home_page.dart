@@ -161,10 +161,10 @@ class _HomePageState extends State<HomePage>
         .where(FirestoreConstants.status, isEqualTo: 'pending')
         .snapshots();
 
+    // [FIX P0] Xóa where('unreadCount', isGreaterThan: 0) để tương thích với Map
     _unreadCountStream = FirebaseFirestore.instance
         .collection(FirestoreConstants.pathConversationCollection)
         .where(FirestoreConstants.participants, arrayContains: _currentUserId)
-        .where('unreadCount', isGreaterThan: 0)
         .snapshots();
 
     _initAnimations();
@@ -669,6 +669,17 @@ class _HomePageState extends State<HomePage>
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
+  /// [FIX P0] Đọc unreadCount an toàn — hỗ trợ cả định dạng int (cũ) và Map (mới)
+  int _extractUnreadForUser(Map<String, dynamic> data) {
+    final raw = data['unreadCount'];
+    if (raw is int) return raw;
+    if (raw is Map) {
+      final v = raw[_currentUserId];
+      return v is int ? v : 0;
+    }
+    return 0;
+  }
+
   // [SỬA LỖI P1]: Bổ sung đầy đủ các định dạng tin nhắn game/địa điểm để không lọt JSON thô
   String _lastMessagePreview(String msg, int? type) {
     if (type == TypeMessage.image) return '📷 Ảnh';
@@ -960,7 +971,17 @@ class _HomePageState extends State<HomePage>
                 StreamBuilder<QuerySnapshot>(
                   stream: _unreadCountStream,
                   builder: (_, snap) {
-                    final count = snap.hasData ? snap.data!.docs.length : 0;
+                    final count = snap.hasData
+                        ? snap.data!.docs
+                              .where(
+                                (d) =>
+                                    _extractUnreadForUser(
+                                      d.data() as Map<String, dynamic>,
+                                    ) >
+                                    0,
+                              )
+                              .length
+                        : 0;
                     if (count == 0) return const SizedBox.shrink();
                     return AnimatedSwitcher(
                       duration: const Duration(milliseconds: 200),
@@ -1163,7 +1184,17 @@ class _HomePageState extends State<HomePage>
     return StreamBuilder<QuerySnapshot>(
       stream: _unreadCountStream,
       builder: (_, snap) {
-        final unreadCount = snap.hasData ? snap.data!.docs.length : 0;
+        final unreadCount = snap.hasData
+            ? snap.data!.docs
+                  .where(
+                    (d) =>
+                        _extractUnreadForUser(
+                          d.data() as Map<String, dynamic>,
+                        ) >
+                        0,
+                  )
+                  .length
+            : 0;
 
         return Container(
           color: _bg(isDark),
@@ -1518,6 +1549,10 @@ class _HomePageState extends State<HomePage>
   // ── Conversation Item ──────────────────────────────────────────────────────
 
   Widget _buildConversationItem(DocumentSnapshot doc, bool isDark) {
+    // [FIX P0] Đọc unreadCount an toàn TRƯỚC khi parse Conversation model
+    final rawData = doc.data() as Map<String, dynamic>;
+    final userUnread = _extractUnreadForUser(rawData);
+
     final conversation = Conversation.fromDocument(doc);
 
     if (conversation.isGroup) {
@@ -1538,7 +1573,7 @@ class _HomePageState extends State<HomePage>
         isMuted: conversation.isMuted,
         isGroup: true,
         isDark: isDark,
-        unreadCount: conversation.unreadCount ?? 0,
+        unreadCount: userUnread,
         participants: conversation.participants,
         currentUserId: _currentUserId,
         onTap: () {
@@ -1588,7 +1623,7 @@ class _HomePageState extends State<HomePage>
       isGroup: false,
       isDark: isDark,
       onlineUserId: otherId,
-      unreadCount: conversation.unreadCount ?? 0,
+      unreadCount: userUnread,
       isSentByMe: conversation.isSentByMe ?? false,
       isRead: conversation.isRead ?? false,
       participants: conversation.participants,

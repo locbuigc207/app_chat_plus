@@ -19,7 +19,6 @@ class ConversationProvider {
     return firebaseFirestore
         .collection(FirestoreConstants.pathConversationCollection)
         .where(FirestoreConstants.participants, arrayContains: userId)
-        // [SỬA LỖI BUG #5]: Thêm limit(50) để tránh fetch toàn bộ collection làm tốn quota Firestore
         .limit(50)
         .snapshots()
         .map((snapshot) {
@@ -54,16 +53,12 @@ class ConversationProvider {
   Stream<List<QueryDocumentSnapshot>> getArchivedConversations(String userId) {
     return firebaseFirestore
         .collection(FirestoreConstants.pathConversationCollection)
-        // Đã xóa .where(participants, arrayContains: userId) để fix lỗi double arrayContains
         .where('archivedBy', arrayContains: userId)
-        // [SỬA LỖI BUG #5]: Thêm limit(50) tối ưu performance
         .limit(50)
         .snapshots()
         .map((snapshot) {
-          // Dùng .toList() để tạo bản sao có thể thay đổi (mutable), tránh lỗi khi gọi .sort()
           final docs = snapshot.docs.toList();
 
-          // Bổ sung sắp xếp cho danh sách lưu trữ
           docs.sort((a, b) {
             final aData = a.data() as Map<String, dynamic>? ?? {};
             final bData = b.data() as Map<String, dynamic>? ?? {};
@@ -84,16 +79,24 @@ class ConversationProvider {
     return firebaseFirestore
         .collection(FirestoreConstants.pathConversationCollection)
         .where(FirestoreConstants.participants, arrayContains: userId)
-        .where('unreadCount', isGreaterThan: 0)
-        // [SỬA LỖI BUG #5]: Thêm limit(50) tối ưu performance
+        // [FIX P0]: Không dùng .where() với unreadCount vì nó là dạng Map, lọc ở client-side
         .limit(50)
         .snapshots()
         .map((snapshot) {
-          // Dùng .toList() để tránh lỗi danh sách unmodifiable khi sort
-          final docs = snapshot.docs.toList();
+          // Lọc Client-side để kiểm tra số lượng unread của chính xác userId
+          final unreadDocs = snapshot.docs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>? ?? {};
+            final rawUnread = data['unreadCount'];
 
-          // Bổ sung sắp xếp cho danh sách chưa đọc
-          docs.sort((a, b) {
+            if (rawUnread is int) return rawUnread > 0;
+            if (rawUnread is Map) {
+              final userUnread = rawUnread[userId];
+              return (userUnread is int) && userUnread > 0;
+            }
+            return false;
+          }).toList();
+
+          unreadDocs.sort((a, b) {
             final aData = a.data() as Map<String, dynamic>? ?? {};
             final bData = b.data() as Map<String, dynamic>? ?? {};
 
@@ -105,7 +108,7 @@ class ConversationProvider {
             return bTime.compareTo(aTime);
           });
 
-          return docs;
+          return unreadDocs;
         });
   }
 
@@ -199,18 +202,33 @@ class ConversationProvider {
 
   Future<bool> markAsRead(String conversationId, String userId) async {
     try {
-      await firebaseFirestore
+      final docRef = firebaseFirestore
           .collection(FirestoreConstants.pathConversationCollection)
-          .doc(conversationId)
-          .update({
-            'unreadCount': 0,
-            'lastReadBy.$userId': DateTime.now().millisecondsSinceEpoch
-                .toString(),
-          });
+          .doc(conversationId);
+
+      // [FIX P0]: Chỉnh sửa unreadCount theo định dạng Map per-user
+      await docRef.update({
+        'unreadCount.$userId': 0,
+        'lastReadBy.$userId': DateTime.now().millisecondsSinceEpoch.toString(),
+      });
       return true;
     } catch (e) {
-      debugPrint('❌ Error marking as read: $e');
-      return false;
+      // Cơ chế Fallback an toàn: Nếu doc cũ đang lưu unreadCount là int,
+      // Firestore sẽ ném lỗi khi dùng dot notation. Lúc này ta ép thành Map.
+      try {
+        await firebaseFirestore
+            .collection(FirestoreConstants.pathConversationCollection)
+            .doc(conversationId)
+            .update({
+              'unreadCount': {userId: 0},
+              'lastReadBy.$userId': DateTime.now().millisecondsSinceEpoch
+                  .toString(),
+            });
+        return true;
+      } catch (fallbackErr) {
+        debugPrint('❌ Error marking as read: $fallbackErr');
+        return false;
+      }
     }
   }
 
@@ -219,14 +237,53 @@ class ConversationProvider {
     List<String> excludeUserIds,
   ) async {
     try {
-      await firebaseFirestore
+      final docRef = firebaseFirestore
           .collection(FirestoreConstants.pathConversationCollection)
-          .doc(conversationId)
-          .update({'unreadCount': FieldValue.increment(1)});
+          .doc(conversationId);
+
+      final docSnap = await docRef.get();
+      final data = docSnap.data();
+      if (data == null) return false;
+
+      final participants = List<String>.from(
+        data[FirestoreConstants.participants] ?? [],
+      );
+      final Map<String, dynamic> updates = {};
+
+      // [FIX P0]: Tăng unreadCount dạng Map cho những người không bị exclude
+      for (final p in participants) {
+        if (!excludeUserIds.contains(p)) {
+          updates['unreadCount.$p'] = FieldValue.increment(1);
+        }
+      }
+
+      if (updates.isNotEmpty) {
+        await docRef.update(updates);
+      }
       return true;
     } catch (e) {
-      debugPrint('❌ Error incrementing unread: $e');
-      return false;
+      // Cơ chế Fallback giống markAsRead nếu doc cũ đang là int
+      try {
+        final docRef = firebaseFirestore
+            .collection(FirestoreConstants.pathConversationCollection)
+            .doc(conversationId);
+
+        final docSnap = await docRef.get();
+        final participants = List<String>.from(
+          docSnap.data()?[FirestoreConstants.participants] ?? [],
+        );
+
+        final Map<String, int> newUnreadMap = {};
+        for (final p in participants) {
+          newUnreadMap[p] = excludeUserIds.contains(p) ? 0 : 1;
+        }
+
+        await docRef.update({'unreadCount': newUnreadMap});
+        return true;
+      } catch (fallbackErr) {
+        debugPrint('❌ Error incrementing unread: $fallbackErr');
+        return false;
+      }
     }
   }
 
@@ -261,7 +318,8 @@ class ConversationProvider {
             FirestoreConstants.lastMessage: '',
             FirestoreConstants.lastMessageTime: '0',
             FirestoreConstants.lastMessageType: 0,
-            'unreadCount': 0,
+            // [FIX P0]: Dùng Map rỗng để reset tin nhắn chưa đọc nhưng giữ cấu trúc dữ liệu
+            'unreadCount': {},
             'clearedAt': DateTime.now().millisecondsSinceEpoch.toString(),
           });
 
