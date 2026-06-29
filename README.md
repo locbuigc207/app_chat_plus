@@ -1,497 +1,197 @@
-# Flutter Chat Application
+# README.md
 
-[![Flutter Version](https://img.shields.io/badge/Flutter-3.19.0+-blue.svg)](https://flutter.dev/)
-[![Dart Version](https://img.shields.io/badge/Dart-3.3.0+-blue.svg)](https://dart.dev/)
-[![Firebase](https://img.shields.io/badge/Firebase-Enabled-orange.svg)](https://firebase.google.com/)
-[![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20iOS-lightgrey.svg)](https://flutter.dev/docs/deployment)
+## 📱 flutter_chat_demo (App Chat Plus)
 
-Ứng dụng chat đa nền tảng được xây dựng bằng Flutter và Firebase, hỗ trợ đầy đủ các tính năng hiện đại như chat bong bóng, tin nhắn tự xóa, phản ứng, và nhiều hơn nữa.
+**Production chat app with advanced Android Bubble API, WindowManager overlay, contextual adaptive UI, real-time Firestore, AR filters, and Game Center.**
 
-## 📱 Tính năng chính
+Dự án này là một ứng dụng nhắn tin toàn diện (Production-ready) được phát triển bằng Flutter, kết hợp chặt chẽ với hệ sinh thái Firebase và tích hợp sâu AI (Google Gemini). Ứng dụng hỗ trợ đa nền tảng với các tính năng nâng cao như gọi Audio/Video qua Agora, phân tích bảo mật nội dung (Scam/Hate speech), cảnh báo Deepfake, trợ lý AI AutoPilot, Mini Games và AR Filters.
 
-### 🔐 Xác thực & Bảo mật
-- Đăng nhập Google Sign-In
-- Xác thực số điện thoại
-- Khóa hội thoại bằng PIN/vân tay
-- Mã hóa dữ liệu nhạy cảm
+---
 
-### 💬 Tin nhắn & Chat
-- Nhắn tin văn bản, hình ảnh, giọng nói
-- Gửi vị trí địa lý
-- Tin nhắn tự xóa (View Once)
-- Xóa tin nhắn tự động theo thời gian
-- Ghim tin nhắn quan trọng
-- Phản ứng emoji với tin nhắn
-- Trả lời nhanh thông minh (Smart Reply)
-- Dịch tin nhắn đa ngôn ngữ
-- Tìm kiếm tin nhắn nâng cao
+## ✨ Tính năng chính
 
-### 🎈 Chat Bong Bóng (Bubble Chat)
-- **Bubble API (Android 11+)**: Sử dụng Notification API chính thức
-- **WindowManager (Android < 11)**: Fallback cho thiết bị cũ
-- **Unified Service**: Tự động chọn implementation phù hợp
-- Hỗ trợ nhiều bubble cùng lúc
-- Kéo thả để xóa bubble
-- Lưu trạng thái khi xoay màn hình
-- Mini chat overlay có thể di chuyển
+### 1. Nhắn tin & Giao tiếp Cốt lõi
 
-### 👥 Quản lý bạn bè & nhóm
-- Gửi/nhận lời mời kết bạn
-- Quét mã QR để kết bạn
-- Tạo và quản lý nhóm chat
-- Hiển thị trạng thái online/offline
-- Thanh bạn bè online nhanh
+* **Trò chuyện 1-1 và Nhóm (Group Chat):** Hỗ trợ đầy đủ văn bản, hình ảnh, video, âm thanh, tài liệu, chia sẻ vị trí và tạo bình chọn (Polls).
+* **Mã hóa đầu cuối (E2EE):** Đảm bảo tính riêng tư của tin nhắn thông qua `encrypt` và `pointycastle`.
+* **Adaptive UI & Bong bóng chat (Bubbles):** Hỗ trợ Android Bubble API, WindowManager overlay cho mini-chat và PiP (Picture-in-Picture).
+* **Hẹn giờ hủy tin nhắn & Tin nhắn tự xóa (View Once):** Cho phép gửi nội dung bảo mật cao.
 
-### 🔔 Thông báo & Nhắc nhở
-- Thông báo tin nhắn mới
-- Đặt nhắc nhở cho tin nhắn
-- Thông báo local với timezone
+### 2. Tích hợp AI Thông minh (Google Gemini)
 
-### 🎨 Giao diện & UX
-- Theme sáng/tối
-- Tùy chỉnh màu chủ đạo
-- Animations mượt mà
-- Responsive design
-- Loading states & error handling
+* **Smart Reply & Swipe Replies:** AI phân tích ngữ cảnh và gợi ý câu trả lời nhanh chóng dựa trên tone giọng (friendly, professional, genz,...).
+* **AutoPilot (Trả lời tự động):** AI học hỏi phong cách nhắn tin (Persona) của bạn để tự động trả lời khi bạn bận/đang ngủ.
+* **Tóm tắt & Phân tích (Recap & Insights):** Tạo "Bản tin Bóc phốt tuần", báo cáo cảm xúc (Sentiment Analysis), trích xuất Action Items/Quyết định quan trọng.
+* **Thay đổi giọng điệu (Tone Rewriter):** Dịch hoặc viết lại tin nhắn để phù hợp với người nhận (Elder, Student, Professional).
+* **Smart Reminders:** Tự động phát hiện deadline, lịch hẹn từ tin nhắn và lên lịch nhắc nhở (Cron Jobs).
 
-## 📁 Cấu trúc dự án
+### 3. Calling & WebRTC (Agora)
+
+* **Audio & Video Call 1-1 và Nhóm:** Khử tiếng ồn, chia sẻ màn hình, và theo dõi chất lượng mạng.
+* **Bảo mật cuộc gọi & Chống Deepfake:** Phân tích dữ liệu âm thanh/hình ảnh thời gian thực để đưa ra cảnh báo lừa đảo mạo danh.
+* **Ghi âm cuộc gọi (Cloud Recording):** Lưu trữ trực tiếp vào Google Cloud Storage.
+
+### 4. Giải trí & Tiện ích
+
+* **Game Center:** Cùng chơi Cờ vua (Chess), Cờ Caro (Tic-tac-toe) ngay trong phòng chat với tính năng tính giờ và trạng thái ván đấu real-time.
+* **AR Filters & Camera:** Tích hợp `deepar_flutter_plus` để thêm hiệu ứng khuôn mặt (8bitHearts, Vendetta Mask, Emotion Meter,...).
+* **Stories:** Chia sẻ khoảnh khắc trong 24h.
+
+---
+
+## 📂 Cấu trúc thư mục (Project Structure)
+
+Dự án áp dụng mô hình quản lý state bằng `Provider`, tách biệt UI, Logic và Services.
+
+```text
+app_chat_plus/
+├── android/                   # Cấu hình & code Native Android (Bubble API, WindowManager, Notifications)
+├── ios/                       # Cấu hình Native iOS
+├── web/                       # Assets và cấu hình Web
+├── assets/                    # Chứa AR effects (.deepar), fonts (Inter)
+├── images/                    # Chứa icon, gemini_avatar,...
+├── functions/                 # Mã nguồn Firebase Cloud Functions (Node.js)
+│   ├── index.js               # Chứa 55+ APIs và Cron Jobs
+│   └── package.json           # Các dependencies của backend
+└── lib/                       # Mã nguồn chính Flutter
+    ├── constants/             # Hằng số (app, colors, themes, firestore)
+    ├── models/                # Data models (ai_models, conversation, deepfake, game_match, group_call, message_chat, user_chat, reminder, story)
+    ├── pages/                 # UI Screens (Chat, Call, Login, Group, Insights, Story, Settings)
+    ├── providers/             # State Management (auth, chat, theme, voice_message, game_state, insights)
+    ├── services/              # Xử lý Logic (agora_rtc, ai_backend, e2ee, firebase_fcm, deepfake_detector, local_db)
+    ├── utils/                 # Tiện ích (audio_extractor, error_logger, data_masking, formatters)
+    ├── widgets/               # UI Components tái sử dụng (adaptive_bubble, ai_shield, chess_board, mini_chat, tox_badge)
+    ├── firebase_options.dart  # Config Firebase
+    └── main.dart              # Entry point của ứng dụng
 
 ```
-flutter_chat_demo/
-├── android/
-│   └── app/
-│       ├── src/main/kotlin/hust/appchat/
-│       │   ├── MainActivity.kt                    # Activity chính
-│       │   ├── BubbleActivity.kt                  # Activity cho Bubble mode
-│       │   ├── FlutterMiniChatActivity.kt        # Mini chat activity
-│       │   ├── MyAppGlideModule.kt               # Glide configuration
-│       │   ├── bubble/
-│       │   │   ├── BubbleManager.kt              # Quản lý bubble lifecycle
-│       │   │   ├── BubbleOverlayService.kt       # Service hiển thị bubble
-│       │   │   ├── BubbleView.kt                 # Custom bubble view
-│       │   │   ├── DeleteZoneView.kt             # Delete zone UI
-│       │   │   └── MultiBubbleManager.kt         # Multi-bubble management
-│       │   ├── notifications/
-│       │   │   ├── BubbleNotificationManager.kt  # Notification với message history
-│       │   │   ├── BubbleNotificationService.kt  # Service xử lý notifications
-│       │   │   └── NotificationHelper.kt         # Helper utilities
-│       │   └── shortcuts/
-│       │       ├── AvatarLoader.kt               # Avatar loading & caching
-│       │       └── ShortcutHelper.kt             # Dynamic shortcuts management
-│       ├── build.gradle                          # Build configuration
-│       └── google-services.json                  # Firebase config
-├── lib/
-│   ├── constants/
-│   │   ├── app_constants.dart                   # App constants
-│   │   ├── color_constants.dart                 # Color definitions
-│   │   ├── firestore_constants.dart             # Firestore field names
-│   │   ├── type_message.dart                    # Message types
-│   │   └── app_themes.dart                      # Theme definitions
-│   ├── models/
-│   │   ├── user_chat.dart                       # User model
-│   │   ├── message_chat.dart                    # Message model
-│   │   ├── conversation.dart                    # Conversation model
-│   │   ├── group.dart                           # Group model
-│   │   ├── friendship.dart                      # Friendship model
-│   │   ├── message_reaction.dart                # Reaction model
-│   │   └── bubble_models.dart                   # Bubble-related models
-│   ├── pages/
-│   │   ├── splash_page.dart                     # Splash screen
-│   │   ├── login_page.dart                      # Login screen
-│   │   ├── phone_login_page.dart                # Phone auth
-│   │   ├── home_page.dart                       # Main chat list
-│   │   ├── chat_page.dart                       # Chat interface
-│   │   ├── group_chat_page.dart                 # Group chat
-│   │   ├── friends_page.dart                    # Friends management
-│   │   ├── settings_page.dart                   # Settings
-│   │   ├── user_profile_page.dart               # User profile
-│   │   ├── my_qr_code_page.dart                 # QR code generation
-│   │   ├── qr_scanner_page.dart                 # QR scanner
-│   │   ├── search_messages_page.dart            # Message search
-│   │   ├── theme_settings_page.dart             # Theme customization
-│   │   ├── full_photo_page.dart                 # Full photo viewer
-│   │   └── enhanced_photo_viewer.dart           # Enhanced photo viewer
-│   ├── providers/
-│   │   ├── auth_provider.dart                   # Authentication logic
-│   │   ├── phone_auth_provider.dart             # Phone auth logic
-│   │   ├── chat_provider.dart                   # Chat functionality
-│   │   ├── home_provider.dart                   # Home page logic
-│   │   ├── setting_provider.dart                # Settings management
-│   │   ├── friend_provider.dart                 # Friends management
-│   │   ├── message_provider.dart                # Message operations
-│   │   ├── reaction_provider.dart               # Message reactions
-│   │   ├── conversation_provider.dart           # Conversation management
-│   │   ├── theme_provider.dart                  # Theme management
-│   │   ├── reminder_provider.dart               # Reminders
-│   │   ├── auto_delete_provider.dart            # Auto-delete messages
-│   │   ├── conversation_lock_provider.dart      # Conversation locking
-│   │   ├── view_once_provider.dart              # View-once messages
-│   │   ├── smart_reply_provider.dart            # Smart replies
-│   │   ├── user_presence_provider.dart          # User status
-│   │   ├── location_provider.dart               # Location sharing
-│   │   ├── translation_provider.dart            # Message translation
-│   │   └── voice_message_provider.dart          # Voice messages
-│   ├── services/
-│   │   ├── unified_bubble_service.dart          # Unified bubble service (NEW)
-│   │   ├── bubble_service_v2.dart               # Bubble API implementation
-│   │   ├── chat_bubble_service.dart             # Legacy bubble service
-│   │   └── notification_service.dart            # Notification service
-│   ├── utils/
-│   │   ├── utilities.dart                       # General utilities
-│   │   ├── debouncer.dart                       # Debouncing
-│   │   ├── error_logger.dart                    # Error logging
-│   │   ├── network_utils.dart                   # Network utilities
-│   │   ├── app_date_utils.dart                  # Date formatting
-│   │   └── bubble_testing_utils.dart            # Bubble testing tools
-│   ├── widgets/
-│   │   ├── bubble_manager.dart                  # Bubble manager widget
-│   │   ├── mini_chat_overlay.dart               # Mini chat overlay
-│   │   ├── conversation_item.dart               # Conversation list item
-│   │   ├── message_options_dialog.dart          # Message options
-│   │   ├── enhanced_message_options_dialog.dart # Enhanced options
-│   │   ├── conversation_options_dialog.dart     # Conversation options
-│   │   ├── enhanced_conversation_options.dart   # Enhanced conv options
-│   │   ├── auto_delete_settings_dialog.dart     # Auto-delete settings
-│   │   ├── pin_input_dialog.dart                # PIN input
-│   │   ├── edit_message_dialog.dart             # Edit message
-│   │   ├── schedule_message_dialog.dart         # Schedule message
-│   │   ├── translation_dialog.dart              # Translation UI
-│   │   ├── reaction_picker.dart                 # Emoji picker
-│   │   ├── message_reactions_display.dart       # Reactions display
-│   │   ├── smart_reply.dart                     # Smart reply widget
-│   │   ├── typing_indicator.dart                # Typing indicator
-│   │   ├── user_status_indicator.dart           # Status indicator
-│   │   ├── online_friends_bar.dart              # Online friends bar
-│   │   ├── read_receipt_widget.dart             # Read receipts
-│   │   ├── view_once_message_widget.dart        # View-once widget
-│   │   ├── voice_message_widget.dart            # Voice message player
-│   │   ├── advanced_search_bar.dart             # Search bar
-│   │   └── loading_view.dart                    # Loading indicator
-│   └── main.dart                                # App entry point
-├── functions/
-│   ├── index.js                                 # Cloud Functions
-│   └── package.json                             # Functions dependencies
-├── firebase.json                                # Firebase configuration
-├── firestore.rules                              # Security rules
-├── firestore.indexes.json                       # Firestore indexes
-├── pubspec.yaml                                 # Flutter dependencies
-└── README.md                                    # This file
-```
 
-## 🚀 Hướng dẫn cài đặt
+---
+
+## 🛠 Hướng dẫn Cài đặt & Khởi chạy
 
 ### Yêu cầu hệ thống
 
-- **Flutter SDK**: 3.19.0 hoặc cao hơn
-- **Dart SDK**: 3.3.0 hoặc cao hơn
-- **Android Studio/VS Code** với Flutter extension
-- **Xcode** (cho iOS development)
-- **Firebase CLI** (cho deployment)
-- **Node.js** 22+ (cho Cloud Functions)
+* **Flutter SDK:** `>=3.44.0 <4.0.0`
+* **Dart SDK:** `>=3.12.0 <4.0.0`
+* **Node.js** (để deploy Cloud Functions)
 
-### Bước 1: Clone repository
+### Các bước thực hiện
 
-```bash
-git clone https://github.com/your-username/flutter-chat-app.git
-cd flutter-chat-app
-```
-
-### Bước 2: Cài đặt dependencies
-
+1. **Clone repository và cài đặt thư viện:**
 ```bash
 flutter pub get
-cd functions && npm install && cd ..
+
 ```
 
-### Bước 3: Cấu hình Firebase
 
-#### 3.1. Tạo Firebase Project
+2. **Cấu hình Môi trường (.env):**
+   Tạo file `.env` tại thư mục gốc và khai báo các khóa bí mật:
+```env
+GEMINI_API_KEY=your_gemini_api_key
+AGORA_APP_ID=your_agora_app_id
+AGORA_APP_CERTIFICATE=your_agora_certificate
+# ... các config khác
 
-1. Truy cập [Firebase Console](https://console.firebase.google.com/)
-2. Tạo project mới hoặc sử dụng project existing
-3. Enable các services:
-    - Authentication (Google, Phone)
-    - Cloud Firestore
-    - Cloud Storage
-    - Cloud Functions
-    - Firebase Analytics
-    - Firebase Crashlytics
+```
 
-#### 3.2. Cấu hình Android App
 
-1. Thêm Android app vào Firebase project
-2. Package name: `hust.appchat`
-3. Download `google-services.json`
-4. Copy vào `android/app/`
-
-#### 3.3. Cấu hình iOS App (Optional)
-
-1. Thêm iOS app vào Firebase project
-2. Bundle ID: `com.example.flutterchatdemo`
-3. Download `GoogleService-Info.plist`
-4. Copy vào `ios/Runner/`
-
-#### 3.4. Cấu hình Google Sign-In
-
-**Android:**
-1. Get SHA-1 certificate fingerprint:
+3. **Cấu hình Firebase:**
+   Sử dụng Firebase CLI để kết nối dự án:
 ```bash
-keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android
+flutterfire configure
+
 ```
 
-2. Add SHA-1 vào Firebase Console (Project Settings > Android App)
 
-**iOS:**
-1. Thêm URL scheme vào `ios/Runner/Info.plist`
-2. Enable Google Sign-In trong Firebase Console
-
-### Bước 4: Deploy Firestore Rules & Indexes
-
-```bash
-# Deploy rules
-firebase deploy --only firestore:rules
-
-# Deploy indexes
-firebase deploy --only firestore:indexes
-```
-
-### Bước 5: Deploy Cloud Functions
-
+4. **Deploy Cloud Functions:**
 ```bash
 cd functions
-npm run deploy
+npm install
+firebase deploy --only functions
+firebase deploy --only firestore:indexes
+
 ```
 
-### Bước 6: Build & Run
 
-#### Android
-
+5. **Chạy ứng dụng:**
 ```bash
-# Debug build
 flutter run
 
-# Release build
-flutter build apk --release
-# hoặc
-flutter build appbundle --release
-```
-
-#### iOS
-
-```bash
-# Debug build
-flutter run
-
-# Release build
-flutter build ios --release
 ```
 
 
-### Tính năng Bubble Chat
 
-#### Android 11+ (Bubble API)
+---
 
-- **Notification-based bubbles**: Sử dụng Android Bubble API chính thức
-- **Message history**: Lưu trữ 10 tin nhắn gần nhất trong notification
-- **Dynamic shortcuts**: Tự động tạo shortcuts cho conversations
-- **Avatar caching**: LRU cache với Glide để tải avatar hiệu quả
-- **Smart navigation**: Tránh duplicate navigation
+## 🔥 Kiến trúc Firebase & Cloud Functions
 
-#### Android < 11 (WindowManager)
+### 1. Firestore Database 
 
-- **Overlay bubbles**: Sử dụng WindowManager để tạo floating bubbles
-- **Drag & drop**: Kéo thả bubble với delete zone
-- **Multi-bubble support**: Hỗ trợ nhiều bubble cùng lúc
-- **State persistence**: Lưu trạng thái khi app restart
-- **Screen rotation**: Tự động điều chỉnh vị trí
+Cơ sở dữ liệu được tổ chức tối ưu cho việc truy vấn Real-time (Sử dụng Collection & Collection Group):
 
-### Testing Bubble Chat
-
-```dart
-// Sử dụng BubbleTestingUtils
-import 'package:flutter_chat_demo/utils/bubble_testing_utils.dart';
-
-// Test bubble functionality
-await BubbleTestingUtils.testUnifiedBubbleService();
-
-// Log implementation info
-BubbleTestingUtils.logBubbleImplementation();
-
-// Test message sending
-await BubbleTestingUtils.testBubbleMessages(userId, userName);
-```
-
-## 📊 Firebase Structure
-
-### Firestore Collections
-
-#### `users` Collection
-```javascript
-{
-  id: String,              // User ID (same as Auth UID)
-  nickname: String,        // Display name
-  photoUrl: String,        // Avatar URL
-  phoneNumber: String,     // Phone number
-  email: String,          // Email address
-  aboutMe: String,        // Bio/status
-  isOnline: Boolean,      // Online status
-  lastSeen: Timestamp,    // Last active time
-  pushToken: String,      // FCM token
-  createdAt: Timestamp
-}
-```
-
-#### `conversations` Collection
-```javascript
-{
-  id: String,                    // Conversation ID
-  participants: Array<String>,   // User IDs
-  isGroup: Boolean,              // Group or 1-1
-  groupName: String,             // Group name (if group)
-  groupAvatar: String,           // Group avatar URL
-  lastMessage: String,           // Last message content
-  lastMessageTime: Timestamp,    // Last message timestamp
-  lastMessageSenderId: String,   // Sender ID
-  isPinned: Boolean,             // Pinned status
-  autoDeleteEnabled: Boolean,    // Auto-delete enabled
-  autoDeleteDuration: Number,    // Duration in ms
-  isLocked: Boolean,             // Lock status
-  lockType: String,              // "pin" or "fingerprint"
-  createdAt: Timestamp
-}
-```
-
-#### `messages/{conversationId}/{messageId}` Collection
-```javascript
-{
-  id: String,              // Message ID
-  idFrom: String,          // Sender ID
-  idTo: String,            // Receiver ID (for 1-1)
-  timestamp: String,       // Timestamp (as string)
-  content: String,         // Message content
-  type: Number,            // 0=text, 1=image, 2=sticker, 3=voice, 4=location
-  isRead: Boolean,         // Read status
-  isDeleted: Boolean,      // Deleted status
-  isPinned: Boolean,       // Pinned status
-  isViewOnce: Boolean,     // View-once status
-  isViewed: Boolean,       // Viewed status (for view-once)
-  autoDeleteAt: String,    // Auto-delete timestamp
-  replyTo: String,         // Replied message ID
-  location: {              // Location data
-    latitude: Number,
-    longitude: Number,
-    address: String
-  },
-  reactions: Map<String, String>  // userId -> emoji
-}
-```
-
-#### `friendships` Collection
-```javascript
-{
-  id: String,              // Friendship ID
-  userId1: String,         // User 1 ID
-  userId2: String,         // User 2 ID
-  createdAt: Timestamp
-}
-```
-
-#### `friend_requests` Collection
-```javascript
-{
-  id: String,              // Request ID
-  requesterId: String,     // Requester ID
-  receiverId: String,      // Receiver ID
-  status: String,          // "pending", "accepted", "rejected"
-  createdAt: Timestamp
-}
-```
-
-#### `reminders` Collection
-```javascript
-{
-  id: String,              // Reminder ID
-  userId: String,          // User ID
-  conversationId: String,  // Conversation ID
-  messageId: String,       // Message ID
-  reminderTime: Timestamp, // Scheduled time
-  message: String,         // Reminder message
-  isCompleted: Boolean,    // Completion status
-  createdAt: Timestamp
-}
-```
-
-### Cloud Functions
-
-#### 1. `cleanupExpiredMessages` (Scheduled: every 5 minutes)
-- Tự động xóa tin nhắn đã hết hạn
-- Query conversations với `autoDeleteEnabled = true`
-- Batch delete expired messages
-
-#### 2. `scheduleMessageDeletion` (Trigger: onCreate message)
-- Tự động set `autoDeleteAt` cho tin nhắn mới
-- Dựa vào `autoDeleteDuration` của conversation
-
-#### 3. `cleanupTypingStatus` (Scheduled: every 1 minute)
-- Xóa typing status cũ hơn 5 giây
-- Tránh hiển thị "typing..." vĩnh viễn
-
-#### 4. `updateUserPresence` (Trigger: onUpdate user)
-- Update `lastSeen` khi user offline
-- Tracking user activity
-
-#### 5. `sendMessageNotification` (Trigger: onCreate message)
-- Gửi push notification cho tin nhắn mới
-- Sử dụng FCM token
-
-#### 6. `cleanupOldDeletedMessages` (Scheduled: every 24 hours)
-- Xóa vĩnh viễn tin nhắn đã delete > 30 ngày
-- Giảm database size
+* **`users`**: Lưu trữ hồ sơ, trạng thái online/offline, FcmToken, cấu hình Insight.
+* **`conversations`**: Metadata hội thoại (isGroup, isLocked, lastMessage, autoDeleteEnabled).
+* **`messages` (Sub-collection / Collection Group)**: Tin nhắn thực tế (có các trường `isPinned`, `isViewOnce`, `isDeleted`, `timestamp`).
+* **`ai_analysis` (Sub-collection)**: Kết quả phân tích Scam/Toxicity cho từng tin nhắn.
 
 
-## 🐛 Common Issues & Solutions
+* **`groups`**: Quản lý thông tin nhóm chat.
+* **`calls` / `group_calls**`: Trạng thái cuộc gọi (calling, ringing, connected, missed) và link ghi âm.
+* **`friend_requests` / `friendships**`: Mạng lưới quan hệ xã hội của user.
+* **`game_matches`**: Quản lý state các ván game (Chess, Caro).
+* **`stories`**: Trạng thái và nội dung story (expiresAt).
+* **`reminders`**: Quản lý lịch nhắc nhở (isCompleted, reminderTime, isAutoGenerated).
+* **`reactions`**: Cảm xúc (thả tim, haha) trên từng message.
+* **`autopilot_config`**: Cấu hình AI trả lời tự động cho từng user.
+* **`ai_content`**: Lưu nội dung chat của AI Assistant để phục vụ tóm tắt tuần.
+* **`conversation_locks`**: Mã pin / Số lần thử thất bại của tính năng khóa chat.
 
-### Issue 1: Bubble Chat không hoạt động
+### 2. Cloud Functions 
 
-**Solution:**
-- Check Android version (>=11 cho Bubble API)
-- Verify overlay permission granted
-- Check logs: `adb logcat | grep "Bubble"`
+Dự án sử dụng Firebase Functions v2, chia làm 4 nhóm chính:
 
-### Issue 2: Google Sign-In failed
+#### A. Security & Content Moderation (Bảo mật & Kiểm duyệt)
 
-**Solution:**
-- Verify SHA-1 certificate trong Firebase Console
-- Check package name match
-- Enable Google Sign-In trong Firebase Authentication
+* `analyzeDecryptedMessage`, `analyzeScam`, `analyzeDecryptedClientMessage`: Phân tích tin nhắn lừa đảo.
+* `detectHateSpeech`, `analyzeToxicityBatch`: Nhận diện ngôn từ độc hại.
+* `analyzeCallSecurity`: Phân tích hội thoại gọi thoại, kết hợp điểm Local Deepfake để cảnh báo mạo danh.
 
-### Issue 3: Notifications không hiển thị
+#### B. AI & Chat Intelligence (Trí tuệ nhân tạo)
 
-**Solution:**
-- Check FCM token generation
-- Verify notification permissions
-- Check notification channel creation
+* `smartReplyWithContext`, `smartReplyEnhanced`, `suggestReplies`, `generateSwipeReplies`: Đề xuất câu trả lời thông minh.
+* `generateAutoPilotReply`: Sinh câu trả lời khi chế độ AutoPilot được bật (Dựa vào persona người dùng).
+* `translateCommunication`, `generateMessageTone`: Dịch và điều chỉnh văn phong (Gen Z, Chuyên nghiệp, Bạn bè).
+* `analyzeChatContext`, `analyzeSentiment`, `extractKeyMoments`: Phân tích ngữ cảnh, xu hướng cảm xúc và khoảnh khắc đáng nhớ.
+* `extractRelationshipMemory`: Đánh giá mức độ thân thiết của mối quan hệ từ lịch sử chat.
+* `generateIcebreakers`: Tạo câu mở lời phá băng.
+* `generateAiChatReply`: API cho chatbot hỗ trợ trực tiếp.
 
-### Issue 4: Cloud Functions timeout
+#### C. User Insights & Personas (Phân tích hành vi)
 
-**Solution:**
-- Increase function timeout trong `firebase.json`
-- Optimize Firestore queries
-- Add indexes if needed
+* `learnUserPersona`: Phân tích lịch sử để học cách dùng từ, emoji, độ dài câu của user.
+* `getUserInsights`, `getUserInsightsV2`, `getInsightsDashboard`, `triggerInsightsRefresh`: Tạo báo cáo thống kê mức độ tương tác, chủ đề yêu thích, thói quen online.
+* `generateWeeklyRecap`: Tạo bản tin tổng hợp tuần theo nhiều phong cách (Hài hước, Lãng mạn, MC truyền hình).
+
+#### D. Calling & WebRTC (Gọi điện & Trực tuyến)
+
+* `requestCallToken`, `generateAgoraToken`: Cấp phát token bảo mật cho Agora RTC.
+* `startGroupCallRecording`, `stopGroupCallRecording`: Ghi âm cuộc gọi nhóm lưu vào Google Cloud Storage.
+
+#### E. Reminders & Schedulers (Nhắc nhở & Tự động hóa)
+
+* `extractReminderWithPriority`, `batchExtractReminders`, `generateReminderSuggestions`: Trích xuất deadline/cuộc hẹn từ tin nhắn thô.
+* **Cron Jobs (`onSchedule`):**
+* `cleanupExpiredMessages`, `cleanupExpiredStories`, `cleanupExpiredReminders`: Xóa tự động nội dung hết hạn.
+* `cleanupStaleCalls`, `autoMissExpiredGroupCalls`, `autoAbortExpiredGameMatches`: Hủy trạng thái treo do rớt mạng.
+* `onReminderDue`, `onReminderOverdueDigest`, `dailyConversationDigest`: Đẩy thông báo Push (FCM) nhắc nhở định kỳ.
+* `weeklyAiRecap`: Chạy tổng hợp Recap AI vào chủ nhật hàng tuần.
 
 
-## 👥 Contributors
 
-- **Project Lead**: [Bùi Gia Lộc]
-- **Android Development**: Kotlin Native Integration
-- **Flutter Development**: Cross-platform Implementation
-- **Firebase Backend**: Cloud Functions & Firestore
+#### F. Triggers (Phản hồi sự kiện CSDL)
 
-## 🙏 Acknowledgments
-
-- Flutter Team for the amazing framework
-- Firebase Team for backend services
-- Material Design Team for design guidelines
-- Open source community for various packages
-
-**Happy Chatting! 💬**
+* `sendMessageNotification`: Bắn Notification (FCM) ngay khi có tin nhắn mới, kèm dữ liệu để OS hiển thị Bubble chat.
+* `onCallCreated`, `onGroupCallCreated`, `onCallUpdated`: Điều hướng chuông báo và Push data gọi điện.
+* `updateUserPresence`: Cập nhật `lastSeen` khi user mất kết nối.
+* `scheduleMessageDeletion`: Set mốc thời gian xóa dựa theo cấu hình nhóm.
