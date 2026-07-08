@@ -17,23 +17,21 @@ class ScamWarningWidget extends StatefulWidget {
   State<ScamWarningWidget> createState() => _ScamWarningWidgetState();
 }
 
-class _ScamWarningWidgetState extends State<ScamWarningWidget> with SingleTickerProviderStateMixin {
+class _ScamWarningWidgetState extends State<ScamWarningWidget>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<double> _slideAnim;
   late final Animation<double> _fadeAnim;
   bool _collapsed = false;
 
   _WarningLevel get _level {
-    switch (widget.status) {
-      case 'WARNING_MONEY':
-        return _WarningLevel.money;
-      case 'WARNING_LINK':
-        return _WarningLevel.link;
-      case 'DANGER':
-        return _WarningLevel.danger;
-      default:
-        return _WarningLevel.none;
-    }
+    final s = widget.status.trim().toUpperCase();
+    if (s.isEmpty || s == 'SAFE') return _WarningLevel.none;
+    if (s == 'WARNING_LINK') return _WarningLevel.link;
+    if (s == 'WARNING_MONEY') return _WarningLevel.money;
+    if (s == 'DANGER' || s == 'SCAM') return _WarningLevel.danger;
+    // Bất kỳ giá trị nào khác 'SAFE' đều phải hiện cảnh báo, không bao giờ trả về none.
+    return _WarningLevel.money;
   }
 
   _LevelConfig get _config {
@@ -102,7 +100,9 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget> with SingleTicker
           mainColor: Colors.grey,
           bgColor: Colors.transparent,
           borderColor: Colors.transparent,
-          gradient: const LinearGradient(colors: [Colors.transparent, Colors.transparent]),
+          gradient: const LinearGradient(
+            colors: [Colors.transparent, Colors.transparent],
+          ),
           tips: [],
         );
     }
@@ -115,9 +115,10 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget> with SingleTicker
       vsync: this,
       duration: const Duration(milliseconds: 400),
     );
-    _slideAnim = Tween<double>(begin: -12, end: 0).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic),
-    );
+    _slideAnim = Tween<double>(
+      begin: -12,
+      end: 0,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
     _fadeAnim = CurvedAnimation(parent: _ctrl, curve: Curves.easeIn);
 
     if (_level != _WarningLevel.none) {
@@ -168,7 +169,9 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget> with SingleTicker
                   height: 4,
                   decoration: BoxDecoration(
                     color: cfg.mainColor,
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(16),
+                    ),
                   ),
                 ),
                 Padding(
@@ -190,7 +193,10 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget> with SingleTicker
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: cfg.mainColor,
                                 borderRadius: BorderRadius.circular(6),
@@ -244,7 +250,9 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget> with SingleTicker
                 AnimatedCrossFade(
                   firstChild: const SizedBox(height: 0),
                   secondChild: _buildBody(cfg),
-                  crossFadeState: _collapsed ? CrossFadeState.showFirst : CrossFadeState.showSecond,
+                  crossFadeState: _collapsed
+                      ? CrossFadeState.showFirst
+                      : CrossFadeState.showSecond,
                   duration: const Duration(milliseconds: 280),
                   sizeCurve: Curves.easeInOut,
                 ),
@@ -277,7 +285,9 @@ class _ScamWarningWidgetState extends State<ScamWarningWidget> with SingleTicker
           Wrap(
             spacing: 6,
             runSpacing: 6,
-            children: cfg.tips.map((tip) => _TipChip(tip: tip, color: cfg.mainColor)).toList(),
+            children: cfg.tips
+                .map((tip) => _TipChip(tip: tip, color: cfg.mainColor))
+                .toList(),
           ),
           if (cfg.isDanger) ...[
             const SizedBox(height: 12),
